@@ -7,7 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -16,13 +16,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
 	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence/config"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

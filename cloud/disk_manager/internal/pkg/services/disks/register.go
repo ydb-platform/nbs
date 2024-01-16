@@ -10,7 +10,7 @@ import (
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

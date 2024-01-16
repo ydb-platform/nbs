@@ -12,7 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
-	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

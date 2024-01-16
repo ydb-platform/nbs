@@ -16,13 +16,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

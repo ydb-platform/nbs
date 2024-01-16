@@ -6,8 +6,8 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

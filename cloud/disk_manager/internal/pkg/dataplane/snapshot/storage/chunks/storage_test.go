@@ -13,8 +13,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	monitoring_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

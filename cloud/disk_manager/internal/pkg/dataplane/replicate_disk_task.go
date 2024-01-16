@@ -14,10 +14,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

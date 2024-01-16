@@ -16,8 +16,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	pools_storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/mocks"
-	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

@@ -12,7 +12,7 @@ import (
 	zstdcgo "github.com/DataDog/zstd"
 	"github.com/pierrec/lz4"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/library/go/blockcodecs"
 	_ "github.com/ydb-platform/nbs/library/go/blockcodecs/all"
 )

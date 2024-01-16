@@ -12,8 +12,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

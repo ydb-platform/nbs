@@ -7,7 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	placement_group_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

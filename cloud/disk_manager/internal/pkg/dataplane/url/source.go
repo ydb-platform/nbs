@@ -10,7 +10,7 @@ import (
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/qcow2"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vmdk"
-	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

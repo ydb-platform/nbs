@@ -13,11 +13,11 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	core_protos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

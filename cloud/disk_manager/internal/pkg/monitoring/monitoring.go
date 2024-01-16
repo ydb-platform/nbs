@@ -15,7 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

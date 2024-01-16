@@ -14,10 +14,10 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -3,8 +3,8 @@ package common
 import (
 	"fmt"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	error_codes "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
