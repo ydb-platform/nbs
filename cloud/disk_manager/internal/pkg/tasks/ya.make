@@ -29,6 +29,8 @@ RECURSE(
     config
     errors
     headers
+    logging
+    persistence
     storage
 )
 

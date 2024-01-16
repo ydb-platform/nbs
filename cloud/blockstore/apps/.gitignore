@@ -1,0 +1,7 @@
+client/blockstore-client
+client/lib/ut/cloud-blockstore-apps-client-lib-ut
+disk_agent/diskagentd
+server_lightweight/nbsd-lightweight
+server/nbsd
+
+*.debug

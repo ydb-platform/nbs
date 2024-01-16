@@ -4,7 +4,7 @@ NODE=${NODE:-1}
 GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8765}
 YDBD="./ydbd"
-
+export LD_LIBRARY_PATH=$(dirname $(readlink ydbd))
 $YDBD server \
     --tcp \
     --node              $NODE \

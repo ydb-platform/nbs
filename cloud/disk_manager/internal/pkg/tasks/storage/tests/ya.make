@@ -1,7 +1,6 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/tasks/storage)
 
-SET_APPEND(RECIPE_ARGS --kikimr-only)
-INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/contrib/ydb/public/tools/ydb_recipe/recipe.inc)
 
 IF (RACE)
     SIZE(LARGE)

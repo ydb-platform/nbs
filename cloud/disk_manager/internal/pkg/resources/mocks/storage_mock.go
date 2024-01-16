@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

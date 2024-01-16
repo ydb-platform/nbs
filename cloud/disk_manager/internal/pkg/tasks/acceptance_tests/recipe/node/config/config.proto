@@ -2,8 +2,8 @@ syntax = "proto2";
 
 package config;
 
-import "cloud/disk_manager/internal/pkg/logging/config/config.proto";
-import "cloud/disk_manager/internal/pkg/persistence/config/config.proto";
+import "cloud/disk_manager/internal/pkg/tasks/logging/config/config.proto";
+import "cloud/disk_manager/internal/pkg/tasks/persistence/config/config.proto";
 import "cloud/disk_manager/internal/pkg/tasks/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/acceptance_tests/recipe/node/config";

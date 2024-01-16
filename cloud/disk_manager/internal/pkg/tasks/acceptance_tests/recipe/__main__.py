@@ -1,5 +1,3 @@
-import os
-
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.internal.pkg.tasks.acceptance_tests.recipe.node_launcher import NodeLauncher
@@ -12,9 +10,8 @@ def start(argv):
     nodes = []
     for i in range(0, NODES_COUNT):
         nodes.append(NodeLauncher(
-            "localhost{}".format(i),
-            os.getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
-            i
+            hostname="node{}".format(i),
+            idx=i
         ))
         nodes[-1].start()
 

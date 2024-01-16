@@ -36,6 +36,7 @@ def kill_processes(service_name: str):
     pids_file_name = _get_pids_file_name(service_name)
     if not os.path.exists(pids_file_name):
         return
+
     with open(pids_file_name) as f:
         for s in f.readlines():
             pid_and_command = s.split()
@@ -44,7 +45,7 @@ def kill_processes(service_name: str):
             try:
                 os.kill(pid, signal.SIGTERM)
             except OSError as e:
-                logger.debug("Manual recover core dump for %d '%s'", pid,
+                logger.debug("Manual recovery of core dump for %d '%s'", pid,
                              command)
                 process = _BareProcess(command, pid)
                 execution = _Execution(command, process, None, None)
@@ -52,5 +53,5 @@ def kill_processes(service_name: str):
                 raise e
 
 
-def _get_pids_file_name(process_name: str):
-    return "disk_manager_recipe_%s.pids" % process_name
+def _get_pids_file_name(service_name: str):
+    return "disk_manager_recipe_%s.pids" % service_name

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

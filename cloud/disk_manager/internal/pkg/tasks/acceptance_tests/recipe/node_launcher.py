@@ -34,9 +34,9 @@ TasksConfig: <
     HangingTaskTimeout: "100s"
 >
 PersistenceConfig: <
-    Endpoint: "localhost:{kikimr_port}"
-    Database: "/Root"
-    RootPath: "disk_manager/tasks/acceptance_tests/recipe"
+    Endpoint: "{ydb_endpoint}"
+    Database: "{ydb_database}"
+    RootPath: "tasks"
 >
 LoggingConfig: <
     LoggingStderr: <>
@@ -65,7 +65,7 @@ class Node(Daemon):
 
 class NodeLauncher:
 
-    def __init__(self, hostname, kikimr_port, idx):
+    def __init__(self, hostname, idx):
         self.__idx = idx
 
         working_dir = get_unique_path_for_current_test(
@@ -77,7 +77,8 @@ class NodeLauncher:
 
         self.__config_string = DEFAULT_CONFIG_TEMPLATE.format(
             hostname=hostname,
-            kikimr_port=kikimr_port,
+            ydb_endpoint=os.getenv("YDB_ENDPOINT"),
+            ydb_database=os.getenv("YDB_DATABASE")
         )
         with open(config_file, "w") as f:
             f.write(self.__config_string)

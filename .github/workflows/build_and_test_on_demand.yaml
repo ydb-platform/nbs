@@ -91,6 +91,7 @@ on:
         default: false
         description: "Update build cache in test stage"
 
+
 jobs:
   provide-runner:
     name: Start self-hosted runner
@@ -103,6 +104,7 @@ jobs:
       - name: Start YC runner
         id: start-yc-runner
         uses: librarian/yc-github-runner@0.0.12
+        timeout-minutes: 60
         with:
           mode: start
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -123,9 +125,11 @@ jobs:
           ssh-public-key: ${{ secrets.RUNNER_PUBLIC_KEY }}
 
   prepare-vm:
-    name: Prepare runner
+    name: Prepare runner [id=${{ needs.provide-runner.outputs.instance-id }}]
     needs: provide-runner
     runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
+    outputs:
+      runner_ipv4: ${{ steps.configure-ncp.outputs.runner_ipv4 }}
     steps:
       - name: Checkout PR
         uses: actions/checkout@v3
@@ -135,16 +139,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.pull_request.head.sha == ''
-      - name: Configure NCP
+      - id: configure-ncp
+        name: Configure NCP
         uses: ./.github/actions/ncp
         with:
           instance_id: ${{ needs.provide-runner.outputs.instance-id }}
           sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
+      - id: configure-authorized-keys
+        name: Configure authorized_keys
+        uses: ./.github/actions/ssh_keys
+        with:
+          org: ydb-platform
+          team: nbs
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
       - name: Prepare VM
         uses: ./.github/actions/prepare
 
   build-and-test:
-    name: Build and test NBS
+    name: Build and test NBS [id=${{ needs.provide-runner.outputs.instance-id }} ip=${{ needs.prepare-vm.outputs.runner_ipv4 }}]
     uses: ./.github/workflows/build_and_test_ya.yaml
     needs:
       - provide-runner
@@ -152,6 +164,8 @@ jobs:
     with:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
+      runner_instance_id: ${{ needs.provide-runner.outputs.instance-id }}
+      runner_ipv4: ${{ needs.prepare-vm.outputs.runner_ipv4 }}
       build_target: ${{ inputs.build_target }}
       test_target: ${{ inputs.test_target }}
       build_preset: ${{ inputs.build_preset }}
@@ -159,23 +173,28 @@ jobs:
       run_tests: ${{ inputs.run_tests }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
-      sleep_after_tests: ${{ inputs.sleep_after_tests }}
-      link_threads: 32
-      test_threads: 64
+      link_threads: 24
+      test_threads: 24
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
     secrets: inherit
 
   release-runner:
-    name: Release self-hosted runner
+    name: Release self-hosted runner ${{ needs.provide-runner.outputs.instance-id }}
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
     runs-on: ubuntu-latest
     if: always()
     steps:
+      - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}s if build failed
+        shell: bash
+        if: ${{ needs.build-and-test.outputs.sleep_after_tests && needs.build-and-test.outputs.sleep_after_tests != '0'  }}
+        run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
+
       - name: Stop YC runner
         uses: librarian/yc-github-runner@0.0.12
+        timeout-minutes: 60
         with:
           mode: stop
           yc-sa-json-credentials: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}

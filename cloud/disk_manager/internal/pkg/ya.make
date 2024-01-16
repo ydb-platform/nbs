@@ -7,10 +7,8 @@ RECURSE(
     dataplane
     facade
     headers
-    logging
     monitoring
     performance
-    persistence
     resources
     services
     tasks

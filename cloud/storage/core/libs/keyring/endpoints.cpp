@@ -9,6 +9,7 @@
 #include <util/string/strip.h>
 #include <util/system/file.h>
 #include <util/system/mutex.h>
+#include <util/system/tempfile.h>
 
 namespace NCloud {
 
@@ -165,9 +166,10 @@ public:
         TGuard guard(Mutex);
 
         auto id = GetFreeId();
-        auto filepath = DirPath.Child(ToString(id));
-        TFile file(filepath, EOpenModeFlag::CreateAlways);
-        TFileOutput(file).Write(endpointSpec);
+        TFsPath tmpFilePath(MakeTempName(nullptr, "endpoint"));
+        TFileOutput(tmpFilePath).Write(endpointSpec);
+        tmpFilePath.ForceRenameTo(DirPath.Child(ToString(id)));
+
         return id;
     }
 
@@ -197,7 +199,7 @@ private:
                 << "Failed to open file " << filepath.GetPath().Quote());
         }
 
-        return Strip(TFileInput(file).ReadAll());
+        return TFileInput(file).ReadAll();
     }
 
     ui32 GetFreeId()

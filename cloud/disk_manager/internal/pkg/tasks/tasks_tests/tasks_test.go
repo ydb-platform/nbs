@@ -13,14 +13,14 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/logging"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
-	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence/config"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	grpc_status "google.golang.org/grpc/status"
 )
@@ -39,12 +39,9 @@ func newContext() context.Context {
 }
 
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
-	endpoint := fmt.Sprintf(
-		"localhost:%v",
-		os.Getenv("DISK_MANAGER_RECIPE_KIKIMR_PORT"),
-	)
-	database := "/Root"
-	rootPath := "disk_manager"
+	endpoint := os.Getenv("YDB_ENDPOINT")
+	database := os.Getenv("YDB_DATABASE")
+	rootPath := "tasks"
 
 	return persistence.NewYDBClient(
 		ctx,

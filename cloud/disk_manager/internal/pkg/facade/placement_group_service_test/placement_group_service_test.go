@@ -12,8 +12,8 @@ import (
 	node_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	ydb "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/persistence"
 	db "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	ydb "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

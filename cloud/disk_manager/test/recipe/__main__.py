@@ -7,12 +7,12 @@ from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
-from cloud.disk_manager.test.recipe.kikimr_launcher import KikimrLauncher
 from cloud.disk_manager.test.recipe.kms_launcher import KmsLauncher
 from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataServiceLauncher
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
 from cloud.disk_manager.test.recipe.nfs_launcher import NfsLauncher
 from cloud.disk_manager.test.recipe.s3_launcher import S3Launcher
+from cloud.disk_manager.test.recipe.ydb_launcher import YDBLauncher
 
 S3_CREDENTIALS_FILE = """
 {
@@ -26,7 +26,7 @@ def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("--certs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nemesis", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--kikimr-only", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--ydb-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-nbs", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nbs-only", action=argparse.BooleanOptionalAction)
@@ -59,16 +59,16 @@ def start(argv):
     s3.start()
     set_env("DISK_MANAGER_RECIPE_S3_PORT", str(s3.port))
 
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    ydb_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
     nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
     nfs_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
     disk_manager_binary_path = yatest_common.binary_path(args.disk_manager_binary_path)
 
-    kikimr = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
-    kikimr.start()
-    set_env("DISK_MANAGER_RECIPE_KIKIMR_PORT", str(kikimr.port))
+    ydb = YDBLauncher(ydb_binary_path=ydb_binary_path)
+    ydb.start()
+    set_env("DISK_MANAGER_RECIPE_YDB_PORT", str(ydb.port))
 
-    if args.kikimr_only:
+    if args.ydb_only:
         return
 
     compute_port = 0,
@@ -84,51 +84,51 @@ def start(argv):
         kms_port = kms.port
 
     nbs = NbsLauncher(
-        kikimr.port,
-        kikimr.domains_txt,
-        kikimr.dynamic_storage_pools,
+        ydb.port,
+        ydb.domains_txt,
+        ydb.dynamic_storage_pools,
         root_certs_file,
         cert_file,
         cert_key_file,
-        kikimr_binary_path=kikimr_binary_path,
+        ydb_binary_path=ydb_binary_path,
         nbs_binary_path=nbs_binary_path,
-        kikimr_client=kikimr.client,
+        ydb_client=ydb.client,
         compute_port=compute_port,
         kms_port=kms_port)
     nbs.start()
     set_env("DISK_MANAGER_RECIPE_NBS_PORT", str(nbs.port))
 
     if args.multiple_nbs:
-        kikimr2 = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
-        kikimr2.start()
+        ydb2 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb2.start()
 
         nbs2 = NbsLauncher(
-            kikimr2.port,
-            kikimr2.domains_txt,
-            kikimr2.dynamic_storage_pools,
+            ydb2.port,
+            ydb2.domains_txt,
+            ydb2.dynamic_storage_pools,
             root_certs_file,
             cert_file,
             cert_key_file,
-            kikimr_binary_path=kikimr_binary_path,
+            ydb_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
-            kikimr_client=kikimr2.client,
+            ydb_client=ydb2.client,
             compute_port=compute_port,
             kms_port=kms_port)
         nbs2.start()
 
-        kikimr3 = KikimrLauncher(kikimr_binary_path=kikimr_binary_path)
-        kikimr3.start()
+        ydb3 = YDBLauncher(ydb_binary_path=ydb_binary_path)
+        ydb3.start()
 
         nbs3 = NbsLauncher(
-            kikimr3.port,
-            kikimr3.domains_txt,
-            kikimr3.dynamic_storage_pools,
+            ydb3.port,
+            ydb3.domains_txt,
+            ydb3.dynamic_storage_pools,
             root_certs_file,
             cert_file,
             cert_key_file,
-            kikimr_binary_path=kikimr_binary_path,
+            ydb_binary_path=ydb_binary_path,
             nbs_binary_path=nbs_binary_path,
-            kikimr_client=kikimr3.client,
+            ydb_client=ydb3.client,
             compute_port=compute_port,
             kms_port=kms_port)
         nbs3.start()
@@ -142,9 +142,9 @@ def start(argv):
         return
 
     nfs = NfsLauncher(
-        kikimr_port=kikimr.port,
-        domains_txt=kikimr.domains_txt,
-        names_txt=kikimr.names_txt,
+        ydb_port=ydb.port,
+        domains_txt=ydb.domains_txt,
+        names_txt=ydb.names_txt,
         nfs_binary_path=nfs_binary_path)
     nfs.start()
     set_env("DISK_MANAGER_RECIPE_NFS_PORT", str(nfs.port))
@@ -173,7 +173,7 @@ def start(argv):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
             hostname="localhost{}".format(idx),
-            kikimr_port=kikimr.port,
+            ydb_port=ydb.port,
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
@@ -196,7 +196,7 @@ def start(argv):
         idx = len(disk_managers)
         disk_manager = DiskManagerLauncher(
             hostname="localhost{}".format(idx),
-            kikimr_port=kikimr.port,
+            ydb_port=ydb.port,
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
@@ -224,7 +224,7 @@ def stop(argv):
     NbsLauncher.stop()
     KmsLauncher.stop()
     ComputeLauncher.stop()
-    KikimrLauncher.stop()
+    YDBLauncher.stop()
     S3Launcher.stop()
 
 

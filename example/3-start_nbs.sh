@@ -7,6 +7,7 @@ DATA_SERVER_PORT=${DATA_SERVER_PORT:-9767}
 SECURE_SERVER_PORT=${SECURE_SERVER_PORT:-9768}
 MON_PORT=${MON_PORT:-8766}
 NBSD="./nbsd"
+export LD_LIBRARY_PATH=$(dirname $(readlink nbsd))
 
 $NBSD \
     --domain             Root \
