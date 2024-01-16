@@ -55,7 +55,7 @@ func (m *s3Metrics) StatCall(
 				bucket,
 				key,
 			)
-			
+
 			hangingCounter.Inc()
 		}
 
@@ -68,7 +68,7 @@ func (m *s3Metrics) StatCall(
 				bucket,
 				key,
 			)
-			
+
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
