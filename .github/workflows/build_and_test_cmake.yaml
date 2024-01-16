@@ -71,7 +71,6 @@ jobs:
       uses: ./.github/actions/build_cmake
       if: inputs.run_build
       with:
-        build_preset: ${{ inputs.build_preset }}
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}

@@ -11,17 +11,17 @@ PEERDIR(
     cloud/disk_manager/internal/pkg/clients/nbs/config
     cloud/disk_manager/internal/pkg/clients/nfs/config
     cloud/disk_manager/internal/pkg/dataplane/config
-    cloud/disk_manager/internal/pkg/tasks/logging/config
+    cloud/tasks/logging/config
     cloud/disk_manager/internal/pkg/monitoring/config
     cloud/disk_manager/internal/pkg/performance/config
-    cloud/disk_manager/internal/pkg/tasks/persistence/config
+    cloud/tasks/persistence/config
     cloud/disk_manager/internal/pkg/services/disks/config
     cloud/disk_manager/internal/pkg/services/filesystem/config
     cloud/disk_manager/internal/pkg/services/images/config
     cloud/disk_manager/internal/pkg/services/placementgroup/config
     cloud/disk_manager/internal/pkg/services/pools/config
     cloud/disk_manager/internal/pkg/services/snapshots/config
-    cloud/disk_manager/internal/pkg/tasks/config
+    cloud/tasks/config
 )
 
 END()

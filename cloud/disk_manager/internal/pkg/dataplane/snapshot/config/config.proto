@@ -2,7 +2,7 @@ syntax = "proto2";
 
 package snapshot;
 
-import "cloud/disk_manager/internal/pkg/tasks/persistence/config/config.proto";
+import "cloud/tasks/persistence/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config";
 
