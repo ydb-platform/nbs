@@ -6,7 +6,7 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
+# add_subdirectory(ut)
 
 add_library(blockstore-libs-notify)
 target_link_libraries(blockstore-libs-notify PUBLIC

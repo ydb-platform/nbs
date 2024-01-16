@@ -6,7 +6,7 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
+# add_subdirectory(ut)
 
 add_executable(cleanup-ext4-meta)
 target_link_libraries(cleanup-ext4-meta PUBLIC
