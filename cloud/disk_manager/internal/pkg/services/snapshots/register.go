@@ -8,7 +8,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -9,7 +9,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/mocks"
-	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

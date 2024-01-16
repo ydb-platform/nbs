@@ -10,8 +10,8 @@ import (
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	pools_storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage/mocks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	tasks_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

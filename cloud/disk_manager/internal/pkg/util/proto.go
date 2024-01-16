@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 

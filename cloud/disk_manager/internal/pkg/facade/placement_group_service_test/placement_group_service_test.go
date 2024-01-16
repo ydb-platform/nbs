@@ -13,7 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	db "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
-	ydb "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/persistence"
+	ydb "github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

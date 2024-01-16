@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 func toJSONWithDependencies(

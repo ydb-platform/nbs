@@ -12,9 +12,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

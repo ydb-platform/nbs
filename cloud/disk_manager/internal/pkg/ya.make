@@ -11,7 +11,6 @@ RECURSE(
     performance
     resources
     services
-    tasks
     types
     util
     health

@@ -1,0 +1,52 @@
+syntax = "proto2";
+
+package tasks;
+
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/tasks/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TasksConfig {
+    optional string PollForTaskUpdatesPeriod = 1 [default = "1s"];
+    optional string PollForTasksPeriodMin = 2 [default = "1s"];
+    optional string PollForTasksPeriodMax = 3 [default = "10s"];
+    optional string PollForStallingTasksPeriodMin = 4 [default = "1s"];
+    optional string PollForStallingTasksPeriodMax = 5 [default = "20s"];
+    optional string TaskPingPeriod = 6 [default = "2s"];
+    optional string TaskStallingTimeout = 7 [default = "10s"];
+    optional string TaskWaitingTimeout = 8 [default = "10s"];
+    optional string ScheduleRegularTasksPeriodMin = 9 [default = "2s"];
+    optional string ScheduleRegularTasksPeriodMax = 10 [default = "4s"];
+    optional uint64 RunnersCount = 11 [default = 200];
+    optional uint64 StalkingRunnersCount = 12 [default = 200];
+    optional string StorageFolder = 13 [default = "tasks"];
+    optional string EndedTaskExpirationTimeout = 14 [default = "96h"];
+    optional string ClearEndedTasksTaskScheduleInterval = 15 [default = "1m"];
+    optional uint64 ClearEndedTasksLimit = 16 [default = 10000];
+    optional string LegacyStorageFolder = 17;
+    optional uint64 MaxRetriableErrorCount = 18 [default = 100];
+    optional uint64 MaxPanicCount = 19 [default = 10];
+    optional string HangingTaskTimeout = 20 [default = "1h"];
+    // Exception task types for hanging task metric.
+    repeated string ExceptHangingTaskTypes = 21;
+    optional string UpdateTaskTimeout = 22 [default = "1m"];
+
+    // Zonal tasks affinity: zonal tasks from these zones can be executed on
+    // current node.
+    repeated string ZoneIds = 23;
+
+    optional string HearbeatInterval = 24 [default = "30s"];
+    // The time window within which the node is considered alive. 
+    optional string LivenessWindow = 25 [default = "30s"];
+
+    // Feature flag for enabling node eviction policy based
+    // on the health of the node and the number of running nodes. 
+    optional bool NodeEvictionEnabled = 26 [default = false];
+
+    map<string, int64> InflightTaskPerNodeLimits = 27; // by task type
+
+    optional string CollectListerMetricsTaskScheduleInterval = 28 [default = "10m"];
+    optional string ListerMetricsCollectionInterval = 29 [default = "1m"];
+}

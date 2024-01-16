@@ -10,8 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

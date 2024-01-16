@@ -14,10 +14,10 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks"
-	task_errors "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/errors"
-	tasks_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/tasks/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
