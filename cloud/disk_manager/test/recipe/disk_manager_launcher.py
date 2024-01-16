@@ -300,7 +300,7 @@ class DiskManagerServer(Daemon):
                  disk_manager_binary_path,
                  with_nemesis):
         nemesis_binary_path = yatest_common.binary_path(
-            "cloud/disk_manager/test/nemesis/nemesis"
+            "cloud/tasks/test/nemesis/nemesis"
         )
 
         if with_nemesis:
