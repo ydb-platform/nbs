@@ -32,8 +32,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
     Y_UNIT_TEST(ShouldCreateDiskFromDevices)
     {
         const ui32 nativeBlockSize = 512;
-        const ui32 adjustedBlockCount = 10_GB / nativeBlockSize;
-        const ui32 unAdjustedBlockCount = adjustedBlockCount + 100;
+        const ui64 adjustedBlockCount = 10_GB / nativeBlockSize;
+        const ui64 unAdjustedBlockCount = adjustedBlockCount + 100;
 
         auto deviceConfig = [&] (auto name, auto uuid) {
             NProto::TDeviceConfig config;
@@ -135,7 +135,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetErrorReason());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * (10_GB / 4_KB),
+                2 * (unAdjustedBlockCount * 512 / 4_KB),
                 response->Record.GetBlockCount());
         }
 
@@ -156,7 +156,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetErrorReason());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                2 * (10_GB / 4_KB),
+                2 * (unAdjustedBlockCount * 512 / 4_KB),
                 response->Record.GetBlockCount());
         }
 
