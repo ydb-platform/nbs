@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -47,11 +49,12 @@ func NewS3Key(config *snapshot_config.SnapshotConfig, chunkID string) string {
 ////////////////////////////////////////////////////////////////////////////////
 
 func FillTargetRange(
+	t *testing.T,
 	ctx context.Context,
 	target dataplane_common.Target,
 	chunkCount uint32,
 	chunkSize uint32,
-) ([]dataplane_common.Chunk, error) {
+) []dataplane_common.Chunk {
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -76,10 +79,8 @@ func FillTargetRange(
 
 	for _, chunk := range chunks {
 		err := target.Write(ctx, chunk)
-		if err != nil {
-			return chunks, err
-		}
+		require.NoError(t, err)
 	}
 
-	return chunks, nil
+	return chunks
 }

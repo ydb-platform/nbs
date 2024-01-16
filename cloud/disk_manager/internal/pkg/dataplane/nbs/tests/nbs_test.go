@@ -331,8 +331,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer target.Close(ctx)
 
-	baseChunks, err := test.FillTargetRange(ctx, target, chunkCount, chunkSize)
-	require.NoError(t, err)
+	baseChunks := test.FillTargetRange(t, ctx, target, chunkCount, chunkSize)
 
 	err = client.CreateCheckpoint(
 		ctx,
@@ -343,8 +342,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	newChunks, err := test.FillTargetRange(ctx, target, chunkCount, chunkSize)
-	require.NoError(t, err)
+	newChunks := test.FillTargetRange(t, ctx, target, chunkCount, chunkSize)
 
 	for _, dontReadFromCheckpoint := range []bool{false, true} {
 		source, err := nbs.NewDiskSource(
