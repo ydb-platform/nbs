@@ -8,9 +8,8 @@ GO_XTEST_SRCS(
     image_service_test.go
 )
 
-DATA(
-    sbr://2951476475=qcow2_images
-    sbr://5274078903=qcow2_images
+DEPENDS(
+    cloud/disk_manager/test/images/image
 )
 
 REQUIREMENTS(
