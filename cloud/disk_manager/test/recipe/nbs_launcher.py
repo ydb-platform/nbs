@@ -11,7 +11,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
     wait_for_secure_erase
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writable_state, \
     create_devices, setup_nonreplicated, setup_disk_registry_config, make_agent_id, AgentInfo, DeviceInfo
-from cloud.disk_manager.test.common.processes import register_process, kill_processes
+from cloud.tasks.test.common.processes import register_process, kill_processes
 
 SERVICE_NAME = "nbs"
 DEFAULT_BLOCK_SIZE = 4096

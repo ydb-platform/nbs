@@ -1,7 +1,6 @@
+from cloud.tasks.test.common.processes import register_process, kill_processes
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-
-from cloud.disk_manager.test.common.processes import register_process, kill_processes
 
 SERVICE_NAME = "ydb"
 
