@@ -48,7 +48,14 @@ func (m *s3Metrics) StatCall(
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if time.Since(start) >= m.callTimeout {
-			logging.Error(ctx, "S3 call hanging, name %v", name)
+			logging.Error(
+				ctx,
+				"S3 call with name %v hanging, bucket %v, key %v",
+				name,
+				bucket,
+				key,
+			)
+			
 			hangingCounter.Inc()
 		}
 
@@ -65,7 +72,14 @@ func (m *s3Metrics) StatCall(
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
-				logging.Error(ctx, "S3 call timed out, name %v", name)
+				logging.Error(
+					ctx,
+					"S3 call with name %v timed out, bucket %v, key %v",
+					name,
+					bucket,
+					key,
+				)
+
 				timeoutCounter.Inc()
 			}
 			return

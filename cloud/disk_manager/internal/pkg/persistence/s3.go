@@ -92,21 +92,12 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
-	logging.Debug(
-		ctx,
-		"creating bucket %v in s3",
-		bucket,
-	)
+	logging.Debug(ctx, "creating bucket %v in s3", bucket)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(
-		ctx, 
-		"CreateBucket", 
-		bucket, 
-		"", // key
-	)(&err)
+	defer c.metrics.StatCall(ctx, "CreateBucket", bucket, "")(&err)
 
 	_, err = c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
 		Bucket: &bucket,
@@ -134,12 +125,7 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
-	logging.Debug(
-		ctx,
-		"getting object from s3, bucket %v, key %v",
-		bucket,
-		key,
-	)
+	logging.Debug(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
@@ -184,12 +170,7 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
-	logging.Debug(
-		ctx,
-		"putting object getting object from s3, bucket %v, key %v",
-		bucket,
-		key,
-	)
+	logging.Debug(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
