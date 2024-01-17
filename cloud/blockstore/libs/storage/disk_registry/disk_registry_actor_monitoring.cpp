@@ -531,6 +531,11 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
         DIV() { out << "State: "; DumpDiskState(out, info.State); }
         DIV() { out << "State timestamp: " << info.StateTs; }
+        if (info.MigrationStartTs) {
+            DIV() {
+                out << "Migration start timestamp: " << info.MigrationStartTs;
+            }
+        }
 
         if (info.PlacementGroupId) {
             DIV() { out << "PlacementGroupId: " << info.PlacementGroupId; }
