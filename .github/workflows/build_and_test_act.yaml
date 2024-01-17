@@ -5,11 +5,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
+        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
+        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/"
         description: "limit test to specific target"
       build_preset:
         type: choice
@@ -61,11 +61,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/"
+        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/"
+        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/"
         description: "limit test to specific target"
       build_preset:
         type: string
