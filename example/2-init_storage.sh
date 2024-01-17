@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 
 DATA_DIR="data"
-<<<<<<< HEAD
-YDBD="./ydbd"
-export LD_LIBRARY_PATH=$(dirname $(readlink ydbd))
-=======
 source ./prepare_binaries.sh || exit 1
->>>>>>> 53ebe7b85 (Updating build documentation)
 
 echo "DefineBox"
 ydbd -s grpc://localhost:9001 admin bs config invoke --proto-file dynamic/DefineBox.txt

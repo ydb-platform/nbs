@@ -36,18 +36,6 @@ for dir in $DATA_DIRS; do
     ln -svfT "$PERSISTENT_TMP_DIR/$dir" "$BIN_DIR/$dir"
 done
 
-<<<<<<< HEAD
-# check symlinks
-for bin in ydbd nbsd blockstore-nbd blockstore-client diskagentd
-do
-  if ! test -f "$BIN_DIR/$bin"; then
-    echo "$bin not found"
-    exit 1
-  fi
-done
-
-=======
->>>>>>> 53ebe7b85 (Updating build documentation)
 generate_cert() {
     local pass="pass123"
     local name="$1"

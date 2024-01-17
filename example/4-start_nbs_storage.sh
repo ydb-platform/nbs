@@ -10,13 +10,7 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
-<<<<<<< HEAD
-CLIENT="blockstore-client"
-DAGENT="diskagentd"
-export LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/diskagentd))
-=======
 source ./prepare_binaries.sh || exit 1
->>>>>>> 53ebe7b85 (Updating build documentation)
 
 blockstore-client ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'
 if [ $? -ne 0 ]; then

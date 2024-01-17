@@ -72,13 +72,7 @@ fi
 
 # create disk
 echo "Creating disk $id in $kind mode"
-<<<<<<< HEAD
-CLIENT="./blockstore-client"
-export LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/$CLIENT))
-$BIN_DIR/$CLIENT createvolume \
-=======
 blockstore-client createvolume \
->>>>>>> 53ebe7b85 (Updating build documentation)
     --storage-media-kind $kind --blocks-count $blocks_count --disk-id $id
 
 if [ $? -ne 0 ]; then
@@ -94,16 +88,8 @@ SOCK="$BIN_DIR/$id.sock"
 
 sudo modprobe nbd
 touch $SOCK
-<<<<<<< HEAD
-cmd="LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/$NBD)) \
-    $BIN_DIR/${NBD} --device-mode endpoint --disk-id $id --access-mode rw \
-    --mount-mode local --connect-device $device --listen-path $SOCK"
- 
-sudo $cmd
-=======
 sudo-blockstore-nbd --device-mode endpoint --disk-id $id --access-mode rw \
     --mount-mode local --connect-device $device --listen-path $SOCK
->>>>>>> 53ebe7b85 (Updating build documentation)
 
 if [ $? -ne 0 ]; then
     echo "Attaching disk $id to $device failed"
