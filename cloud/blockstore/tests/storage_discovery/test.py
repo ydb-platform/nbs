@@ -166,45 +166,44 @@ def create_disk_agent_static_config(data_path, agent_id):
 
 @pytest.fixture(name='disk_agent_dynamic_config')
 def create_disk_agent_dynamic_config(data_path):
-    return generate_disk_agent_txt(agent_id='', storage_discovery_config={
-        "PathConfigs": [{
-            "PathRegExp": f"{data_path}/ROTNBS([0-9]+)",
-            "MaxDeviceCount": 8,
-            "PoolConfigs": [{
-                "PoolName": "rot",
-                "MinSize": 0,
-                "MaxSize": DEVICE_SIZE * 10,
-                "HashSuffix": "-rot",
-                "Layout": {
-                    "DeviceSize": DEVICE_SIZE,
-                    "DevicePadding": 4096,
-                    "HeaderSize": DEVICE_SIZE / 2
-                }
-            }]
-        }, {
-            "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
-            "PoolConfigs": [{
-                "PoolName": "1Mb",
-                "MinSize": DEVICE_SIZE,
-                "MaxSize": DEVICE_SIZE + 5 * 4096
-            }]}]
-        })
+    return generate_disk_agent_txt(
+        agent_id='',
+        device_erase_method='DEVICE_ERASE_METHOD_NONE',  # speed up tests
+        storage_discovery_config={
+            "PathConfigs": [{
+                "PathRegExp": f"{data_path}/ROTNBS([0-9]+)",
+                "MaxDeviceCount": 8,
+                "PoolConfigs": [{
+                    "PoolName": "rot",
+                    "MinSize": 0,
+                    "MaxSize": DEVICE_SIZE * 10,
+                    "HashSuffix": "-rot",
+                    "Layout": {
+                        "DeviceSize": DEVICE_SIZE,
+                        "DevicePadding": 4096,
+                        "HeaderSize": DEVICE_SIZE / 2
+                    }
+                }]
+            }, {
+                "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
+                "PoolConfigs": [{
+                    "PoolName": "1Mb",
+                    "MinSize": DEVICE_SIZE,
+                    "MaxSize": DEVICE_SIZE + 5 * 4096
+                }]}]
+            })
 
 
-def _check_disk_agent_config(nbs, agent_id, data_path):
-    client = NbsClient(nbs.port)
+def _check_disk_agent_config(config, agent_id, data_path):
+    assert config["AgentId"] == agent_id
 
-    bkp = client.backup_disk_registry_state()["Backup"]
-    assert bkp["Agents"][0]["AgentId"] == agent_id
-
-    devices = bkp["Agents"][0].get("Devices")
+    devices = config.get("Devices")
 
     assert devices is not None
     assert len(devices) == 14
 
     for d in devices:
         assert d.get("State") is None
-        assert d.get("StateMessage") is None
         assert d["BlockSize"] == 4096
         assert d["AgentId"] == agent_id
         assert d["PoolName"] in ["rot", "1Mb"]
@@ -257,7 +256,12 @@ def test_storage_discovery(
     disk_agent = start_disk_agent(disk_agent_configurator)
     disk_agent.wait_for_registration()
 
-    _check_disk_agent_config(nbs, agent_id, data_path)
+    client = NbsClient(nbs.port)
+
+    _check_disk_agent_config(
+        client.backup_disk_registry_state()["Backup"]["Agents"][0],
+        agent_id,
+        data_path)
 
     disk_agent.kill()
 
@@ -285,7 +289,12 @@ def test_config_comparison(
     disk_agent = start_disk_agent(disk_agent_configurator)
     disk_agent.wait_for_registration()
 
-    _check_disk_agent_config(nbs, agent_id, data_path)
+    client = NbsClient(nbs.port)
+
+    _check_disk_agent_config(
+        client.backup_disk_registry_state()["Backup"]["Agents"][0],
+        agent_id,
+        data_path)
 
     crit = disk_agent.counters.find({'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
     assert crit is not None
@@ -370,7 +379,8 @@ def test_add_devices(
     # we see all the devices in the backup
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp.get("DirtyDevices") is not None
-    assert len(bkp["Agents"][0]["Devices"]) == 14
+
+    _check_disk_agent_config(bkp["Agents"][0], agent_id, data_path)
 
     storage = grpc_client.query_available_storage([agent_id])
     assert len(storage) == 1
@@ -556,3 +566,94 @@ def test_change_layout(
     assert len(bkp["DirtyDevices"]) == 9
 
     disk_agent.kill()
+
+
+def test_override_storage_discovery_config(
+        ydb,
+        nbs,
+        data_path,
+        agent_id,
+        disk_agent_dynamic_config):
+
+    client = NbsClient(nbs.port)
+    client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
+
+    custom_agent_id = "agent_with_custom_config"
+
+    # create a custom device
+    device_path = os.path.join(data_path, "DEVNBS01")
+    device_uuid = _md5(f"{custom_agent_id}-01")
+
+    with open(device_path, 'wb') as f:
+        f.seek(DEVICE_SIZE-1)
+        f.write(b'\0')
+        f.flush()
+
+    # default gobal config in the file
+    default_configurator = NbsConfigurator(ydb, 'disk-agent')
+    default_configurator.generate_default_nbs_configs()
+    default_configurator.files["disk-agent"] = disk_agent_dynamic_config
+
+    regular_disk_agent = start_disk_agent(default_configurator)
+    regular_disk_agent.wait_for_registration()
+
+    # setup a custom config for the DA: override the storage discovery config
+
+    overridden_config = deepcopy(disk_agent_dynamic_config)
+    overridden_config.AgentId = custom_agent_id
+
+    del overridden_config.StorageDiscoveryConfig.PathConfigs[:]
+
+    path_config = overridden_config.StorageDiscoveryConfig.PathConfigs.add()
+    path_config.PathRegExp = f"{data_path}/DEVNBS0(1)"
+
+    pool_config = path_config.PoolConfigs.add()
+    pool_config.MinSize = DEVICE_SIZE
+    pool_config.MaxSize = DEVICE_SIZE
+    pool_config.PoolName = "1Mb"
+
+    custom_configurator = NbsConfigurator(ydb, 'disk-agent')
+    custom_configurator.generate_default_nbs_configs()
+    custom_configurator.files["disk-agent"] = disk_agent_dynamic_config
+    # store overridden config in the CMS
+    custom_configurator.cms["DiskAgentConfig"] = overridden_config
+
+    disk_agent_with_overridden_config = start_disk_agent(custom_configurator, name='custom-da')
+    disk_agent_with_overridden_config.wait_for_registration()
+
+    crit = disk_agent_with_overridden_config.counters.find(
+        {'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+
+    assert crit is not None
+    assert crit['value'] == 0
+
+    grpc_client = CreateClient(f"localhost:{nbs.port}")
+
+    _add_devices(grpc_client, agent_id, [
+        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
+    ] + [os.path.join(data_path, 'ROTNBS01')])
+
+    _add_devices(grpc_client, custom_agent_id, [device_path])
+
+    bkp = client.backup_disk_registry_state()["Backup"]
+
+    assert len(bkp["Agents"]) == 2
+
+    for config in bkp["Agents"]:
+        if config["AgentId"] == custom_agent_id:
+            # check the custom agent
+
+            assert len(config["Devices"]) == 1
+
+            d = config["Devices"][0]
+
+            assert d["DeviceName"] == device_path
+            assert d["DeviceUUID"] == device_uuid
+            assert d.get("State") is None
+            assert d["PoolName"] == "1Mb"
+        else:
+            # check the regular agent
+            _check_disk_agent_config(config, agent_id, data_path)
+
+    disk_agent_with_overridden_config.kill()
+    regular_disk_agent.kill()
