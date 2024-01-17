@@ -424,7 +424,7 @@ void TDiskRegistryActor::HandleServerDisconnected(
             << " disconnected, SeqNo=" << info.SeqNo);
 
         ScheduleRejectAgent(ctx, agentId, info.SeqNo);
-        State->OnAgentDisconnected(ctx.Now());
+        State->OnAgentDisconnected(ctx.Now(), agentId);
     }
 
     ServerToAgentId.erase(it);

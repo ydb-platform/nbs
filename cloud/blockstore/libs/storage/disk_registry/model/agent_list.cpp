@@ -33,6 +33,13 @@ double UpdateRejectTimeoutMultiplier(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+double LogWithBase(double v, double base)
+{
+    return log(v) / log(base);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TByUUID
 {
     template <typename T, typename U>
@@ -446,11 +453,22 @@ void TAgentList::UpdateCounters(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString TAgentList::FindAgentRack(const TString& agentId) const
+{
+    if (const auto* agent = FindAgent(agentId)) {
+        if (agent->DevicesSize()) {
+            return agent->GetDevices(0).GetRack();
+        }
+    }
+
+    return {};
+}
+
 TDuration TAgentList::GetRejectAgentTimeout(TInstant now, const TString& agentId) const
 {
     const auto m = UpdateRejectTimeoutMultiplier(
         RejectTimeoutMultiplier,
-        LastAgentEventTs,
+        LastAgentDisconnectTs,
         Config.TimeoutGrowthFactor,
         Config.DisconnectRecoveryInterval,
         now);
@@ -467,19 +485,35 @@ TDuration TAgentList::GetRejectAgentTimeout(TInstant now, const TString& agentId
     return Min(nonReplicatedAgentMaxTimeoutMs, m * nonReplicatedAgentMinTimeout);
 }
 
-void TAgentList::OnAgentDisconnected(TInstant now)
+void TAgentList::OnAgentDisconnected(TInstant now, const TString& agentId)
 {
+    auto& ts = Rack2LastDisconnectTs[FindAgentRack(agentId)];
+
+    // the following formula calculates the time needed to restore
+    // MinRejectAgentTimeout after reaching MaxRejectAgentTimeout
+    const TDuration disconnectCooldown = Config.DisconnectRecoveryInterval
+        * LogWithBase(
+            Config.MaxRejectAgentTimeout / Config.MinRejectAgentTimeout,
+            Config.TimeoutGrowthFactor);
+
+    if (ts + disconnectCooldown > now) {
+        // we have already taken this rack unavailability into account
+        return;
+    }
+
+    ts = now;
+
     const double multiplierLimit = Config.TimeoutGrowthFactor *
         Config.MaxRejectAgentTimeout / Config.MinRejectAgentTimeout;
 
     RejectTimeoutMultiplier = Min(UpdateRejectTimeoutMultiplier(
         RejectTimeoutMultiplier,
-        LastAgentEventTs,
+        LastAgentDisconnectTs,
         Config.TimeoutGrowthFactor,
         Config.DisconnectRecoveryInterval,
         now) * Config.TimeoutGrowthFactor, multiplierLimit);
 
-    LastAgentEventTs = now;
+    LastAgentDisconnectTs = now;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
