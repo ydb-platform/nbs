@@ -48,7 +48,7 @@ func NewS3Key(config *snapshot_config.SnapshotConfig, chunkID string) string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func FillTargetRange(
+func FillTarget(
 	t *testing.T,
 	ctx context.Context,
 	target dataplane_common.Target,

@@ -212,7 +212,7 @@ func fillDiskRange(
 	target := resource.newTarget()
 	defer target.Close(ctx)
 
-	chunks := test.FillTargetRange(t, ctx, target, chunkCount, chunkSize)
+	chunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
 
 	return resource, chunks
 }
@@ -313,7 +313,7 @@ func (r *Resource) fill(
 	target := r.newTarget()
 	defer target.Close(ctx)
 
-	chunks := test.FillTargetRange(t, ctx, target, chunkCount, chunkSize)
+	chunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
 
 	return chunks
 }
