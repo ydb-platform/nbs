@@ -345,48 +345,50 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 	newChunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
 
 	for _, dontReadFromCheckpoint := range []bool{false, true} {
-		source, err := nbs.NewDiskSource(
-			ctx,
-			client,
-			diskID,
-			"",
-			"",
-			"checkpoint",
-			nil, // encryption
-			chunkSize,
-			false, // duplicateChunkIndices
-			false, // ignoreBaseDisk
-			false, // useGetChangedBlocksForDiskRegistryBased
-			dontReadFromCheckpoint,
-		)
-		require.NoError(t, err)
-		defer source.Close(ctx)
+		func() {
+			source, err := nbs.NewDiskSource(
+				ctx,
+				client,
+				diskID,
+				"",
+				"",
+				"checkpoint",
+				nil, // encryption
+				chunkSize,
+				false, // duplicateChunkIndices
+				false, // ignoreBaseDisk
+				false, // useGetChangedBlocksForDiskRegistryBased
+				dontReadFromCheckpoint,
+			)
+			require.NoError(t, err)
+			defer source.Close(ctx)
 
-		expectedChunks := baseChunks
-		if dontReadFromCheckpoint {
-			baseIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
-			for _, chunk := range baseChunks {
-				baseIndex2Chunk[chunk.Index] = chunk
-			}
+			expectedChunks := baseChunks
+			if dontReadFromCheckpoint {
+				baseIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+				for _, chunk := range baseChunks {
+					baseIndex2Chunk[chunk.Index] = chunk
+				}
 
-			newIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
-			for _, chunk := range newChunks {
-				newIndex2Chunk[chunk.Index] = chunk
-			}
+				newIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+				for _, chunk := range newChunks {
+					newIndex2Chunk[chunk.Index] = chunk
+				}
 
-			expectedChunks = []dataplane_common.Chunk{}
-			for i, baseChunk := range baseIndex2Chunk {
-				if newChunk, ok := newIndex2Chunk[i]; ok {
-					expectedChunks = append(expectedChunks, newChunk)
-				} else {
-					expectedChunks = append(expectedChunks, baseChunk)
+				expectedChunks = []dataplane_common.Chunk{}
+				for i, baseChunk := range baseIndex2Chunk {
+					if newChunk, ok := newIndex2Chunk[i]; ok {
+						expectedChunks = append(expectedChunks, newChunk)
+					} else {
+						expectedChunks = append(expectedChunks, baseChunk)
+					}
 				}
 			}
-		}
-		checkChunks(t, ctx, source, expectedChunks)
+			checkChunks(t, ctx, source, expectedChunks)
 
-		sourceChunkCount, err := source.ChunkCount(ctx)
-		require.NoError(t, err)
-		require.Equal(t, chunkCount, sourceChunkCount)
+			sourceChunkCount, err := source.ChunkCount(ctx)
+			require.NoError(t, err)
+			require.Equal(t, chunkCount, sourceChunkCount)
+		}()
 	}
 }
