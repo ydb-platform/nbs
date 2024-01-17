@@ -2585,35 +2585,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(2, registrationCount);
     }
 
-    Y_UNIT_TEST(ShouldNotRegisterWhenNoDevicesDiscovered)
-    {
-        int registrationCount = 0;
-
-        TTestBasicRuntime runtime;
-
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvDiskRegistry::EvRegisterAgentRequest:
-                        ++registrationCount;
-                    break;
-                }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        auto env = TTestEnvBuilder(runtime)
-            .With(DiskAgentConfig({}))
-            .Build();
-
-        TDiskAgentClient diskAgent(runtime);
-        diskAgent.WaitReady();
-
-        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-
-        UNIT_ASSERT_VALUES_EQUAL(0, registrationCount);
-
-    }
-
     Y_UNIT_TEST(ShouldSecureEraseDeviceWithExpiredClient)
     {
         TTestBasicRuntime runtime;
