@@ -344,6 +344,25 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 
 	newChunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
 
+	baseIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+	for _, chunk := range baseChunks {
+		baseIndex2Chunk[chunk.Index] = chunk
+	}
+
+	newIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+	for _, chunk := range newChunks {
+		newIndex2Chunk[chunk.Index] = chunk
+	}
+
+	updatedBaseChunks = []dataplane_common.Chunk{}
+	for i, baseChunk := range baseIndex2Chunk {
+		if newChunk, ok := newIndex2Chunk[i]; ok {
+			updatedBaseChunks = append(updatedBaseChunks, newChunk)
+		} else {
+			updatedBaseChunks = append(updatedBaseChunks, baseChunk)
+		}
+	}
+
 	for _, dontReadFromCheckpoint := range []bool{false, true} {
 		func() {
 			source, err := nbs.NewDiskSource(
@@ -365,24 +384,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 
 			expectedChunks := baseChunks
 			if dontReadFromCheckpoint {
-				baseIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
-				for _, chunk := range baseChunks {
-					baseIndex2Chunk[chunk.Index] = chunk
-				}
-
-				newIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
-				for _, chunk := range newChunks {
-					newIndex2Chunk[chunk.Index] = chunk
-				}
-
-				expectedChunks = []dataplane_common.Chunk{}
-				for i, baseChunk := range baseIndex2Chunk {
-					if newChunk, ok := newIndex2Chunk[i]; ok {
-						expectedChunks = append(expectedChunks, newChunk)
-					} else {
-						expectedChunks = append(expectedChunks, baseChunk)
-					}
-				}
+				expectedChunks = updatedBaseChunks
 			}
 			checkChunks(t, ctx, source, expectedChunks)
 
