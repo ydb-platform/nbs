@@ -354,7 +354,7 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 		newIndex2Chunk[chunk.Index] = chunk
 	}
 
-	updatedBaseChunks = []dataplane_common.Chunk{}
+	updatedBaseChunks := []dataplane_common.Chunk{}
 	for i, baseChunk := range baseIndex2Chunk {
 		if newChunk, ok := newIndex2Chunk[i]; ok {
 			updatedBaseChunks = append(updatedBaseChunks, newChunk)
