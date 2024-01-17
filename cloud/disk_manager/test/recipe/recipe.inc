@@ -10,8 +10,8 @@ DEPENDS(
     cloud/disk_manager/test/mocks/compute
     cloud/disk_manager/test/mocks/kms
     cloud/disk_manager/test/mocks/metadata
-    cloud/disk_manager/test/nemesis
     cloud/disk_manager/test/recipe
+    cloud/tasks/test/nemesis
 
     contrib/python/moto/bin
     contrib/ydb/apps/ydbd

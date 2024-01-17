@@ -54,8 +54,7 @@ class Node(Daemon):
             "cloud/tasks/acceptance_tests/recipe/node/node")
         internal_command += " --config " + config_file
 
-        command = [yatest_common.binary_path(
-            "cloud/disk_manager/test/nemesis/nemesis")]
+        command = [yatest_common.binary_path("cloud/tasks/test/nemesis/nemesis")]
         command += ["--cmd", internal_command]
 
         super(Node, self).__init__(
