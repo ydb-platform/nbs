@@ -1,5 +1,5 @@
 RECURSE(
-    image
+    resources
     recipe
     server
     qcow2generator

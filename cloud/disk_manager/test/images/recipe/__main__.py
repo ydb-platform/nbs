@@ -49,7 +49,7 @@ def start(argv):
     nonexistent_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_NON_EXISTENT_IMAGE_FILE_SERVER_PORT", str(nonexistent_image_file_server.port))
 
-    ubuntu1804_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/image/qcow2_images/ubuntu-18.04-minimal-cloudimg-amd64.img")
+    ubuntu1804_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/ubuntu-18.04-minimal-cloudimg-amd64.img")
     if os.path.exists(ubuntu1804_image_file_path):
         ubuntu1804_image_file_server = ImageFileServerLauncher(ubuntu1804_image_file_path)
         ubuntu1804_image_file_server.start()
@@ -61,7 +61,7 @@ def start(argv):
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_ubuntu1804_image_map.json")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1804_IMAGE_MAP_FILE", image_map_file_path)
 
-    ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/image/qcow2_images/ubuntu1604-ci-stable")
+    ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/ubuntu1604-ci-stable")
     if os.path.exists(ubuntu1604_image_file_path):
         ubuntu1604_image_file_server = ImageFileServerLauncher(ubuntu1604_image_file_path)
         ubuntu1604_image_file_server.start()
@@ -73,7 +73,7 @@ def start(argv):
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_ubuntu1604_image_map.json")
         set_env("DISK_MANAGER_RECIPE_QCOW2_UBUNTU1604_IMAGE_MAP_FILE", image_map_file_path)
 
-    ubuntu2204_vmdk_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/image/vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk")
+    ubuntu2204_vmdk_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk")
     if os.path.exists(ubuntu2204_vmdk_image_file_path):
         ubuntu2204_vmdk_image_file_server = ImageFileServerLauncher(ubuntu2204_vmdk_image_file_path)
         ubuntu2204_vmdk_image_file_server.start()
@@ -86,7 +86,7 @@ def start(argv):
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_MAP_FILE", image_map_file_path)
 
     # reproduces panic issue (NBS-4635)
-    qcow2_panic_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/image/qcow2_images/panic.img")
+    qcow2_panic_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/panic.img")
     if os.path.exists(qcow2_panic_image_file_path):
         qcow2_panic_image_file_server = ImageFileServerLauncher(qcow2_panic_image_file_path)
         qcow2_panic_image_file_server.start()

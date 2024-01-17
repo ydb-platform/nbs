@@ -9,7 +9,7 @@ GO_XTEST_SRCS(
 SIZE(MEDIUM)
 
 DEPENDS(
-    cloud/disk_manager/test/images/image
+    cloud/disk_manager/test/images/resources
 )
 
 END()

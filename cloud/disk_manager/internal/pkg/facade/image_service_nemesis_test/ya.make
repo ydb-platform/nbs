@@ -10,7 +10,7 @@ GO_XTEST_SRCS(
 )
 
 DEPENDS(
-    cloud/disk_manager/test/images/image
+    cloud/disk_manager/test/images/resources
 )
 
 REQUIREMENTS(

@@ -20,7 +20,7 @@ REQUIREMENTS(
 )
 
 DEPENDS(
-    cloud/disk_manager/test/images/image
+    cloud/disk_manager/test/images/resources
 )
 
 END()
