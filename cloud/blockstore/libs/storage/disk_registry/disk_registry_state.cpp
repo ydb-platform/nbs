@@ -419,6 +419,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MasterDiskId = config.GetMasterDiskId();
         disk.CheckpointReplica = config.GetCheckpointReplica();
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+        disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
 
         if (config.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT) {
             disk.MediaKind = config.GetStorageMediaKind();
@@ -492,6 +493,11 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             DeviceList.MarkDeviceAllocated(
                 diskId,
                 m.GetTargetDevice().GetDeviceUUID());
+        }
+
+        // backward compatibility
+        if (!disk.MigrationStartTs && !disk.MigrationSource2Target.empty()) {
+            disk.MigrationStartTs = disk.StateTs;
         }
 
         if (!config.GetFinishedMigrations().empty()) {
@@ -1448,6 +1454,10 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
     NProto::TDeviceConfig targetDevice)
 {
     TDiskState& disk = Disks[sourceDiskId];
+
+    if (!disk.MigrationStartTs) {
+        disk.MigrationStartTs = now;
+    }
 
     const NProto::TDeviceConfig* sourceDevice =
         DeviceList.FindDevice(sourceDeviceId);
@@ -3794,6 +3804,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     allocatedDisks = Disks.size();
 
     TDuration maxWarningTime;
+    TDuration maxMigrationTime;
 
     for (const auto& [_, disk]: Disks) {
         switch (disk.State) {
@@ -3805,6 +3816,10 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 ++disksInWarningState;
 
                 maxWarningTime = std::max(maxWarningTime, now - disk.StateTs);
+
+                if (disk.MigrationStartTs) {
+                    maxMigrationTime = std::max(maxMigrationTime, now - disk.MigrationStartTs);
+                }
 
                 break;
             }
@@ -3860,7 +3875,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.MaxWarningTime->Set(maxWarningTime.Seconds());
     // XXX for backward compat with alerts
     SelfCounters.DisksInMigrationState->Set(disksInWarningState);
-    SelfCounters.MaxMigrationTime->Set(maxWarningTime.Seconds());
+    SelfCounters.MaxMigrationTime->Set(maxMigrationTime.Seconds());
 
     ui32 migratingDeviceCount = 0;
     for (const auto& x: SourceDeviceMigrationsInProgress) {
@@ -4408,6 +4423,7 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
     config.SetMasterDiskId(diskState.MasterDiskId);
     config.MutableCheckpointReplica()->CopyFrom(diskState.CheckpointReplica);
     config.SetStorageMediaKind(diskState.MediaKind);
+    config.SetMigrationStartTs(diskState.MigrationStartTs.MicroSeconds());
 
     for (const auto& [uuid, seqNo]: diskState.FinishedMigrations) {
         Y_UNUSED(seqNo);
@@ -5476,6 +5492,10 @@ void TDiskRegistryState::CancelDeviceMigration(
         .DeviceId = targetId,
         .SeqNo = seqNo
     });
+
+    if (disk.MigrationSource2Target.empty()) {
+        disk.MigrationStartTs = {};
+    }
 
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 

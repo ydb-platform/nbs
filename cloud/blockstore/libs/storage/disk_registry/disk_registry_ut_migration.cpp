@@ -17,11 +17,14 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
+using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1512,6 +1515,135 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.ChangeDeviceState("uuid-1.1", NProto::DEVICE_STATE_ONLINE);
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL("uuid-1.1", enabledDeviceUUID);
+    }
+
+    Y_UNIT_TEST(ShouldTrackMaxMigrationTime)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+                Device("dev-3", "uuid-1.3", "rack-1", 10_GB),
+                Device("dev-4", "uuid-1.4", "rack-1", 10_GB)
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        auto maxMigrationTime = runtime->GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry")
+            ->GetCounter("MaxMigrationTime");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, agents);
+
+        const TVector devices = [&] {
+            auto response = diskRegistry.AllocateDisk("vol0", 20_GB);
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.DevicesSize());
+
+            return TVector {
+                response->Record.GetDevices(0).GetDeviceUUID(),
+                response->Record.GetDevices(1).GetDeviceUUID(),
+                diskRegistry.AllocateDisk("vol1", 10_GB)
+                    ->Record.GetDevices(0).GetDeviceUUID()
+            };
+        }();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
+
+        const auto migrationTs0 = runtime->GetCurrentTime();
+
+        // start migration of the first device of vol0
+        diskRegistry.ChangeDeviceState(devices[0], NProto::DEVICE_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(15min);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs0;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
+
+        // start migration of the second device of vol0
+        diskRegistry.ChangeDeviceState(devices[1], NProto::DEVICE_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(20min);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs0;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
+
+        const auto migrationTs1 = runtime->GetCurrentTime();
+
+        // start migration of vol1
+        diskRegistry.ChangeDeviceState(devices[2], NProto::DEVICE_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(20min);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs0;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
+
+        // first device of vol0 is online, but MaxMigrationTime is still
+        // tracks vol0's migration (because of the second device).
+        diskRegistry.ChangeDeviceState(devices[0], NProto::DEVICE_STATE_ONLINE);
+
+        runtime->AdvanceCurrentTime(20min);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs0;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
+
+        // both vol0's devices are online so MaxMigrationTime is now tracks
+        // migration of vol1
+        diskRegistry.ChangeDeviceState(devices[1], NProto::DEVICE_STATE_ONLINE);
+        runtime->AdvanceCurrentTime(15min);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs1;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
+
+        diskRegistry.ChangeDeviceState(devices[2], NProto::DEVICE_STATE_ONLINE);
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, 10ms);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
     }
 }
 

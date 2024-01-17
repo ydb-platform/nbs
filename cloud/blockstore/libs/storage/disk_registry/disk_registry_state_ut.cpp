@@ -7790,6 +7790,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Device("dev-4", "uuid-1.4", "rack-1"),
                 Device("dev-5", "uuid-1.5", "rack-1"),
                 Device("dev-6", "uuid-1.6", "rack-1"),
+                Device("dev-7", "uuid-1.7", "rack-1"),
+                Device("dev-8", "uuid-1.8", "rack-1"),
             })
         };
 
@@ -7870,13 +7872,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, maxWarningTime->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
 
-        auto disk1StartMigrationTs = TInstant::Seconds(100);
-        auto disk2StartMigrationTs = TInstant::Seconds(200);
-        auto disk3StartMigrationTs = TInstant::Seconds(300);
+        auto disk1WarningTs = TInstant::Seconds(100);
+        auto disk2WarningTs = TInstant::Seconds(200);
+        auto disk3WarningTs = TInstant::Seconds(300);
 
-        warnDevice(1, disk1StartMigrationTs);
-        warnDevice(2, disk2StartMigrationTs);
-        warnDevice(3, disk3StartMigrationTs);
+        warnDevice(1, disk1WarningTs);
+        warnDevice(2, disk2WarningTs);
+        warnDevice(3, disk3WarningTs);
 
         auto now1 = TInstant::Seconds(1000);
         state.PublishCounters(now1);
@@ -7884,55 +7886,89 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(3, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            (now1 - disk1StartMigrationTs).Seconds(),
+            (now1 - disk1WarningTs).Seconds(),
             maxWarningTime->Val());
-        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
+
+        // there is no any migration yet
+        UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
+
+        auto disk1StartMigrationTs = TInstant::Seconds(1500);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [target, error] = state.StartDeviceMigration(
+                disk1StartMigrationTs,
+                db,
+                "disk-1",
+                "uuid-1.1",
+                "uuid-1.7"
+            );
+
+            UNIT_ASSERT_SUCCESS(error);
+        });
+
+        auto disk2StartMigrationTs = TInstant::Seconds(1600);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto [target, error] = state.StartDeviceMigration(
+                disk2StartMigrationTs,
+                db,
+                "disk-2",
+                "uuid-1.2",
+                "uuid-1.8"
+            );
+
+            UNIT_ASSERT_SUCCESS(error);
+        });
 
         // cancel migration for disk-3
-        errorDevice(3, TInstant::Seconds(1100));
+        errorDevice(3, TInstant::Seconds(2100));
 
-        auto now2 = TInstant::Seconds(2000);
+        auto now2 = TInstant::Seconds(3000);
         state.PublishCounters(now2);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            (now2 - disk1StartMigrationTs).Seconds(),
+            (now2 - disk1WarningTs).Seconds(),
             maxWarningTime->Val());
-        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            (now2 - disk1StartMigrationTs).Seconds(),
+            maxMigrationTime->Val());
 
         // restart migration for disk-1
-        disk1StartMigrationTs = TInstant::Seconds(2300);
-        errorDevice(1, disk1StartMigrationTs);
-        onlineDevice(1, disk1StartMigrationTs);
-        warnDevice(1, disk1StartMigrationTs);
+        disk1WarningTs = TInstant::Seconds(3300);
+        errorDevice(1, disk1WarningTs);
+        onlineDevice(1, disk1WarningTs);
+        warnDevice(1, disk1WarningTs);
 
-        auto now3 = TInstant::Seconds(3000);
+        auto now3 = TInstant::Seconds(4000);
         state.PublishCounters(now3);
         UNIT_ASSERT_VALUES_EQUAL(2, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            (now3 - disk2StartMigrationTs).Seconds(),
+            (now3 - disk2WarningTs).Seconds(),
             maxWarningTime->Val());
-        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            (now3 - disk2StartMigrationTs).Seconds(),
+            maxMigrationTime->Val());
 
         // cancel migration for disk-2
-        errorDevice(2, TInstant::Seconds(3100));
+        errorDevice(2, TInstant::Seconds(4100));
 
-        auto now4 = TInstant::Seconds(4000);
+        auto now4 = TInstant::Seconds(5000);
         state.PublishCounters(now4);
         UNIT_ASSERT_VALUES_EQUAL(1, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, devicesInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            (now4 - disk1StartMigrationTs).Seconds(),
+            (now4 - disk1WarningTs).Seconds(),
             maxWarningTime->Val());
-        UNIT_ASSERT_VALUES_EQUAL(maxWarningTime->Val(), maxMigrationTime->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
 
         // cancel migration for disk-1
-        errorDevice(1, TInstant::Seconds(4100));
-        state.PublishCounters(TInstant::Seconds(5000));
+        errorDevice(1, TInstant::Seconds(5100));
+        state.PublishCounters(TInstant::Seconds(6000));
         UNIT_ASSERT_VALUES_EQUAL(0, disksInWarningState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, disksInMigrationState->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, devicesInMigrationState->Val());
