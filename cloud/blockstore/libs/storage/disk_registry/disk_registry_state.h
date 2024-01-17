@@ -776,9 +776,9 @@ public:
         return AgentList.GetRejectAgentTimeout(now, agentId);
     }
 
-    void OnAgentDisconnected(TInstant now)
+    void OnAgentDisconnected(TInstant now, const TString& agentId)
     {
-        AgentList.OnAgentDisconnected(now);
+        AgentList.OnAgentDisconnected(now, agentId);
     }
 
     void SetDiskRegistryAgentListParams(
