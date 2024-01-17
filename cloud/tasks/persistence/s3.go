@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
@@ -91,10 +92,12 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
+	logging.Debug(ctx, "creating bucket %v in s3", bucket)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "CreateBucket")(&err)
+	defer c.metrics.StatCall(ctx, "CreateBucket", bucket, "")(&err)
 
 	_, err = c.s3.CreateBucketWithContext(ctx, &aws_s3.CreateBucketInput{
 		Bucket: &bucket,
@@ -122,10 +125,12 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
+	logging.Debug(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "GetObject")(&err)
+	defer c.metrics.StatCall(ctx, "GetObject", bucket, key)(&err)
 
 	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
 		Bucket: &bucket,
@@ -165,10 +170,12 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
+	logging.Debug(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "PutObject")(&err)
+	defer c.metrics.StatCall(ctx, "PutObject", bucket, key)(&err)
 
 	_, err = c.s3.PutObjectWithContext(ctx, &aws_s3.PutObjectInput{
 		Bucket:          &bucket,
@@ -197,10 +204,17 @@ func (c *S3Client) DeleteObject(
 	key string,
 ) (err error) {
 
+	logging.Debug(
+		ctx,
+		"deleting object from s3, bucket %v, key %v",
+		bucket,
+		key,
+	)
+
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
 
-	defer c.metrics.StatCall(ctx, "DeleteObject")(&err)
+	defer c.metrics.StatCall(ctx, "DeleteObject", bucket, key)(&err)
 
 	_, err = c.s3.DeleteObjectWithContext(ctx, &aws_s3.DeleteObjectInput{
 		Bucket: &bucket,
