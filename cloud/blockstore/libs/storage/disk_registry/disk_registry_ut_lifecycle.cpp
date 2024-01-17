@@ -1042,9 +1042,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
     {
         // timings are a bit off in this test due to TestActorSystems defects
 
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-        });
+        TVector<NProto::TAgentConfig> agents;
+        for (ui32 i = 0; i < 5; ++i) {
+            agents.push_back(CreateAgentConfig(
+                Sprintf("agent-%u", i),
+                {
+                    Device(
+                        "dev-1",
+                        Sprintf("uuid-%u", i),
+                        Sprintf("rack-%u", i),
+                        10_GB),
+                }));
+        }
 
         auto config = CreateDefaultStorageConfig();
         config.SetNonReplicatedAgentMinTimeout(10'000);
@@ -1052,7 +1061,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         config.SetNonReplicatedAgentDisconnectRecoveryInterval(100'000);
         config.SetNonReplicatedAgentTimeoutGrowthFactor(2);
 
-        auto runtime = TTestRuntimeBuilder().With(config).Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents(agents).With(config).Build();
+        // cooldown logic in TAgentList doesn't work with Now() < cooldownTimeout
+        // see TAgentList::OnAgentDisconnected
+        runtime->AdvanceCurrentTime(1h);
 
         TString agentId;
         NProto::EAgentState agentState = NProto::AGENT_STATE_ONLINE;
@@ -1081,39 +1094,51 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, { agent }));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
 
-        auto sender = runtime->AllocateEdgeActor(0);
+        TVector<TActorId> agentActors;
+        for (ui32 i = 0; i < agents.size(); ++i) {
+            agentActors.push_back(runtime->AllocateEdgeActor(i));
+        }
 
-        auto registerAgent = [&] {
+        auto registerAgent = [&] (ui32 agentNo) {
             auto pipe = runtime->ConnectToPipe(
                 TestTabletId,
-                sender,
-                0,
+                agentActors[agentNo],
+                agentNo,
                 NKikimr::GetPipeConfigWithRetries());
 
-            auto request = std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
-            *request->Record.MutableAgentConfig() = agent;
-            request->Record.MutableAgentConfig()->SetNodeId(runtime->GetNodeId(0));
+            auto request =
+                std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
+            auto& requestConfig = *request->Record.MutableAgentConfig();
+            requestConfig = agents[agentNo];
+            requestConfig.SetNodeId(runtime->GetNodeId(agentNo));
 
-            auto pipeEv = new IEventHandle(pipe, sender, request.release(), 0, 0);
+            auto pipeEv = new IEventHandle(
+                pipe,
+                agentActors[agentNo],
+                request.release(),
+                0,
+                0);
             pipeEv->Rewrite(NKikimr::TEvTabletPipe::EvSend, pipe);
 
-            runtime->Send(pipeEv, 0, true);
+            runtime->Send(pipeEv, agentNo, true);
 
             return pipe;
         };
 
-        auto disconnectAgent = [&](auto pipe) {
+        auto disconnectAgent = [&](TActorId pipe, ui32 agentNo) {
             runtime->Send(new IEventHandle(
-                pipe, sender, new TEvTabletPipe::TEvShutdown()), 0, true);
+                pipe,
+                agentActors[agentNo],
+                new TEvTabletPipe::TEvShutdown()), agentNo, true);
         };
 
-        auto pipe = registerAgent();
+        auto pipe = registerAgent(0);
 
         runtime->DispatchEvents({}, 10ms);
 
-        disconnectAgent(pipe);
+        disconnectAgent(pipe, 0);
 
         runtime->DispatchEvents({}, 1s);
         runtime->DispatchEvents({}, 5s);
@@ -1122,7 +1147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->DispatchEvents({}, 5s);
 
-        UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+        UNIT_ASSERT_VALUES_EQUAL(agents[0].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
             static_cast<ui32>(agentState));
@@ -1130,11 +1155,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         agentId = "";
         agentState = NProto::AGENT_STATE_ONLINE;
 
-        pipe = registerAgent();
+        pipe = registerAgent(1);
 
         runtime->DispatchEvents({}, 10ms);
 
-        disconnectAgent(pipe);
+        disconnectAgent(pipe, 1);
 
         runtime->DispatchEvents({}, 1s);
         runtime->DispatchEvents({}, 10s);
@@ -1143,7 +1168,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->DispatchEvents({}, 10s);
 
-        UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+        UNIT_ASSERT_VALUES_EQUAL(agents[1].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
             static_cast<ui32>(agentState));
@@ -1151,18 +1176,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         agentId = "";
         agentState = NProto::AGENT_STATE_ONLINE;
 
-        pipe = registerAgent();
+        pipe = registerAgent(2);
 
         runtime->AdvanceCurrentTime(200s);
         runtime->DispatchEvents({}, 10ms);
 
-        disconnectAgent(pipe);
+        disconnectAgent(pipe, 2);
 
         // disconnect timeout should've been completely recovered
         runtime->DispatchEvents({}, 1s);
         runtime->DispatchEvents({}, 10s);
 
-        UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+        UNIT_ASSERT_VALUES_EQUAL(agents[2].GetAgentId(), agentId);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
             static_cast<ui32>(agentState));
@@ -1175,13 +1200,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             agentId = "";
             agentState = NProto::AGENT_STATE_ONLINE;
 
-            pipe = registerAgent();
+            pipe = registerAgent(3);
 
             runtime->AdvanceCurrentTime(200s);
             runtime->DispatchEvents({}, 10ms);
 
             diskRegistry.UpdateDiskRegistryAgentListParams(
-                TVector<TString>{"agent-1"},
+                TVector<TString>{agents[3].GetAgentId()},
                 100s,
                 500s,
                 1000s);
@@ -1189,7 +1214,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             // diskRegistry.RebootTablet();
             // diskRegistry.WaitReady();
 
-            disconnectAgent(pipe);
+            disconnectAgent(pipe, 3);
 
             runtime->DispatchEvents({}, 1s);
             runtime->DispatchEvents({}, 5s);
@@ -1202,11 +1227,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             runtime->DispatchEvents({}, 90s);
 
-            UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+            UNIT_ASSERT_VALUES_EQUAL(agents[3].GetAgentId(), agentId);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
                 static_cast<ui32>(agentState));
-
 
             runtime->AdvanceCurrentTime(1000s);
             runtime->DispatchEvents({}, 10ms);
@@ -1214,12 +1238,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             agentId = "";
             agentState = NProto::AGENT_STATE_ONLINE;
 
-            pipe = registerAgent();
+            pipe = registerAgent(4);
 
             runtime->AdvanceCurrentTime(200s);
             runtime->DispatchEvents({}, 10ms);
 
-            disconnectAgent(pipe);
+            disconnectAgent(pipe, 4);
 
             runtime->DispatchEvents({}, 1s);
             runtime->DispatchEvents({}, 5s);
@@ -1229,7 +1253,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             runtime->DispatchEvents({}, 5s);
             runtime->DispatchEvents({}, 5s);
 
-            UNIT_ASSERT_VALUES_EQUAL("agent-1", agentId);
+            UNIT_ASSERT_VALUES_EQUAL(agents[4].GetAgentId(), agentId);
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(NProto::AGENT_STATE_UNAVAILABLE),
                 static_cast<ui32>(agentState));

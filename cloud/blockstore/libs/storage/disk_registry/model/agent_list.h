@@ -48,7 +48,8 @@ private:
     const NMonitoring::TDynamicCountersPtr ComponentGroup;
 
     double RejectTimeoutMultiplier = 1;
-    TInstant LastAgentEventTs;
+    TInstant LastAgentDisconnectTs;
+    THashMap<TString, TInstant> Rack2LastDisconnectTs;
 
     TVector<NProto::TAgentConfig> Agents;
     TVector<TAgentCounters> AgentCounters;
@@ -107,7 +108,7 @@ public:
         const NProto::TMeanTimeBetweenFailures& mtbf);
 
     TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const;
-    void OnAgentDisconnected(TInstant now);
+    void OnAgentDisconnected(TInstant now, const TString& agentId);
 
     const THashMap<TString, NProto::TDiskRegistryAgentParams>& GetDiskRegistryAgentListParams() const
     {
@@ -161,6 +162,8 @@ private:
         const TKnownAgent& knownAgent,
         TInstant timestamp,
         NProto::TDeviceConfig device);
+
+    TString FindAgentRack(const TString& agentId) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
