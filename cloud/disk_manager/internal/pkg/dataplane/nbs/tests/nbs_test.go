@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -181,6 +182,7 @@ func TestChunkIndices(t *testing.T) {
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
 			false, // useGetChangedBlocksForDiskRegistryBased
+			false, // dontReadFromCheckpoint
 		)
 		require.NoError(t, err)
 		defer source.Close(ctx)
@@ -286,6 +288,7 @@ func TestReadWrite(t *testing.T) {
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // useGetChangedBlocksForDiskRegistryBased
+		false, // dontReadFromCheckpoint
 	)
 	require.NoError(t, err)
 	defer source.Close(ctx)
@@ -295,4 +298,99 @@ func TestReadWrite(t *testing.T) {
 	sourceChunkCount, err := source.ChunkCount(ctx)
 	require.NoError(t, err)
 	require.Equal(t, chunkCount, sourceChunkCount)
+}
+
+func TestDontReadFromCheckpoint(t *testing.T) {
+	ctx := newContext()
+
+	factory := newFactory(t, ctx)
+	client, err := factory.GetClient(ctx, "zone")
+	require.NoError(t, err)
+
+	diskID := t.Name()
+	disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
+
+	err = client.Create(ctx, nbs_client.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: uint64(blocksInChunk * chunkCount),
+		BlockSize:   blockSize,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	target, err := nbs.NewDiskTarget(
+		ctx,
+		factory,
+		disk,
+		nil,
+		chunkSize,
+		false,
+		0, // fillGeneration
+		0, // fillSeqNumber
+	)
+	require.NoError(t, err)
+	defer target.Close(ctx)
+
+	baseChunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
+
+	err = client.CreateCheckpoint(
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpoint",
+		},
+	)
+	require.NoError(t, err)
+
+	newChunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
+
+	baseIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+	for _, chunk := range baseChunks {
+		baseIndex2Chunk[chunk.Index] = chunk
+	}
+
+	newIndex2Chunk := make(map[uint32]dataplane_common.Chunk)
+	for _, chunk := range newChunks {
+		newIndex2Chunk[chunk.Index] = chunk
+	}
+
+	updatedBaseChunks := []dataplane_common.Chunk{}
+	for i, baseChunk := range baseIndex2Chunk {
+		if newChunk, ok := newIndex2Chunk[i]; ok {
+			updatedBaseChunks = append(updatedBaseChunks, newChunk)
+		} else {
+			updatedBaseChunks = append(updatedBaseChunks, baseChunk)
+		}
+	}
+
+	for _, dontReadFromCheckpoint := range []bool{false, true} {
+		func() {
+			source, err := nbs.NewDiskSource(
+				ctx,
+				client,
+				diskID,
+				"",
+				"",
+				"checkpoint",
+				nil, // encryption
+				chunkSize,
+				false, // duplicateChunkIndices
+				false, // ignoreBaseDisk
+				false, // useGetChangedBlocksForDiskRegistryBased
+				dontReadFromCheckpoint,
+			)
+			require.NoError(t, err)
+			defer source.Close(ctx)
+
+			expectedChunks := baseChunks
+			if dontReadFromCheckpoint {
+				expectedChunks = updatedBaseChunks
+			}
+			checkChunks(t, ctx, source, expectedChunks)
+
+			sourceChunkCount, err := source.ChunkCount(ctx)
+			require.NoError(t, err)
+			require.Equal(t, chunkCount, sourceChunkCount)
+		}()
+	}
 }

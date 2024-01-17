@@ -94,6 +94,7 @@ func newDiskSourceFull(
 	checkpointID string,
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
+	dontReadFromCheckpoint bool,
 ) dataplane_common.Source {
 
 	client, err := factory.GetClient(ctx, disk.ZoneId)
@@ -120,6 +121,7 @@ func newDiskSourceFull(
 		duplicateChunkIndices,
 		ignoreBaseDisk,
 		false, // useGetChangedBlocksForDiskRegistryBased
+		dontReadFromCheckpoint,
 	)
 	require.NoError(t, err)
 
@@ -142,6 +144,7 @@ func newDiskSource(
 		"checkpoint",
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
+		false, // dontReadFromCheckpoint
 	)
 }
 
@@ -187,6 +190,7 @@ func fillDiskRange(
 				checkpointID,
 				false, // duplicateChunkIndices
 				false, // ignoreBaseDisk
+				false, // dontReadFromCheckpoint
 			)
 		},
 		newTarget: func() dataplane_common.Target {
@@ -205,7 +209,10 @@ func fillDiskRange(
 		},
 	}
 
-	chunks := resource.fillRange(t, ctx, startIndex, chunkCount)
+	target := resource.newTarget()
+	defer target.Close(ctx)
+
+	chunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
 
 	return resource, chunks
 }
@@ -298,51 +305,17 @@ type Resource struct {
 	newTarget        func() dataplane_common.Target
 }
 
-func (r *Resource) fillRange(
-	t *testing.T,
-	ctx context.Context,
-	startIndex uint32,
-	chunkCount uint32,
-) []dataplane_common.Chunk {
-
-	rand.Seed(time.Now().UnixNano())
-
-	chunks := make([]dataplane_common.Chunk, 0)
-	for i := uint32(0); i < chunkCount; i++ {
-		dice := rand.Intn(3)
-
-		switch dice {
-		case 0:
-			data := make([]byte, chunkSize)
-			rand.Read(data)
-			chunk := dataplane_common.Chunk{Index: i, Data: data}
-			chunks = append(chunks, chunk)
-		case 1:
-			// Zero chunk.
-			chunk := dataplane_common.Chunk{Index: i, Zero: true}
-			chunks = append(chunks, chunk)
-		}
-	}
-
-	logging.Info(ctx, "Filling resource...")
-
-	target := r.newTarget()
-	defer target.Close(ctx)
-
-	for _, chunk := range chunks {
-		err := target.Write(ctx, chunk)
-		require.NoError(t, err)
-	}
-
-	return chunks
-}
-
 func (r *Resource) fill(
 	t *testing.T,
 	ctx context.Context,
 ) []dataplane_common.Chunk {
 
-	return r.fillRange(t, ctx, 0, chunkCount)
+	target := r.newTarget()
+	defer target.Close(ctx)
+
+	chunks := test.FillTarget(t, ctx, target, chunkCount, chunkSize)
+
+	return chunks
 }
 
 func (r *Resource) checkChunks(
@@ -863,6 +836,7 @@ func TestTransferFromDiskToIncrementalSnapshot(t *testing.T) {
 					"incremental",
 					true,  // duplicateChunkIndices
 					false, // ignoreBaseDisk
+					false, // dontReadFromCheckpoint
 				)
 			}
 
@@ -940,6 +914,7 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 			"incremental",
 			true,  // duplicateChunkIndices
 			false, // ignoreBaseDisk
+			false, // dontReadFromCheckpoint
 		)
 	}
 

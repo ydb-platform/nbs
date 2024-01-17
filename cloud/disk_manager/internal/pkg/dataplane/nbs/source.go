@@ -36,7 +36,8 @@ type diskSource struct {
 	chunkIndices           common.ChannelWithInflightQueue
 	duplicatedChunkIndices common.ChannelWithCancellation
 
-	ignoreBaseDisk bool
+	ignoreBaseDisk         bool
+	dontReadFromCheckpoint bool
 }
 
 func (s *diskSource) sendChunkIndex(
@@ -192,11 +193,18 @@ func (s *diskSource) Read(
 	startIndex := uint64(chunk.Index) * s.blocksInChunk
 	// blockCount should be multiple of blocksInChunk.
 
+	checkpointID := s.checkpointID
+	if s.dontReadFromCheckpoint {
+		// Use the flag to handle checkpoints without data.
+		// Reading from an empty checkpoint retrieves the latest data.
+		checkpointID = ""
+	}
+
 	return s.session.Read(
 		ctx,
 		startIndex,
 		uint32(s.blocksInChunk),
-		s.checkpointID,
+		checkpointID,
 		chunk.Data,
 		&chunk.Zero,
 	)
@@ -235,6 +243,7 @@ func NewDiskSource(
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
 	useGetChangedBlocksForDiskRegistryBased bool,
+	dontReadFromCheckpoint bool,
 ) (dataplane_common.Source, error) {
 
 	if len(proxyDiskID) == 0 {
@@ -303,6 +312,7 @@ func NewDiskSource(
 		maxChangedBlockCountPerIteration: maxChangedBlockCountPerIteration,
 		duplicateChunkIndices:            duplicateChunkIndices,
 
-		ignoreBaseDisk: ignoreBaseDisk,
+		ignoreBaseDisk:         ignoreBaseDisk,
+		dontReadFromCheckpoint: dontReadFromCheckpoint,
 	}, nil
 }
