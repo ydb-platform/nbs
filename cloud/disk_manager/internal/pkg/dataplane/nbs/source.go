@@ -193,18 +193,18 @@ func (s *diskSource) Read(
 	startIndex := uint64(chunk.Index) * s.blocksInChunk
 	// blockCount should be multiple of blocksInChunk.
 
-	readCheckpoint := s.checkpointID
+	checkpointID := s.checkpointID
 	if s.dontReadFromCheckpoint {
 		// Use the flag to handle checkpoints without data.
 		// Reading from an empty checkpoint retrieves the latest data.
-		readCheckpoint = ""
+		checkpointID = ""
 	}
 
 	return s.session.Read(
 		ctx,
 		startIndex,
 		uint32(s.blocksInChunk),
-		readCheckpoint,
+		checkpointID,
 		chunk.Data,
 		&chunk.Zero,
 	)
