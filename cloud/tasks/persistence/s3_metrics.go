@@ -76,7 +76,7 @@ func (m *s3Metrics) StatCall(
 				timeoutCounter.Inc()
 			}
 
-			if error.Is(*err, context.Canceled) {
+			if errors.Is(*err, context.Canceled) {
 				canceledCounter.Inc()
 			}
 			return
