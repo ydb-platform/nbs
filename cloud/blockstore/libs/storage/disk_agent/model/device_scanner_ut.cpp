@@ -116,6 +116,9 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
     Y_UNIT_TEST_F(ShouldScanDevices, TFixture)
     {
         PrepareFiles({
+            { "dev/disk/by-partlabel/DEVNBS01", 160_KB }, // bs16K
+            { "dev/disk/by-partlabel/DEVNBS02", 160_KB }, // bs16K
+            { "dev/disk/by-partlabel/DEVNBS03", 160_KB }, // bs16K
             { "dev/disk/by-partlabel/NVMECOMPUTE01", 1_KB }, // v1
             { "dev/disk/by-partlabel/NVMECOMPUTE02", 1_KB }, // v1
             { "dev/disk/by-partlabel/NVMECOMPUTE03", 2_KB }, // v2
@@ -174,14 +177,27 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
             auto& raw = *Config.AddPathConfigs();
             raw.SetPathRegExp(RootDir / "dev/nvme([0-9])n1");
+            raw.SetBlockSize(512);
 
             auto& rawPool = *raw.AddPoolConfigs();
             rawPool.SetPoolName("raw");
             rawPool.SetMinSize(1_KB);
             rawPool.SetMaxSize(1_KB);
+
+            auto& bs16K = *Config.AddPathConfigs();
+            bs16K.SetPathRegExp(RootDir / "dev/disk/by-partlabel/DEVNBS([0-9]{2})");
+
+            auto& bs16KPool = *bs16K.AddPoolConfigs();
+            bs16KPool.SetPoolName("bs16K");
+            bs16KPool.SetMinSize(160_KB);
+            bs16KPool.SetMaxSize(160_KB);
+            bs16KPool.SetBlockSize(16_KB);
         }
 
         const std::tuple<TString, TString, ui32> expected[] {
+            { RootDir / "dev/disk/by-partlabel/DEVNBS01", "bs16K", 1 },
+            { RootDir / "dev/disk/by-partlabel/DEVNBS02", "bs16K", 2 },
+            { RootDir / "dev/disk/by-partlabel/DEVNBS03", "bs16K", 3 },
             { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE01", "v1", 1 },
             { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE02", "v1", 2 },
             { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE03", "v2", 3 },
@@ -235,7 +251,13 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             auto& [f, pathIndex] = r[i];
             UNIT_ASSERT_VALUES_EQUAL(path, f.GetPath());
             UNIT_ASSERT_VALUES_EQUAL_C(poolName, f.GetPoolName(), f);
-            UNIT_ASSERT_VALUES_EQUAL_C(4_KB, f.GetBlockSize(), f);
+            if (poolName == "bs16K") {
+                UNIT_ASSERT_VALUES_EQUAL_C(16_KB, f.GetBlockSize(), f);
+            } else if (poolName == "raw") {
+                UNIT_ASSERT_VALUES_EQUAL_C(512, f.GetBlockSize(), f);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL_C(4_KB, f.GetBlockSize(), f);
+            }
             UNIT_ASSERT_VALUES_EQUAL_C(expectedPathIndex, pathIndex, f);
         }
     }
