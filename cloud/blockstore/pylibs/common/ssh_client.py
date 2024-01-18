@@ -228,7 +228,7 @@ class SshClient:
             '-o',  'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
             *self._key_path_cmd_argument,
-            '-tt',
+            '-T',  # Disable pseudo-terminal allocation.
             self._authorization_string,
             command_line,
         ]
