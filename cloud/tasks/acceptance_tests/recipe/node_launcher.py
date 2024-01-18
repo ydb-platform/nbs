@@ -4,7 +4,7 @@ import time
 
 from yatest.common import process
 
-from cloud.storage.core.tools.common.python.daemon import Daemon
+from contrib.ydb.tests.library.harness.daemon import Daemon
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
@@ -57,9 +57,7 @@ class Node(Daemon):
         command = [yatest_common.binary_path("cloud/tasks/test/nemesis/nemesis")]
         command += ["--cmd", internal_command]
 
-        super(Node, self).__init__(
-            commands=[command],
-            cwd=working_dir)
+        super(Node, self).__init__(command=command, cwd=working_dir, timeout=180)
 
 
 class NodeLauncher:
@@ -105,11 +103,11 @@ class NodeLauncher:
                 time.sleep(1)
                 continue
 
-        self.__daemon = Node(config_file, working_dir)
+        self.__node = Node(config_file, working_dir)
 
     def start(self):
-        self.__daemon.start()
-        register_process(SERVICE_NAME, self.__daemon.pid)
+        self.__node.start()
+        register_process(SERVICE_NAME, self.__node.daemon.process.pid)
 
     @staticmethod
     def stop():
