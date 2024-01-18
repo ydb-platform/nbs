@@ -25,6 +25,7 @@ KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
         {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
         {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": DEVICE_SIZE},
+        {"Name": "local", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
     ]}
 
 
@@ -60,7 +61,8 @@ def _setup_disk_registry_config(nbs, agent_id):
             "AgentId": agent_id,
             "KnownDevices":
                 [{"DeviceUUID": _md5(f"{agent_id}-{i + 1:02}")} for i in range(6)] +
-                [{"DeviceUUID": _md5(f"{agent_id}-01-{i + 1:03}-rot")} for i in range(8)]
+                [{"DeviceUUID": _md5(f"{agent_id}-01-{i + 1:03}-rot")} for i in range(8)] +
+                [{"DeviceUUID": _md5(f"{agent_id}-{i + 1:02}-local")} for i in range(4)]
             }],
         } | KNOWN_DEVICE_POOLS)
 
@@ -125,6 +127,9 @@ def create_device_files(data_path):
     for i in range(6):
         create_file(f"NVMENBS{i + 1:02}", DEVICE_SIZE + i * 4096)
 
+    for i in range(4):
+        create_file(f"NVMECOMPUTE{i + 1:02}", DEVICE_SIZE + i * 512)
+
     create_file("ROTNBS01", DEVICE_SIZE * 10)
 
 
@@ -148,6 +153,14 @@ def create_disk_agent_static_config(data_path, agent_id):
             "DeviceId": _md5(f"{agent_id}-{i + 1:02}")
         }
 
+    def create_local_ssd_device(i):
+        return {
+            "Path": os.path.join(data_path, f"NVMECOMPUTE{i + 1:02}"),
+            "BlockSize": 512,
+            "PoolName": "local",
+            "DeviceId": _md5(f"{agent_id}-{i + 1:02}-local")
+        }
+
     def create_rot_device(i):
         return {
             "Path": os.path.join(data_path, "ROTNBS01"),
@@ -159,6 +172,7 @@ def create_disk_agent_static_config(data_path, agent_id):
         }
 
     devices = [create_nvme_device(i) for i in range(6)]
+    devices += [create_local_ssd_device(i) for i in range(4)]
     devices += [create_rot_device(i) for i in range(8)]
 
     return generate_disk_agent_txt(agent_id=agent_id, file_devices=devices)
@@ -190,8 +204,16 @@ def create_disk_agent_dynamic_config(data_path):
                     "PoolName": "1Mb",
                     "MinSize": DEVICE_SIZE,
                     "MaxSize": DEVICE_SIZE + 5 * 4096
-                }]}]
-            })
+                }]}, {
+                "PathRegExp": f"{data_path}/NVMECOMPUTE([0-9]+)",
+                "BlockSize": 512,
+                "PoolConfigs": [{
+                    "PoolName": "local",
+                    "HashSuffix": "-local",
+                    "MinSize": DEVICE_SIZE,
+                    "MaxSize": DEVICE_SIZE + 3 * 512
+                }]}
+            ]})
 
 
 def _check_disk_agent_config(config, agent_id, data_path):
@@ -200,13 +222,12 @@ def _check_disk_agent_config(config, agent_id, data_path):
     devices = config.get("Devices")
 
     assert devices is not None
-    assert len(devices) == 14
+    assert len(devices) == 18
 
     for d in devices:
         assert d.get("State") is None
-        assert d["BlockSize"] == 4096
         assert d["AgentId"] == agent_id
-        assert d["PoolName"] in ["rot", "1Mb"]
+        assert d["PoolName"] in ["rot", "1Mb", "local"]
 
     nvme = sorted(
         [d for d in devices if d["PoolName"] == "1Mb"],
@@ -215,8 +236,20 @@ def _check_disk_agent_config(config, agent_id, data_path):
 
     for i, d in enumerate(nvme):
         assert d["DeviceName"] == f"{data_path}/NVMENBS{i + 1:02}"
+        assert int(d["BlockSize"]) == 4096
         assert int(d["BlocksCount"]) == DEVICE_SIZE / 4096
         assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 4096 + i
+
+    local = sorted(
+        [d for d in devices if d["PoolName"] == "local"],
+        key=lambda d: d["DeviceName"])
+    assert len(local) == 4
+
+    for i, d in enumerate(local):
+        assert d["DeviceName"] == f"{data_path}/NVMECOMPUTE{i + 1:02}"
+        assert int(d["BlockSize"]) == 512
+        assert int(d["BlocksCount"]) == DEVICE_SIZE / 512
+        assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 512 + i
 
     rot = sorted(
         [d for d in devices if d["PoolName"] == "rot"],
@@ -226,6 +259,7 @@ def _check_disk_agent_config(config, agent_id, data_path):
     offset = DEVICE_SIZE / 2
     for d in rot:
         assert d["DeviceName"] == f"{data_path}/ROTNBS01"
+        assert int(d["BlockSize"]) == 4096
         assert int(d["BlocksCount"]) == DEVICE_SIZE / 4096
         assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 4096
         assert int(d["PhysicalOffset"]) == offset
@@ -355,20 +389,22 @@ def test_add_devices(
     # adding all the local devices
     r = _add_devices(grpc_client, agent_id, [
         os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
+    ] + [
+        os.path.join(data_path, f'NVMECOMPUTE{i + 1:02}') for i in range(4)
     ])
-    assert len(r.ActionResults) == 6
+    assert len(r.ActionResults) == 10
     assert all(x.Result.Code == 0 for x in r.ActionResults)
 
     storage = grpc_client.query_available_storage([agent_id])
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
     # now we see all the local devices
-    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkCount == 10
     assert storage[0].ChunkSize == DEVICE_SIZE
 
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp.get("DirtyDevices") is None
-    assert len(bkp["Agents"][0]["Devices"]) == 6
+    assert len(bkp["Agents"][0]["Devices"]) == 10
     assert all([d.get("State") is None for d in bkp["Agents"][0]["Devices"]])
 
     # adding a non local device: DR will not wait for this device to clear.
@@ -386,7 +422,7 @@ def test_add_devices(
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
     # we still see all the local devices
-    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkCount == 10
     assert storage[0].ChunkSize == DEVICE_SIZE
 
     disk_agent.kill()
@@ -403,6 +439,8 @@ def test_remove_devices(
 
     _setup_disk_registry_config(nbs, agent_id)
 
+    default_device_count = 18
+
     def get_bkp():
         r = client.backup_disk_registry_state(
             backup_local_db=backup_from == 'local_db')
@@ -412,7 +450,7 @@ def test_remove_devices(
     bkp = get_bkp()
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
     assert bkp.get("Agents") is None
 
     disk_agent_configurator.files["disk-agent"] = disk_agent_dynamic_config
@@ -423,11 +461,11 @@ def test_remove_devices(
     bkp = get_bkp()
 
     assert bkp["Agents"][0]["AgentId"] == agent_id
-    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
 
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
 
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
@@ -438,8 +476,8 @@ def test_remove_devices(
     bkp = get_bkp()
     assert bkp["Agents"][0]["AgentId"] == agent_id
 
-    assert len(bkp["Agents"][0]["Devices"]) == 14
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
 
     r = _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
     assert r.ActionResults[0].Result.Code == 0  # S_OK
@@ -448,22 +486,22 @@ def test_remove_devices(
     bkp = get_bkp()
     assert bkp["Agents"][0]["AgentId"] == agent_id
 
-    assert len(bkp["Agents"][0]["Devices"]) == 14
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
 
     _remove_devices(grpc_client, agent_id, [
         os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
     ])
 
     bkp = get_bkp()
-    assert len(bkp["Agents"][0]["Devices"]) == 14
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
 
     _remove_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
 
     bkp = get_bkp()
 
-    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
 
     _add_devices(grpc_client, agent_id, [
         os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
@@ -472,9 +510,9 @@ def test_remove_devices(
     bkp = get_bkp()
     assert len(bkp["Config"]["KnownAgents"]) == 1
     assert bkp["Config"]["KnownAgents"][0]["AgentId"] == agent_id
-    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == 14
+    assert len(bkp["Config"]["KnownAgents"][0]["Devices"]) == default_device_count
 
-    assert len(bkp["Agents"][0]["Devices"]) == 14
+    assert len(bkp["Agents"][0]["Devices"]) == default_device_count
 
     disk_agent.kill()
 
@@ -611,6 +649,7 @@ def test_override_storage_discovery_config(
     pool_config.MinSize = DEVICE_SIZE
     pool_config.MaxSize = DEVICE_SIZE
     pool_config.PoolName = "1Mb"
+    pool_config.BlockSize = 512
 
     custom_configurator = NbsConfigurator(ydb, 'disk-agent')
     custom_configurator.generate_default_nbs_configs()
@@ -630,8 +669,9 @@ def test_override_storage_discovery_config(
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
     _add_devices(grpc_client, agent_id, [
-        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
-    ] + [os.path.join(data_path, 'ROTNBS01')])
+        os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)] + [
+        os.path.join(data_path, f'NVMECOMPUTE{i + 1:02}') for i in range(4)] + [
+        os.path.join(data_path, 'ROTNBS01')])
 
     _add_devices(grpc_client, custom_agent_id, [device_path])
 
@@ -651,6 +691,7 @@ def test_override_storage_discovery_config(
             assert d["DeviceUUID"] == device_uuid
             assert d.get("State") is None
             assert d["PoolName"] == "1Mb"
+            assert d["BlockSize"] == 512
         else:
             # check the regular agent
             _check_disk_agent_config(config, agent_id, data_path)
