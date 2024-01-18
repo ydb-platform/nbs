@@ -1,6 +1,6 @@
 RECURSE(
-    resources
     recipe
+    resources
     server
     qcow2generator
 )
