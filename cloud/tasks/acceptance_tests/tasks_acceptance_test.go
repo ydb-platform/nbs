@@ -50,7 +50,7 @@ type client struct {
 
 func newClient(ctx context.Context) (*client, error) {
 	var config node_config.Config
-	configString := os.Getenv("DISK_MANAGER_TASKS_ACCEPTANCE_TESTS_RECIPE_NODE0_CONFIG")
+	configString := os.Getenv("CLOUD_TASKS_ACCEPTANCE_TESTS_RECIPE_NODE0_CONFIG")
 
 	if len(configString) == 0 {
 		return nil, fmt.Errorf("node config should not be empty")
