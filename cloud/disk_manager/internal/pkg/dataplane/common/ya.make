@@ -7,6 +7,7 @@ SRCS(
 
 GO_TEST_SRCS(
     transfer_test.go
+    chunk_test.go
 )
 
 END()
