@@ -15,7 +15,7 @@ def start(argv):
         ))
         nodes[-1].start()
 
-    set_env("DISK_MANAGER_TASKS_ACCEPTANCE_TESTS_RECIPE_NODE0_CONFIG", nodes[0].config_string)
+    set_env("CLOUD_TASKS_ACCEPTANCE_TESTS_RECIPE_NODE0_CONFIG", nodes[0].config_string)
 
 
 def stop(argv):
