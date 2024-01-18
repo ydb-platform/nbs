@@ -8,8 +8,8 @@ GO_XTEST_SRCS(
 
 SIZE(MEDIUM)
 
-DATA(
-    sbr://4709742882=vmdk_images
+DEPENDS(
+    cloud/disk_manager/test/images/resources
 )
 
 END()
