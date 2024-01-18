@@ -8,9 +8,8 @@ GO_XTEST_SRCS(
 
 SIZE(MEDIUM)
 
-DATA(
-    sbr://2951476475=qcow2_images
-    sbr://3064742393=qcow2_images
+DEPENDS(
+    cloud/disk_manager/test/images/resources
 )
 
 END()
