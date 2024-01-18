@@ -1114,7 +1114,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTaskInfos := []TaskInfo{
+	expectedTasks := []TaskInfo{
 		TaskInfo{
 			ID:           taskIDRunning,
 			GenerationID: generationID,
@@ -1127,9 +1127,9 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 		},
 	}
 
-	taskInfos, err := storage.ListTasksRunning(ctx, 100500)
+	tasks, err := storage.ListTasksRunning(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
+	require.ElementsMatch(t, expectedTasks, tasks)
 }
 
 func TestStorageYDBListTasksCancelling(t *testing.T) {
@@ -1292,7 +1292,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTaskInfos := []TaskInfo{
+	expectedTasks := []TaskInfo{
 		TaskInfo{
 			ID:           taskIDCancelling,
 			GenerationID: generationID,
@@ -1305,9 +1305,9 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 		},
 	}
 
-	taskInfos, err := storage.ListTasksCancelling(ctx, 100500)
+	tasks, err := storage.ListTasksCancelling(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
+	require.ElementsMatch(t, expectedTasks, tasks)
 }
 
 func TestStorageYDBListFailedTasks(t *testing.T) {

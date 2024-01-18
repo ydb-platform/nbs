@@ -696,12 +696,7 @@ func TestTasksRunningLimit(t *testing.T) {
 					runningLongTaskCount++
 				}
 			}
-
-			require.LessOrEqual(
-				t,
-				runningLongTaskCount,
-				inflightLongTaskPerNodeLimit,
-			)
+			require.LessOrEqual(t, runningLongTaskCount, inflightLongTaskPerNodeLimit)
 		case err := <-errs:
 			require.NoError(t, err)
 			endedLongTaskCount++
