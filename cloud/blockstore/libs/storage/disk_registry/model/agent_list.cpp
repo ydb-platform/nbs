@@ -597,6 +597,13 @@ TVector<TString> TAgentList::CleanupExpiredAgentListParams(TInstant now) {
     return expiredAgentListParamsAgentIds;
 }
 
+void TAgentList::DeleteAgentListParams(const TString& agentId)
+{
+    if (DiskRegistryAgentListParams.contains(agentId)) {
+        DiskRegistryAgentListParams.erase(agentId);
+    }
+}
+
 void TAgentList::SetDiskRegistryAgentListParams(
     const TString& agentId,
     const NProto::TDiskRegistryAgentParams& params)

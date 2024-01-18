@@ -793,6 +793,10 @@ public:
         TDiskRegistryDatabase& db,
         TInstant now);
 
+    void DeleteDiskRegistryAgentListParams(
+        TDiskRegistryDatabase& db,
+        const TString& agentId);
+
     TVector<TString> GetPoolNames() const;
 
     const NProto::TDeviceConfig* FindDevice(const TDeviceId& uuid) const;
