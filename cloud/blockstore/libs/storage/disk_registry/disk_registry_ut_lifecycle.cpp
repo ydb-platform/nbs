@@ -2156,7 +2156,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 diskRegistry.RecvUpdateDiskRegistryAgentListParamsResponse();
 
             UNIT_ASSERT(response->Record.HasError());
-            UNIT_ASSERT_EQUAL(E_ARGUMENT, response->Record.GetError().GetCode());
+            UNIT_ASSERT_EQUAL(E_NOT_FOUND, response->Record.GetError().GetCode());
         }
     }
 }
