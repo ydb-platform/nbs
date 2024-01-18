@@ -83,6 +83,8 @@ NProto::TError FindDevices(
                 std::regex_constants::ECMAScript
             };
 
+            const ui32 defaultBlockSize = p.GetBlockSize();
+
             for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
                 const auto& path = entry.path();
                 const auto filename = path.filename().string();
@@ -119,6 +121,12 @@ NProto::TError FindDevices(
                         << "unable to find the appropriate pool for " << path);
                 }
 
+                const ui32 blockSize = pool->GetBlockSize()
+                    ? pool->GetBlockSize()
+                    : defaultBlockSize
+                        ? defaultBlockSize
+                        : GetBlockSize(path);
+
                 auto error = cb(
                     TString {path.string()},
                     *pool,
@@ -126,7 +134,7 @@ NProto::TError FindDevices(
                     pool->GetMaxDeviceCount()
                         ? pool->GetMaxDeviceCount()
                         : p.GetMaxDeviceCount(),
-                    GetBlockSize(path),
+                    blockSize,
                     size);
                 if (HasError(error)) {
                     return error;
