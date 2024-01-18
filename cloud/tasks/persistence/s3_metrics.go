@@ -44,7 +44,8 @@ func (m *s3Metrics) StatCall(
 		errorCounter := subRegistry.Counter("errors")
 		successCounter := subRegistry.Counter("success")
 		hangingCounter := subRegistry.Counter("hanging")
-		timeoutCounter := subRegistry.Counter("timeout")
+		timeoutCounter := subRegistry.Counter("errors/timeout")
+		canceledCounter := subRegistry.Counter("errors/canceled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if time.Since(start) >= m.callTimeout {
@@ -72,15 +73,11 @@ func (m *s3Metrics) StatCall(
 			errorCounter.Inc()
 
 			if errors.Is(*err, context.DeadlineExceeded) {
-				logging.Error(
-					ctx,
-					"S3 call with name %v timed out, bucket %v, key %v",
-					name,
-					bucket,
-					key,
-				)
-
 				timeoutCounter.Inc()
+			}
+
+			if errors.Is(*err, context.Canceled) {
+				canceledCounter.Inc()
 			}
 			return
 		}
