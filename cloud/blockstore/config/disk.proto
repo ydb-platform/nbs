@@ -117,6 +117,9 @@ message TStorageDiscoveryConfig
 
         // The maximum number of devices.
         optional uint32 MaxDeviceCount = 6;
+
+        // Block size.
+        optional uint32 BlockSize = 7;
     }
 
     message TPathConfig
@@ -130,6 +133,9 @@ message TStorageDiscoveryConfig
         optional uint32 MaxDeviceCount = 2;
 
         repeated TPoolConfig PoolConfigs = 3;
+
+        // Default block size.
+        optional uint32 BlockSize = 4;
     }
 
     repeated TPathConfig PathConfigs = 1;
