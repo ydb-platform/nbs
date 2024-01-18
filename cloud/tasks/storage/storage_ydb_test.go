@@ -1114,14 +1114,22 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTasks := []string{
-		taskIDRunning,
-		taskIDStallingWhileRunning,
+	expectedTaskInfos := []TaskInfo{
+		TaskInfo{
+			ID:           taskIDRunning,
+			GenerationID: generationID,
+			TaskType:     "task1",
+		},
+		TaskInfo{
+			ID:           taskIDStallingWhileRunning,
+			GenerationID: generationID,
+			TaskType:     "task1",
+		},
 	}
 
-	taskIDs, err := storage.ListTasksRunning(ctx, 100500)
+	taskInfos, err := storage.ListTasksRunning(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTasks, taskIDs)
+	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
 func TestStorageYDBListTasksCancelling(t *testing.T) {
@@ -1284,14 +1292,22 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	expectedTasks := []string{
-		taskIDCancelling,
-		taskIDStallingWhileCancelling,
+	expectedTaskInfos := []TaskInfo{
+		TaskInfo{
+			ID:           taskIDCancelling,
+			GenerationID: generationID,
+			TaskType:     "task1",
+		},
+		TaskInfo{
+			ID:           taskIDStallingWhileCancelling,
+			GenerationID: generationID,
+			TaskType:     "task1",
+		},
 	}
 
-	taskIDs, err := storage.ListTasksCancelling(ctx, 100500)
+	taskInfos, err := storage.ListTasksCancelling(ctx, 100500)
 	require.NoError(t, err)
-	require.ElementsMatch(t, expectedTasks, taskIDs)
+	require.ElementsMatch(t, expectedTaskInfos, taskInfos)
 }
 
 func TestStorageYDBListFailedTasks(t *testing.T) {

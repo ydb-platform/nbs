@@ -313,8 +313,8 @@ type Storage interface {
 	) ([]TaskInfo, error)
 
 	// Used for SRE tools.
-	ListTasksRunning(ctx context.Context, limit uint64) ([]string, error)
-	ListTasksCancelling(ctx context.Context, limit uint64) ([]string, error)
+	ListTasksRunning(ctx context.Context, limit uint64) ([]TaskInfo, error)
+	ListTasksCancelling(ctx context.Context, limit uint64) ([]TaskInfo, error)
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
 	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
 

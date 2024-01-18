@@ -272,7 +272,7 @@ func newListRunningCmd(
 		clientConfig,
 		serverConfig,
 		"running",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]TaskInfo, error) {
 			return storage.ListTasksRunning(ctx, limit)
 		},
 	)
@@ -287,7 +287,7 @@ func newListCancellingCmd(
 		clientConfig,
 		serverConfig,
 		"cancelling",
-		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
+		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]TaskInfo, error) {
 			return storage.ListTasksCancelling(ctx, limit)
 		},
 	)

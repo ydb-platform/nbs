@@ -208,15 +208,15 @@ func (s *storageYDB) ListTasksStallingWhileCancelling(
 func (s *storageYDB) ListTasksRunning(
 	ctx context.Context,
 	limit uint64,
-) ([]string, error) {
+) ([]TaskInfo, error) {
 
-	var tasks []string
+	var tasks []TaskInfo
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listTaskIDs(
+			tasks, err = s.listTasks(
 				ctx,
 				session,
 				"running",
@@ -232,15 +232,15 @@ func (s *storageYDB) ListTasksRunning(
 func (s *storageYDB) ListTasksCancelling(
 	ctx context.Context,
 	limit uint64,
-) ([]string, error) {
+) ([]TaskInfo, error) {
 
-	var tasks []string
+	var tasks []TaskInfo
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			tasks, err = s.listTaskIDs(
+			tasks, err = s.listTasks(
 				ctx,
 				session,
 				"cancelling",
