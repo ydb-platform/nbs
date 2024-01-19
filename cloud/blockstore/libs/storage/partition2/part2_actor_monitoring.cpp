@@ -109,7 +109,7 @@ void DumpChannels(
                                     << GetSolomonBsProxyUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           "nbs-dsproxy-percentile")
+                                           channel.StoragePool)
                                     << "'>Graphs</a>";
                             }
                             TABLED() {

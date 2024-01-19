@@ -32,7 +32,9 @@ namespace {
 void DumpDownGroups(
     IOutputStream& out,
     TInstant now,
-    const TPartitionState& state)
+    const TPartitionState& state,
+    const TTabletStorageInfo& storage,
+    const TDiagnosticsConfig& config)
 {
     HTML(out)
     {
@@ -53,7 +55,36 @@ void DumpDownGroups(
                 const TDowntimeHistory& history)
             {
                 TABLER() {
-                    TABLEH() { out << groupId; }
+                    TABLEH()
+                    {
+                        auto groupIdFinder =
+                            [groupId](const TTabletChannelInfo& channelInfo)
+                        {
+                            const auto* entry = channelInfo.LatestEntry();
+                            if (!entry) {
+                                return false;
+                            }
+                            return entry->GroupID == groupId;
+                        };
+                        auto it = std::ranges::find_if(
+                            storage.Channels,
+                            groupIdFinder);
+                        if (it == storage.Channels.end() ||
+                            std::any_of(
+                                it + 1,
+                                storage.Channels.end(),
+                                groupIdFinder))
+                        {
+                            out << groupId;
+                        } else {
+                            out << groupId << " <a href='"
+                                << GetSolomonBsProxyUrl(
+                                       config,
+                                       groupId,
+                                       it->StoragePool)
+                                << "'>Graphs</a>";
+                        }
+                    }
                     TABLEH() {
                         TSvgWithDownGraph svg(out);
                         for (const auto& [time, state]: history) {
@@ -152,7 +183,7 @@ void DumpChannels(
                                     << GetSolomonBsProxyUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           "nbs-dsproxy-percentile")
+                                           channel.StoragePool)
                                     << "'>Graphs</a>";
                             }
                             TABLED() {
@@ -641,7 +672,12 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "Channels") {
-                    DumpDownGroups(out, ctx.Now(), *State);
+                    DumpDownGroups(
+                        out,
+                        ctx.Now(),
+                        *State,
+                        *Info(),
+                        *DiagnosticsConfig);
 
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");

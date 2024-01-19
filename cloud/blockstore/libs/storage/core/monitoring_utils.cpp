@@ -968,15 +968,14 @@ void DumpCompactionMap(
     }
 }
 
-void DumpSolomonVolumeLink(
+void DumpMonitoringVolumeLink(
     IOutputStream& out,
     const TDiagnosticsConfig& config,
     const TString& diskId)
 {
     HTML(out) {
         TAG(TH3) {
-            out << "<a href='"
-                << GetSolomonVolumeUrl(config, diskId, "nbs-volume-overview")
+            out << "<a href='" << GetMonitoringVolumeUrl(config, diskId)
                 << "'>Volume dashboards</a>";
         }
     }
@@ -988,8 +987,7 @@ void DumpSolomonPartitionLink(
 {
     HTML(out) {
         TAG(TH3) {
-            out << "<a href='"
-                << GetSolomonPartitionUrl(config, "nbs-tablets-transactions")
+            out << "<a href='" << GetMonitoringPartitionUrl(config)
                 << "'>Partition dashboards</a>";
         }
     }

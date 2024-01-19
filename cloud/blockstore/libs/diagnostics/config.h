@@ -70,6 +70,34 @@ struct TVolumePerfSettings:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
+{
+    TString MonitoringClusterName;
+    TString MonitoringUrl;
+    TString MonitoringProject;
+    TString MonitoringVolumeDashboard;
+    TString MonitoringPartitionDashboard;
+    TString MonitoringNBSAlertsDashboard;
+    TString MonitoringNBSTVDashboard;
+
+    TMonitoringUrlData()
+        : MonitoringProject("nbs")
+    {}
+    TMonitoringUrlData(const TMonitoringUrlData& rhs) = default;
+
+    explicit TMonitoringUrlData(const NProto::TMonitoringUrlData& data)
+        : MonitoringClusterName(data.GetMonitoringClusterName())
+        , MonitoringUrl(data.GetMonitoringUrl())
+        , MonitoringProject(data.GetMonitoringProject())
+        , MonitoringVolumeDashboard(data.GetMonitoringVolumeDashboard())
+        , MonitoringPartitionDashboard(data.GetMonitoringPartitionDashboard())
+        , MonitoringNBSAlertsDashboard(data.GetMonitoringNBSAlertsDashboard())
+        , MonitoringNBSTVDashboard(data.GetMonitoringNBSTVDashboard())
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDiagnosticsConfig
 {
 private:
@@ -81,9 +109,6 @@ public:
     NProto::EHostNameScheme GetHostNameScheme() const;
     TString GetBastionNameSuffix() const;
     TString GetViewerHostName() const;
-    TString GetSolomonClusterName() const;
-    TString GetSolomonUrl() const;
-    TString GetSolomonProject() const;
     ui32 GetKikimrMonPort() const;
     ui32 GetNbsMonPort() const;
     ui32 GetSamplingRate() const;
@@ -106,6 +131,7 @@ public:
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
     ui32 GetExpectedIoParallelism() const;
     TVector<TString> GetCloudIdsWithStrictSLA() const;
+    TMonitoringUrlData GetMonitoringUrlData() const;
 
     TString GetCpuWaitFilename() const;
 

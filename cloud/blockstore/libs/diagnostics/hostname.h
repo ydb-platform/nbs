@@ -24,26 +24,19 @@ TString GetExternalHostUrl(
     EHostService serviceType,
     const TDiagnosticsConfig& config);
 
-TString GetSolomonServerUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard);
+TString GetMonitoringNBSAlertsUrl(const TDiagnosticsConfig& config);
 
-TString GetSolomonClientUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard);
+TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config);
 
-TString GetSolomonVolumeUrl(
+TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
-    const TString& diskId,
-    const TString& dashboard);
+    const TString& diskId);
 
-TString GetSolomonPartitionUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard);
+TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config);
 
 TString GetSolomonBsProxyUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& dashboard);
+    const TString& storagePool);
 
 }   // namespace NCloud::NBlockStore

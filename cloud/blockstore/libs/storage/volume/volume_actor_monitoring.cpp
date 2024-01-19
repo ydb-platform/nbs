@@ -1,6 +1,7 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 
@@ -790,7 +791,10 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
     HTML(out) {
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
-                DumpSolomonVolumeLink(out, *DiagnosticsConfig, State->GetDiskId());
+                DumpMonitoringVolumeLink(
+                    out,
+                    *DiagnosticsConfig,
+                    State->GetDiskId());
             }
         }
 

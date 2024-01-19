@@ -67,7 +67,9 @@ def get_config_files(host, scp, cfg_path):
                 s = f.read().decode("utf-8").strip()
                 if s:
                     logging.debug(f'[get_config_files] {name} {path}: {s}')
-                    message = ProtoParse(s, libconfig.CONFIGS[name]())
+                    message = ProtoParse(s,
+                                         libconfig.CONFIGS[name](),
+                                         allow_unknown_field=True)
 
                     fs_configs[name] = message
 

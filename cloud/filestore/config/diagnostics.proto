@@ -7,20 +7,36 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
+// Monitoring URL components
+
+message TMonitoringUrlData
+{
+    // Monitoring cluster name (e.g. yandexcloud_prod_vla).
+    optional string MonitoringClusterName = 1;
+    // Monitoring host url.
+    optional string MonitoringUrl = 2;
+    // Project name in monitoring.
+    optional string MonitoringProject = 3;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TDiagnosticsConfig
 {
     // For proper monpage link generation.
     optional string BastionNameSuffix = 1;
 
+    // [obsolete]
     // Solomon cluster name (e.g. yandexcloud_prod_vla).
-    optional string SolomonClusterName = 2;
+    // optional string SolomonClusterName = 2;
 
+    // [obsolete]
     // Solomon host url.
-    optional string SolomonUrl = 3;
+    // optional string SolomonUrl = 3;
 
+    // [obsolete]
     // Project name in solomon.
-    optional string SolomonProject = 4;
+    // optional string SolomonProject = 4;
 
     // Monserver will listen on this port.
     optional uint32 FilestoreMonPort = 5;
@@ -73,4 +89,7 @@ message TDiagnosticsConfig
 
     // Requests percentage in predictor to calculate possible delay [0.0, 1.0].
     optional double PostponeTimePredictorPercentage = 21;
+
+    // Monitoring data necessary for link generation on monpages.
+    optional TMonitoringUrlData MonitoringUrlData = 22;
 }
