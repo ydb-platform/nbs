@@ -8197,6 +8197,140 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, writeBw.GetGroupID());
         UNIT_ASSERT_VALUES_UNEQUAL(0, writeBw.GetThroughput());
     }
+
+    Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForNrdPartitions)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        // Enable Schedule for all actors!!!
+        runtime->SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui64 network = 0;
+        TDuration cpu;
+        ui64 nonEmptyReports = 0;
+        auto observer = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvDiskRegistryBasedPartitionCounters)
+            {
+                auto* msg =
+                    event->Get<TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                if (msg->NetworkBytes || msg->CpuUsage) {
+                    network = std::max(network, msg->NetworkBytes);
+                    cpu = std::max(cpu, msg->CpuUsage);
+                    ++nonEmptyReports;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(observer);
+
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
+
+        // Wait for EvDiskRegistryBasedPartitionCounters arrived.
+        runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
+            return nonEmptyReports == 1;
+        }}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_UNEQUAL(cpu, TDuration());
+        UNIT_ASSERT_VALUES_EQUAL(network, 1024 * 4096);
+    }
+
+    Y_UNIT_TEST(ShouldReportCpuConsumptionAndNetUtilizationForMirroredPartitions)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        state->ReplicaCount = 2;
+
+        // Enable Schedule for all actors!!!
+        runtime->SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1024
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui32 nonEmptyReports = 0;
+        auto observer = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvDiskRegistryBasedPartitionCounters)
+            {
+                auto* msg =
+                    event->Get<TEvVolume::TEvDiskRegistryBasedPartitionCounters>();
+                if (msg->NetworkBytes || msg->CpuUsage) {
+                    UNIT_ASSERT_VALUES_UNEQUAL(msg->CpuUsage, TDuration());
+                    UNIT_ASSERT_VALUES_EQUAL(msg->NetworkBytes, 1024 * 4096);
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(observer);
+
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(15));
+        runtime->DispatchEvents({ .CustomFinalCondition = [&] {
+            return nonEmptyReports == 3;
+        }}, TDuration::Seconds(1));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
