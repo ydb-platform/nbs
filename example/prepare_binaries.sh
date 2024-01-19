@@ -1,9 +1,9 @@
-NBS_ROOT=".."
-YDBD_BIN="$NBS_ROOT/contrib/ydb/apps/ydbd/ydbd"
-NBSD_BIN="$NBS_ROOT/cloud/blockstore/apps/server/nbsd"
-BLOCKSTORE_CLIENT_BIN="$NBS_ROOT/cloud/blockstore/apps/client/blockstore-client"
-DISK_AGENT_BIN="$NBS_ROOT/cloud/blockstore/apps/disk_agent/diskagentd"
-BLOCKSTORE_NBD_BIN="$NBS_ROOT/cloud/blockstore/tools/nbd/blockstore-nbd"
+BUILD_ROOT="../cloud/blockstore/buildall"
+YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
+NBSD_BIN="$BUILD_ROOT/cloud/blockstore/apps/server/nbsd"
+BLOCKSTORE_CLIENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/client/blockstore-client"
+DISK_AGENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/disk_agent/diskagentd"
+BLOCKSTORE_NBD_BIN="$BUILD_ROOT/cloud/blockstore/tools/nbd/blockstore-nbd"
 
 for bin in $YDBD_BIN $NBSD_BIN $BLOCKSTORE_CLIENT_BIN $DISK_AGENT_BIN $BLOCKSTORE_NBD_BIN
 do

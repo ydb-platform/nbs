@@ -9,27 +9,9 @@ find_bin_dir() {
     readlink -e `dirname $0`
 }
 
-find_blockstore_all_dir() {
-    readlink -e `dirname $0`/../cloud/blockstore/buildall
-}
-
 BIN_DIR=`find_bin_dir`
-BLOCKSTORE_ALL_DIR=`find_blockstore_all_dir`
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
 source ./prepare_binaries.sh || exit 1
-
-BUILD_FILES=" \
-    contrib/ydb/apps/ydbd/ydbd \
-    cloud/blockstore/apps/server/nbsd \
-    cloud/blockstore/apps/disk_agent/diskagentd \
-    cloud/blockstore/apps/client/blockstore-client \
-    cloud/blockstore/tools/nbd/blockstore-nbd \
-    "
-
-# create symlinks
-for file in $BUILD_FILES; do
-    ln -svf $BLOCKSTORE_ALL_DIR/$file $BIN_DIR/
-done
 
 for dir in $DATA_DIRS; do
     mkdir -p "$PERSISTENT_TMP_DIR/$dir"
