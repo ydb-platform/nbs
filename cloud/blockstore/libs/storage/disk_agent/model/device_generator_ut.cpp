@@ -53,6 +53,11 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             layout.SetDeviceSize(93_GB);
         }
 
+        NProto::TStorageDiscoveryConfig::TPoolConfig local;
+        local.SetPoolName("local");
+        local.SetHashSuffix("-local");
+        local.SetBlockSize(512);
+
         TDeviceGenerator gen { Log, AgentId };
 
         {
@@ -144,6 +149,22 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 "eb5e46284e440d7bb5a6aafe067fc7bc", r[139].GetDeviceId(), r[139]);
             UNIT_ASSERT_VALUES_EQUAL_C(13885998366720, r[139].GetOffset(), r[139]);
+        }
+
+        {
+            gen("/dev/disk/by-partlabel/NVMECOMPUTE01", local, 1, 1, local.GetBlockSize(), 367_GB);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+
+            const auto& d = r[0];
+
+            UNIT_ASSERT_VALUES_EQUAL_C("local", d.GetPoolName(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(512, d.GetBlockSize(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, d.GetFileSize(), d);  // the file size is set only when a layout is used
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                "c7f55aef7b99489f8a47d2f94f85a88b", d.GetDeviceId(), d);
         }
     }
 
