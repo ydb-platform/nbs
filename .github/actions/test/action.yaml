@@ -38,23 +38,29 @@ runs:
       shell: bash
       run: |
         echo "SHELLOPTS=xtrace" >> $GITHUB_ENV
-        export TMP_DIR=$(pwd)/tmp
+        export TMP_DIR=/home/github/tmp
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         echo "LOG_DIR=$TMP_DIR/logs" >> $GITHUB_ENV
         echo "OUT_DIR=$TMP_DIR/out" >> $GITHUB_ENV
         echo "ARTIFACTS_DIR=$TMP_DIR/artifacts" >> $GITHUB_ENV
+        echo "TESTS_DATA_DIR=$TMP_DIR/test_data" >> $GITHUB_ENV
+        echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports" >> $GITHUB_ENV
         echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml" >> $GITHUB_ENV
-        echo "SUMMARY_LINKS=$(mktemp)" >> $GITHUB_ENV
+        echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split" >> $GITHUB_ENV
+        echo "SUMMARY_LINKS=$(mktemp -p /home/github)" >> $GITHUB_ENV
 
     - name: prepare
       shell: bash
       run: |
-        rm -rf $TMP_DIR $JUNIT_REPORT_XML
-        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR
-
+        rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
+        chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
+                               $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
+                               $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
     - name: ya test
       shell: bash
       run: |
+        set -x
         extra_params=()
 
         # FIXME: copy-paste from build_ya
@@ -101,7 +107,7 @@ runs:
         readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
         readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
 
-        ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' \
+        sudo -E -H -u github ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' \
           ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
@@ -109,46 +115,89 @@ runs:
           --canonization-backend=ydb-canondata.storage.yandexcloud.net \
           --junit "$JUNIT_REPORT_XML" --output "$OUT_DIR" "${extra_params[@]}" || (
             RC=$?
-            if [[ $RC -ge 10 && $RC -le 14 ]]; then
-              echo "ya test returned failed tests status, recovering.."
-            else
-              exit $RC
+            if [ $RC -ne 0 ]; then
+              echo "ya test returned $RC, check existence $JUNIT_REPORT_XML"
+              if [ -s "$JUNIT_REPORT_XML" ]; then
+                echo "$JUNIT_REPORT_XML exists"
+                ls -la "$JUNIT_REPORT_XML"
+              else
+                echo "$JUNIT_REPORT_XML doesn't exist or has zero size"
+                ls -la "$JUNIT_REPORT_XML" || true
+                exit $RC
+              fi
             fi
         )
+
+    - name: archive unitest reports (orig)
+      shell: bash
+      run: |
+        sudo -E -H -u github gzip -c $JUNIT_REPORT_XML > $REPORTS_ARTIFACTS_DIR/orig_junit.xml.gz
 
     - name: postprocess junit report
       shell: bash
       run: |
-        .github/scripts/tests/transform-ya-junit.py -i \
+        sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
           -m .github/config/muted_ya.txt \
           --ya-out "$OUT_DIR" \
           --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
           --log-out-dir "$ARTIFACTS_DIR/logs/" \
           "$JUNIT_REPORT_XML"
 
+        sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS" "$JUNIT_REPORT_XML"
+
+    - name: archive unitest reports (transformed)
+      shell: bash
+      run: |
+        sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz $(basename $JUNIT_REPORT_PARTS) $JUNIT_REPORT_XML
+
     - name: write tests summary
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
-        mkdir $ARTIFACTS_DIR/summary/
+        sudo -E -H -u github mkdir $ARTIFACTS_DIR/summary/
 
         cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
 
         platform_name=$(uname | tr '[:upper:]' '[:lower:]')-$(arch)
 
-        .github/scripts/tests/generate-summary.py \
+        export SUMMARY_OUT_ENV_PATH=$(mktemp -p /home/github)
+        chown github:github $SUMMARY_OUT_ENV_PATH
+        sudo -E -H -u github .github/scripts/tests/generate-summary.py \
           --summary-out-path "$ARTIFACTS_DIR/summary/" \
+          --summary-out-env-path "$SUMMARY_OUT_ENV_PATH" \
           --summary-url-prefix "$S3_WEBSITE_PREFIX/summary/" \
           --build-preset "${platform_name}-${{ inputs.build_preset }}" \
           "Tests" ya-test.html "$JUNIT_REPORT_XML"
+
+        cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
+
+    - name: check test results
+      shell: bash
+      run: |
+        set -x
+        sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" || {
+          RC=$?
+
+          echo "::group::Copy-failed-tests-data"
+          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only
+          sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" --paths-only | while read path; do
+            echo $path
+            find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
+          done
+          echo "::endgroup::"
+          echo "::group::s3-sync"
+          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
+          echo "::endgroup::"
+          exit $RC
+        }
 
     - name: Sync test results to S3
       if: always()
       shell: bash
       run: |
         echo "::group::s3-sync"
-        s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-public --no-progress --stats --no-check-md5 "$ARTIFACTS_DIR/" "$S3_BUCKET_PATH/"
         echo "::endgroup::"
 
     - name: Sync logs results to S3
@@ -156,7 +205,14 @@ runs:
       shell: bash
       run: |
         echo "::group::s3-sync"
-        s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
+        echo "::endgroup::"
+    - name: Sync reports to S3
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::s3-sync"
+        sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$LOG_DIR/" "$S3_BUCKET_PATH/test_logs/"
         echo "::endgroup::"
 
     - name: Display links to s3 summary
@@ -167,12 +223,15 @@ runs:
         echo ${S3_URL_PREFIX}/summary/ya-test.html
         echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
         echo "::endgroup::"
-    - name: check test results
-      shell: bash
-      run: |
-        .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML"
+
+
 
     - name: show free space
       if: always()
       shell: bash
       run: df -h
+
+    - name: failure
+      if: always()
+      shell: bash
+      run: sleep 3600
