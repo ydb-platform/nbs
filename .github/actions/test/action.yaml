@@ -230,4 +230,4 @@ runs:
     - name: show free space
       if: always()
       shell: bash
-      run: sleep 3600
+      run: df -h
