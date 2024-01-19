@@ -10435,11 +10435,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto sendRequest = [](TPartitionClient& partition)
         {
-            partition.SendReadBlocksRequest(0);   //
+            partition.SendReadBlocksRequest(0);
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvReadBlocksResponse();   //
+            return partition.RecvReadBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
@@ -10455,11 +10455,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto sendRequest = [](TPartitionClient& partition)
         {
             partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(0, 255));   //
+                TBlockRange32::WithLength(0, 255));
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvWriteBlocksResponse();   //
+            return partition.RecvWriteBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
@@ -10474,11 +10474,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto sendRequest = [](TPartitionClient& partition)
         {
-            partition.SendReadBlocksRequest(0);   //
+            partition.SendReadBlocksRequest(0);
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvReadBlocksResponse();   //
+            return partition.RecvReadBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
@@ -10494,11 +10494,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto sendRequest = [](TPartitionClient& partition)
         {
             partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(0, 255));   //
+                TBlockRange32::WithLength(0, 255));
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvWriteBlocksResponse();   //
+            return partition.RecvWriteBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
