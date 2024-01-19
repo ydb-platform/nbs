@@ -470,12 +470,14 @@ class TRdmaStorageProvider final
 private:
     struct TEndpoint
     {
+        TString Uuid;
         TString Host;
         ui32 Port;
 
         bool operator<(const TEndpoint& other) const
         {
-            return std::tie(Host, Port) < std::tie(other.Host, other.Port);
+            return std::tie(Uuid, Host, Port) <
+                   std::tie(other.Uuid, other.Host, other.Port);
         }
     };
 
@@ -525,6 +527,7 @@ public:
 
         for (const auto& device: volume.GetDevices()) {
             auto ep = TEndpoint{
+                device.GetDeviceUUID(),
                 device.GetRdmaEndpoint().GetHost(),
                 device.GetRdmaEndpoint().GetPort()};
 
