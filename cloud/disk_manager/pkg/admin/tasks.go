@@ -225,7 +225,7 @@ func newListReadyToRunCmd(
 		serverConfig,
 		"ready_to_run",
 		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
-			taskInfos, err := storage.ListTasksReadyToRun(
+			tasks, err := storage.ListTasksReadyToRun(
 				ctx,
 				limit,
 				nil, // taskTypeWhitelist
@@ -234,7 +234,7 @@ func newListReadyToRunCmd(
 				return []string{}, err
 			}
 
-			return getTaskIDs(taskInfos), nil
+			return getTaskIDs(tasks), nil
 		},
 	)
 }
@@ -249,7 +249,7 @@ func newListReadyToCancelCmd(
 		serverConfig,
 		"ready_to_cancel",
 		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
-			taskInfos, err := storage.ListTasksReadyToCancel(
+			tasks, err := storage.ListTasksReadyToCancel(
 				ctx,
 				limit,
 				nil, // taskTypeWhitelist
@@ -258,7 +258,7 @@ func newListReadyToCancelCmd(
 				return []string{}, err
 			}
 
-			return getTaskIDs(taskInfos), nil
+			return getTaskIDs(tasks), nil
 		},
 	)
 }
@@ -273,7 +273,12 @@ func newListRunningCmd(
 		serverConfig,
 		"running",
 		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
-			return storage.ListTasksRunning(ctx, limit)
+			tasks, err := storage.ListTasksRunning(ctx, limit)
+			if err != nil {
+				return []string{}, err
+			}
+
+			return getTaskIDs(tasks), nil
 		},
 	)
 }
@@ -288,7 +293,12 @@ func newListCancellingCmd(
 		serverConfig,
 		"cancelling",
 		func(ctx context.Context, storage tasks_storage.Storage, limit uint64) ([]string, error) {
-			return storage.ListTasksCancelling(ctx, limit)
+			tasks, err := storage.ListTasksCancelling(ctx, limit)
+			if err != nil {
+				return []string{}, err
+			}
+
+			return getTaskIDs(tasks), nil
 		},
 	)
 }
