@@ -26,7 +26,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const NActors::TActorId PartitionActorId;
-    const ui64 VolumeTabletId;
+    const ui64 PartitionTabletId;
     const ui32 BlockSize;
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
@@ -39,7 +39,7 @@ public:
         TRequestInfoPtr requestInfo,
         const NActors::TActorId& partitionActorId,
         const NActors::TActorId& volumeActorId,
-        ui64 tabletId,
+        ui64 partitionTabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,

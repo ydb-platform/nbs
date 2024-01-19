@@ -65,7 +65,7 @@ public:
 
     void RequestStarted(const NActors::TActorContext& ctx);
     void RequestFinished(const NActors::TActorContext& ctx);
-    void RequestCanceled(const NActors::TActorContext& ctx);
+    void RequestCancelled(const NActors::TActorContext& ctx);
 
     void HandleTimeout(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

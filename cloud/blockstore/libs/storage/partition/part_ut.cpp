@@ -10297,7 +10297,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Make handler for intercepting EvLongRunningOperation message.
         // Attention! counters will be doubled, because we will intercept the
-        // requests send to TPartitionActor and TVolumeActor.
+        // requests sent to TPartitionActor and TVolumeActor.
         ui32 longRunningBeginCount = 0;
         ui32 longRunningFinishCount = 0;
         ui32 longRunningPingCount = 0;
@@ -10327,7 +10327,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case EReason::Finished:
                         longRunningFinishCount++;
                         break;
-                    case EReason::Canceled:
+                    case EReason::Cancelled:
                         longRunningCanceledCount++;
                         break;
                 }
@@ -10384,7 +10384,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         }
 
-        // Wait for EvLongRunningOperation (finish or cancel) arrived.
+        // Wait for EvLongRunningOperation (finish or cancel) arrival.
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(

@@ -17,7 +17,7 @@ TReadBlobActor::TReadBlobActor(
         TRequestInfoPtr requestInfo,
         const TActorId& partitionActorId,
         const TActorId& volumeActorId,
-        ui64 volumeTabletId,
+        ui64 partitionTabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
@@ -30,7 +30,7 @@ TReadBlobActor::TReadBlobActor(
           request->GroupId)
     , RequestInfo(std::move(requestInfo))
     , PartitionActorId(partitionActorId)
-    , VolumeTabletId(volumeTabletId)
+    , PartitionTabletId(partitionTabletId)
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
@@ -126,7 +126,7 @@ void TReadBlobActor::ReplyAndDie(
     }
 
     if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCanceled(ctx);
+        TLongRunningOperationCompanion::RequestCancelled(ctx);
     } else {
         TLongRunningOperationCompanion::RequestFinished(ctx);
     }
@@ -142,7 +142,7 @@ void TReadBlobActor::ReplyError(
 {
     LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_COMMON,
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
-        VolumeTabletId,
+        PartitionTabletId,
         description.data(),
         response.Print(false).data());
 
@@ -183,7 +183,7 @@ void TReadBlobActor::HandleGetResult(
                 {
                     LOG_WARN(ctx, TBlockStoreComponents::PARTITION_COMMON,
                         "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
-                        VolumeTabletId,
+                        PartitionTabletId,
                         NKikimrProto::EReplyStatus_Name(response.Status).data(),
                         msg->Print(false).data());
 

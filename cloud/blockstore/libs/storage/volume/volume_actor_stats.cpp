@@ -415,18 +415,13 @@ void TVolumeActor::HandleLongRunningBlobOperation(
     } else {
         LongRunningActors.Erase(ev->Sender);
 
-        const TString reason =
-            ev->Get()->Reason == TEvLongRunningOperation::EReason::Finished
-                ? TString("completion")
-                : TString("reject");
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "[%lu] For volume %s %s %s (actor %s, group %u) "
-            "detected after %s",
+            "[%lu] For volume %s %s %s (actor %s, group %u) detected after %s",
             TabletID(),
             State->GetDiskId().Quote().c_str(),
-            reason.c_str(),
+            ToString(ev->Get()->Reason).c_str(),
             ToString(msg.Operation).c_str(),
             ev->Sender.ToString().c_str(),
             msg.GroupId,

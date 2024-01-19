@@ -154,7 +154,7 @@ struct TEvPartitionCommonPrivate
         {
             LongRunningDetected,
             Finished,
-            Canceled,
+            Cancelled,
         };
 
         const EOperation Operation;

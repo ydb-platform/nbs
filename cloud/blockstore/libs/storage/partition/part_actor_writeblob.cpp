@@ -192,7 +192,7 @@ void TWriteBlobActor::ReplyAndDie(
     }
 
     if (HasError(response->GetError())) {
-        TLongRunningOperationCompanion::RequestCanceled(ctx);
+        TLongRunningOperationCompanion::RequestCancelled(ctx);
     } else {
         TLongRunningOperationCompanion::RequestFinished(ctx);
     }

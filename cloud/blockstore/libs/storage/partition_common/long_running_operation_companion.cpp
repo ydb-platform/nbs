@@ -141,7 +141,7 @@ void TLongRunningOperationCompanion::HandleTimeout(
     ctx.Schedule(PingDelayProvider.GetDelay(), new TEvents::TEvWakeup());
 }
 
-void TLongRunningOperationCompanion::RequestCanceled(
+void TLongRunningOperationCompanion::RequestCancelled(
     const NActors::TActorContext& ctx)
 {
     using TEvLongRunningOperation =
@@ -153,7 +153,7 @@ void TLongRunningOperationCompanion::RequestCanceled(
             true,
             ctx.Now() - StartAt,
             GroupId,
-            TEvLongRunningOperation::EReason::Canceled);
+            TEvLongRunningOperation::EReason::Cancelled);
     };
     NCloud::Send(ctx, PartitionActor, makeMessage());
     NCloud::Send(ctx, VolumeActor, makeMessage());
