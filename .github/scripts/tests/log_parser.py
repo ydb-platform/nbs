@@ -83,7 +83,9 @@ def ctest_log_parser(fp: TextIO):
             break
 
         if target:
-            if not (start_re.match(line) or status_re.match(line) or finish_re.match(line)):
+            if not (
+                start_re.match(line) or status_re.match(line) or finish_re.match(line)
+            ):
                 buf.append(line.rstrip())
             else:
                 yield target, reason, buf

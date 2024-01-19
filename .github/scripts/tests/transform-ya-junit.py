@@ -62,7 +62,9 @@ class YTestReportTrace:
             return
 
         for folder in os.listdir(test_results_dir):
-            fn = os.path.join(self.out_root, test_results_dir, folder, "ytest.report.trace")
+            fn = os.path.join(
+                self.out_root, test_results_dir, folder, "ytest.report.trace"
+            )
 
             if not os.path.isfile(fn):
                 continue
@@ -167,9 +169,13 @@ def transform(
                 logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
 
                 if logs:
-                    log_print(f"add {list(logs.keys())!r} properties for {test_cls}.{test_method}")
+                    log_print(
+                        f"add {list(logs.keys())!r} properties for {test_cls}.{test_method}"
+                    )
                     for name, fn in logs.items():
-                        url = save_log(ya_out_dir, fn, log_out_dir, log_url_prefix, log_trunc_size)
+                        url = save_log(
+                            ya_out_dir, fn, log_out_dir, log_url_prefix, log_trunc_size
+                        )
                         add_junit_link_property(case, name, url)
 
     if save_inplace:
@@ -195,10 +201,12 @@ def main():
         "--log-truncate-size",
         dest="log_trunc_size",
         type=int,
-        default=134217728,
+        default=0,
         help="truncate log after specific size, 0 disables truncation",
     )
-    parser.add_argument("--ya-out", help="ya make output dir (for searching logs and artifacts)")
+    parser.add_argument(
+        "--ya-out", help="ya make output dir (for searching logs and artifacts)"
+    )
     parser.add_argument("in_file", type=argparse.FileType("r"))
 
     args = parser.parse_args()
