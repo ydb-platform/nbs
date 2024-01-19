@@ -363,10 +363,7 @@ def update_pr_comment(
 
     body = "\n".join(body)
 
-    if comment is None:
-        pr.create_issue_comment(body)
-    else:
-        comment.edit(body)
+    pr.create_issue_comment(body)
 
 
 def main():

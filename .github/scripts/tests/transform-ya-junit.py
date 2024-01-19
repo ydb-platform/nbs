@@ -104,6 +104,7 @@ def filter_empty_logs(logs):
     result = {}
     for k, v in logs.items():
         if not os.path.isfile(v) or os.stat(v).st_size == 0:
+            log_print(f"skipping log file {v} as empty or missing")
             continue
         result[k] = v
     return result

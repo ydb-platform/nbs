@@ -61,11 +61,11 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/"
+        default: "cloud/disk_manager/,cloud/tasks/"
         description: "limit build to specific target"
       test_target:
         type: string
-        default: "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/"
+        default: "cloud/disk_manager/,cloud/tasks/"
         description: "limit test to specific target"
       build_preset:
         type: string
@@ -164,4 +164,8 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
       timeout-minutes: 1440
+
+    - name: sleep
+      shell: bash
+      run: sleep 3600
 

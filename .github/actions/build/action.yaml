@@ -94,8 +94,6 @@ runs:
           --cache-size 512G --link-threads "${{ inputs.link_threads }}" \
           "${extra_params[@]}"
 
-        find
-
     - name: Sync logs to S3
       if: always()
       shell: bash
