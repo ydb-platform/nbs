@@ -64,6 +64,16 @@ func (s *StorageMock) OverlayDiskRebased(
 	return args.Error(0)
 }
 
+func (s *StorageMock) PrepareBaseDisk(
+	ctx context.Context,
+	baseDisk storage.BaseDisk,
+	srcDiskCheckpointSize uint64,
+) error {
+
+	args := s.Called(ctx, baseDisk, srcDiskCheckpointSize)
+	return args.Error(0)
+}
+
 func (s *StorageMock) BaseDiskCreated(
 	ctx context.Context,
 	baseDisk storage.BaseDisk,

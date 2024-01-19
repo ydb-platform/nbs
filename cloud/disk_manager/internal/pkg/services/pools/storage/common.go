@@ -650,39 +650,7 @@ func (s *storageYDB) generateBaseDisk(
 	zoneID string,
 	imageSize uint64,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) baseDisk {
-
-	var requiredSize uint64
-	if srcDisk != nil {
-		// Base disk will be copied from 'src disk'.
-		requiredSize = srcDiskCheckpointSize
-	} else {
-		requiredSize = imageSize
-	}
-
-	var size, maxActiveSlots, units uint64
-
-	if requiredSize == 0 {
-		// Default case.
-		units = s.maxBaseDiskUnits
-		maxActiveSlots = s.maxActiveSlots
-	} else {
-		// Base disks are using SSD.
-		ssdUnits := divideWithRoundingUp(
-			requiredSize,
-			baseDiskUnitSize,
-		)
-		size = ssdUnits * baseDiskUnitSize
-
-		units = ssdUnitMultiplier * ssdUnits
-		units = baseDiskOverSubscription * units
-		units = max(units, minBaseDiskUnits)
-		units = min(units, s.maxBaseDiskUnits)
-
-		maxActiveSlots = min(units, s.maxActiveSlots)
-	}
 
 	var srcDiskZoneID string
 	var srcDiskID string
@@ -698,13 +666,10 @@ func (s *storageYDB) generateBaseDisk(
 		checkpointID:        imageID, // Note: we use image id as checkpoint id.
 		createTaskID:        "",      // Will be determined later.
 		imageSize:           imageSize,
-		size:                size,
 		srcDiskZoneID:       srcDiskZoneID,
 		srcDiskID:           srcDiskID,
-		srcDiskCheckpointID: srcDiskCheckpointID,
+		srcDiskCheckpointID: imageID, // Note: we use image id as checkpoint id.
 
-		maxActiveSlots: maxActiveSlots,
-		units:          units,
 		fromPool:       true,
 		status:         baseDiskStatusScheduling,
 	}

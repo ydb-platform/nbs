@@ -20,4 +20,6 @@ message CreateBaseDiskRequest {
 
 message CreateBaseDiskTaskState {
     uint32 Step = 2;
+    uint64 SrcDiskMilestoneBlockIndex = 3;
+    uint64 SrcDiskMilestoneCheckpointSize = 4;
 }

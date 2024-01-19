@@ -1738,6 +1738,71 @@ func (s *storageYDB) overlayDiskRebased(
 	return nil
 }
 
+func (s *storageYDB) prepareBaseDisk(
+	ctx context.Context,
+	session *persistence.Session,
+	baseDisk BaseDisk,
+	srcDiskCheckpointSize uint64,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	found, err := s.getBaseDisk(ctx, tx, baseDisk.ID)
+	if err != nil {
+		return err
+	}
+
+	updated := found
+
+	var requiredSize uint64
+	if len(found.srcDiskID) != 0 {
+		// Base disk will be copied from 'src disk'.
+		requiredSize = srcDiskCheckpointSize
+	} else {
+		requiredSize = found.imageSize
+	}
+
+	var size, maxActiveSlots, units uint64
+
+	if requiredSize == 0 {
+		// Default case.
+		units = s.maxBaseDiskUnits
+		maxActiveSlots = s.maxActiveSlots
+	} else {
+		// Base disks are using SSD.
+		ssdUnits := divideWithRoundingUp(
+			requiredSize,
+			baseDiskUnitSize,
+		)
+		size = ssdUnits * baseDiskUnitSize
+
+		units = ssdUnitMultiplier * ssdUnits
+		units = baseDiskOverSubscription * units
+		units = max(units, minBaseDiskUnits)
+		units = min(units, s.maxBaseDiskUnits)
+
+		maxActiveSlots = min(units, s.maxActiveSlots)
+	}
+
+	updated.size = size
+	updated.maxActiveSlots = maxActiveSlots
+	updated.units = units
+
+	err = s.updateBaseDisk(ctx, tx, baseDiskTransition{
+		oldState: &found,
+		state:    &updated,
+	})
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (s *storageYDB) baseDiskCreated(
 	ctx context.Context,
 	session *persistence.Session,
@@ -2029,8 +2094,6 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		config.zoneID,
 		config.imageSize,
 		nil, // srcDisk
-		"",  // srcDiskCheckpointID
-		0,   // srcDiskCheckpointSize
 	)
 
 	// size and capacity are measured in slots, not base disks.
@@ -3029,8 +3092,6 @@ func (s *storageYDB) retireBaseDisk(
 	session *persistence.Session,
 	baseDiskID string,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) ([]RebaseInfo, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -3146,8 +3207,6 @@ func (s *storageYDB) retireBaseDisk(
 				zoneID,
 				imageSize,
 				srcDisk,
-				srcDiskCheckpointID,
-				srcDiskCheckpointSize,
 			)
 			logging.Info(
 				ctx,

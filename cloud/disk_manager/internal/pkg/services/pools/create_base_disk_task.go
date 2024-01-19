@@ -214,3 +214,46 @@ func (t *createBaseDiskTask) GetMetadata(
 func (t *createBaseDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createBaseDiskTask) prepareBaseDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if t.request.SrcDisk != nil {
+		client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		err = client.GetCheckpointSize(
+			ctx,
+			func(blockIndex uint64, checkpointSize uint64) error {
+				t.state.SrcDiskMilestoneBlockIndex = blockIndex
+				t.state.SrcDiskMilestoneCheckpointSize = checkpointSize
+				return execCtx.SaveState(ctx)
+			},
+			t.request.SrcDisk.DiskId,
+			t.request.SrcDiskCheckpointId,
+			t.state.SrcDiskMilestoneBlockIndex,
+			t.state.SrcDiskMilestoneCheckpointSize,
+		)
+	}
+
+	err := t.storage.PrepareBaseDisk(
+		ctx, 
+		storage.BaseDisk{
+			ID:      t.request.BaseDisk.DiskId,
+			ImageID: t.request.SrcImageId,
+			ZoneID:  t.request.BaseDisk.ZoneId,
+		},
+		t.state.SrcDiskMilestoneCheckpointSize,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

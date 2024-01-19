@@ -1583,7 +1583,7 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 		})
 	}
 
-	rebaseInfos, err := storage.RetireBaseDisk(ctx, "unexisting", nil, "", 0)
+	rebaseInfos, err := storage.RetireBaseDisk(ctx, "unexisting", nil)
 	require.NoError(t, err)
 	require.Empty(t, rebaseInfos)
 
@@ -1637,7 +1637,7 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 	newBaseDisks := make([]BaseDisk, 0)
 
 	for _, baseDisk := range oldBaseDisks {
-		rebaseInfos, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil, "", 0)
+		rebaseInfos, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil)
 		require.NoError(t, err)
 		require.NotEmpty(t, rebaseInfos)
 
@@ -1650,7 +1650,7 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 		}
 
 		// Check idempotency.
-		actual, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil, "", 0)
+		actual, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil)
 		require.NoError(t, err)
 		require.ElementsMatch(t, rebaseInfos, actual)
 
@@ -1776,7 +1776,7 @@ func TestStorageYDBBaseDiskShouldNotBeFreeAfterRetireStarted(t *testing.T) {
 	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot2)
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil, "", 0)
+	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil)
 	require.NoError(t, err)
 
 	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot3)
@@ -1938,7 +1938,7 @@ func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil, "", 0)
+	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil)
 	require.NoError(t, err)
 
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
@@ -1998,8 +1998,6 @@ func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
 			ZoneId: baseDisks[0].ZoneID,
 			DiskId: baseDisks[0].ID,
 		},
-		baseDisks[0].CheckpointID,
-		baseDiskUnitSize,
 	)
 	require.NoError(t, err)
 
@@ -2237,8 +2235,6 @@ func TestStorageYDBDeletePoolWhenRetiringIsInFlight(t *testing.T) {
 			ZoneId: baseDisks[0].ZoneID,
 			DiskId: baseDisks[0].ID,
 		},
-		baseDisks[0].CheckpointID,
-		baseDiskUnitSize,
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(rebaseInfos))

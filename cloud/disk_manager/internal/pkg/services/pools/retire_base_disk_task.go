@@ -79,8 +79,6 @@ func (t *retireBaseDiskTask) Run(
 		ctx,
 		baseDiskID,
 		t.request.SrcDisk,
-		t.request.SrcDiskCheckpointId,
-		t.state.SrcDiskMilestoneCheckpointSize,
 	)
 	if err != nil {
 		return err

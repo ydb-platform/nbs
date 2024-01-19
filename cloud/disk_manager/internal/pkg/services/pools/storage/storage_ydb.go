@@ -113,6 +113,25 @@ func (s *storageYDB) OverlayDiskRebased(
 	)
 }
 
+func (s *storageYDB) PrepareBaseDisk(
+	ctx context.Context,
+	baseDisk BaseDisk,
+	srcDiskCheckpointSize uint64,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.prepareBaseDisk(
+				ctx,
+				session,
+				baseDisk,
+				srcDiskCheckpointSize,
+			)
+		},
+	)
+}
+
 func (s *storageYDB) BaseDiskCreated(
 	ctx context.Context,
 	baseDisk BaseDisk,
@@ -317,8 +336,6 @@ func (s *storageYDB) RetireBaseDisk(
 	ctx context.Context,
 	baseDiskID string,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) ([]RebaseInfo, error) {
 
 	var rebaseInfos []RebaseInfo
@@ -332,8 +349,6 @@ func (s *storageYDB) RetireBaseDisk(
 				session,
 				baseDiskID,
 				srcDisk,
-				srcDiskCheckpointID,
-				srcDiskCheckpointSize,
 			)
 			return err
 		},

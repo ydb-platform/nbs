@@ -81,6 +81,12 @@ type Storage interface {
 
 	OverlayDiskRebased(ctx context.Context, info RebaseInfo) error
 
+	PrepareBaseDisk(
+		ctx context.Context,
+		baseDisk BaseDisk,
+		srcDiskCheckpointSize uint64,
+	) error
+
 	BaseDiskCreated(ctx context.Context, baseDisk BaseDisk) error
 
 	BaseDiskCreationFailed(ctx context.Context, baseDisk BaseDisk) error
@@ -129,8 +135,6 @@ type Storage interface {
 		ctx context.Context,
 		baseDiskID string,
 		srcDisk *types.Disk,
-		srcDiskCheckpointID string,
-		srcDiskCheckpointSize uint64,
 	) ([]RebaseInfo, error)
 
 	IsBaseDiskRetired(ctx context.Context, baseDiskID string) (bool, error)

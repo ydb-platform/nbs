@@ -10,13 +10,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCommonGenerateBaseDiskForPool(t *testing.T) {
-	maxActiveSlots := uint64(640)
-	maxBaseDiskUnits := uint64(640)
-
 	check := func(
 		actual baseDisk,
 		imageSize uint64,
-		srcDiskCheckpointSize uint64,
+		srcDisk *types.Disk,
 	) {
 
 		require.NotEmpty(t, actual.id)
@@ -29,101 +26,33 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 		require.True(t, actual.fromPool)
 		require.Equal(t, baseDiskStatusScheduling, actual.status)
 
-		if srcDiskCheckpointSize != 0 {
-			require.Equal(t, "src_disk_zone", actual.srcDiskZoneID)
-			require.Equal(t, "src_disk", actual.srcDiskID)
-			require.Equal(t, "src_disk_checkpoint", actual.srcDiskCheckpointID)
+		if srcDisk != nil {
+			require.Equal(t, srcDisk.ZoneId, actual.srcDiskZoneID)
+			require.Equal(t, srcDisk.DiskId, actual.srcDiskID)
+			require.Equal(t, "image", actual.srcDiskCheckpointID)
 		}
 	}
 
-	generate := func(requiredSize uint64) baseDisk {
-		storage := &storageYDB{
-			maxActiveSlots:   maxActiveSlots,
-			maxBaseDiskUnits: maxBaseDiskUnits,
-		}
+	storage := &storageYDB{}
 
-		imageSize := requiredSize
-		var srcDiskCheckpointSize uint64
+	imageSize := uint64(1024)
 
-		baseDisk := storage.generateBaseDisk(
-			"image",
-			"zone",
-			imageSize,
-			nil,
-			"",
-			srcDiskCheckpointSize,
-		)
-		check(baseDisk, imageSize, srcDiskCheckpointSize)
+	baseDisk := storage.generateBaseDisk(
+		"image",
+		"zone",
+		imageSize,
+		nil,
+	)
+	check(baseDisk, imageSize, nil)
 
-		srcDiskCheckpointSize = requiredSize
-		baseDisk = storage.generateBaseDisk(
-			"image",
-			"zone",
-			imageSize,
-			&types.Disk{ZoneId: "src_disk_zone", DiskId: "src_disk"},
-			"src_disk_checkpoint",
-			srcDiskCheckpointSize,
-		)
-		check(baseDisk, imageSize, srcDiskCheckpointSize)
-		return baseDisk
-	}
-
-	baseDisk := generate(0)
-	require.Equal(t, uint64(0), baseDisk.size)
-	require.Equal(t, uint64(640), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(640), baseDisk.units)
-
-	baseDisk = generate(1)
-	require.Equal(t, uint64(32<<30), baseDisk.size)
-	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(30), baseDisk.units)
-
-	baseDisk = generate(32 << 30)
-	require.Equal(t, uint64(32<<30), baseDisk.size)
-	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(30), baseDisk.units)
-
-	baseDisk = generate((32 << 30) + 1)
-	require.Equal(t, uint64(64<<30), baseDisk.size)
-	require.Equal(t, uint64(30), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(30), baseDisk.units)
-
-	baseDisk = generate(192 << 30)
-	require.Equal(t, uint64(192<<30), baseDisk.size)
-	require.Equal(t, uint64(60), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(60), baseDisk.units)
-
-	baseDisk = generate((192 << 30) + 1)
-	require.Equal(t, uint64(224<<30), baseDisk.size)
-	require.Equal(t, uint64(70), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(70), baseDisk.units)
-
-	baseDisk = generate(1024 << 30)
-	require.Equal(t, uint64(1024<<30), baseDisk.size)
-	require.Equal(t, uint64(320), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(320), baseDisk.units)
-
-	baseDisk = generate(2048 << 30)
-	require.Equal(t, uint64(2048<<30), baseDisk.size)
-	require.Equal(t, uint64(640), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(640), baseDisk.units)
-
-	baseDisk = generate(4096 << 30)
-	require.Equal(t, uint64(4096<<30), baseDisk.size)
-	require.Equal(t, uint64(640), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(640), baseDisk.units)
-
-	maxActiveSlots = 1
-	baseDisk = generate(4096 << 30)
-	require.Equal(t, uint64(4096<<30), baseDisk.size)
-	require.Equal(t, uint64(1), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(640), baseDisk.units)
-
-	maxBaseDiskUnits = 1
-	baseDisk = generate(4096 << 30)
-	require.Equal(t, uint64(4096<<30), baseDisk.size)
-	require.Equal(t, uint64(1), baseDisk.maxActiveSlots)
-	require.Equal(t, uint64(1), baseDisk.units)
+	srcDisk := &types.Disk{ZoneId: "src_disk_zone", DiskId: "src_disk"}
+	baseDisk = storage.generateBaseDisk(
+		"image",
+		"zone",
+		imageSize,
+		srcDisk,
+	)
+	check(baseDisk, imageSize, srcDisk)
 }
 
 func TestCommonFreeSlots(t *testing.T) {
