@@ -60,6 +60,8 @@ private:
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
 
     TRequestInfoPtr Poisoner;
 

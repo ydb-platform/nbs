@@ -203,6 +203,7 @@ void TDiskAgentWriteActor::Done(
     }
     counters.SetBlocksCount(blocks);
     completion->Failed = failed;
+    completion->ExecCycles = RequestInfo->GetExecCycles();
 
     NCloud::Send(
         ctx,
@@ -469,6 +470,8 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {
