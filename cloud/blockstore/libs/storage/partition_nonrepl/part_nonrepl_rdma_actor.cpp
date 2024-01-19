@@ -310,6 +310,8 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
     RequestsInProgress.RemoveRequest(requestId);
@@ -334,6 +336,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(time, requestBytes);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
     RequestsInProgress.RemoveRequest(requestId);
@@ -359,6 +363,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
     RequestsInProgress.RemoveRequest(requestId);
@@ -384,6 +390,8 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
+
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
     RequestsInProgress.RemoveRequest(requestId);

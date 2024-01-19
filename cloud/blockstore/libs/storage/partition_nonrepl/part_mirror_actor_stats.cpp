@@ -18,6 +18,8 @@ void TMirrorPartitionActor::HandlePartCounters(
 
     if (i < ReplicaCounters.size()) {
         ReplicaCounters[i] = std::move(msg->DiskCounters);
+        NetworkBytes += msg->NetworkBytes;
+        CpuUsage += CpuUsage;
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
@@ -63,6 +65,11 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
         MakeIntrusive<TCallContext>(),
         std::move(stats));
+
+    request->NetworkBytes = NetworkBytes;
+    request->CpuUsage = CpuUsage;
+    NetworkBytes = 0;
+    CpuUsage = {};
 
     NCloud::Send(
         ctx,

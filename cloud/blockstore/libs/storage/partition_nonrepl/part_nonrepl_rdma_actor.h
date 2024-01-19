@@ -56,6 +56,8 @@ private:
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
 
     using TEndpointFuture = NThreading::TFuture<NRdma::IClientEndpointPtr>;
     THashMap<TString, TEndpointFuture> AgentId2EndpointFuture;

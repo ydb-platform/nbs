@@ -157,6 +157,9 @@ void TNonreplicatedPartitionMigrationActor::HandleRangeMigrated(
 
     auto* msg = ev->Get();
 
+    NetworkBytes += 2 * msg->Range.Size() * SrcConfig->GetBlockSize();
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
+
     ProfileLog->Write({
         .DiskId = SrcConfig->GetName(),
         .Ts = msg->ReadStartTs,

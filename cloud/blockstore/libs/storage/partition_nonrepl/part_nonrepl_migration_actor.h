@@ -52,6 +52,8 @@ private:
     NActors::TActorId DstActorId;
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
 
     bool UpdateCountersScheduled = false;
 

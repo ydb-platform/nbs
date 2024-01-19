@@ -55,6 +55,8 @@ public:
         , ParentActorId(parentActorId)
         , RequestId(requestId)
     {
+        TRequestScope timer(*RequestInfo);
+
         auto& buffers = *Response.MutableBlocks()->MutableBuffers();
         buffers.Reserve(blockCount);
         for (ui32 i = 0; i < blockCount; ++i) {
@@ -105,6 +107,8 @@ public:
         ui32 status,
         size_t responseBytes) override
     {
+        TRequestScope timer(*RequestInfo);
+
         auto guard = Guard(Lock);
 
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
@@ -146,6 +150,9 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+
+        timer.Finish();
+        completion->ExecCycles = RequestInfo->GetExecCycles();
 
         counters.SetBlocksCount(blocks);
         auto completionEvent = std::make_unique<IEventHandle>(
