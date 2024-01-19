@@ -324,6 +324,112 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldNotTreatAppearanceOfSerialAndPhysicalOffsetAsDestructiveChange)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        TDeviceConfig device;
+
+        device.SetDeviceName("dev-1");
+        device.SetDeviceUUID("uuid-1");
+        device.SetRack("rack-1");
+        device.SetBlockSize(4_KB);
+        device.SetBlocksCount(10_GB / 4_KB);
+
+        const auto agent1a = AgentConfig(1, {device});
+
+        device.SetSerialNumber("xxx");
+        device.SetPhysicalOffset(111);
+        const auto agent1b = AgentConfig(1, {device});
+
+        device.SetSerialNumber("yyy");
+        const auto agent1c = AgentConfig(1, {device});
+
+        device.SetSerialNumber("xxx");
+        device.SetPhysicalOffset(222);
+        const auto agent1d = AgentConfig(1, {device});
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents({ agent1a })
+            .WithDisks({
+                Disk("disk-1", {"uuid-1"}),
+            })
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            auto error = state.RegisterAgent(
+                db,
+                agent1b,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            auto error = state.RegisterAgent(
+                db,
+                agent1c,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate);
+
+            // error is not propagated to TRegisterAgentResponse
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TString affectedDisk;
+            UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                db,
+                "uuid-1",
+                NProto::DEVICE_STATE_ONLINE,
+                Now(),
+                "test",
+                affectedDisk));
+
+            UNIT_ASSERT(affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisk);
+            UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ONLINE, update);
+            UNIT_ASSERT_VALUES_EQUAL("", update.State.GetStateMessage());
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            auto error = state.RegisterAgent(
+                db,
+                agent1d,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate);
+
+            // error is not propagated to TRegisterAgentResponse
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(3, state.GetDiskStateUpdates().size());
+            const auto& update = state.GetDiskStateUpdates().back();
+            UNIT_ASSERT_DISK_STATE("disk-1", DISK_STATE_ERROR, update);
+        });
+    }
+
     Y_UNIT_TEST(ShouldRejectConfigWithWrongVersion)
     {
         TTestExecutor executor;
