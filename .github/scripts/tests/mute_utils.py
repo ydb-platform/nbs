@@ -99,7 +99,9 @@ def dec_attr(node, attr, value):
     return op_attr(node, attr, operator.sub, value)
 
 
-def update_suite_info(root, n_remove_failures=None, n_remove_errors=None, n_skipped=None):
+def update_suite_info(
+    root, n_remove_failures=None, n_remove_errors=None, n_skipped=None
+):
     if n_remove_failures:
         dec_attr(root, "failures", n_remove_failures)
 

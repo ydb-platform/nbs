@@ -65,7 +65,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--filter-file", required=False)
-    parser.add_argument("--decompress", action="store_true", default=False, help="decompress ctest log")
+    parser.add_argument(
+        "--decompress", action="store_true", default=False, help="decompress ctest log"
+    )
     parser.add_argument("ctest_log", type=str)
     parser.add_argument("ctest_junit_report")
     args = parser.parse_args()

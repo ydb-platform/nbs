@@ -89,3 +89,8 @@ test-results
 
 # IDE files
 *.swp
+
+# act files
+.input
+.secrets
+.vars

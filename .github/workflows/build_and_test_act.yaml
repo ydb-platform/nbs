@@ -72,10 +72,10 @@ on:
         default: "relwithdebinfo"
       test_size:
         type: string
-        default: "small"
+        default: "small,medium,large"
       test_type:
         type: string
-        default: "unittest"
+        default: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
       run_build:
         type: boolean
         default: true
@@ -123,6 +123,10 @@ jobs:
         sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
     - name: Prepare VM
       uses: ./.github/actions/prepare
+    - name: add user github if not exists
+      shell: bash
+      run: |
+        id -u github || sudo adduser github --gecos "" --disabled-password
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
       with:
@@ -160,5 +164,4 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
       timeout-minutes: 1440
-
 
