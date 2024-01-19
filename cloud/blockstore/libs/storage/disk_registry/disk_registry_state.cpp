@@ -1013,7 +1013,6 @@ NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
             d.GetBlockSize(),
             d.GetBlocksCount(),
             d.GetUnadjustedBlockCount(),
-            d.GetPhysicalOffset(),
             TStringBuf {d.GetDeviceName()}
         );
     };
@@ -1022,7 +1021,9 @@ NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
     const auto newKey = key(device);
 
     if (oldKey == newKey && (oldConfig->GetSerialNumber().empty()
-            || oldConfig->GetSerialNumber() == device.GetSerialNumber()))
+            || oldConfig->GetSerialNumber() == device.GetSerialNumber())
+            && (oldConfig->GetPhysicalOffset() == 0
+                || oldConfig->GetPhysicalOffset() == device.GetPhysicalOffset()))
     {
         return {};
     }
