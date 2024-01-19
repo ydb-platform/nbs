@@ -4,6 +4,7 @@ import re
 import json
 import os
 import sys
+import shutil
 import urllib.parse
 import logging
 from xml.etree import ElementTree as ET
@@ -75,6 +76,7 @@ class YTestReportTrace:
             with open(fn, "r") as fp:
                 for line in fp:
                     event = json.loads(line.strip())
+
                     if event["name"] == "subtest-finished":
                         event = event["value"]
                         cls = event["class"]
@@ -159,7 +161,8 @@ def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
                             break
                         out_fp.write(buf)
         else:
-            os.symlink(fn, out_fn)
+            if fn != out_fn:
+                shutil.copy(fn, out_fn)
     quoted_fpath = urllib.parse.quote(fpath)
     return f"{log_url_prefix}{quoted_fpath}"
 
@@ -192,6 +195,7 @@ def transform(
                 mute_target(case)
 
             if is_fail:
+                suite_base_name = suite_name.split("/")[-1]
                 if "." in test_name:
                     test_cls, test_method = test_name.rsplit(".", maxsplit=1)
                     logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
@@ -201,14 +205,14 @@ def transform(
                     match = re.search(pattern, test_name)
                     chunk_idx = int(match.group(1))
                     chunks_total = int(match.group(2))
-                    logs = filter_empty_logs(traces.get_logs_chunks(suite_name, chunk_idx, chunks_total))
+                    logs = filter_empty_logs(traces.get_logs_chunks(suite_base_name, chunk_idx, chunks_total))
                 else:
                     continue
 
 
                 if logs:
                     log_print(
-                        f"add {list(logs.keys())!r} properties for {test_cls}.{test_method}"
+                        f"add {list(logs.keys())!r} properties for {suite_base_name}/{test_name}"
                     )
                     for name, fn in logs.items():
                         url = save_log(
