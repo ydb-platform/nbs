@@ -5,13 +5,15 @@ import json
 import os
 import sys
 import urllib.parse
+import logging
 from xml.etree import ElementTree as ET
 from mute_utils import mute_target, pattern_to_re
 from junit_utils import add_junit_link_property, is_faulty_testcase
 
+logging.basicConfig(level=logging.DEBUG)
 
 def log_print(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+    logging.debug(*args, **kwargs)
 
 
 class YaMuteCheck:

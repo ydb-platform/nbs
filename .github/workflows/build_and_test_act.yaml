@@ -165,7 +165,3 @@ jobs:
         test_threads: ${{ inputs.test_threads }}
       timeout-minutes: 1440
 
-    - name: sleep
-      shell: bash
-      run: sleep 3600
-
