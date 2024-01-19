@@ -7,12 +7,14 @@ TIMEOUT(180)
 SRCS(
     compound_storage_ut.cpp
     storage_aio_ut.cpp
+    storage_rdma_ut.cpp
     storage_null_ut.cpp
     storage_spdk_ut.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/server
+    cloud/blockstore/libs/rdma/iface
 
     cloud/storage/core/libs/aio
 )
