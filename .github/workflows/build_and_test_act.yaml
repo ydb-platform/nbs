@@ -61,7 +61,7 @@ on:
     inputs:
       build_target:
         type: string
-        default: "cloud/disk_manager/"
+        default: "cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test/"
         description: "limit build to specific target"
       test_target:
         type: string

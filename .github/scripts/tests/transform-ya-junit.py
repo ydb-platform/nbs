@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 def log_print(*args, **kwargs):
     logging.debug(*args, **kwargs)
+    print(*args, **kwargs)
 
 
 class YaMuteCheck:
@@ -80,12 +81,35 @@ class YTestReportTrace:
                         subtest = event["subtest"]
                         cls = cls.replace("::", ".")
                         self.traces[(cls, subtest)] = event
+                    elif event["name"] == "chunk-event":
+                        event = event["value"]
+                        chunk_idx = event["chunk_index"]
+                        chunk_total = event["nchunks"]
+                        test_name = folder.split("/")[-1]
+                        self.traces[(test_name, chunk_idx, chunk_total)] = event
 
     def has(self, cls, name):
         return (cls, name) in self.traces
 
     def get_logs(self, cls, name):
         trace = self.traces.get((cls, name))
+
+        if not trace:
+            return {}
+
+        logs = trace["logs"]
+
+        result = {}
+        for k, path in logs.items():
+            if k == "logsdir":
+                continue
+
+            result[k] = path.replace("$(BUILD_ROOT)", self.out_root)
+
+        return result
+
+    def get_logs_chunks(self, suite, idx, total):
+        trace = self.traces.get((suite, idx, total))
 
         if not trace:
             return {}
@@ -167,9 +191,20 @@ def transform(
                 log_print("mute", suite_name, test_name)
                 mute_target(case)
 
-            if is_fail and "." in test_name:
-                test_cls, test_method = test_name.rsplit(".", maxsplit=1)
-                logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
+            if is_fail:
+                if "." in test_name:
+                    test_cls, test_method = test_name.rsplit(".", maxsplit=1)
+                    logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
+
+                elif "chunk" in test_name:
+                    pattern = r'\[(\d+)/(\d+)\]'
+                    match = re.search(pattern, test_name)
+                    chunk_idx = int(match.group(1))
+                    chunks_total = int(match.group(2))
+                    logs = filter_empty_logs(traces.get_logs_chunks(suite_name, chunk_idx, chunks_total))
+                else:
+                    continue
+
 
                 if logs:
                     log_print(
