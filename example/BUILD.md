@@ -33,7 +33,7 @@ cd nbs
 
 To build all nbs binaries and dependencies just run:
 ```bash
-./ya make cloud/blockstore
+./ya make cloud/blockstore/buildall -r
 ```
 
 ### Build particular target
@@ -41,8 +41,9 @@ To build all nbs binaries and dependencies just run:
 If you need to build particular target, provide corresponding path to ```./ya``` utility:
 
 | Target | Command | Result binary path |
-| ------------ |     -----      |  ---          |
-| **nbsd** | ```./ya make cloud/blockstore/apps/server``` | cloud/blockstore/apps/server/nbsd    |
+| ------ | ------- | ------------------ |
+| **ydbd** | ```./ya make contrib/ydb/apps/ydbd``` | contrib/ydb/apps/ydbd/ydbd |
+| **nbsd** | ```./ya make cloud/blockstore/apps/server``` | cloud/blockstore/apps/server/nbsd |
 | **diskagentd** | ```./ya make cloud/blockstore/apps/disk_agent``` | cloud/blockstore/apps/disk_agent/diskagentd |
 | **blockstore-client** | ```./ya make cloud/blockstore/apps/client``` | cloud/blockstore/apps/client/blockstore-client |
 | **blockstore-nbd** | ```./ya make cloud/blockstore/tools/nbd``` | cloud/blockstore/tools/nbd/blockstore-nbd |

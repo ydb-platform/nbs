@@ -1,10 +1,11 @@
 # Setup for local debugging
 
 ## Build binaries from sources
-Build nbsd, blockstore-client, diskagentd, blockstore-nbd and ydbd (for more info check [build instruction](BUILD.md))
+To build `nbsd`, `blockstore-client`, `diskagentd`, `blockstore-nbd` and `ydbd` binaries run the following command from the repository root folder:
 ```bash
-ya make cloud/blockstore/buildall -r
+./ya make cloud/blockstore/buildall -r
 ```
+For more info check [build instruction](BUILD.md)
 
 ## Prepare current directory
 Move to example directory
