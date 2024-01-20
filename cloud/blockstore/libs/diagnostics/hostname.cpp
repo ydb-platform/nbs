@@ -115,7 +115,7 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
            << data.MonitoringClusterName << "&p.host=cluster";
 }
 
-TString GetSolomonBsProxyUrl(
+TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool)

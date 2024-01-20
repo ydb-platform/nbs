@@ -11,7 +11,7 @@ import "cloud/storage/core/protos/trace.proto";
 
 message TMonitoringUrlData
 {
-    // Monitoring cluster name (e.g. yandexcloud_prod_vla).
+    // Monitoring cluster name.
     optional string MonitoringClusterName = 1;
     // Monitoring host url.
     optional string MonitoringUrl = 2;

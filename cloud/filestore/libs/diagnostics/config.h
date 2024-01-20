@@ -19,10 +19,7 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringUrl;
     TString MonitoringProject;
 
-    TMonitoringUrlData()
-        : MonitoringUrl("https://monitoring.yandex-team.ru")
-        , MonitoringProject("nfs")
-    {}
+    TMonitoringUrlData() : MonitoringProject("nfs") {}
     TMonitoringUrlData(const TMonitoringUrlData& rhs) = default;
 
     TMonitoringUrlData(const NProto::TMonitoringUrlData& data)

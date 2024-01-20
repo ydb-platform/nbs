@@ -164,7 +164,7 @@ void DumpMonitoringVolumeLink(
     const TDiagnosticsConfig& config,
     const TString& diskId);
 
-void DumpSolomonPartitionLink(
+void DumpMonitoringPartitionLink(
     IOutputStream& out,
     const TDiagnosticsConfig& config);
 

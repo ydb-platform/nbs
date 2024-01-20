@@ -34,7 +34,7 @@ TString GetMonitoringVolumeUrl(
 
 TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config);
 
-TString GetSolomonBsProxyUrl(
+TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
     const TString& storagePool);

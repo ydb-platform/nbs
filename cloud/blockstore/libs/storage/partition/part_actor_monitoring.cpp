@@ -7,15 +7,16 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-
 #include <cloud/storage/core/libs/common/format.h>
+
+#include <library/cpp/cgiparam/cgiparam.h>
+#include <library/cpp/monlib/service/pages/templates.h>
+
+#include <util/stream/str.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
-#include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/cgiparam/cgiparam.h>
-
-#include <util/stream/str.h>
+#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -66,23 +67,23 @@ void DumpDownGroups(
                             }
                             return entry->GroupID == groupId;
                         };
-                        auto it = std::ranges::find_if(
-                            storage.Channels,
-                            groupIdFinder);
-                        if (it == storage.Channels.end() ||
-                            std::any_of(
-                                it + 1,
-                                storage.Channels.end(),
-                                groupIdFinder))
-                        {
+                        auto matchedInfos = storage.Channels |
+                                            std::views::filter(groupIdFinder);
+                        if (matchedInfos.empty()) {
                             out << groupId;
                         } else {
-                            out << groupId << " <a href='"
-                                << GetSolomonBsProxyUrl(
-                                       config,
-                                       groupId,
-                                       it->StoragePool)
-                                << "'>Graphs</a>";
+                            for (const TTabletChannelInfo& channelInfo:
+                                 matchedInfos)
+                            {
+                                out << groupId << "&nbsp;<a href='"
+                                    << GetMonitoringYDBGroupUrl(
+                                           config,
+                                           groupId,
+                                           channelInfo.StoragePool)
+                                    << "'>Graphs&nbsp;"
+                                    << "(Channel=" << channelInfo.Channel
+                                    << ")</a><br/>";
+                            }
                         }
                     }
                     TABLEH() {
@@ -180,7 +181,7 @@ void DumpChannels(
                             }
                             TABLED() {
                                 out << "<a href='"
-                                    << GetSolomonBsProxyUrl(
+                                    << GetMonitoringYDBGroupUrl(
                                            config,
                                            latestEntry->GroupID,
                                            channel.StoragePool)
@@ -518,7 +519,7 @@ void TPartitionActor::HandleHttpInfo_Default(
             DIV_CLASS("tab-content") {
                 DIV_CLASS_ID("tab-pane active", "Overview") {
                     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
-                    DumpSolomonPartitionLink(out, *DiagnosticsConfig);
+                    DumpMonitoringPartitionLink(out, *DiagnosticsConfig);
 
                     TAG(TH3) { out << "State"; }
                     State->DumpHtml(out);

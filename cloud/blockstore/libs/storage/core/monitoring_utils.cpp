@@ -981,7 +981,7 @@ void DumpMonitoringVolumeLink(
     }
 }
 
-void DumpSolomonPartitionLink(
+void DumpMonitoringPartitionLink(
     IOutputStream& out,
     const TDiagnosticsConfig& config)
 {
