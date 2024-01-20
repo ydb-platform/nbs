@@ -55,6 +55,7 @@ compile_commands.json
 *.exe
 *.out
 *.app
+*.debug
 
 # Generated proto files
 *.pb.h
