@@ -1,6 +1,5 @@
 #include "disk_registry_state.h"
 
-#include "cloud/storage/core/protos/media.pb.h"
 #include "disk_registry_schema.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
