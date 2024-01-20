@@ -521,6 +521,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
+    servicesMask.EnableConfigsDispatcher = 1;
 
     auto nodeId = sArgs.NodeId;
     auto storageConfig = sArgs.StorageConfig;
