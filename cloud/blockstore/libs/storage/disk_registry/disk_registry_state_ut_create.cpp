@@ -416,6 +416,115 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_VALUES_EQUAL(logicalDeviceSize, infos[0].ChunkSize);
         }
     }
+
+    Y_UNIT_TEST(ShouldAllocateDiskWithAdjustedBlockCount)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        const TString testDeviceName = "/dev/disk/by-partlabel/NVMENBS01";
+        const TString testDeviceId = "uuid-1";
+        const ui64 testDeviceSizeInBytes = 99998498816; // 93.1 GiB
+        const ui64 testUnadjustedBlockCount = testDeviceSizeInBytes / DefaultLogicalBlockSize;
+        const ui64 testBlockCount = 93_GB / DefaultLogicalBlockSize;
+
+        const NProto::TAgentConfig agentConfig = AgentConfig(1, {
+            Device(
+                testDeviceName,
+                testDeviceId,
+                "rack-1",
+                DefaultLogicalBlockSize,
+                testDeviceSizeInBytes)
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithStorageConfig({})
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agentConfig,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate));
+
+            const auto d = state.GetDevice(testDeviceId);
+            UNIT_ASSERT_C(d.GetDeviceUUID().empty(), d);
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto r = state.UpdateCmsDeviceState(
+                db,
+                agentConfig.GetAgentId(),
+                testDeviceName,
+                NProto::DEVICE_STATE_ONLINE,
+                Now(),
+                false); // dryRun
+
+            UNIT_ASSERT_SUCCESS(r.Error);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesThatNeedToBeCleaned.size());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), r.Timeout);
+
+            const auto d = state.GetDevice(testDeviceId);
+
+            UNIT_ASSERT_VALUES_EQUAL(testBlockCount, d.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultLogicalBlockSize, d.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(testUnadjustedBlockCount, d.GetUnadjustedBlockCount());
+
+            UNIT_ASSERT(state.IsDirtyDevice(testDeviceId));
+            state.MarkDeviceAsClean(Now(), db, testDeviceId);
+            UNIT_ASSERT(!state.IsDirtyDevice(testDeviceId));
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TDiskRegistryState::TAllocateDiskResult result;
+            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                Now(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams {
+                    .DiskId = "nrd0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount = testBlockCount
+                },
+                &result));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+
+            const auto& d = result.Devices[0];
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultLogicalBlockSize, d.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(testBlockCount, d.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(testUnadjustedBlockCount, d.GetUnadjustedBlockCount());
+            UNIT_ASSERT_EQUAL(NProto::DISK_STATE_ONLINE, state.GetDiskState("nrd0"));
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agentConfig,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate));
+
+            UNIT_ASSERT_VALUES_EQUAL_C(0, affectedDisks.size(), affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, disksToReallocate.size(), disksToReallocate[0]);
+
+            UNIT_ASSERT_EQUAL(
+                NProto::DISK_STATE_ONLINE,
+                state.GetDiskState("nrd0"));
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
