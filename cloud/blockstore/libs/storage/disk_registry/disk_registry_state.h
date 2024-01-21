@@ -883,9 +883,9 @@ private:
         TVector<TDiskId>& affectedDisks);
 
     bool HasDependentSsdDisks(const NProto::TAgentConfig& agent) const;
-    ui32 CountBrokenPlacementGroupPartitionsAfterAgentRemoval(
+    ui32 CountBrokenHddPlacementGroupPartitionsAfterAgentRemoval(
         const NProto::TAgentConfig& agent) const;
-    ui32 CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
+    ui32 CountBrokenHddPlacementGroupPartitionsAfterDeviceRemoval(
         const THashSet<TString>& deviceIds) const;
 
     NProto::TError CheckAgentStateTransition(
