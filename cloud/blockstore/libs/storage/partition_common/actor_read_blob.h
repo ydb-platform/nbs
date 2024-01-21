@@ -25,8 +25,8 @@ public:
 private:
     const TRequestInfoPtr RequestInfo;
 
-    const NActors::TActorId Tablet;
-    const ui64 TabletId;
+    const NActors::TActorId PartitionActorId;
+    const ui64 PartitionTabletId;
     const ui32 BlockSize;
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
@@ -37,8 +37,9 @@ private:
 public:
     TReadBlobActor(
         TRequestInfoPtr requestInfo,
-        const NActors::TActorId& tablet,
-        ui64 tabletId,
+        const NActors::TActorId& partitionActorId,
+        const NActors::TActorId& volumeActorId,
+        ui64 partitionTabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,

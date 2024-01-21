@@ -10252,7 +10252,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         FSend sendRequest,
         FReceive receiveResponse,
         TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation
-            expectedOperation)
+            expectedOperation,
+        bool killPartition)
     {
         auto config = DefaultConfig();
 
@@ -10296,34 +10297,39 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Make handler for intercepting EvLongRunningOperation message.
         // Attention! counters will be doubled, because we will intercept the
-        // initial request, and forwarded to TVolumeActor.
+        // requests sent to TPartitionActor and TVolumeActor.
         ui32 longRunningBeginCount = 0;
         ui32 longRunningFinishCount = 0;
         ui32 longRunningPingCount = 0;
+        ui32 longRunningCanceledCount = 0;
 
         auto takeCounters = [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             using TEvLongRunningOperation =
                 TEvPartitionCommonPrivate::TEvLongRunningOperation;
-            switch (event->GetTypeRewrite()) {
-                case TEvPartitionCommonPrivate::EvLongRunningOperation: {
-                    auto* msg = event->Get<TEvLongRunningOperation>();
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        expectedOperation,
-                        msg->Operation);
+            using EReason = TEvLongRunningOperation::EReason;
 
-                    if (msg->Reason ==
-                        TEvLongRunningOperation::EReason::LongRunningDetected)
-                    {
+            if (event->GetTypeRewrite() ==
+                TEvPartitionCommonPrivate::EvLongRunningOperation)
+            {
+                auto* msg = event->Get<TEvLongRunningOperation>();
+
+                UNIT_ASSERT_VALUES_EQUAL(expectedOperation, msg->Operation);
+
+                switch (msg->Reason) {
+                    case EReason::LongRunningDetected:
                         if (msg->FirstNotify) {
                             longRunningBeginCount++;
                         } else {
                             longRunningPingCount++;
                         }
-                    } else {
+                        break;
+                    case EReason::Finished:
                         longRunningFinishCount++;
-                    }
-                    break;
+                        break;
+                    case EReason::Cancelled:
+                        longRunningCanceledCount++;
+                        break;
                 }
             }
             return TTestActorRuntime::DefaultObserverFunc(runtime, event);
@@ -10368,9 +10374,23 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options, TDuration::Seconds(1));
         }
 
-        // Returning stolen requests to complete the execution of the request.
-        for (auto& request: stolenRequests) {
-            runtime->Send(request.release());
+        if (killPartition) {
+            partition.KillTablet();
+        } else {
+            // Returning stolen requests to complete the execution of the
+            // request.
+            for (auto& request: stolenRequests) {
+                runtime->Send(request.release());
+            }
+        }
+
+        // Wait for EvLongRunningOperation (finish or cancel) arrival.
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionCommonPrivate::EvLongRunningOperation);
+            runtime->AdvanceCurrentTime(TDuration::Seconds(60));
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
         }
 
         // Wait for background operations completion.
@@ -10380,11 +10400,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = receiveResponse(partition);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
+                killPartition ? E_REJECTED : S_OK,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
-
         // Wait for EvVolumePartCounters arrived.
         {
             TDispatchOptions options;
@@ -10392,41 +10411,43 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 TEvStatsService::EvVolumePartCounters);
             runtime->DispatchEvents(options);
 
+            UNIT_ASSERT_VALUES_EQUAL(2, longRunningBeginCount);
+            UNIT_ASSERT_VALUES_EQUAL(4, longRunningPingCount);
             UNIT_ASSERT_VALUES_EQUAL(
-                2,
-                longRunningBeginCount);
-            UNIT_ASSERT_VALUES_EQUAL(
-                2,
+                killPartition ? 0 : 2,
                 longRunningFinishCount);
             UNIT_ASSERT_VALUES_EQUAL(
-                4,
-                longRunningPingCount);
+                killPartition ? 2 : 0,
+                longRunningCanceledCount);
         }
 
-        // smoke test for monpage
-        auto channelsTab = partition.RemoteHttpInfo(
-            BuildRemoteHttpQuery(TestTabletId, {}, "Channels"),
-            HTTP_METHOD::HTTP_METHOD_GET);
+        if (!killPartition) {
+            // smoke test for monpage
+            auto channelsTab = partition.RemoteHttpInfo(
+                BuildRemoteHttpQuery(TestTabletId, {}, "Channels"),
+                HTTP_METHOD::HTTP_METHOD_GET);
 
-        UNIT_ASSERT_C(channelsTab->Html.Contains("svg"), channelsTab->Html);
+            UNIT_ASSERT_C(channelsTab->Html.Contains("svg"), channelsTab->Html);
+        }
     }
 
     Y_UNIT_TEST(ShouldReportLongRunningReadBlobOperations)
     {
         auto sendRequest = [](TPartitionClient& partition)
         {
-            partition.SendReadBlocksRequest(0);   //
+            partition.SendReadBlocksRequest(0);
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvReadBlocksResponse();   //
+            return partition.RecvReadBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
             sendRequest,
             receiveResponse,
             TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
-                ReadBlob);
+                ReadBlob,
+            false);
     }
 
     Y_UNIT_TEST(ShouldReportLongRunningWriteBlobOperations)
@@ -10434,18 +10455,58 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto sendRequest = [](TPartitionClient& partition)
         {
             partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(0, 255));   //
+                TBlockRange32::WithLength(0, 255));
         };
         auto receiveResponse = [](TPartitionClient& partition)
         {
-            return partition.RecvWriteBlocksResponse();   //
+            return partition.RecvWriteBlocksResponse();
         };
 
         DoShouldReportLongRunningBlobOperations(
             sendRequest,
             receiveResponse,
             TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
-                WriteBlob);
+                WriteBlob,
+            false);
+    }
+
+    Y_UNIT_TEST(ShouldReportLongRunningReadBlobOperationCancel)
+    {
+        auto sendRequest = [](TPartitionClient& partition)
+        {
+            partition.SendReadBlocksRequest(0);
+        };
+        auto receiveResponse = [](TPartitionClient& partition)
+        {
+            return partition.RecvReadBlocksResponse();
+        };
+
+        DoShouldReportLongRunningBlobOperations(
+            sendRequest,
+            receiveResponse,
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
+                ReadBlob,
+            true);
+    }
+
+    Y_UNIT_TEST(ShouldReportLongRunningWriteBlobOperationCancel)
+    {
+        auto sendRequest = [](TPartitionClient& partition)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 255));
+        };
+        auto receiveResponse = [](TPartitionClient& partition)
+        {
+            return partition.RecvWriteBlocksResponse();
+        };
+
+        DoShouldReportLongRunningBlobOperations(
+            sendRequest,
+            receiveResponse,
+            TEvPartitionCommonPrivate::TEvLongRunningOperation::EOperation::
+                WriteBlob,
+            true);
     }
 }
 
