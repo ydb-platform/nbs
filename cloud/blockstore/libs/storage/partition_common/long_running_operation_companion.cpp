@@ -68,11 +68,13 @@ TRunningActors::TTimeoutsStat TRunningActors::ExtractLongRunningStat()
 ////////////////////////////////////////////////////////////////////////////////
 
 TLongRunningOperationCompanion::TLongRunningOperationCompanion(
-        NActors::TActorId parentActor,
+        NActors::TActorId partitionActor,
+        NActors::TActorId volumeActor,
         TDuration longRunningThreshold,
         TLongRunningOperationCompanion::EOperation operation,
         ui32 groupId)
-    : ParentActor(parentActor)
+    : PartitionActor(partitionActor)
+    , VolumeActor(volumeActor)
     , Operation(operation)
     , GroupId(groupId)
     , PingDelayProvider(
@@ -92,42 +94,69 @@ void TLongRunningOperationCompanion::RequestStarted(const TActorContext& ctx)
 
 void TLongRunningOperationCompanion::RequestFinished(const TActorContext& ctx)
 {
+    using TEvLongRunningOperation =
+        TEvPartitionCommonPrivate::TEvLongRunningOperation;
+
     if (!LongRunningDetected) {
         return;
     }
 
-    NCloud::Send(
-        ctx,
-        ParentActor,
-        std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
+    auto makeMessage = [&]()
+    {
+        return std::make_unique<TEvLongRunningOperation>(
             Operation,
             true,
             ctx.Now() - StartAt,
             GroupId,
-            true));
+            TEvLongRunningOperation::EReason::Finished);
+    };
+    NCloud::Send(ctx, PartitionActor, makeMessage());
+    NCloud::Send(ctx, VolumeActor, makeMessage());
 }
 
 void TLongRunningOperationCompanion::HandleTimeout(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TEvLongRunningOperation =
+        TEvPartitionCommonPrivate::TEvLongRunningOperation;
     Y_UNUSED(ev);
 
     LongRunningDetected = true;
     PingCount++;
 
-    NCloud::Send(
-        ctx,
-        ParentActor,
-        std::make_unique<TEvPartitionCommonPrivate::TEvLongRunningOperation>(
+    auto makeMessage = [&]()
+    {
+        return std::make_unique<TEvLongRunningOperation>(
             Operation,
             PingCount == 1,
             ctx.Now() - StartAt,
             GroupId,
-            false));
+            TEvLongRunningOperation::EReason::LongRunningDetected);
+    };
+    NCloud::Send(ctx, PartitionActor, makeMessage());
+    NCloud::Send(ctx, VolumeActor, makeMessage());
 
     PingDelayProvider.IncreaseDelay();
     ctx.Schedule(PingDelayProvider.GetDelay(), new TEvents::TEvWakeup());
+}
+
+void TLongRunningOperationCompanion::RequestCancelled(
+    const NActors::TActorContext& ctx)
+{
+    using TEvLongRunningOperation =
+        TEvPartitionCommonPrivate::TEvLongRunningOperation;
+    auto makeMessage = [&]()
+    {
+        return std::make_unique<TEvLongRunningOperation>(
+            Operation,
+            true,
+            ctx.Now() - StartAt,
+            GroupId,
+            TEvLongRunningOperation::EReason::Cancelled);
+    };
+    NCloud::Send(ctx, PartitionActor, makeMessage());
+    NCloud::Send(ctx, VolumeActor, makeMessage());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

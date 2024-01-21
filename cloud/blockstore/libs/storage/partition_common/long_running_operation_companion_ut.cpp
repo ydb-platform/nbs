@@ -69,6 +69,7 @@ public:
         : TActor(&TThis::Main)
         , TLongRunningOperationCompanion(
               parentActor,
+              parentActor,
               TDuration::MilliSeconds(500),
               TLongRunningOperationCompanion::EOperation::DontCare,
               0)
@@ -117,7 +118,13 @@ Y_UNIT_TEST_SUITE(TLongRunningOperationCompanionTest)
 
         testEnv.DispatchEvents(TDuration::Seconds(1));
         {
+            // Get two LongRunningEvent (for TPartitionActor and TVolumeActor)
             auto longRunningEvent = testEnv.GrabLongRunningEvent();
+            UNIT_ASSERT_VALUES_EQUAL(
+                TLongRunningOperationCompanion::EOperation::DontCare,
+                longRunningEvent.Get()->Operation);
+
+            longRunningEvent = testEnv.GrabLongRunningEvent();
             UNIT_ASSERT_VALUES_EQUAL(
                 TLongRunningOperationCompanion::EOperation::DontCare,
                 longRunningEvent.Get()->Operation);
