@@ -1013,7 +1013,6 @@ NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
             d.GetBlockSize(),
             d.GetBlocksCount(),
             d.GetUnadjustedBlockCount(),
-            d.GetPhysicalOffset(),
             TStringBuf {d.GetDeviceName()}
         );
     };
@@ -1022,7 +1021,9 @@ NProto::TError TDiskRegistryState::CheckDestructiveConfigurationChange(
     const auto newKey = key(device);
 
     if (oldKey == newKey && (oldConfig->GetSerialNumber().empty()
-            || oldConfig->GetSerialNumber() == device.GetSerialNumber()))
+            || oldConfig->GetSerialNumber() == device.GetSerialNumber())
+            && (oldConfig->GetPhysicalOffset() == 0
+                || oldConfig->GetPhysicalOffset() == device.GetPhysicalOffset()))
     {
         return {};
     }
@@ -4645,17 +4646,17 @@ bool TDiskRegistryState::HasDependentSsdDisks(
     return false;
 }
 
-ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterAgentRemoval(
+ui32 TDiskRegistryState::CountBrokenHddPlacementGroupPartitionsAfterAgentRemoval(
     const NProto::TAgentConfig& agent) const
 {
     THashSet<TString> deviceIds;
     for (const auto& d: agent.GetDevices()) {
         deviceIds.insert(d.GetDeviceUUID());
     }
-    return CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(deviceIds);
+    return CountBrokenHddPlacementGroupPartitionsAfterDeviceRemoval(deviceIds);
 }
 
-ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
+ui32 TDiskRegistryState::CountBrokenHddPlacementGroupPartitionsAfterDeviceRemoval(
     const THashSet<TString>& deviceIds) const
 {
     ui32 maxBrokenCount = 0;
@@ -4674,6 +4675,10 @@ ui32 TDiskRegistryState::CountBrokenPlacementGroupPartitionsAfterDeviceRemoval(
             auto* disk = Disks.FindPtr(diskInfo.GetDiskId());
             Y_DEBUG_ABORT_UNLESS(disk);
             if (!disk) {
+                continue;
+            }
+
+            if (disk->MediaKind != NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
                 continue;
             }
 
@@ -4767,11 +4772,11 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     const bool hasDependentDisks = HasDependentSsdDisks(*agent);
     const ui32 brokenPlacementGroupPartitions =
-        CountBrokenPlacementGroupPartitionsAfterAgentRemoval(*agent);
-    const ui32 maxBrokenPartitions =
+        CountBrokenHddPlacementGroupPartitionsAfterAgentRemoval(*agent);
+    const ui32 maxBrokenHddPartitions =
         StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
     if (!hasDependentDisks
-            && brokenPlacementGroupPartitions <= maxBrokenPartitions)
+            && brokenPlacementGroupPartitions <= maxBrokenHddPartitions)
     {
         // no dependent disks => we can return this host immediately
         timeout = TDuration::Zero();
@@ -4986,7 +4991,7 @@ NProto::TError TDiskRegistryState::UpdateDeviceState(
     }
 
     auto error = CheckDeviceStateTransition(*devicePtr, newState, now);
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         return error;
     }
 
@@ -5199,11 +5204,11 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
     }
 
     const ui32 brokenPlacementGroupPartitions =
-        CountBrokenPlacementGroupPartitionsAfterDeviceRemoval({deviceId});
-    const ui32 maxBrokenPartitions =
+        CountBrokenHddPlacementGroupPartitionsAfterDeviceRemoval({deviceId});
+    const ui32 maxBrokenHddPartitions =
         StorageConfig->GetMaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval();
 
-    if (brokenPlacementGroupPartitions > maxBrokenPartitions) {
+    if (brokenPlacementGroupPartitions > maxBrokenHddPartitions) {
         error = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "will break too many partitions: "
