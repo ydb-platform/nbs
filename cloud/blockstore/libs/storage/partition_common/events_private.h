@@ -154,6 +154,7 @@ struct TEvPartitionCommonPrivate
         {
             LongRunningDetected,
             Finished,
+            Cancelled,
         };
 
         const EOperation Operation;
@@ -167,11 +168,10 @@ struct TEvPartitionCommonPrivate
                 bool firstNotify,
                 TDuration duration,
                 ui32 groupId,
-                bool finished)
+                EReason reason)
             : Operation(operation)
             , FirstNotify(firstNotify)
-            , Reason(
-                  finished ? EReason::Finished : EReason::LongRunningDetected)
+            , Reason(reason)
             , Duration(duration)
             , GroupId(groupId)
         {}
