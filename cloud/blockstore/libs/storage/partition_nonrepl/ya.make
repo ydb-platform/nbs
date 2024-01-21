@@ -46,12 +46,13 @@ SRCS(
 
     part_nonrepl_migration.cpp
     part_nonrepl_migration_actor.cpp
-    part_nonrepl_migration_actor_migration.cpp
-    part_nonrepl_migration_actor_mirror.cpp
-    part_nonrepl_migration_actor_readblocks.cpp
-    part_nonrepl_migration_actor_readblocks_local.cpp
-    part_nonrepl_migration_actor_stats.cpp
-    part_nonrepl_migration_state.cpp
+
+    part_nonrepl_migration_common_actor.cpp
+    part_nonrepl_migration_common_actor_migration.cpp
+    part_nonrepl_migration_common_actor_mirror.cpp
+    part_nonrepl_migration_common_actor_readblocks_local.cpp
+    part_nonrepl_migration_common_actor_readblocks.cpp
+    part_nonrepl_migration_common_actor_stats.cpp
 )
 
 PEERDIR(

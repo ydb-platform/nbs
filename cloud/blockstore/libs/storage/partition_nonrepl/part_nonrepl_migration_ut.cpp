@@ -37,6 +37,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     NRdma::IClientPtr RdmaClient;
+    TNonreplicatedPartitionMigrationActor* ActorPtr = nullptr;
 
     static void InitDevice(
         ui32 nodeId,
@@ -62,6 +63,38 @@ struct TTestEnv
         return devices;
     }
 
+    static TDevices DevicesForAgents(TVector<ui64> nodes)
+    {
+        TDevices devices;
+        int i = 1;
+        for (const auto& nodeId: nodes) {
+            InitDevice(
+                nodeId,
+                1024,
+                ToString(nodeId) + "_" + ToString(i),
+                devices.Add());
+            ++i;
+        }
+        return devices;
+    }
+
+    static TMigrations MigrationsForDevices(TVector<TString> srcDevices)
+    {
+        TMigrations migrations;
+        int i = 1;
+        for (const auto& srcDevice: srcDevices) {
+            auto* migration = migrations.Add();
+            migration->SetSourceDeviceId(srcDevice);
+            InitDevice(
+                10,
+                1024,
+                srcDevice + "_migration",
+                migration->MutableTargetDevice());
+            ++i;
+        }
+        return migrations;
+    }
+
     static TMigrations DefaultMigrations(ui64 nodeId)
     {
         TMigrations migrations;
@@ -78,7 +111,8 @@ struct TTestEnv
             TDevices devices,
             TMigrations migrations,
             NProto::EVolumeIOMode ioMode,
-            bool useRdma)
+            bool useRdma,
+            bool useSimpleMigrationBandwidthLimiter)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -95,6 +129,9 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetMaxMigrationBandwidth(16);
+        storageConfig.SetExpectedDiskAgentSize(
+            useSimpleMigrationBandwidthLimiter ? 100500 : 4);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -143,7 +180,7 @@ struct TTestEnv
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden
-            false // useSimpleMigrationBandwidthLimiter
+            useSimpleMigrationBandwidthLimiter
         );
 
         auto part = std::make_unique<TNonreplicatedPartitionMigrationActor>(
@@ -157,6 +194,7 @@ struct TTestEnv
             RdmaClient,
             VolumeActorId // statActorId
         );
+        ActorPtr = part.get();
 
         Runtime.AddLocalService(
             ActorId,
@@ -230,6 +268,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
+            false,
             false);
 
         TPartitionClient client(runtime, env.ActorId);
@@ -262,7 +301,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
-            true);
+            true,
+            false);
 
         env.Rdma().InitAllEndpoints();
 
@@ -279,6 +319,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_ERROR_READ_ONLY,
+            false,
             false);
 
         // petya should be migrated => 3 ranges
@@ -294,6 +335,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
+            false,
             false);
 
         TPartitionClient client(runtime, env.ActorId);
@@ -307,6 +349,79 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(
             5 * 1024 * DefaultBlockSize,
             counters.BytesCount.Value);
+    }
+
+
+    Y_UNIT_TEST(ShouldCalculateMigrationTimeout)
+    {
+        TTestBasicRuntime runtime;
+
+        auto devices = TTestEnv::DevicesForAgents({1, 1, 2, 1});
+        auto migrations = TTestEnv::MigrationsForDevices(
+            {devices[0].GetDeviceUUID(),
+             devices[1].GetDeviceUUID(),
+             devices[2].GetDeviceUUID()});
+        TTestEnv env(
+            runtime,
+            std::move(devices),
+            std::move(migrations),
+            NProto::VOLUME_IO_OK,
+            false,
+            false);
+
+        auto& processingBlocks = env.ActorPtr->GetProcessingBlocksForTesting();
+        
+        processingBlocks.MarkProcessed(TBlockRange64::WithLength(3072, 1024));
+        UNIT_ASSERT(processingBlocks.IsProcessingStarted());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 3,
+            env.ActorPtr->CalculateMigrationTimeout());
+
+        UNIT_ASSERT(processingBlocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(processingBlocks.IsProcessingStarted());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 3,
+            env.ActorPtr->CalculateMigrationTimeout());
+
+        UNIT_ASSERT(processingBlocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(processingBlocks.IsProcessingStarted());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1),
+            env.ActorPtr->CalculateMigrationTimeout());
+
+        UNIT_ASSERT(!processingBlocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(!processingBlocks.IsProcessingStarted());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateMigrationTimeoutWithSimpleLimiter)
+    {
+        TTestBasicRuntime runtime;
+
+        auto devices = TTestEnv::DevicesForAgents({1, 1, 2, 1});
+        auto migrations = TTestEnv::MigrationsForDevices(
+            {devices[0].GetDeviceUUID(),
+             devices[1].GetDeviceUUID(),
+             devices[2].GetDeviceUUID()});
+        TTestEnv env(
+            runtime,
+            std::move(devices),
+            std::move(migrations),
+            NProto::VOLUME_IO_OK,
+            false,
+            true);
+
+        auto& processingBlocks = env.ActorPtr->GetProcessingBlocksForTesting();
+
+        processingBlocks.MarkProcessed(TBlockRange64::WithLength(3072, 1024));
+
+        UNIT_ASSERT(processingBlocks.IsProcessingStarted());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(1) / 4,
+            env.ActorPtr->CalculateMigrationTimeout());
     }
 }
 

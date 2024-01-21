@@ -1,4 +1,4 @@
-#include "part_nonrepl_migration_actor.h"
+#include "part_nonrepl_migration_common_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 
@@ -8,8 +8,8 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationActor::HandleReadBlocks(
-    const TEvService::TEvReadBlocksRequest::TPtr& ev,
+void TNonreplicatedPartitionMigrationCommonActor::HandleReadBlocksLocal(
+    const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     ForwardRequestWithNondeliveryTracking(
