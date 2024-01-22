@@ -73,20 +73,19 @@ class YTestReportTrace:
             with open(fn, "r") as fp:
                 for line in fp:
                     event = json.loads(line.strip())
-                    print(json.dumps(event))
                     if event["name"] == "subtest-finished":
                         event = event["value"]
                         class_event = event["class"]
                         subtest = event["subtest"]
                         class_event = class_event.replace("::", ".")
-                        print(f"loaded ({class_event}, {subtest})")
+                        log_print(f"loaded ({class_event}, {subtest})")
                         self.traces[(class_event, subtest)] = event
                     elif event["name"] == "chunk-event":
                         event = event["value"]
                         chunk_idx = event["chunk_index"]
                         chunk_total = event["nchunks"]
                         test_name = folder.split("/")[-1]
-                        print(f"loaded ({test_name}, {chunk_idx}, {chunk_total})")
+                        log_print(f"loaded ({test_name}, {chunk_idx}, {chunk_total})")
                         self.traces[(test_name, chunk_idx, chunk_total)] = event
 
     def has(self, class_event, name):
