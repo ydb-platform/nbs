@@ -190,7 +190,7 @@ runs:
           chown -R github:github "$TESTS_DATA_DIR"
           echo "::endgroup::"
           echo "::group::s3-sync"
-          sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
+          # sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
           echo "::endgroup::"
           exit $RC
         }
