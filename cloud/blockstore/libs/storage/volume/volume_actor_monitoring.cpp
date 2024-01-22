@@ -790,7 +790,10 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
     HTML(out) {
         DIV_CLASS("row") {
             DIV_CLASS("col-md-6") {
-                DumpSolomonVolumeLink(out, *DiagnosticsConfig, State->GetDiskId());
+                DumpMonitoringVolumeLink(
+                    out,
+                    *DiagnosticsConfig,
+                    State->GetDiskId());
             }
         }
 

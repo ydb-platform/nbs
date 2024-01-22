@@ -72,74 +72,65 @@ TString GetExternalHostUrl(
     return out;
 }
 
-TString GetSolomonVolumeUrl(
+TString GetMonitoringVolumeUrl(
     const TDiagnosticsConfig& config,
-    const TString& diskId,
-    const TString& dashboard)
+    const TString& diskId)
 {
+    TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
-        << config.GetSolomonUrl()
-        << "/?project=" << config.GetSolomonProject()
-        << "&service=service_volume"
-        << "&cluster="<< config.GetSolomonClusterName()
-        << "&volume=" << diskId
-        << "&dashboard=" << dashboard;
+           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+           << "/dashboards/" << data.MonitoringVolumeDashboard
+           << "?from=now-1d&to=now&refresh=60000&p.cluster="
+           << data.MonitoringClusterName << "&p.volume=" << diskId;
 }
 
-TString GetSolomonPartitionUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard)
+TString GetMonitoringPartitionUrl(const TDiagnosticsConfig& config)
 {
+    TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
-        << config.GetSolomonUrl()
-        << "/?project=" << config.GetSolomonProject()
-        << "&service=tablets"
-        << "&cluster=" << config.GetSolomonClusterName()
-        << "&host=" << GetShortHostName()
-        << "&dashboard=" << dashboard;
+           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+           << "/dashboards/" << data.MonitoringPartitionDashboard
+           << "?from=now-1d&to=now&"
+              "refresh=60000&p.service=tablets&p.cluster="
+           << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
-TString GetSolomonServerUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard)
+TString GetMonitoringNBSAlertsUrl(const TDiagnosticsConfig& config)
 {
+    TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
-        << config.GetSolomonUrl()
-        << "/?project" << config.GetSolomonProject()
-        << "&service=server"
-        << "&cluster=" << config.GetSolomonClusterName()
-        << "&host=" << GetShortHostName()
-        << "&type=-"
-        << "&dashboard="<< dashboard;
+           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+           << "/dashboards/" << data.MonitoringNBSAlertsDashboard
+           << "?from=now-1d&to=now&refresh=60000&p.cluster="
+           << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
-TString GetSolomonClientUrl(
-    const TDiagnosticsConfig& config,
-    const TString& dashboard)
+TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
 {
+    TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
-        << config.GetSolomonUrl()
-        << "/?project=" << config.GetSolomonProject()
-        << "&service=client"
-        << "&cluster="<< config.GetSolomonClusterName()
-        << "&host=" << GetShortHostName()
-        << "&type=-"
-        << "&dashboard=" << dashboard;
+           << data.MonitoringUrl << "/projects/" << data.MonitoringProject
+           << "/dashboards/" << data.MonitoringNBSTVDashboard
+           << "?from=now-1d&to=now&refresh=60000&p.cluster="
+           << data.MonitoringClusterName << "&p.host=cluster";
 }
 
-TString GetSolomonBsProxyUrl(
+TString GetMonitoringYDBGroupUrl(
     const TDiagnosticsConfig& config,
     ui32 groupId,
-    const TString& dashboard)
+    const TString& storagePool)
 {
+    TMonitoringUrlData data = config.GetMonitoringUrlData();
     return TStringBuilder()
-        << config.GetSolomonUrl()
-        << "/?project" << config.GetSolomonProject()
-        << "&service=dsproxy_percentile"
-        << "&cluster=" << config.GetSolomonClusterName()
-        << "&host=" << GetShortHostName()
-        << "&blobstorageproxy=" << groupId
-        << "&dashboard=" << dashboard;
+           << data.MonitoringUrl
+           << "/projects/kikimr/explorer/"
+              "queries?q.0.s=histogram_percentile(99, {project=\"kikimr"
+           << "\", cluster=\"" << data.MonitoringClusterName
+           << "\", storagePool=\"" << storagePool << "\", group=\"" << groupId
+           << "\", host=\"*\", service=\"vdisks\", "
+              "subsystem=\"latency_histo\", "
+              "handleclass=\"GetFast\"})&q.0.name=A&from=now-1d&to=now&refresh="
+              "60000";
 }
 
 }   // namespace NCloud::NBlockStore
