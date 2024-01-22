@@ -1,7 +1,7 @@
 import tempfile
 import time
 
-from subprocess import run, PIPE
+from subprocess import run, PIPE, TimeoutExpired
 from concurrent.futures import ThreadPoolExecutor
 
 import yatest.common as yatest_common
@@ -13,9 +13,10 @@ _REQUEST_BLOCK_COUNT = 3
 _REQUEST_SIZE = _REQUEST_BLOCK_COUNT * _BLOCKSIZE
 _REQUEST_COUNT = (_FILE_SIZE * 1024 ** 3) / _REQUEST_SIZE
 _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/eternal-load'
+_TIMEOUT = 30
 
 
-def __run_load(file_name):
+def __run_load_expect_fail(file_name):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -29,16 +30,16 @@ def __run_load(file_name):
         '--write-rate', '70'
     ]
 
-    result = run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+    result = run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=_TIMEOUT)
     return (result.returncode == 1) and (result.stderr.find('Wrong') != -1)
 
 
-def test_load():
+def test_load_fails():
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(__run_load, tmp_file.name)
-        time.sleep(30)
+        future = executor.submit(__run_load_expect_fail, tmp_file.name)
+        time.sleep(_TIMEOUT / 2)
 
         cnt = 0
         while future.running():
@@ -49,3 +50,13 @@ def test_load():
             cnt %= _REQUEST_COUNT
 
         assert future.result()
+
+
+def test_load_works():
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
+    try:
+        assert not __run_load_expect_fail(tmp_file.name)
+    except TimeoutExpired:
+        pass
+    else:
+        assert False, f"Eternal load should not have finished in {_TIMEOUT} seconds"

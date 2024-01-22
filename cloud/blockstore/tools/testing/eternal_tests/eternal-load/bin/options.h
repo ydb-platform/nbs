@@ -33,6 +33,7 @@ struct TOptions
     ui64 RequestBlockCount;
     ui16 IoDepth;
     ui64 WriteParts;
+    TString AlternatingPhase;
 
     TString DumpPath;
 

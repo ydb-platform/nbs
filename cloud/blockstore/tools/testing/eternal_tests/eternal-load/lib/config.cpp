@@ -1,7 +1,12 @@
 #include "config.h"
 
+#include <library/cpp/protobuf/json/json2proto.h>
+#include <library/cpp/protobuf/json/proto2json.h>
+
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
+
+#include <numeric>
 
 namespace NCloud::NBlockStore {
 
@@ -32,11 +37,10 @@ class TConfigHolder final
     : public IConfigHolder
 {
 private:
-    NJson::TJsonValue Value;
     TTestConfig Config;
 
 public:
-    TConfigHolder(NJson::TJsonValue value);
+    TConfigHolder(IInputStream* input);
     TConfigHolder(
         const TString& filePath,
         ui64 fileSize,
@@ -44,7 +48,8 @@ public:
         ui64 blockSize,
         ui16 writeRate,
         ui64 requestBlockCount,
-        ui64 writeParts);
+        ui64 writeParts,
+        TString alternatingPhase);
 
     TTestConfig& GetConfig() override;
     void DumpConfig(const TString& filePath) override;
@@ -55,9 +60,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TConfigHolder::TConfigHolder(NJson::TJsonValue value)
-    : Value(std::move(value))
-    , Config(&Value)
+TConfigHolder::TConfigHolder(IInputStream* input)
+    : Config(NProtobufJson::Json2Proto<TTestConfig>(*input))
 {
     GenerateMissingFields();
 }
@@ -69,19 +73,25 @@ TConfigHolder::TConfigHolder(
         ui64 blockSize,
         ui16 writeRate,
         ui64 requestBlockCount,
-        ui64 writeParts)
-    : Value(NJson::TJsonValue(""))
-    , Config(&Value)
+        ui64 writeParts,
+        TString alternatingPhase)
 {
-    Config.FilePath() = filePath;
-    Config.FileSize() = fileSize;
-    Config.BlockSize() = blockSize;
-    Config.WriteRate() = writeRate;
-    Config.IoDepth() = ioDepth;
+    Config.SetFilePath(filePath);
+    Config.SetFileSize(fileSize);
+    Config.SetBlockSize(blockSize);
+    Config.SetWriteRate(writeRate);
+    Config.SetIoDepth(ioDepth);
+
+    auto& ranges = *Config.MutableRanges();
 
     for (ui16 i = 0; i < ioDepth; ++i) {
-        Config.Ranges(i).RequestBlockCount() = requestBlockCount;
-        Config.Ranges(i).WriteParts() = writeParts;
+        auto& range = *ranges.Add();
+        range.SetRequestBlockCount(requestBlockCount);
+        range.SetWriteParts(writeParts);
+    }
+
+    if (!alternatingPhase.empty()) {
+        Config.SetAlternatingPhase(alternatingPhase);
     }
 
     GenerateMissingFields();
@@ -90,33 +100,33 @@ TConfigHolder::TConfigHolder(
 void TConfigHolder::GenerateMissingFields()
 {
     if (!Config.HasTestId()) {
-        Config.TestId() = RandomNumber<ui64>();
+        Config.SetTestId(RandomNumber<ui64>());
     }
     if (!Config.HasRangeBlockCount()) {
-        Config.RangeBlockCount() = Config.FileSize() /
-            (static_cast<ui64>(Config.IoDepth()) * Config.BlockSize());
+        Config.SetRangeBlockCount(Config.GetFileSize() /
+            (static_cast<ui64>(Config.GetIoDepth()) * Config.GetBlockSize()));
     }
 
-    for (ui16 i = 0; i < Config.IoDepth(); ++i) {
-        auto range = Config.Ranges()[i];
+    for (ui16 i = 0; i < Config.GetIoDepth(); ++i) {
+        auto& range = *Config.MutableRanges(i);
         if (!range.HasRequestBlockCount()) {
-            range.RequestBlockCount() = 1;
+            range.SetRequestBlockCount(1);
         }
-        range.RequestCount() = Config.RangeBlockCount() / range.RequestBlockCount();
-        range.StartOffset() = i * Config.RangeBlockCount();
+        range.SetRequestCount(Config.GetRangeBlockCount() / range.GetRequestBlockCount());
+        range.SetStartOffset(i * Config.GetRangeBlockCount());
         if (!range.HasStep()) {
-            range.Step() = RandomCoprime(range.RequestCount(), 1_GB
-                / (range.RequestBlockCount() * Config.BlockSize()));
+            range.SetStep(RandomCoprime(range.GetRequestCount(), 1_GB
+                / (range.GetRequestBlockCount() * Config.GetBlockSize())));
         }
         if (!range.HasStartBlockIdx()) {
-            range.StartBlockIdx() = i;
+            range.SetStartBlockIdx(i);
         }
         if (!range.HasLastBlockIdx()) {
-            range.LastBlockIdx() = i;
-            range.NumberToWrite() = 0;
+            range.SetLastBlockIdx(i);
+            range.SetNumberToWrite(0);
         }
         if (!range.HasWriteParts()) {
-            range.WriteParts() = 1;
+            range.SetWriteParts(1);
         }
     }
 }
@@ -131,7 +141,7 @@ void TConfigHolder::DumpConfig(const TString& filePath)
     auto openMode = EOpenModeFlag::WrOnly | EOpenModeFlag::CreateAlways;
     TFile file(filePath, openMode);
 
-    TString config = NJson::WriteJson(Config.GetRawValue());
+    TString config = NProtobufJson::Proto2Json(Config, {.FormatOutput = true});
     file.Write(config.data(), config.length());
 }
 
@@ -146,7 +156,8 @@ IConfigHolderPtr CreateTestConfig(
     ui64 blockSize,
     ui16 writeRate,
     ui64 requestBlockCount,
-    ui64 writeParts)
+    ui64 writeParts,
+    TString alternatingPhase)
 {
     return std::make_shared<TConfigHolder>(
         filePath,
@@ -155,15 +166,14 @@ IConfigHolderPtr CreateTestConfig(
         blockSize,
         writeRate,
         requestBlockCount,
-        writeParts);
+        writeParts,
+        alternatingPhase);
 }
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath)
 {
     TFileInput input(filePath);
-    NJson::TJsonValue value;
-    ReadJsonTree(&input, &value, true);
-    return std::make_shared<TConfigHolder>(std::move(value));
+    return std::make_shared<TConfigHolder>(&input);
 }
 
 }   // namespace NCloud::NBlockStore
