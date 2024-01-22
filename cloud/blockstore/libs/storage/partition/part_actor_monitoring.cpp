@@ -67,14 +67,17 @@ void DumpDownGroups(
                             }
                             return entry->GroupID == groupId;
                         };
-                        auto matchedInfos = storage.Channels |
-                                            std::views::filter(groupIdFinder);
-                        if (matchedInfos.empty()) {
+                        TVector<size_t> matchedInfosIdx;
+                        for (size_t i = 0; i < storage.Channels.size(); i++) {
+                            if (groupIdFinder(storage.Channels[i])) {
+                                matchedInfosIdx.push_back(i);
+                            }
+                        }
+                        if (matchedInfosIdx.empty()) {
                             out << groupId;
                         } else {
-                            for (const TTabletChannelInfo& channelInfo:
-                                 matchedInfos)
-                            {
+                            for (const size_t& idx: matchedInfosIdx) {
+                                const auto& channelInfo = storage.Channels[idx];
                                 out << groupId << "&nbsp;<a href='"
                                     << GetMonitoringYDBGroupUrl(
                                            config,
