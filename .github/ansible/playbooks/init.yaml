@@ -12,6 +12,7 @@
           - "tcpdump"
           - "net-tools"
           - "vim"
+          - "qemu-utils"
         update_cache: true
 
 
