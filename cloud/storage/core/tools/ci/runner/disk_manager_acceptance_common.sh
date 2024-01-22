@@ -41,11 +41,15 @@ function execute_tests () {
     results_path="${result_case_directory}${test_suite:?"test_suite parameter undefined"}/$(date +%Y-%m-%d)"
     export results_path
     create_results_directory
+    export lockfile="/tmp/disk_manager_${test_name:=acceptance}_${test_suite:?"test_suite parameter undefined"}.lock"
     # shellcheck disable=SC2068
     # shellcheck disable=SC2046
-    $dm/disk-manager-ci-acceptance-test-suite $(base_shell_args) $@ \
-    2>> "$results_path/stderr.txt" \
-    >> "$results_path/stdout.txt"
+    (
+      flock 200
+      $dm/disk-manager-ci-acceptance-test-suite $(base_shell_args) $@ \
+          2>> "$results_path/stderr.txt" \
+          >> "$results_path/stdout.txt"
+    ) 200>"$lockfile"
     report_results
 }
 
