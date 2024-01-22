@@ -84,7 +84,7 @@ class YTestReportTrace:
                         event = event["value"]
                         chunk_idx = event["chunk_index"]
                         chunk_total = event["nchunks"]
-                        test_name = folder.split("/")[-1]
+                        test_name = folder
                         log_print(f"loaded ({test_name}, {chunk_idx}, {chunk_total})")
                         self.traces[(test_name, chunk_idx, chunk_total)] = event
 
@@ -193,7 +193,7 @@ def transform(
                 mute_target(case)
 
             if is_fail:
-                suite_base_name = suite_name.split("/")[-1]
+                suite_base_name = suite_name
                 if "." in test_name:
                     test_cls, test_method = test_name.rsplit(".", maxsplit=1)
                     logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
