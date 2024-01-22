@@ -601,15 +601,15 @@ void TServerStats::OutputHtml(IOutputStream& out, const IMonHttpRequest& request
         if (DiagnosticsConfig) {
             TAG(TH3) {
                 out << "<a href='"
-                    << GetSolomonServerUrl(*DiagnosticsConfig, "nbs-server-monitoring")
-                    << "'>Server dashboards</a>";
+                    << GetMonitoringNBSAlertsUrl(*DiagnosticsConfig)
+                    << "'>NBS Alerts dashboard</a>";
             };
 
             TAG(TH3) {
                 out << "<a href='"
-                    << GetSolomonClientUrl(*DiagnosticsConfig, "nbs-compute-client-monitoring")
-                    << "'>Client dashboards</a>";
-            };
+                    << GetMonitoringNBSOverviewToTVUrl(*DiagnosticsConfig)
+                    << "'>NBS overview To TV</a>";
+            }
         }
 
         TAG(TH3) { out << "Config"; }

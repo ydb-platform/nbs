@@ -7,15 +7,16 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-
 #include <cloud/storage/core/libs/common/format.h>
+
+#include <library/cpp/cgiparam/cgiparam.h>
+#include <library/cpp/monlib/service/pages/templates.h>
+
+#include <util/stream/str.h>
 
 #include <ydb/core/base/appdata.h>
 
-#include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/cgiparam/cgiparam.h>
-
-#include <util/stream/str.h>
+#include <ranges>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -32,7 +33,9 @@ namespace {
 void DumpDownGroups(
     IOutputStream& out,
     TInstant now,
-    const TPartitionState& state)
+    const TPartitionState& state,
+    const TTabletStorageInfo& storage,
+    const TDiagnosticsConfig& config)
 {
     HTML(out)
     {
@@ -53,7 +56,36 @@ void DumpDownGroups(
                 const TDowntimeHistory& history)
             {
                 TABLER() {
-                    TABLEH() { out << groupId; }
+                    TABLEH()
+                    {
+                        auto groupIdFinder =
+                            [groupId](const TTabletChannelInfo& channelInfo)
+                        {
+                            const auto* entry = channelInfo.LatestEntry();
+                            if (!entry) {
+                                return false;
+                            }
+                            return entry->GroupID == groupId;
+                        };
+                        auto matchedInfos = storage.Channels |
+                                            std::views::filter(groupIdFinder);
+                        if (matchedInfos.empty()) {
+                            out << groupId;
+                        } else {
+                            for (const TTabletChannelInfo& channelInfo:
+                                 matchedInfos)
+                            {
+                                out << groupId << "&nbsp;<a href='"
+                                    << GetMonitoringYDBGroupUrl(
+                                           config,
+                                           groupId,
+                                           channelInfo.StoragePool)
+                                    << "'>Graphs&nbsp;"
+                                    << "(Channel=" << channelInfo.Channel
+                                    << ")</a><br/>";
+                            }
+                        }
+                    }
                     TABLEH() {
                         TSvgWithDownGraph svg(out);
                         for (const auto& [time, state]: history) {
@@ -149,10 +181,10 @@ void DumpChannels(
                             }
                             TABLED() {
                                 out << "<a href='"
-                                    << GetSolomonBsProxyUrl(
+                                    << GetMonitoringYDBGroupUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           "nbs-dsproxy-percentile")
+                                           channel.StoragePool)
                                     << "'>Graphs</a>";
                             }
                             TABLED() {
@@ -487,7 +519,7 @@ void TPartitionActor::HandleHttpInfo_Default(
             DIV_CLASS("tab-content") {
                 DIV_CLASS_ID("tab-pane active", "Overview") {
                     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
-                    DumpSolomonPartitionLink(out, *DiagnosticsConfig);
+                    DumpMonitoringPartitionLink(out, *DiagnosticsConfig);
 
                     TAG(TH3) { out << "State"; }
                     State->DumpHtml(out);
@@ -641,7 +673,12 @@ void TPartitionActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID("tab-pane", "Channels") {
-                    DumpDownGroups(out, ctx.Now(), *State);
+                    DumpDownGroups(
+                        out,
+                        ctx.Now(),
+                        *State,
+                        *Info(),
+                        *DiagnosticsConfig);
 
                     TAG(TH3) {
                         BuildMenuButton(out, "reassign-all");

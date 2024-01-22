@@ -57,6 +57,25 @@ message TVolumePerfSettings
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Monitoring URL components
+
+message TMonitoringUrlData
+{
+    // Monitoring cluster name (e.g. yandexcloud_prod_vla).
+    optional string MonitoringClusterName = 1;
+    // Monitoring host url.
+    optional string MonitoringUrl = 2;
+    // Project name in monitoring.
+    optional string MonitoringProject = 3;
+
+    // Dashboards ids for monitoring URL formation.
+    optional string MonitoringVolumeDashboard = 4;
+    optional string MonitoringPartitionDashboard = 5;
+    optional string MonitoringNBSAlertsDashboard = 6;
+    optional string MonitoringNBSTVDashboard = 7;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TDiagnosticsConfig
 {
@@ -72,8 +91,9 @@ message TDiagnosticsConfig
     // Kikimr monitoring port.
     optional string KikimrMonitoringPort = 4;
 
+    // [obsolete]
     // Name of cluster in Solomon.
-    optional string SolomonClusterName = 5;
+    // optional string SolomonClusterName = 5;
 
     // Kikimr monitoring port.
     optional uint32 KikimrMonPort = 6;
@@ -94,8 +114,9 @@ message TDiagnosticsConfig
     // HDD disk performance threshold
     // optional TVolumePerfThreshold HddPerfThreshold = 15;
 
+    // [obsolete]
     // Solomon host url.
-    optional string SolomonUrl = 16;
+    // optional string SolomonUrl = 16;
 
     // Allow destructive LWTrace actions.
     optional bool UnsafeLWTrace = 17;
@@ -103,8 +124,9 @@ message TDiagnosticsConfig
     // Path to LWTrace query file.
     optional string LWTraceDebugInitializationQuery = 18;
 
+    // [obsolete]
     // Project name in solomon.
-    optional string SolomonProject = 20;
+    // optional string SolomonProject = 20;
 
     // Sampling rate for request tracking
     optional uint32 SamplingRate = 21;
@@ -178,4 +200,7 @@ message TDiagnosticsConfig
 
     // Performance measurements coefficients for HDD NRD.
     optional TVolumePerfSettings HddNonreplPerfSettings = 46;
+
+    // Monitoring data necessary for link generation on monpages.
+    optional TMonitoringUrlData MonitoringUrlData = 47;
 }

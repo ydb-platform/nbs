@@ -13,6 +13,24 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
+{
+    TString MonitoringClusterName;
+    TString MonitoringUrl;
+    TString MonitoringProject;
+
+    TMonitoringUrlData() : MonitoringProject("nfs") {}
+    TMonitoringUrlData(const TMonitoringUrlData& rhs) = default;
+
+    TMonitoringUrlData(const NProto::TMonitoringUrlData& data)
+        : MonitoringClusterName(data.GetMonitoringClusterName())
+        , MonitoringUrl(data.GetMonitoringUrl())
+        , MonitoringProject(data.GetMonitoringProject())
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDiagnosticsConfig
 {
 private:
@@ -22,10 +40,6 @@ public:
     TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsConfig = {});
 
     TString GetBastionNameSuffix() const;
-
-    TString GetSolomonClusterName() const;
-    TString GetSolomonUrl() const;
-    TString GetSolomonProject() const;
 
     ui32 GetFilestoreMonPort() const;
 
@@ -48,6 +62,8 @@ public:
     TDuration GetPostponeTimePredictorInterval() const;
     TDuration GetPostponeTimePredictorMaxTime() const;
     double GetPostponeTimePredictorPercentage() const;
+
+    TMonitoringUrlData GetMonitoringUrlData() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
