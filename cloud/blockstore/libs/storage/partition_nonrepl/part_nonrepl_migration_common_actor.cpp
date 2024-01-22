@@ -13,7 +13,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
@@ -30,18 +29,16 @@ TNonreplicatedPartitionMigrationCommonActor::
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
         TString rwClientId,
-        NActors::TActorId parentActorId,
         NActors::TActorId statActorId)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
-    , RWClientId(std::move(rwClientId))
     , BlockDigestGenerator(std::move(digestGenerator))
-    , ParentActorId(parentActorId)
-    , StatActorId(statActorId)
+    , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
+    , StatActorId(statActorId)
 {
     ActivityType = TBlockStoreActivities::PARTITION;
 }
@@ -221,10 +218,6 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             TEvNonreplPartitionPrivate::TEvMigrateNextRange,
             HandleMigrateNextRange);
-        HFunc(
-            TEvDiskRegistry::TEvFinishMigrationResponse,
-            HandleFinishMigrationResponse);
-        HFunc(TEvVolume::TEvMigrationStateUpdated, HandleMigrationStateUpdated);
         HFunc(TEvVolume::TEvRWClientIdChanged, HandleRWClientIdChanged);
         HFunc(
             TEvVolume::TEvDiskRegistryBasedPartitionCounters,
@@ -233,7 +226,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            // Give the inheritor a chance to process the message.
+            MigrationOwner->OnMessage(ev);
             break;
     }
 }
@@ -276,7 +270,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
 
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            // Give the inheritor a chance to process the message.
+            MigrationOwner->OnMessage(ev);
             break;
     }
 }

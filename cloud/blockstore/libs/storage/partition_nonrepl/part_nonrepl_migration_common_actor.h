@@ -25,20 +25,34 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The successor class must provide an implementation of this interface so that
+// it can notify the progress and completion of the migration.
 class IMigrationOwner
 {
 public:
     virtual ~IMigrationOwner() = default;
 
-    virtual void FinishMigration(
-        const NActors::TActorContext& ctx,
-        bool isRetry) = 0;
+    // Delegates the processing of unknown messages to the owner.
+    virtual void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
+    // Calculates the time during which a 4MB block should migrate.
     [[nodiscard]] virtual TDuration CalculateMigrationTimeout() = 0;
+
+    // Notifies that a sufficiently large block of data has been migrated. The
+    // size is determined by the settings.
+    virtual void OnMigrationProgress(
+        const NActors::TActorContext& ctx,
+        ui64 migrationIndex) = 0;
+
+    // Notifies that the data migration was completed successfully.
+    virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// To migrate data, it is necessary to inherit from this class. To get started,
+// you need to call the StartWork() method and pass the source and destination
+// actors to it.
 class TNonreplicatedPartitionMigrationCommonActor
     : public NActors::TActorBootstrapped<
           TNonreplicatedPartitionMigrationCommonActor>
@@ -49,10 +63,11 @@ private:
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const ui64 BlockSize;
-    TString RWClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-    const NActors::TActorId ParentActorId;
-    const NActors::TActorId StatActorId;
+    TString RWClientId;
+
+    NActors::TActorId SrcActorId;
+    NActors::TActorId DstActorId;
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationInProgress = false;
@@ -63,18 +78,18 @@ private:
         WriteAndZeroRequestsInProgress,
         DiskId};
 
-    TInstant LastRangeMigrationStartTs;
+    TInstant LastRangeMigrationStartTs = {};
 
+    // Statistics
+    const NActors::TActorId StatActorId;
+    bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
 
-    bool UpdateCountersScheduled = false;
-
+    // PoisonPill
     TRequestInfoPtr Poisoner;
 
-    NActors::TActorId SrcActorId;
-    NActors::TActorId DstActorId;
-
+    // Usage statistics
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
@@ -89,7 +104,6 @@ public:
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
         TString rwClientId,
-        NActors::TActorId parentActorId,
         NActors::TActorId statActorId);
 
     ~TNonreplicatedPartitionMigrationCommonActor() override;
@@ -135,14 +149,6 @@ private:
 
     void HandleWriteOrZeroCompleted(
         const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleFinishMigrationResponse(
-        const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleMigrationStateUpdated(
-        const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleRWClientIdChanged(

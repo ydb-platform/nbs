@@ -89,38 +89,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateNextRange(
         SrcActorId,
         DstActorId,
         RWClientId,
-        BlockDigestGenerator
-    );
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TNonreplicatedPartitionMigrationCommonActor::HandleFinishMigrationResponse(
-    const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    // TODO: backoff? FinishMigrationRequests should always succeed so, maybe,
-    // no backoff needed here
-
-    const auto& error = ev->Get()->Record.GetError();
-
-    if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Finish migration failed, error: %s",
-            DiskId.c_str(),
-            FormatError(error).c_str());
-
-        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
-            ReportMigrationFailed();
-            return;
-        }
-    }
-
-    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-        MigrationOwner->FinishMigration(ctx, true);
-    } else {
-        MigrationInProgress = false;
-    }
+        BlockDigestGenerator);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,8 +164,10 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
             DiskId.c_str(),
             msg->Range.Start,
             msg->Range.Size());
+
         if (!ProcessingBlocks.AdvanceProcessingIndex()) {
-            MigrationOwner->FinishMigration(ctx, false);
+            MigrationOwner->OnMigrationFinished(ctx);
+            MigrationInProgress = false;
             return;
         }
 
@@ -213,13 +184,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
             ProcessingBlocks.SetLastReportedProcessingIndex(
                 migrationRange.Start);
 
-            NCloud::Send(
-                ctx,
-                ParentActorId,
-                std::make_unique<TEvVolume::TEvUpdateMigrationState>(
-                    migrationRange.Start));
-
-            return;
+            MigrationOwner->OnMigrationProgress(ctx, migrationRange.Start);
         }
     }
 
@@ -273,21 +238,6 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRWClientIdChanged(
     Y_UNUSED(ctx);
 
     RWClientId = std::move(ev->Get()->RWClientId);
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::HandleMigrationStateUpdated(
-    const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    if (!ProcessingBlocks.IsProcessingStarted()) {
-        // migration cancelled
-        MigrationInProgress = false;
-        return;
-    }
-
-    ScheduleMigrateNextRange(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

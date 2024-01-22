@@ -31,12 +31,12 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(digestGenerator),
           initialMigrationIndex,
           std::move(rwClientId),
-          srcConfig->GetParentActorId(),
           statActorId)
     , Config(std::move(config))
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
+    , TimeoutCalculator(Config, SrcConfig)
 {}
 
 void TNonreplicatedPartitionMigrationActor::Bootstrap(
@@ -47,41 +47,57 @@ void TNonreplicatedPartitionMigrationActor::Bootstrap(
     StartWork(ctx, CreateSrcActor(ctx), CreateDestActor(ctx));
 }
 
+void TNonreplicatedPartitionMigrationActor::OnMessage(
+    TAutoPtr<NActors::IEventHandle>& ev)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvVolume::TEvMigrationStateUpdated, HandleMigrationStateUpdated);
+        HFunc(
+            TEvDiskRegistry::TEvFinishMigrationResponse,
+            HandleFinishMigrationResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            break;
+    }
+}
+
 TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout()
 {
-    const ui32 maxMigrationBandwidthMiBs = Config->GetMaxMigrationBandwidth();
-    const ui32 expectedDiskAgentSize = Config->GetExpectedDiskAgentSize();
+    return TimeoutCalculator.CalculateTimeout(GetNextProcessingRange());
+}
 
-    // migration range is 4_MB
-    const auto migrationFactorPerAgent = maxMigrationBandwidthMiBs / 4;
+void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
+    const NActors::TActorContext& ctx)
+{
+    MigrationFinished = true;
+    FinishMigration(ctx, false);
+}
 
-    if (SrcConfig->GetUseSimpleMigrationBandwidthLimiter()) {
-        return TDuration::Seconds(1) / migrationFactorPerAgent;
+void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
+    const NActors::TActorContext& ctx,
+    ui64 migrationIndex)
+{
+    if (UpdatingMigrationState || MigrationFinished) {
+        return;
     }
 
-    const auto& sourceDevices = SrcConfig->GetDevices();
-    const auto requests = SrcConfig->ToDeviceRequests(
-        GetNextProcessingRange());
+    NCloud::Send(
+        ctx,
+        SrcConfig->GetParentActorId(),
+        std::make_unique<TEvVolume::TEvUpdateMigrationState>(migrationIndex));
 
-    ui32 agentDeviceCount = 0;
-    if (!requests.empty()) {
-        agentDeviceCount = CountIf(
-            sourceDevices,
-            [&](const auto& d)
-            { return d.GetAgentId() == requests.front().Device.GetAgentId(); });
-    }
-
-    const auto factor =
-        Max(migrationFactorPerAgent * agentDeviceCount / expectedDiskAgentSize,
-            1U);
-
-    return TDuration::Seconds(1) / factor;
+    UpdatingMigrationState = true;
 }
 
 void TNonreplicatedPartitionMigrationActor::FinishMigration(
     const NActors::TActorContext& ctx,
     bool isRetry)
 {
+    if (UpdatingMigrationState) {
+        return;
+    }
+
     auto request =
         std::make_unique<TEvDiskRegistry::TEvFinishMigrationRequest>();
     request->Record.SetDiskId(SrcConfig->GetName());
@@ -180,6 +196,44 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDestActor(
             SrcConfig->Fork(std::move(devices)),
             SelfId(),
             RdmaClient));
+}
+
+void TNonreplicatedPartitionMigrationActor::HandleMigrationStateUpdated(
+    const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    
+    UpdatingMigrationState = false;
+    if (MigrationFinished) {
+        FinishMigration(ctx, false);
+    }
+}
+
+void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
+    const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    // TODO: backoff? FinishMigrationRequests should always succeed so, maybe,
+    // no backoff needed here
+
+    const auto& error = ev->Get()->Record.GetError();
+
+    if (HasError(error)) {
+        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            "[%s] Finish migration failed, error: %s",
+            SrcConfig->GetName().c_str(),
+            FormatError(error).c_str());
+
+        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+            ReportMigrationFailed();
+            return;
+        }
+    }
+
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        FinishMigration(ctx, true);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

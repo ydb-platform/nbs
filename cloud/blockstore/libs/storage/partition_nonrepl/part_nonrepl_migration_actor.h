@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -17,6 +18,10 @@ private:
     TNonreplicatedPartitionConfigPtr SrcConfig;
     google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> Migrations;
     NRdma::IClientPtr RdmaClient;
+    TMigrationTimeoutCalculator TimeoutCalculator;
+
+    bool UpdatingMigrationState = false;
+    bool MigrationFinished = false;
 
 public:
     TNonreplicatedPartitionMigrationActor(
@@ -33,13 +38,25 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx) override;
 
     // IMigrationOwner implementation
+    void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
     TDuration CalculateMigrationTimeout() override;
-    void FinishMigration(const NActors::TActorContext& ctx, bool isRetry)
-        override;
+    void OnMigrationProgress(
+        const NActors::TActorContext& ctx,
+        ui64 migrationIndex) override;
+    void OnMigrationFinished(const NActors::TActorContext& ctx) override;
 
 private:
+    void FinishMigration(const NActors::TActorContext& ctx, bool isRetry);
     NActors::TActorId CreateSrcActor(const NActors::TActorContext& ctx);
     NActors::TActorId CreateDestActor(const NActors::TActorContext& ctx);
+
+    void HandleMigrationStateUpdated(
+        const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleFinishMigrationResponse(
+        const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
