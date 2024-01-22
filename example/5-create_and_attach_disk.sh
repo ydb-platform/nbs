@@ -5,6 +5,7 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
+source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
@@ -71,9 +72,7 @@ fi
 
 # create disk
 echo "Creating disk $id in $kind mode"
-CLIENT="./blockstore-client"
-export LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/$CLIENT))
-$BIN_DIR/$CLIENT createvolume \
+blockstore-client createvolume \
     --storage-media-kind $kind --blocks-count $blocks_count --disk-id $id
 
 if [ $? -ne 0 ]; then
@@ -85,16 +84,12 @@ fi
 
 # attach disk
 echo "Attaching disk $id to $device"
-NBD="./blockstore-nbd"
 SOCK="$BIN_DIR/$id.sock"
 
 sudo modprobe nbd
 touch $SOCK
-cmd="LD_LIBRARY_PATH=$(dirname $(readlink $BIN_DIR/$NBD)) \
-    $BIN_DIR/${NBD} --device-mode endpoint --disk-id $id --access-mode rw \
-    --mount-mode local --connect-device $device --listen-path $SOCK"
- 
-sudo $cmd
+sudo-blockstore-nbd --device-mode endpoint --disk-id $id --access-mode rw \
+    --mount-mode local --connect-device $device --listen-path $SOCK
 
 if [ $? -ne 0 ]; then
     echo "Attaching disk $id to $device failed"
