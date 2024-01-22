@@ -73,25 +73,27 @@ class YTestReportTrace:
             with open(fn, "r") as fp:
                 for line in fp:
                     event = json.loads(line.strip())
-
+                    print(json.dumps(event))
                     if event["name"] == "subtest-finished":
                         event = event["value"]
-                        cls = event["class"]
+                        class_event = event["class"]
                         subtest = event["subtest"]
-                        cls = cls.replace("::", ".")
-                        self.traces[(cls, subtest)] = event
+                        class_event = class_event.replace("::", ".")
+                        print(f"loaded ({class_event}, {subtest})")
+                        self.traces[(class_event, subtest)] = event
                     elif event["name"] == "chunk-event":
                         event = event["value"]
                         chunk_idx = event["chunk_index"]
                         chunk_total = event["nchunks"]
                         test_name = folder.split("/")[-1]
+                        print(f"loaded ({test_name}, {chunk_idx}, {chunk_total})")
                         self.traces[(test_name, chunk_idx, chunk_total)] = event
 
-    def has(self, cls, name):
-        return (cls, name) in self.traces
+    def has(self, class_event, name):
+        return (class_event, name) in self.traces
 
-    def get_logs(self, cls, name):
-        trace = self.traces.get((cls, name))
+    def get_logs(self, class_event, name):
+        trace = self.traces.get((class_event, name))
 
         if not trace:
             return {}
@@ -198,14 +200,19 @@ def transform(
                     logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
 
                 elif "chunk" in test_name:
-                    pattern = r'\[(\d+)/(\d+)\]'
-                    match = re.search(pattern, test_name)
-                    chunk_idx = int(match.group(1))
-                    chunks_total = int(match.group(2))
-                    logs = filter_empty_logs(traces.get_logs_chunks(suite_base_name, chunk_idx, chunks_total))
+                    if "sole" in test_name:
+                        chunk_idx = 0
+                        chunks_total = 1
+                    else:
+                        pattern = r"\[(\d+)/(\d+)\]"
+                        match = re.search(pattern, test_name)
+                        chunk_idx = int(match.group(1))
+                        chunks_total = int(match.group(2))
+                    logs = filter_empty_logs(
+                        traces.get_logs_chunks(suite_base_name, chunk_idx, chunks_total)
+                    )
                 else:
                     continue
-
 
                 if logs:
                     log_print(
