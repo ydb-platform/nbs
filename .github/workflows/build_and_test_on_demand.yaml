@@ -139,19 +139,19 @@ jobs:
         if: github.event.pull_request.head.sha == ''
       - id: configure-ncp
         name: Configure NCP
-        uses: ./.github/actions/ncp
+        uses: ./.github/actions/ncp@main
         with:
           instance_id: ${{ needs.provide-runner.outputs.instance-id }}
           sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
       - id: configure-authorized-keys
         name: Configure authorized_keys
-        uses: ./.github/actions/ssh_keys
+        uses: ./.github/actions/ssh_keys@main
         with:
           org: ydb-platform
           team: nbs
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
       - name: Prepare VM
-        uses: ./.github/actions/prepare
+        uses: ./.github/actions/prepare@main
 
   build-and-test:
     name: Build and test NBS [id=${{ needs.provide-runner.outputs.instance-id }} ip=${{ needs.prepare-vm.outputs.runner_ipv4 }}]

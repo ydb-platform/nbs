@@ -89,7 +89,7 @@ jobs:
       if: github.event.pull_request.head.sha == ''
 
     - name: Prepare s3cmd
-      uses: ./.github/actions/s3cmd
+      uses: ./.github/actions/s3cmd@main
       with:
         s3_bucket: ${{ vars.AWS_BUCKET }}
         s3_endpoint: ${{ vars.AWS_ENDPOINT }}
@@ -100,7 +100,7 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
 
     - name: Build
-      uses: ./.github/actions/build
+      uses: ./.github/actions/build@main
       if: inputs.run_build
       with:
         build_target: ${{ inputs.build_target }}
@@ -112,7 +112,7 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
 
     - name: Run tests
-      uses: ./.github/actions/test
+      uses: ./.github/actions/test@main
       if: inputs.run_tests
       with:
         test_target: ${{ inputs.test_target }}
@@ -127,6 +127,6 @@ jobs:
     - id: failure
       name: set sleep_after_tests in case of failure
       if: failure()
-      uses: ./.github/actions/sleep
+      uses: ./.github/actions/sleep@main
       with:
         sleep_after_tests: ${{ inputs.sleep_after_tests != '0' && inputs.sleep_after_tests || '7200' }}
