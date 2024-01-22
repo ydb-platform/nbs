@@ -185,7 +185,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         // Test config generation is not deterministic, so we need to set random seed
         SetRandomSeed(42);
 
-        auto configHolder = CreateTestConfig("/dev/vdb", 10 * 1_GB, 12, 4096, 50, 1, 1, "");
+        auto configHolder = CreateTestConfig("/dev/vdb", 10 * 1_GB, 12, 4096, 50, 1, 1);
         auto filename = MakeTempName();
         configHolder->DumpConfig(filename);
 

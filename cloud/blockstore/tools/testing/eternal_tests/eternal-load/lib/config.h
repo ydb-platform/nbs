@@ -31,7 +31,7 @@ IConfigHolderPtr CreateTestConfig(
     ui16 writeRate,
     ui64 requestBlockCount,
     ui64 writeParts,
-    TString alternatingPhase
+    TString alternatingPhase = ""
 );
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath);
