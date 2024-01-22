@@ -306,7 +306,7 @@ class BaseAcceptanceTestRunner(ABC):
         disk_bs: int,
         extra_params: dict,
         test_case_name: str,
-    ) -> None:
+    ) -> contextlib.AbstractContextManager[None]:
         error = None
         try:
             yield

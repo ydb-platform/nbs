@@ -7,6 +7,7 @@ from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
 
 from .lib import (
     check_ssh_connection,
+    file_lock,
     size_prettifier,
     Error,
 )
@@ -51,6 +52,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
         )
 
         with contextlib.ExitStack() as stack:
+            stack.enter_context(file_lock(self._get_test_suite()))
             instance = stack.enter_context(self._instance_policy.obtain())
             stack.enter_context(
                 self._recording_result(
@@ -60,12 +62,8 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     self._args.disk_type,
                     self._args.disk_blocksize,
                     {},
-                    (
-                        f'{self._args.zone_id}_eternal_'
-                        f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-                        f'{size_prettifier(self._args.disk_blocksize)}'.lower()
-                    ),
-                    )
+                    self._get_test_suite(),
+                )
             )
             # Copy cmp binary to instance
             _logger.info(f'Copying <path={self._args.cmp_util}> to'

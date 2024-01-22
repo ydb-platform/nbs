@@ -1,8 +1,11 @@
+import contextlib
+import fcntl
 import logging
 import os
 
 import random
 import socket
+from pathlib import Path
 
 from typing import Callable, Protocol
 
@@ -82,3 +85,12 @@ def size_prettifier(size_bytes: int) -> str:
         return '%sKiB' % (size_bytes // 1024)
     else:
         return '%sB' % size_bytes
+
+
+@contextlib.contextmanager
+def file_lock(name: str):
+    lock_path = Path(f'/tmp/disk_manager_acceptance_lock/{name}.lock')
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('w') as f:
+        fcntl.lockf(f, fcntl.LOCK_EX)
+        yield
