@@ -213,23 +213,30 @@ void TVolumeActor::SendRequestToPartition(
         TabletID(),
         "Empty partition list");
 
-    auto partActorId = State->GetDiskRegistryBasedPartitionActor()
-        ? State->GetDiskRegistryBasedPartitionActor()
-        : State->GetPartitions()[partitionId].Owner;
+    const auto partitionActorId =
+        State->GetDiskRegistryBasedPartitionActor()
+            ? State->GetDiskRegistryBasedPartitionActor()
+            : State->GetPartitions()[partitionId].Owner;
+
+    const ui64 partitionTabletId =
+        State->GetPartitions() ? State->GetPartitions()[partitionId].TabletId
+                               : 0;
 
     if (State->GetPartitions()) {
         LOG_TRACE(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Sending %s request to partition: %lu %s",
+            "[%lu] Sending %s request to volume %s partition: %lu %s",
             TabletID(),
             TMethod::Name,
-            State->GetPartitions()[partitionId].TabletId,
-            ToString(partActorId).data());
+            State->GetDiskId().Quote().c_str(),
+            partitionTabletId,
+            ToString(partitionActorId).data());
     }
 
     const bool processed = SendRequestToPartitionWithUsedBlockTracking<TMethod>(
         ctx,
         ev,
-        partActorId,
+        partitionActorId,
+        partitionTabletId,
         volumeRequestId);
 
     if (processed) {
@@ -247,7 +254,7 @@ void TVolumeActor::SendRequestToPartition(
     }
 
     auto event = std::make_unique<IEventHandle>(
-        partActorId,
+        partitionActorId,
         selfId,
         ev->ReleaseBase().Release(),
         IEventHandle::FlagForwardOnNondelivery, // flags

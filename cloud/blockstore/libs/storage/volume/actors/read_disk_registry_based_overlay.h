@@ -35,8 +35,9 @@ private:
 
     const TRequestInfoPtr RequestInfo;
     const TActorId VolumeActorId;
-    const TActorId PartActorId;
+    const TActorId PartitionActorId;
     const ui64 VolumeTabletId;
+    const ui64 PartitionTabletId;
     const TString BaseDiskId;
     const TString BaseDiskCheckpointId;
     const ui32 BlockSize;
@@ -59,8 +60,9 @@ public:
         TRequest originalRequest,
         const TCompressedBitmap* usedBlocks,
         TActorId volumeActorId,
-        TActorId partActorId,
+        TActorId partitionActorId,
         ui64 volumeTabletId,
+        ui64 partitionTabletId,
         TString baseDiskId,
         TString baseDiskCheckpointId,
         ui32 blockSize,

@@ -31,8 +31,9 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         TRequest originalRequest,
         const TCompressedBitmap* usedBlocks,
         TActorId volumeActorId,
-        TActorId partActorId,
+        TActorId partitionActorId,
         ui64 volumeTabletId,
+        ui64 partitionTabletId,
         TString baseDiskId,
         TString baseDiskCheckpointId,
         ui32 blockSize,
@@ -41,8 +42,9 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
         TDuration longRunningThreshold)
     : RequestInfo(std::move(requestInfo))
     , VolumeActorId(volumeActorId)
-    , PartActorId(partActorId)
+    , PartitionActorId(partitionActorId)
     , VolumeTabletId(volumeTabletId)
+    , PartitionTabletId(partitionTabletId)
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlockSize(blockSize)
@@ -185,7 +187,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::SendOverlayDiskRequest(
     }
 
     auto event = std::make_unique<NActors::IEventHandle>(
-        PartActorId,
+        PartitionActorId,
         ctx.SelfID,
         request.release(),
         NActors::IEventHandle::FlagForwardOnNondelivery,
@@ -369,9 +371,9 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                 NCloud::Register<TReadBlobActor>(
                     ctx,
                     requestInfo,
-                    TBase::SelfId(),
+                    TBase::SelfId(),   // partitionActorId
                     VolumeActorId,
-                    VolumeTabletId,
+                    PartitionTabletId,
                     BlockSize,
                     Mode,
                     std::move(currentRequest),
@@ -395,9 +397,9 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
         NCloud::Register<TReadBlobActor>(
             ctx,
             requestInfo,
-            TBase::SelfId(),
+            TBase::SelfId(),   // partitionActorId
             VolumeActorId,
-            VolumeTabletId,
+            PartitionTabletId,
             BlockSize,
             EStorageAccessMode::Default,
             std::move(currentRequest),

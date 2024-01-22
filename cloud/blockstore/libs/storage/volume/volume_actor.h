@@ -771,7 +771,7 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         ui64 volumeRequestId,
         ui32 partitionId,
-        ui64 traceTs);
+        ui64 traceTime);
 
     template <typename TMethod>
     NProto::TError ProcessAndValidateReadRequest(
@@ -785,7 +785,8 @@ private:
     bool SendRequestToPartitionWithUsedBlockTracking(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,
-        const NActors::TActorId& partitions,
+        const NActors::TActorId& partitionActorId,
+        const ui64 partitionTabletId,
         const ui64 volumeRequestId);
 
     template <typename TMethod>

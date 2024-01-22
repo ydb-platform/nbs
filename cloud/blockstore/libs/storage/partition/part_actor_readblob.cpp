@@ -46,9 +46,9 @@ void TPartitionActor::HandleReadBlob(
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
-        SelfId(),
+        SelfId(),   // partitionActorId
         VolumeActorId,
-        TabletID(),
+        TabletID(),   // partitionTabletId
         State->GetBlockSize(),
         StorageAccessMode,
         std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(

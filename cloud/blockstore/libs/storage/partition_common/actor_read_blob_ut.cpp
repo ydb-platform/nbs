@@ -67,9 +67,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     EdgeActor,
                     0ull,
                     MakeIntrusive<TCallContext>()),
-                EdgeActor,
-                NActors::TActorId(),
-                0,
+                EdgeActor,             // partitionActorId
+                NActors::TActorId(),   // volumeActorId
+                0,                     // partitionTabletId
                 blockSize,
                 EStorageAccessMode::Default,
                 std::move(request),
