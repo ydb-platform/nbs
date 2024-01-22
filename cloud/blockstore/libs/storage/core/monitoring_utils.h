@@ -159,12 +159,12 @@ void DumpCompactionMap(
     const TVector<TCompactionCounter>& items,
     const ui32 rangeSize);
 
-void DumpSolomonVolumeLink(
+void DumpMonitoringVolumeLink(
     IOutputStream& out,
     const TDiagnosticsConfig& config,
     const TString& diskId);
 
-void DumpSolomonPartitionLink(
+void DumpMonitoringPartitionLink(
     IOutputStream& out,
     const TDiagnosticsConfig& config);
 

@@ -15,7 +15,6 @@ namespace {
     xxx(HostNameScheme,                  NProto::EHostNameScheme, NProto::EHostNameScheme::HOSTNAME_RAW )\
     xxx(BastionNameSuffix,               TString,         ""                                            )\
     xxx(ViewerHostName,                  TString,         ""                                            )\
-    xxx(SolomonClusterName,              TString,         ""                                            )\
     xxx(KikimrMonPort,                   ui32,            8765                                          )\
     xxx(NbsMonPort,                      ui32,            8766                                          )\
                                                                                                          \
@@ -26,8 +25,6 @@ namespace {
                                                                                                          \
     xxx(ProfileLogTimeThreshold,         TDuration,       TDuration::Seconds(15)                        )\
     xxx(UseAsyncLogger,                  bool,            false                                         )\
-    xxx(SolomonUrl,                      TString,         ""                                            )\
-    xxx(SolomonProject,                  TString,         "nbs"                                         )\
     xxx(UnsafeLWTrace,                   bool,            false                                         )\
     xxx(LWTraceDebugInitializationQuery, TString,         ""                                            )\
     xxx(SsdPerfSettings,                TVolumePerfSettings,  {}                                        )\
@@ -40,6 +37,7 @@ namespace {
     xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
     xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
     xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
+    xxx(MonitoringUrlData,              TMonitoringUrlData,   {}                                        )\
                                                                                                          \
     xxx(CpuWaitFilename,            TString, "/sys/fs/cgroup/cpu/system.slice/nbs.service/cpuacct.wait" )\
                                                                                                          \
@@ -86,6 +84,14 @@ ConvertValue<TVolumePerfSettings, NProto::TVolumePerfSettings>(
 }
 
 template <>
+TMonitoringUrlData
+ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
+    const NProto::TMonitoringUrlData& value)
+{
+    return TMonitoringUrlData(value);
+}
+
+template <>
 TRequestThresholds
 ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     const TProtoRequestThresholds& value)
@@ -111,6 +117,11 @@ bool IsEmpty(const T& t)
 }
 
 bool IsEmpty(const NProto::TVolumePerfSettings& t)
+{
+    return t.ByteSizeLong() == 0;
+}
+
+bool IsEmpty(const NProto::TMonitoringUrlData& t)
 {
     return t.ByteSizeLong() == 0;
 }
@@ -250,6 +261,22 @@ void Out<NCloud::NBlockStore::TVolumePerfSettings>(
     v.MutableWrite()->SetBandwidth(value.WriteBandwidth);
     v.SetCriticalFactor(value.CriticalFactor);
 
+    SerializeToTextFormat(v, out);
+}
+
+template <>
+void Out<NCloud::NBlockStore::TMonitoringUrlData>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::TMonitoringUrlData& value)
+{
+    NCloud::NBlockStore::NProto::TMonitoringUrlData v;
+    v.SetMonitoringClusterName(value.MonitoringClusterName);
+    v.SetMonitoringUrl(value.MonitoringUrl);
+    v.SetMonitoringProject(value.MonitoringProject);
+    v.SetMonitoringVolumeDashboard(value.MonitoringVolumeDashboard);
+    v.SetMonitoringPartitionDashboard(value.MonitoringPartitionDashboard);
+    v.SetMonitoringNBSAlertsDashboard(value.MonitoringNBSAlertsDashboard);
+    v.SetMonitoringNBSTVDashboard(value.MonitoringNBSTVDashboard);
     SerializeToTextFormat(v, out);
 }
 

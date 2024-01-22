@@ -13,9 +13,6 @@ namespace {
 
 #define FILESTORE_DIAGNOSTICS_CONFIG(xxx)                                      \
     xxx(BastionNameSuffix,  TString,    "ydb.bastion.cloud.yandex-team.ru"    )\
-    xxx(SolomonClusterName, TString,    ""                                    )\
-    xxx(SolomonUrl,         TString,    "https://solomon.yandex-team.ru"      )\
-    xxx(SolomonProject,     TString,    "nfs"                                 )\
     xxx(FilestoreMonPort,   ui32,       8767                                  )\
                                                                                \
     xxx(SamplingRate,               ui32,       0                             )\
@@ -36,6 +33,7 @@ namespace {
     xxx(PostponeTimePredictorInterval,   TDuration, TDuration::Seconds(15)    )\
     xxx(PostponeTimePredictorMaxTime,    TDuration, TDuration::Minutes(1)     )\
     xxx(PostponeTimePredictorPercentage, double,    0.0                       )\
+    xxx(MonitoringUrlData,               TMonitoringUrlData,  {}              )\
 // FILESTORE_DIAGNOSTICS_CONFIG
 
 #define FILESTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)                \
@@ -66,6 +64,14 @@ ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     const TProtoRequestThresholds& value)
 {
     return ConvertRequestThresholds(value);
+}
+
+template <>
+TMonitoringUrlData
+ConvertValue<TMonitoringUrlData, NProto::TMonitoringUrlData>(
+    const NProto::TMonitoringUrlData& value)
+{
+    return TMonitoringUrlData(value);
 }
 
 }   // namespace
@@ -135,4 +141,16 @@ void Out<NCloud::TRequestThresholds>(
     const NCloud::TRequestThresholds& value)
 {
     OutRequestThresholds(out, value);
+}
+
+template <>
+void Out<NCloud::NFileStore::TMonitoringUrlData>(
+    IOutputStream& out,
+    const NCloud::NFileStore::TMonitoringUrlData& value)
+{
+    NCloud::NFileStore::NProto::TMonitoringUrlData v;
+    v.SetMonitoringClusterName(value.MonitoringClusterName);
+    v.SetMonitoringUrl(value.MonitoringUrl);
+    v.SetMonitoringProject(value.MonitoringProject);
+    SerializeToTextFormat(v, out);
 }

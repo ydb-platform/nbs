@@ -106,10 +106,10 @@ void DumpChannels(
                             }
                             TABLED() {
                                 out << "<a href='"
-                                    << GetSolomonBsProxyUrl(
+                                    << GetMonitoringYDBGroupUrl(
                                            config,
                                            latestEntry->GroupID,
-                                           "nbs-dsproxy-percentile")
+                                           channel.StoragePool)
                                     << "'>Graphs</a>";
                             }
                             TABLED() {
@@ -331,7 +331,7 @@ void TPartitionActor::HandleHttpInfo_Default(
             DIV_CLASS("tab-content") {
                 DIV_CLASS_ID("tab-pane active", "Overview") {
                     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
-                    DumpSolomonPartitionLink(out, *DiagnosticsConfig);
+                    DumpMonitoringPartitionLink(out, *DiagnosticsConfig);
 
                     TAG(TH3) { out << "State"; }
                     State->DumpHtml(out);
