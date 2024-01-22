@@ -181,7 +181,9 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
                 }
             }
 
-            auto addVolumeRow = [&](const TString& diskId) {
+            auto addVolumeRow = [&](const TVolumeInfo& volume)
+            {
+                const TString& diskId = volume.VolumeInfo->GetDiskId();
                 auto history = VolumeStats->GetDowntimeHistory(diskId);
                 bool hasDowntimes = false;
                 for (const auto& [_, state]: history) {
@@ -192,7 +194,10 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
                 }
                 if (hasDowntimes) {
                     TABLER() {
-                        TABLEH() { out << diskId; }
+                        TABLEH() {
+                            out << "<a href='../tablets?TabletID="
+                                << volume.TabletId << "'>" << diskId << "</a>";
+                        }
                         TABLEH() {
                             TSvgWithDownGraph svg(out);
                             for (const auto& [time, state]: history) {
@@ -206,7 +211,7 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
             };
 
             for (const auto& p: State.GetVolumes()) {
-                addVolumeRow(p.first);
+                addVolumeRow(*p.second);
             }
         }
     }
