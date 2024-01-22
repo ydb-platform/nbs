@@ -15,20 +15,22 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 TReadBlobActor::TReadBlobActor(
         TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
+        const TActorId& partitionActorId,
+        const TActorId& volumeActorId,
+        ui64 partitionTabletId,
         ui32 blockSize,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold)
     : TLongRunningOperationCompanion(
-          tablet,
+          partitionActorId,
+          volumeActorId,
           longRunningThreshold,
           TLongRunningOperationCompanion::EOperation::ReadBlob,
           request->GroupId)
     , RequestInfo(std::move(requestInfo))
-    , Tablet(tablet)
-    , TabletId(tabletId)
+    , PartitionActorId(partitionActorId)
+    , PartitionTabletId(partitionTabletId)
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
@@ -104,7 +106,7 @@ void TReadBlobActor::NotifyCompleted(
     request->RequestTime = ResponseReceived - RequestSent;
     request->GroupId = Request->GroupId;
 
-    NCloud::Send(ctx, Tablet, std::move(request));
+    NCloud::Send(ctx, PartitionActorId, std::move(request));
 }
 
 void TReadBlobActor::ReplyAndDie(
@@ -123,8 +125,13 @@ void TReadBlobActor::ReplyAndDie(
             RequestInfo->CallContext->RequestId);
     }
 
+    if (HasError(response->GetError())) {
+        TLongRunningOperationCompanion::RequestCancelled(ctx);
+    } else {
+        TLongRunningOperationCompanion::RequestFinished(ctx);
+    }
+
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    TLongRunningOperationCompanion::RequestFinished(ctx);
     Die(ctx);
 }
 
@@ -135,7 +142,7 @@ void TReadBlobActor::ReplyError(
 {
     LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_COMMON,
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
-        TabletId,
+        PartitionTabletId,
         description.data(),
         response.Print(false).data());
 
@@ -176,7 +183,7 @@ void TReadBlobActor::HandleGetResult(
                 {
                     LOG_WARN(ctx, TBlockStoreComponents::PARTITION_COMMON,
                         "[%lu] Repairing TEvBlobStorage::TEvGet %s error (%s)",
-                        TabletId,
+                        PartitionTabletId,
                         NKikimrProto::EReplyStatus_Name(response.Status).data(),
                         msg->Print(false).data());
 

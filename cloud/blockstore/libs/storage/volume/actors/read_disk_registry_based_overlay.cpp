@@ -370,6 +370,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     ctx,
                     requestInfo,
                     TBase::SelfId(),
+                    VolumeActorId,
                     VolumeTabletId,
                     BlockSize,
                     Mode,
@@ -395,6 +396,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             ctx,
             requestInfo,
             TBase::SelfId(),
+            VolumeActorId,
             VolumeTabletId,
             BlockSize,
             EStorageAccessMode::Default,
@@ -430,8 +432,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleLongRunningBlobOperation
     const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
     const TActorContext& ctx)
 {
-    // Forward request to TVolumeActor
-    ctx.Send(ev->Forward(VolumeActorId));
+    Y_UNUSED(ev);
+    Y_UNUSED(ctx);
 }
 
 template <ReadRequest TMethod>
