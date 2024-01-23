@@ -67,7 +67,7 @@ public:
         return TDirectoryContent{content, 0, size};
     }
 
-    TMaybe<TDirectoryContent> ReadContent(size_t size, size_t offset)
+    TMaybe<TDirectoryContent> ReadContent(size_t size, size_t offset, TLog& Log)
     {
         size_t end = 0;
         TBufferPtr content = nullptr;
@@ -85,8 +85,10 @@ public:
         TDirectoryContent result;
         if (content) {
             offset = offset - (end - content->size());
-            Y_ABORT_UNLESS(offset < content->size(), "off %lu size %lu",
-                offset, content->size());
+            if (offset >= content->size()) {
+                STORAGE_ERROR("off %lu size %lu", offset, content->size());
+                return Nothing();
+            }
             result = {content, offset, size};
         }
 
@@ -277,7 +279,7 @@ void TFileSystem::ReadDir(
     if (!offset) {
         // directory contents need to be refreshed on rewinddir()
         handle->ResetContent();
-    } else if (auto content = handle->ReadContent(size, offset)) {
+    } else if (auto content = handle->ReadContent(size, offset, Log)) {
         reply(*this, *content);
         return;
     }
