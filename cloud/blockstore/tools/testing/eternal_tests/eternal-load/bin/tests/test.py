@@ -1,3 +1,4 @@
+import pytest
 import tempfile
 import time
 
@@ -16,7 +17,12 @@ _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/et
 _TIMEOUT = 30
 
 
-def __run_load_expect_fail(file_name):
+def __run_load(file_name):
+    """
+    Run eternal-load test for a given file
+
+    :return: True if eternal load fails
+    """
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -38,7 +44,7 @@ def test_load_fails():
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(__run_load_expect_fail, tmp_file.name)
+        future = executor.submit(__run_load, tmp_file.name)
         time.sleep(_TIMEOUT / 2)
 
         cnt = 0
@@ -55,8 +61,8 @@ def test_load_fails():
 def test_load_works():
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
     try:
-        assert not __run_load_expect_fail(tmp_file.name)
+        assert not __run_load(tmp_file.name)
     except TimeoutExpired:
         pass
     else:
-        assert False, f"Eternal load should not have finished in {_TIMEOUT} seconds"
+        pytest.fail(f"Eternal load should not have finished in {_TIMEOUT} seconds")
