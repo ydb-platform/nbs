@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
-	grpc_status "google.golang.org/grpc/status"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -651,18 +650,13 @@ func testShouldFailCreateImageFromImageFileURL(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.Error(t, err)
 
-	status, ok := grpc_status.FromError(err)
-	require.True(t, ok)
-
-	statusDetails := status.Details()
-	require.Equal(t, 1, len(statusDetails))
-
-	errorDetails, ok := statusDetails[0].(*disk_manager.ErrorDetails)
-	require.True(t, ok)
-
-	require.Equal(t, int64(codes.BadSource), errorDetails.Code)
-	require.False(t, errorDetails.Internal)
-	require.Equal(t, errorDetailsMessage, errorDetails.Message)
+	testcommon.CheckErrorDetails(
+		t,
+		err,
+		codes.BadSource,
+		errorDetailsMessage,
+		true, // internal
+	)
 
 	testcommon.CheckConsistency(t, ctx)
 }

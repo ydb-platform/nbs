@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -672,5 +673,35 @@ func GetEncryptionKeyHash(encryptionDesc *types.EncryptionDesc) ([]byte, error) 
 		return nil, nil
 	default:
 		return nil, errors.NewNonRetriableErrorf("unknown key %s", key)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func CheckErrorDetails(
+	t *testing.T,
+	err error,
+	code int,
+	message string,
+	internal bool,
+) {
+
+	status, ok := grpc_status.FromError(err)
+	require.True(t, ok)
+
+	statusDetails := status.Details()
+	require.Equal(t, 1, len(statusDetails))
+
+	protoMessage, err := proto.Marshal(statusDetails[0].(proto.Message))
+	require.NoError(t, err)
+
+	var errorDetails disk_manager.ErrorDetails
+	err = proto.Unmarshal(protoMessage, &errorDetails)
+	require.NoError(t, err)
+
+	require.Equal(t, int64(code), errorDetails.Code)
+	require.False(t, errorDetails.Internal)
+	if len(message) != 0 {
+		require.Equal(t, message, errorDetails.Message)
 	}
 }
