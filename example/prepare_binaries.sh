@@ -14,26 +14,26 @@ do
 done
 
 function ydbd {
-  LD_LIBRARY_PATH=$(dirname $YDBD_BIN) $YDBD_BIN $@
+  LD_LIBRARY_PATH=$(dirname $YDBD_BIN) $YDBD_BIN "$@"
 }
 
 function nbsd {
-  LD_LIBRARY_PATH=$(dirname $NBSD_BIN) $NBSD_BIN $@
+  LD_LIBRARY_PATH=$(dirname $NBSD_BIN) $NBSD_BIN "$@"
 }
 
 function blockstore-client {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_CLIENT_BIN) $BLOCKSTORE_CLIENT_BIN $@
+  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_CLIENT_BIN) $BLOCKSTORE_CLIENT_BIN "$@"
 }
 
 function diskagentd {
-  LD_LIBRARY_PATH=$(dirname $DISK_AGENT_BIN) $DISK_AGENT_BIN $@
+  LD_LIBRARY_PATH=$(dirname $DISK_AGENT_BIN) $DISK_AGENT_BIN "$@"
 }
 
 function blockstore-nbd {
-  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_NBD_BIN) $BLOCKSTORE_NBD_BIN $@
+  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_NBD_BIN) $BLOCKSTORE_NBD_BIN "$@"
 }
 
 function sudo-blockstore-nbd {
   LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_NBD_BIN)
-  sudo LD_LIBRARY_PATH=$LD_LIBRARY_PATH $BLOCKSTORE_NBD_BIN $@
+  sudo LD_LIBRARY_PATH=$LD_LIBRARY_PATH $BLOCKSTORE_NBD_BIN "$@"
 }
