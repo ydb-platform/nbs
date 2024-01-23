@@ -169,14 +169,12 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         State->GetDiskId(),
         State->GetMeta().GetConfig().GetBlockSize(),
         TNonreplicatedPartitionConfig::TVolumeInfo{
-            TInstant::MicroSeconds(volumeConfig.GetCreationTs()),
+            State->GetCreationTs(),
             mediaKind},
         SelfId(),
         State->GetMeta().GetMuteIOErrors(),
         State->GetTrackUsedBlocks(),
-        THashSet<TString>(
-            State->GetMeta().GetFreshDeviceIds().begin(),
-            State->GetMeta().GetFreshDeviceIds().end()),
+        State->GetFilteredFreshDevices(),
         maxTimedOutDeviceStateDuration,
         maxTimedOutDeviceStateDurationOverridden,
         useSimpleMigrationBandwidthLimiter);

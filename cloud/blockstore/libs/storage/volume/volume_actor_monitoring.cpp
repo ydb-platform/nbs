@@ -1278,40 +1278,10 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
 void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 {
     HTML(out) {
-        const auto& freshDeviceIds = State->GetMeta().GetFreshDeviceIds();
-
-        // this check is needed due to a bug that caused some disks to have
-        // garbage in FreshDeviceIds list
-        // this garbage causes no real issues - just requires us to filter
-        // FreshDeviceIds on monpages and in similar places
-        auto hasFreshDevices = [&] (const auto& devices) {
-            for (const auto& device: devices) {
-                const bool found = Find(
-                    freshDeviceIds.begin(),
-                    freshDeviceIds.end(),
-                    device.GetDeviceUUID()) != freshDeviceIds.end();
-
-                if (found) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
-
-        bool replicationInProgress =
-            hasFreshDevices(State->GetMeta().GetDevices());
-        for (auto& r: State->GetMeta().GetReplicas()) {
-            if (replicationInProgress) {
-                break;
-            }
-
-            replicationInProgress = hasFreshDevices(r.GetDevices());
-        }
-
         bool active = State->GetMeta().GetMigrations().size()
-            || replicationInProgress;
-        TStringBuf label = replicationInProgress ? "Replication" : "Migration";
+            || State->GetFilteredFreshDevices().size();
+        TStringBuf label = State->GetFilteredFreshDevices().empty()
+            ? "Migration" : "Replication";
 
         TAG(TH3) {
             TString statusText = "inactive";
