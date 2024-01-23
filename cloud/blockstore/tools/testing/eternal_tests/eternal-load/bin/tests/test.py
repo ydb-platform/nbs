@@ -17,12 +17,7 @@ _BINARY_PATH = 'cloud/blockstore/tools/testing/eternal_tests/eternal-load/bin/et
 _TIMEOUT = 30
 
 
-def __run_load(file_name):
-    """
-    Run eternal-load test for a given file
-
-    :return: True if eternal load fails
-    """
+def __run_load_test(file_name):
     eternal_load = yatest_common.binary_path(_BINARY_PATH)
 
     params = [
@@ -36,15 +31,14 @@ def __run_load(file_name):
         '--write-rate', '70'
     ]
 
-    result = run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=_TIMEOUT)
-    return (result.returncode == 1) and (result.stderr.find('Wrong') != -1)
+    return run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=_TIMEOUT)
 
 
 def test_load_fails():
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(__run_load, tmp_file.name)
+        future = executor.submit(__run_load_test, tmp_file.name)
         time.sleep(_TIMEOUT / 2)
 
         cnt = 0
@@ -55,13 +49,14 @@ def test_load_fails():
             cnt += 1
             cnt %= _REQUEST_COUNT
 
-        assert future.result()
+        result = future.result()
+        assert (result.returncode == 1) and (result.stderr.find('Wrong') != -1)
 
 
 def test_load_works():
     tmp_file = tempfile.NamedTemporaryFile(suffix=".test")
     try:
-        assert not __run_load(tmp_file.name)
+        assert __run_load_test(tmp_file.name).returncode == 0
     except TimeoutExpired:
         pass
     else:
