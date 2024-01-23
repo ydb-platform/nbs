@@ -78,17 +78,7 @@ func TestDiskServiceShouldFailCreateDiskFromNonExistingImage(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
 
-		status, ok := grpc_status.FromError(err)
-		require.True(t, ok)
-
-		statusDetails := status.Details()
-		require.Equal(t, 1, len(statusDetails))
-
-		errorDetails, ok := statusDetails[0].(*disk_manager.ErrorDetails)
-		require.True(t, ok)
-
-		require.Equal(t, int64(codes.BadSource), errorDetails.Code)
-		require.False(t, errorDetails.Internal)
+		testcommon.CheckErrorDetails(t, err, codes.BadSource, "", false)
 
 		testcommon.CheckConsistency(t, ctx)
 	*/
