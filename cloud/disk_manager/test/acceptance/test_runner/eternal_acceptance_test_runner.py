@@ -2,6 +2,7 @@ import contextlib
 import logging
 import math
 
+from concurrent.futures import ThreadPoolExecutor
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor
 
@@ -136,9 +137,9 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                         ),
                     )
                     byte_count = int((self._args.disk_size * (1024 ** 3)) / self._iodepth)
-                    stdouts = []
-                    stderrs = []
                     cmds = []
+                    futures = []
+                    executor = ThreadPoolExecutor(max_workers=self._iodepth)
                     for i in range(self._iodepth):
                         offset = int(i * byte_count)
                         check_ssh_connection(instance.ip, self._profiler, self._module_factory, self._args.ssh_key_path)
@@ -154,9 +155,8 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                                f' --ignore-initial={offset}'
                                f' {self._main_block_device}'
                                f' {self._secondary_block_device}')
-                        _, stdout, stderr = ssh.exec_command(cmd)
-                        stdouts.append(stdout)
-                        stderrs.append(stderr)
+                        future = executor.submit(ssh.exec_command, cmd)
+                        futures.append(future)
                         cmds.append(cmd)
                         _logger.info(f'Verifying data'
                                      f' <index={i}, offset={offset},'
@@ -165,14 +165,16 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                                      f' instance <id={instance.id}>')
 
                     error_message = ""
+                    executor.shutdown(wait=True)
                     for i in range(self._iodepth):
-                        stdout_str = stdouts[i].read().decode('utf-8')
-                        stderr_str = stderrs[i].read().decode('utf-8')
+                        _, stdout, stderr = futures[i].result()
+                        stdout_str = stdout.read().decode('utf-8')
+                        stderr_str = stderr.read().decode('utf-8')
                         _logger.info(f'Verifying finished <index={i},'
                                      f' command="{cmds[i]}", stdout='
                                      f'{stdout_str}, stderr='
                                      f'{stderr_str}>')
-                        if stderrs[i].channel.recv_exit_status():
+                        if stderr.channel.recv_exit_status():
                             error_message += (
                                 f'Error <command="{cmds[i]}", stderr='
                                 f'{stderr_str}>\n')
