@@ -6737,18 +6737,13 @@ const TVector<TDiskStateUpdate>& TDiskRegistryState::GetDiskStateUpdates() const
     return NotificationSystem.GetDiskStateUpdates();
 }
 
-NProto::TError TDiskRegistryState::SetDiskRegistryAgentListParams(
+void TDiskRegistryState::SetDiskRegistryAgentListParams(
     TDiskRegistryDatabase& db,
     const TString& agentId,
     const NProto::TDiskRegistryAgentParams& params)
 {
-    if (!AgentList.FindAgent(agentId)) {
-        return MakeError(E_NOT_FOUND, "agentId not found: " + agentId);
-    }
-
     AgentList.SetDiskRegistryAgentListParams(agentId, params);
     db.AddDiskRegistryAgentListParams(agentId, params);
-    return {};
 }
 
 void TDiskRegistryState::CleanupExpiredAgentListParams(
@@ -6758,14 +6753,6 @@ void TDiskRegistryState::CleanupExpiredAgentListParams(
     for (const auto& agentId: AgentList.CleanupExpiredAgentListParams(now)) {
         db.DeleteDiskRegistryAgentListParams(agentId);
     }
-}
-
-void TDiskRegistryState::DeleteDiskRegistryAgentListParams(
-    TDiskRegistryDatabase& db,
-    const TString& agentId)
-{
-    AgentList.DeleteAgentListParams(agentId);
-    db.DeleteDiskRegistryAgentListParams(agentId);
 }
 
 TVector<TString> TDiskRegistryState::GetPoolNames() const

@@ -88,21 +88,16 @@ void TDiskRegistryActor::ExecuteUpdateDiskRegistryAgentListParams(
         return;
     }
 
-    TDiskRegistryDatabase db(tx.DB);
-    TVector<TString> updatedAgentIds;
     for (const auto& agentId: args.AgentIds) {
-        args.Error =
-            State->SetDiskRegistryAgentListParams(db, agentId, args.Params);
-        if (HasError(args.Error)) {
-            break;
+        if (!State->FindAgent(agentId)) {
+            args.Error = MakeError(E_NOT_FOUND, "agentId not found: " + agentId);
+            return;
         }
-        updatedAgentIds.push_back(agentId);
     }
 
-    if (HasError(args.Error)) {
-        for (const auto& agentId: updatedAgentIds) {
-            State->DeleteDiskRegistryAgentListParams(db, agentId);
-        }
+    TDiskRegistryDatabase db(tx.DB);
+    for (const auto& agentId: args.AgentIds) {
+        State->SetDiskRegistryAgentListParams(db, agentId, args.Params);
     }
 }
 

@@ -784,7 +784,7 @@ public:
         AgentList.OnAgentDisconnected(now, agentId);
     }
 
-    NProto::TError SetDiskRegistryAgentListParams(
+    void SetDiskRegistryAgentListParams(
         TDiskRegistryDatabase& db,
         const TString& agentId,
         const NProto::TDiskRegistryAgentParams& params);
@@ -792,10 +792,6 @@ public:
     void CleanupExpiredAgentListParams(
         TDiskRegistryDatabase& db,
         TInstant now);
-
-    void DeleteDiskRegistryAgentListParams(
-        TDiskRegistryDatabase& db,
-        const TString& agentId);
 
     TVector<TString> GetPoolNames() const;
 
