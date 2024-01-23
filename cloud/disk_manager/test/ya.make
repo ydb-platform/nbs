@@ -3,6 +3,5 @@ RECURSE(
     images
     mocks
     recipe
-    # Fixme: Add remote tests
-    # remote
+    remote
 )

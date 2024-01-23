@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package config;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/test/remote/cmd/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TestConfig {
+    required string ZoneID = 1;
+    required string ImageURL = 2;
+    optional uint64 ImageSize = 3 [default = 15246295040];
+    optional uint32 ImageCrc32 = 4 [default = 1189208160];
+}
