@@ -1279,8 +1279,8 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 {
     HTML(out) {
         bool active = State->GetMeta().GetMigrations().size()
-            || State->GetMeta().GetFreshDeviceIds().size();
-        TStringBuf label = State->GetMeta().GetFreshDeviceIds().empty()
+            || State->GetFilteredFreshDevices().size();
+        TStringBuf label = State->GetFilteredFreshDevices().empty()
             ? "Migration" : "Replication";
 
         TAG(TH3) {

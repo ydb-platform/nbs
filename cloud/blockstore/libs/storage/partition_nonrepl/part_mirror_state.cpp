@@ -35,14 +35,10 @@ TMirrorPartitionState::TMirrorPartitionState(
     }
 
     if (freshDeviceCount != partConfig->GetFreshDeviceIds().size()) {
-        // XXX needed to mute crit events for old disks after NBS-4383
-        const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
-        if (partConfig->GetVolumeInfo().CreationTs > oldDate) {
-            ReportFreshDeviceNotFoundInConfig(TStringBuilder()
-                << "Fresh device count mismatch: " << freshDeviceCount
-                << " != " << partConfig->GetFreshDeviceIds().size()
-                << " for disk " << partConfig->GetName());
-        }
+        ReportFreshDeviceNotFoundInConfig(TStringBuilder()
+            << "Fresh device count mismatch: " << freshDeviceCount
+            << " != " << partConfig->GetFreshDeviceIds().size()
+            << " for disk " << partConfig->GetName());
     }
 }
 
