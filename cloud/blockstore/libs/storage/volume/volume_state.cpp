@@ -241,6 +241,32 @@ void TVolumeState::Reset()
 
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
     ForceMirrorResync = StorageConfig->GetForceMirrorResync();
+
+    // this filtration is needed due to a bug that caused some disks to have
+    // garbage in FreshDeviceIds list
+    FilteredFreshDeviceIds.clear();
+
+    auto addFreshDevices = [&] (const auto& devices) {
+        for (const auto& device: devices) {
+            const bool found = Find(
+                Meta.GetFreshDeviceIds().begin(),
+                Meta.GetFreshDeviceIds().end(),
+                device.GetDeviceUUID()) != Meta.GetFreshDeviceIds().end();
+
+            if (found) {
+                FilteredFreshDeviceIds.insert(device.GetDeviceUUID());
+            }
+        }
+    };
+
+    // XXX the aforementioned bug affects only "old" disks, see NBS-4383
+    const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+    if (GetCreationTs() <= oldDate) {
+        addFreshDevices(Meta.GetDevices());
+        for (const auto& r: Meta.GetReplicas()) {
+            addFreshDevices(r.GetDevices());
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
