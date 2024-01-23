@@ -53,6 +53,14 @@ public:
 // To migrate data, it is necessary to inherit from this class. To get started,
 // you need to call the StartWork() method and pass the source and destination
 // actors to it.
+
+// About error handling. If migration errors occur, they cannot be fixed, on the
+// VolumeActor/PartitionActor side since DiskRegistry manages the allocation of
+// devices. Therefore, in this case, the MigrationFailed critical error is only
+// fired here. When DiskRegistry detects that the device or agent is broken, it
+// selects a new migration target and starts it again by sending a new
+// configuration to VolumeActor, which will lead to the migration actor being
+// recreated with a new device config.
 class TNonreplicatedPartitionMigrationCommonActor
     : public NActors::TActorBootstrapped<
           TNonreplicatedPartitionMigrationCommonActor>

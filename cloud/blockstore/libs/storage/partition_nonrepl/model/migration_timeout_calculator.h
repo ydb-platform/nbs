@@ -8,6 +8,7 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+// Calculates the time during which a 4MB block should migrate.
 class TMigrationTimeoutCalculator
 {
 private:

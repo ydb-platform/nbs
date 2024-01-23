@@ -108,7 +108,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 
     auto* msg = ev->Get();
 
-    NetworkBytes += 2 * msg->Range.Size() * SrcConfig->GetBlockSize();
+    NetworkBytes += 2 * msg->Range.Size() * BlockSize;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     ProfileLog->Write({
