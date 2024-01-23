@@ -103,9 +103,7 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 {
     auto* msg = ev->Get();
 
-    auto* resourceMetrics = GetResourceMetrics();
-    if (resourceMetrics != nullptr) {
-        const auto* msg = ev->Get();
+    if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
         bool changed = false;
         if (msg->CpuUsage) {
             resourceMetrics->CPU.Increment(

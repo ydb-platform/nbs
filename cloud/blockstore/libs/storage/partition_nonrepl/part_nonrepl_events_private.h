@@ -79,10 +79,13 @@ struct TEvNonreplPartitionPrivate
     struct TWriteOrZeroCompleted
     {
         ui64 RequestCounter;
-        ui64 TotalCycles = 0;
+        ui64 TotalCycles;
 
-        TWriteOrZeroCompleted(ui64 requestCounter)
+        TWriteOrZeroCompleted(
+                ui64 requestCounter,
+                ui64 totalCycles)
             : RequestCounter(requestCounter)
+            , TotalCycles(totalCycles)
         {
         }
     };
