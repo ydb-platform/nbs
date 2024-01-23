@@ -14,6 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const TStringBuf None = "None";
 const TStringBuf ArcPart = "/arc/";
 const TStringBuf ArcadiaSuffix = "/arcadia";
 const TStringBuf StablePrefix = "stable-";
@@ -145,7 +146,7 @@ int GetRevisionFromBranch(const TString& branch)
 const TString& GetFullVersionString()
 {
     static const TString custom = GetCustomVersion();
-    if (custom) {
+    if (custom && custom != None) {
         return custom;
     }
 
