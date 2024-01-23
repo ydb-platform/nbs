@@ -470,7 +470,7 @@ void TVolumeActor::HandleHttpInfo_Default(
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
         storageConfigTab = activeTab;
-    } else if (tabName == rawVolumeConfigTab) {
+    } else if (tabName == rawVolumeConfigTabName) {
         rawVolumeConfigTab = activeTab;
     }
 
