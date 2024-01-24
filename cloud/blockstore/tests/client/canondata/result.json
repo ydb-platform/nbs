@@ -4,5 +4,8 @@
     },
     "test_with_client.test_successive_remounts_and_writes": {
         "uri": "file://test_with_client.test_successive_remounts_and_writes/results.txt"
+    },
+    "test_with_client.test_configs_dispatcher": {
+        "uri": "file://test_with_client.test_configs_dispatcher/results.txt"
     }
 }

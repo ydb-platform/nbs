@@ -79,6 +79,7 @@ void TServiceActor::HandleExecuteAction(
         {"setupchannels",                     &TServiceActor::CreateSetupChannelsActionActor               },
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },
         {"changestorageconfig",               &TServiceActor::CreateChangeStorageConfigActionActor         },
+        {"getnameservernodes",                &TServiceActor::CreateGetNameserverNodes                     },
     };
 
     NProto::TError error;

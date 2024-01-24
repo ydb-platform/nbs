@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import tempfile
@@ -7,15 +8,29 @@ import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.public.api.protos.placement_pb2 import TListPlacementGroupsResponse, \
-    TDescribePlacementGroupResponse, TDescribePlacementGroupRequest, EPlacementStrategy
-from cloud.blockstore.public.api.protos.volume_pb2 import TDescribeVolumeRequest, \
-    TDescribeVolumeResponse, TListVolumesResponse
+from cloud.blockstore.public.api.protos.placement_pb2 import (
+    TListPlacementGroupsResponse,
+    TDescribePlacementGroupResponse,
+    TDescribePlacementGroupRequest,
+    EPlacementStrategy,
+)
+from cloud.blockstore.public.api.protos.volume_pb2 import (
+    TDescribeVolumeRequest,
+    TDescribeVolumeResponse,
+    TListVolumesResponse,
+)
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writable_state, \
-    setup_disk_registry_config_simple
-from cloud.blockstore.tests.python.lib.test_base import thread_count, get_nbs_counters, \
-    get_sensor_by_name
+from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
+    enable_writable_state,
+    setup_disk_registry_config_simple,
+)
+from cloud.blockstore.tests.python.lib.test_base import thread_count, get_nbs_counters, get_sensor_by_name
+from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from contrib.ydb.core.protos import console_config_pb2 as console
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.core.protos.config_pb2 import TStaticNameserviceConfig
+from contrib.ydb.tests.library.common.yatest_common import PortManager
+from contrib.ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
 
 from google.protobuf import text_format
 
@@ -91,6 +106,13 @@ def file_parse(file_path, proto_type):
     return text_format.Parse(file_content, proto_type)
 
 
+def file_parse_as_json(file_path):
+    file_content = ''
+    with open(file_path, 'r') as file:
+        file_content = file.read()
+    return json.loads(file_content)
+
+
 def list_placement_groups(env, run):
     clear_file(env.results_file)
     run("listplacementgroups",
@@ -136,6 +158,18 @@ def describe_volume(env, run, disk_id):
 def clear_file(file):
     file.seek(0)
     file.truncate()
+
+
+def update_cms_config(client, config):
+    req = msgbus.TConsoleRequest()
+    action = req.ConfigureRequest.Actions.add()
+    action.AddConfigItem.ConfigItem.Kind = 3
+
+    action.AddConfigItem.ConfigItem.Config.NameserviceConfig.CopyFrom(config)
+    action.AddConfigItem.ConfigItem.MergeStrategy = console.TConfigItem.OVERWRITE
+
+    response = client.invoke(req, 'ConsoleRequest')
+    assert response.Status.Code == StatusIds.SUCCESS
 
 
 def setup(with_nrd=False, nrd_device_count=1, rack=''):
@@ -707,3 +741,59 @@ def test_create_destroy_placementgroup():
 
     run("destroyplacementgroup",
         "--group-id", "group-0")
+
+
+def test_configs_dispatcher():
+    env, run = setup()
+
+    run("ExecuteAction",
+        "--action", "GetNameserverNodes",
+        "--input-bytes", "",
+        "--verbose")
+    nodes = file_parse_as_json(env.results_path)
+
+    static_nodes = list(
+        filter(lambda node: node["IsStatic"] is True, nodes["Nodes"]))
+    assert len(static_nodes) == 1
+    static_nodes[0]["Port"] = "<first_static_node_port>"
+    clear_file(env.results_file)
+
+    nameservice_config = TStaticNameserviceConfig()
+    nameservice_config.Node.add(
+        NodeId=1,
+        Port=env.configurator.port_allocator.get_node_port_allocator(
+            env.configurator.all_node_ids()[0]).ic_port,
+        Host="localhost",
+        InterconnectHost="localhost",
+        WalleLocation=TNodeLocation(Body=1, DataCenter="1", Rack="1")
+    )
+    pm = PortManager()
+    second_node_port = pm.get_port()
+    nameservice_config.Node.add(
+        NodeId=2,
+        Port=second_node_port,
+        Host="localhost",
+        InterconnectHost="localhost",
+        WalleLocation=TNodeLocation(Body=2, DataCenter="2", Rack="2")
+    )
+    update_cms_config(env.kikimr_cluster.client, nameservice_config)
+
+    run("ExecuteAction",
+        "--action", "GetNameserverNodes",
+        "--input-bytes", "",
+        "--verbose")
+
+    nodes = file_parse_as_json(env.results_path)
+    updated_static_nodes = list(
+        filter(lambda node: node["IsStatic"] is True, nodes["Nodes"]))
+    assert len(updated_static_nodes) == 2
+    assert updated_static_nodes[1]["Port"] == second_node_port
+    updated_static_nodes[0]["Port"] = "<first_static_node_port>"
+    updated_static_nodes[1]["Port"] = "<second_static_node_port>"
+    with open(env.results_path, 'w') as results:
+        results.write(json.dumps(static_nodes) + "\n")
+        results.write(json.dumps(updated_static_nodes) + "\n")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    env.tear_down()
+    return ret

@@ -362,6 +362,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateChangeStorageConfigActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetNameserverNodes(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
