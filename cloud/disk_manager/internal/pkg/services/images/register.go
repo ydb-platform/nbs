@@ -113,7 +113,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"images.ClearDeletedImages",
-		"",
 		clearDeletedImagesTaskScheduleInterval,
 		1,
 	)

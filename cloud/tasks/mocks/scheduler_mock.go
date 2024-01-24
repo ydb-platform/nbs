@@ -61,12 +61,11 @@ func (s *SchedulerMock) ScheduleZonalTask(
 func (s *SchedulerMock) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
-	description string,
 	scheduleInterval time.Duration,
 	maxTasksInflight int,
 ) {
 
-	s.Called(ctx, taskType, description, scheduleInterval, maxTasksInflight)
+	s.Called(ctx, taskType, scheduleInterval, maxTasksInflight)
 }
 
 func (s *SchedulerMock) CancelTask(

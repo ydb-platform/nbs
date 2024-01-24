@@ -165,7 +165,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"disks.ClearDeletedDisks",
-		"",
 		clearDeletedDisksTaskScheduleInterval,
 		1,
 	)

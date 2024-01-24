@@ -1106,7 +1106,7 @@ func TestTasksRunningRegularTasks(t *testing.T) {
 	regularTaskCounter = 0
 	regularTaskMutex.Unlock()
 
-	s.scheduler.ScheduleRegularTasks(ctx, "regular", "Regular task", time.Millisecond, 2)
+	s.scheduler.ScheduleRegularTasks(ctx, "regular", time.Millisecond, 2)
 
 	for {
 		<-time.After(10 * time.Millisecond)
