@@ -231,7 +231,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ScheduleBaseDisks",
-		"",
 		scheduleBaseDisksTaskScheduleInterval,
 		1,
 	)
@@ -240,7 +239,6 @@ func RegisterForExecution(
 		taskScheduler.ScheduleRegularTasks(
 			ctx,
 			"pools.OptimizeBaseDisks",
-			"",
 			optimizeBaseDisksTaskScheduleInterval,
 			1,
 		)
@@ -249,7 +247,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.DeleteBaseDisks",
-		"",
 		deleteBaseDisksTaskScheduleInterval,
 		1,
 	)
@@ -257,7 +254,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ClearDeletedBaseDisks",
-		"",
 		clearDeletedBaseDisksTaskScheduleInterval,
 		1,
 	)
@@ -265,7 +261,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ClearReleasedSlots",
-		"",
 		clearReleasedSlotsTaskScheduleInterval,
 		1,
 	)

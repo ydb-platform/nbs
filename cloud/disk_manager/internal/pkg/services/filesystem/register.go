@@ -76,7 +76,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"filesystems.ClearDeletedFilesystems",
-		"",
 		clearDeletedFilesystemsTaskScheduleInterval,
 		1,
 	)

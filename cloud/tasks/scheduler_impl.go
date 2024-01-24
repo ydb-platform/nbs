@@ -117,7 +117,6 @@ func (s *scheduler) ScheduleZonalTask(
 func (s *scheduler) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
-	description string,
 	scheduleInterval time.Duration,
 	maxTasksInflight int,
 ) {
@@ -157,7 +156,7 @@ func (s *scheduler) ScheduleRegularTasks(
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
 				ID:           "",
 				TaskType:     taskType,
-				Description:  description,
+				Description:  "",
 				CreatedAt:    createdAt,
 				CreatedBy:    headers.GetAccountID(ctx),
 				ModifiedAt:   createdAt,
@@ -578,7 +577,6 @@ func NewScheduler(
 	s.ScheduleRegularTasks(
 		ctx,
 		"tasks.ClearEndedTasks",
-		"Clear Ended Tasks",
 		clearEndedTasksTaskScheduleInterval,
 		1,
 	)
@@ -613,7 +611,6 @@ func NewScheduler(
 	s.ScheduleRegularTasks(
 		ctx,
 		"tasks.CollectListerMetrics",
-		"",
 		collectListerMetricsTaskScheduleInterval,
 		1,
 	)

@@ -180,7 +180,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"dataplane.CollectSnapshots",
-		"",
 		collectSnapshotsTaskScheduleInterval,
 		1,
 	)
@@ -216,7 +215,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"dataplane.CollectSnapshotMetrics",
-		"",
 		collectSnapshotMetricsTaskScheduleInterval,
 		1,
 	)

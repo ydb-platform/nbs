@@ -11,6 +11,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type Scheduler interface {
+	// Requires "idempotency-key" header in ctx metadata.
 	// Returns id of the task.
 	ScheduleTask(
 		ctx context.Context,
@@ -21,6 +22,7 @@ type Scheduler interface {
 		folderID string,
 	) (string, error)
 
+	// Requires "idempotency-key" header in ctx metadata.
 	// The task will be executed by a worker in certain zone.
 	// Returns id of the task.
 	ScheduleZonalTask(
@@ -36,7 +38,6 @@ type Scheduler interface {
 	ScheduleRegularTasks(
 		ctx context.Context,
 		taskType string,
-		description string,
 		scheduleInterval time.Duration,
 		maxTasksInflight int,
 	)

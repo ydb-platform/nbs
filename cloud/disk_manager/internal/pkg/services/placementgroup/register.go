@@ -82,7 +82,6 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		gcTaskType,
-		"",
 		clearDeletedPlacementGroupsTaskScheduleInterval,
 		1,
 	)
