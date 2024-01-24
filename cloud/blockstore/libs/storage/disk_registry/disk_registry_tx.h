@@ -1252,6 +1252,8 @@ struct TTxDiskRegistry
         const TVector<TString> AgentIds;
         const NProto::TDiskRegistryAgentParams Params;
 
+        NProto::TError Error;
+
         explicit TUpdateDiskRegistryAgentListParams(
                 TRequestInfoPtr requestInfo,
                 const TVector<TString>& agentIds,
