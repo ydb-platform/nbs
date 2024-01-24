@@ -105,17 +105,11 @@ func (s *compoundStorage) CreateTask(
 func (s *compoundStorage) CreateRegularTasks(
 	ctx context.Context,
 	state TaskState,
-	scheduleInterval time.Duration,
-	maxTasksInflight int,
+	schedule TaskSchedule,
 ) error {
 
 	// Don't need to use legacyStorage here.
-	return s.storage.CreateRegularTasks(
-		ctx,
-		state,
-		scheduleInterval,
-		maxTasksInflight,
-	)
+	return s.storage.CreateRegularTasks(ctx, state, schedule)
 }
 
 func (s *compoundStorage) GetTask(

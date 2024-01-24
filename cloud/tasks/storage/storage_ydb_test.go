@@ -3512,7 +3512,12 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 		map[string]string{"type": task.TaskType},
 	).On("Add", int64(2)).Once()
 
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	schedule := TaskSchedule{
+		ScheduleInterval: time.Second,
+		MaxTasksInflight: 2,
+	}
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
 
@@ -3531,7 +3536,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	require.True(t, task2.Regular)
 
 	// Check idempotency.
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
@@ -3540,7 +3545,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 
 	// Rewind time and check that new tasks were not created.
 	task.CreatedAt = createdAt.Add(2 * time.Second)
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
@@ -3562,7 +3567,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
 
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
@@ -3586,7 +3591,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
 
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
@@ -3601,7 +3606,7 @@ func TestStorageYDBCreateRegularTasks(t *testing.T) {
 		map[string]string{"type": task.TaskType},
 	).On("Add", int64(2)).Once()
 
-	err = storage.CreateRegularTasks(ctx, task, time.Second, 2)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 	metricsRegistry.AssertAllExpectations(t)
 

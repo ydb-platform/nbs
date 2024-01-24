@@ -22,7 +22,7 @@ func generateTaskID() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type schedule struct {
+type scheduleState struct {
 	taskType      string
 	scheduledAt   time.Time
 	tasksInflight uint64

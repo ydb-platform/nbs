@@ -41,20 +41,13 @@ func (s *storageYDB) CreateTask(
 func (s *storageYDB) CreateRegularTasks(
 	ctx context.Context,
 	state TaskState,
-	scheduleInterval time.Duration,
-	maxTasksInflight int,
+	schedule TaskSchedule,
 ) error {
 
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.createRegularTasks(
-				ctx,
-				session,
-				state,
-				scheduleInterval,
-				maxTasksInflight,
-			)
+			return s.createRegularTasks(ctx, session, state, schedule)
 		},
 	)
 }

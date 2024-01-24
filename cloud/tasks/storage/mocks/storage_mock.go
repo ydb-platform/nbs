@@ -27,11 +27,10 @@ func (s *StorageMock) CreateTask(
 func (s *StorageMock) CreateRegularTasks(
 	ctx context.Context,
 	state tasks_storage.TaskState,
-	scheduleInterval time.Duration,
-	maxTasksInflight int,
+	schedule tasks_storage.TaskSchedule,
 ) error {
 
-	args := s.Called(ctx, state, scheduleInterval, maxTasksInflight)
+	args := s.Called(ctx, state, schedule)
 	return args.Error(0)
 }
 
