@@ -2,18 +2,12 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.sc.h>
-
-#include <library/cpp/config/config.h>
-#include <library/cpp/json/domscheme_traits.h>
+#include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config/config.pb.h>
 
 #include <util/stream/file.h>
 
 namespace NCloud::NBlockStore {
 
-////////////////////////////////////////////////////////////////////////////////
-
-using TTestConfig = TTestConfigDesc<TJsonTraits>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,7 +30,8 @@ IConfigHolderPtr CreateTestConfig(
     ui64 blockSize,
     ui16 writeRate,
     ui64 requestBlockCount,
-    ui64 writeParts
+    ui64 writeParts,
+    TString alternatingPhase = ""
 );
 
 IConfigHolderPtr CreateTestConfig(const TString& filePath);

@@ -44,31 +44,29 @@ ui64 CalculateInverse(ui64 step, ui64 len)
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRange {
-    using TConfig = TRangeConfig<TJsonTraits>;
-
-    TConfig Config;
+    TRangeConfig Config;
     ui64 Size;
     std::shared_ptr<char[]> Buf;
     ui64 StepInversion;
 
-    TRange(const TConfig& config, ui64 size)
+    TRange(const TRangeConfig& config, ui64 size)
         : Config{config}
         , Size{size}
         , Buf{static_cast<char*>(std::aligned_alloc(NSystemInfo::GetPageSize(), Size)), std::free}
-        , StepInversion{CalculateInverse(Config.Step(), Config.RequestCount())}
+        , StepInversion{CalculateInverse(Config.GetStep(), Config.GetRequestCount())}
     {
         memset(Buf.get(), '1', Size);
 
         Y_ABORT_UNLESS(
-            size % Config.WriteParts() == 0,
+            size % Config.GetWriteParts() == 0,
             "invalid write parts number"
         );
         Y_ABORT_UNLESS(
-            size / Config.WriteParts() >= sizeof(TBlockData),
+            size / Config.GetWriteParts() >= sizeof(TBlockData),
             "blockdata doesn't fit write part"
         );
         Y_ABORT_UNLESS(
-            (size / Config.WriteParts()) % DIRECT_IO_ALIGNMENT == 0,
+            (size / Config.GetWriteParts()) % DIRECT_IO_ALIGNMENT == 0,
             "write parts has invalid alignment"
         );
     }
@@ -85,11 +83,11 @@ struct TRange {
 
     std::pair<ui64, ui64> NextWrite()
     {
-        ui64 blockIdx = Config.StartOffset() + Config.LastBlockIdx() * Config.RequestBlockCount();
-        ui64 iteration = Config.NumberToWrite();
+        ui64 blockIdx = Config.GetStartOffset() + Config.GetLastBlockIdx() * Config.GetRequestBlockCount();
+        ui64 iteration = Config.GetNumberToWrite();
 
-        Config.LastBlockIdx() = (Config.LastBlockIdx() + Config.Step()) % Config.RequestCount();
-        Config.NumberToWrite() += 1;
+        Config.SetLastBlockIdx((Config.GetLastBlockIdx() + Config.GetStep()) % Config.GetRequestCount());
+        Config.SetNumberToWrite(Config.GetNumberToWrite() + 1);
         return {blockIdx, iteration};
     }
 
@@ -98,19 +96,19 @@ struct TRange {
         // Idea of this code is to find request number (x) which is written in random block (r).
         // To do this we need to solve equation `startBlockIdx + x * step = r [mod %requestCount]` which is equal
         // to equation `x = (r - startBlockIdx) * inverted_step [mod %requestCount]`.
-        ui64 requestCount = Config.RequestCount();
+        ui64 requestCount = Config.GetRequestCount();
 
         ui64 randomBlock = RandomNumber(requestCount);
-        ui64 tmp = (randomBlock - Config.StartBlockIdx() + requestCount) % requestCount;
+        ui64 tmp = (randomBlock - Config.GetStartBlockIdx() + requestCount) % requestCount;
         ui64 x = (tmp * StepInversion) % requestCount;
 
         TMaybe<ui64> expected = Nothing();
-        if (Config.NumberToWrite() > x) {
-            ui64 fullCycles = (Config.NumberToWrite() - x - 1) / requestCount;
+        if (Config.GetNumberToWrite() > x) {
+            ui64 fullCycles = (Config.GetNumberToWrite() - x - 1) / requestCount;
             expected = x + fullCycles * requestCount;
         }
 
-        ui64 requestBlockIdx = Config.StartOffset() + randomBlock * Config.RequestBlockCount();
+        ui64 requestBlockIdx = Config.GetStartOffset() + randomBlock * Config.GetRequestBlockCount();
         return {requestBlockIdx, expected};
     }
 };
@@ -150,22 +148,22 @@ public:
         : TestStartTimestamp(Now())
         , ConfigHolder(configHolder)
         , File(
-            TString(ConfigHolder->GetConfig().FilePath()),
+            TString(ConfigHolder->GetConfig().GetFilePath()),
             EOpenModeFlag::DirectAligned | EOpenModeFlag::RdWr)
-        , AsyncIO(0, ConfigHolder->GetConfig().IoDepth())
-        , Futures(ConfigHolder->GetConfig().IoDepth())
+        , AsyncIO(0, ConfigHolder->GetConfig().GetIoDepth())
+        , Futures(ConfigHolder->GetConfig().GetIoDepth())
         , Log(log)
     {
         auto& config = ConfigHolder->GetConfig();
-        for (ui16 i = 0; i < config.IoDepth(); ++i) {
-            auto rangeConfig = config.Ranges()[i];
+        for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
+            auto rangeConfig = config.GetRanges(i);
             Ranges.emplace_back(
                 rangeConfig,
-                rangeConfig.RequestBlockCount() * config.BlockSize());
+                rangeConfig.GetRequestBlockCount() * config.GetBlockSize());
             RangesQueue.Enqueue(i);
         }
 
-        SlowRequestThreshold = TDuration::Parse(config.SlowRequestThreshold());
+        SlowRequestThreshold = TDuration::Parse(config.GetSlowRequestThreshold());
     }
 
     bool Run() override;
@@ -180,11 +178,23 @@ bool TTestExecutor::Run()
 
     AsyncIO.Start();
     TVector<ui16> buf;
+
+    TDuration phaseDuration = TDuration::Max();
+    if (ConfigHolder->GetConfig().HasAlternatingPhase()) {
+        phaseDuration = TDuration::Parse(ConfigHolder->GetConfig().GetAlternatingPhase());
+    }
+    TInstant phaseStartTs = Now();
+    ui16 writeRate = ConfigHolder->GetConfig().GetWriteRate();
+
     while (!AtomicGet(ShouldStop)) {
         buf.clear();
+        if (phaseStartTs + phaseDuration < Now()) {
+            writeRate = 100 - writeRate;
+            phaseStartTs = Now();
+        }
         RangesQueue.DequeueAllSingleConsumer(&buf);
         for (auto rangeIdx: buf) {
-            if (RandomNumber(100u) >= ConfigHolder->GetConfig().WriteRate()) {
+            if (RandomNumber(100u) >= writeRate) {
                 DoReadRequest(rangeIdx);
             } else {
                 DoWriteRequest(rangeIdx);
@@ -222,7 +232,7 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
     TMaybe<ui64> expected;
     std::tie(blockIdx, expected) = range.RandomRead();
 
-    ui64 blockSize = ConfigHolder->GetConfig().BlockSize();
+    ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
 
     const auto startTs = Now();
     auto future = AsyncIO.Read(
@@ -254,8 +264,8 @@ void TTestExecutor::DoReadRequest(ui16 rangeIdx)
 
         auto& range = Ranges[rangeIdx];
 
-        ui64 partSize = range.DataSize() / range.Config.WriteParts();
-        for (ui64 part = 0; part < range.Config.WriteParts(); ++part) {
+        ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
+        for (ui64 part = 0; part < range.Config.GetWriteParts(); ++part) {
             TBlockData blockData;
             memcpy(&blockData, range.Data(part * partSize), sizeof(blockData));
 
@@ -296,14 +306,14 @@ void TTestExecutor::DoWriteRequest(ui16 rangeIdx)
         .RangeIdx = rangeIdx,
         .RequestTimestamp = startTs.MicroSeconds(),
         .TestTimestamp = TestStartTimestamp.MicroSeconds(),
-        .TestId = ConfigHolder->GetConfig().TestId(),
+        .TestId = ConfigHolder->GetConfig().GetTestId(),
         .Checksum = 0
     };
 
     TVector<TFuture<void>> futures;
-    ui64 blockSize = ConfigHolder->GetConfig().BlockSize();
-    ui64 partSize = range.DataSize() / range.Config.WriteParts();
-    for (ui32 part = 0; part < range.Config.WriteParts(); ++part) {
+    ui64 blockSize = ConfigHolder->GetConfig().GetBlockSize();
+    ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
+    for (ui32 part = 0; part < range.Config.GetWriteParts(); ++part) {
         blockData.PartNumber = part;
         blockData.Checksum = 0;
         blockData.Checksum = Crc32c(&blockData, sizeof(blockData));

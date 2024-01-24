@@ -1,0 +1,31 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config";
+
+message TRangeConfig {
+  required uint64 StartOffset = 1;
+  required uint64 RequestBlockCount = 2;
+  required uint64 RequestCount = 3;
+  required uint64 Step = 4;
+  required uint64 StartBlockIdx = 5;
+  required uint64 LastBlockIdx = 6;
+  required uint64 NumberToWrite = 7;
+  required uint64 WriteParts = 8;
+}
+
+message TTestConfig {
+  optional uint64 TestId = 1;
+  required string FilePath = 2;
+  required uint32 IoDepth = 3;
+  required uint64 FileSize = 4;
+  required uint64 BlockSize = 5;
+  required uint32 WriteRate = 6;
+  required uint64 RangeBlockCount = 7;
+  repeated TRangeConfig Ranges = 8;
+  required string SlowRequestThreshold = 9 [default = "10s"];
+  // Used for a testcases, where write rate is periodically replaced
+  // with read rate and vice versa.
+  optional string AlternatingPhase = 10;
+}

@@ -36,12 +36,12 @@ bool RunTest(
         config,
         logging->CreateLog("VALIDATOR_UT"));
 
-    const auto& range = config.Ranges(0);
+    const auto& range = config.GetRanges(0);
     TVector<ui64> data(size);
-    ui64 cur = range.StartBlockIdx();
+    ui64 cur = range.GetStartBlockIdx();
     for (ui32 i = 0; i < iterations; ++i) {
         data[cur] = i;
-        cur = (cur + range.Step()) % size;
+        cur = (cur + range.GetStep()) % size;
     }
 
     if (brokenBlockIdx.Defined()) {
@@ -55,10 +55,10 @@ bool RunTest(
             .RangeIdx = 0,
             .RequestTimestamp = Now().MicroSeconds(),
             .TestTimestamp = Now().MicroSeconds(),
-            .TestId = config.TestId(),
+            .TestId = config.GetTestId(),
             .Checksum = 0
         };
-        validator->Write(&blockData, config.BlockSize());
+        validator->Write(&blockData, config.GetBlockSize());
     }
 
     validator->Finish();

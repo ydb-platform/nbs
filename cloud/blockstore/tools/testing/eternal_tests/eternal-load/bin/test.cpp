@@ -64,6 +64,7 @@ int TTest::Run()
         case ECommand::GenerateConfigCmd:
             Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
             Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
+            Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
             ConfigHolder = CreateTestConfig(
                 *Options->FilePath,
                 *Options->FileSize * 1_GB,
@@ -71,7 +72,8 @@ int TTest::Run()
                 Options->BlockSize,
                 Options->WriteRate,
                 Options->RequestBlockCount,
-                Options->WriteParts);
+                Options->WriteParts,
+                Options->AlternatingPhase);
             break;
         case ECommand::ReadConfigCmd:
             Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");

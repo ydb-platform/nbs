@@ -72,6 +72,12 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteParts)
         .DefaultValue(1);
 
+    opts.AddLongOption("alternating-phase", 
+            "duration of a phase for tests in which write load is replaced by read load periodically")
+        .OptionalArgument("STR")
+        .StoreResult(&AlternatingPhase)
+        .DefaultValue("");
+
     opts.AddLongOption(
         "dump-config-path",
         "dump test configuration to specified file in json format")
