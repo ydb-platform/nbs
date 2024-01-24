@@ -837,18 +837,24 @@ private:
             : request.GetInstanceId();
 
         TVector<TString> args {
-            "--client-id", clientId,
-            "--disk-id", request.GetDiskId(),
             "--serial", deviceName,
             "--socket-path", socketPath,
             "-q", ToString(request.GetVhostQueuesCount())
         };
 
-        args.emplace_back("--device-backend");
-        args.emplace_back(GetDeviceBackend(epType));
+        if (epType == EEndpointType::Rdma) {
+            args.emplace_back("--client-id");
+            args.emplace_back(clientId);
 
-        args.emplace_back("--block-size");
-        args.emplace_back(ToString(volume.GetBlockSize()));
+            args.emplace_back("--disk-id");
+            args.emplace_back(request.GetDiskId());
+
+            args.emplace_back("--device-backend");
+            args.emplace_back(GetDeviceBackend(epType));
+
+            args.emplace_back("--block-size");
+            args.emplace_back(ToString(volume.GetBlockSize()));
+        }
 
         for (const auto& device: volume.GetDevices()) {
             const ui64 size = device.GetBlockCount() * volume.GetBlockSize();
