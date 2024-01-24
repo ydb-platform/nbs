@@ -412,7 +412,15 @@ void TAioBackend::CompletionThreadFunc()
                 if (events[i].res2 != 0 || events[i].res != sub->u.c.nbytes) {
                     stats.CompFailed += 1;
                     result = VHD_BDEV_IOERR;
-                    STORAGE_ERROR("IO request: %s", strerror(-events[i].res));
+                    STORAGE_ERROR(
+                        "IO request: opcode=%d, offset=%lld size=%lu, res=%lu, "
+                        "res2=%lu, %s",
+                        sub->aio_lio_opcode,
+                        sub->u.c.offset,
+                        sub->u.c.nbytes,
+                        events[i].res,
+                        events[i].res2,
+                        strerror(-events[i].res));
                 }
 
                 CompleteRequest(sub, req, result, stats, now);
@@ -430,7 +438,15 @@ void TAioBackend::CompletionThreadFunc()
             {
                 stats.CompFailed += 1;
                 result = VHD_BDEV_IOERR;
-                STORAGE_ERROR("IO request: %s", strerror(-events[i].res));
+                STORAGE_ERROR(
+                    "IO request: opcode=%d, offset=%lld, size=%llu, res=%lu, "
+                    "res2=%lu, %s",
+                    req->aio_lio_opcode,
+                    req->u.c.offset,
+                    bio->total_sectors * VHD_SECTOR_SIZE,
+                    events[i].res,
+                    events[i].res2,
+                    strerror(-events[i].res));
             }
 
             CompleteRequest(req, result, stats, now);
