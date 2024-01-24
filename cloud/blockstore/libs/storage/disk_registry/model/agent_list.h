@@ -119,6 +119,7 @@ public:
     void SetDiskRegistryAgentListParams(
         const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
+    TVector<TString> GetAgentIdsWithOverridedListParams() const;
 
 private:
     NProto::TAgentConfig& AddAgent(NProto::TAgentConfig config);

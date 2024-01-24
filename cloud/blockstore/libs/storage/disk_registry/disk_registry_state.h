@@ -784,6 +784,11 @@ public:
         AgentList.OnAgentDisconnected(now, agentId);
     }
 
+    TVector<TAgentId> GetAgentIdsWithOverridedListParams() const
+    {
+        return AgentList.GetAgentIdsWithOverridedListParams();
+    }
+
     void SetDiskRegistryAgentListParams(
         TDiskRegistryDatabase& db,
         const TString& agentId,
