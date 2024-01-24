@@ -172,7 +172,7 @@ jobs:
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
       link_threads: 24
-      test_threads: 24
+      test_threads: 12
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
