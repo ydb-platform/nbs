@@ -240,6 +240,14 @@ runs:
         echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
         echo "::endgroup::"
 
+    - name: Create directory listing on s3
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::generate-listing"
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH"
+        echo "::endgroup::"
+
     - name: show free space
       if: always()
       shell: bash
