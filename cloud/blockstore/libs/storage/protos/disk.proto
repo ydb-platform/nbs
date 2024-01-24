@@ -214,6 +214,14 @@ message TCheckpointReplica
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message TDiskHistoryItem
+{
+    uint64 Timestamp = 1;
+    string Message = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TDiskConfig
 {
     // Label of volume.
@@ -263,6 +271,9 @@ message TDiskConfig
 
     // The timestamp of the start of migration (in microseconds).
     uint64 MigrationStartTs = 16;
+
+    // A log of important events in the life of this disk.
+    repeated TDiskHistoryItem History = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

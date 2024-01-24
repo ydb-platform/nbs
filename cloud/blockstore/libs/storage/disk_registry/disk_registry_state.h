@@ -53,10 +53,13 @@ struct TDiskInfo
     TString CheckpointId;
     TString SourceDiskId;
     TInstant MigrationStartTs;
+    TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
     TString GetPoolName() const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TRackInfo
 {
@@ -99,6 +102,8 @@ struct TRackInfo
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TBrokenCounter
 {
 public:
@@ -136,6 +141,8 @@ private:
     THashSet<ui32> BrokenPartitions;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBrokenGroupInfo
 {
     explicit TBrokenGroupInfo(NProto::EPlacementStrategy strategy)
@@ -146,6 +153,8 @@ struct TBrokenGroupInfo
     TBrokenCounter Total;
     TBrokenCounter Recently;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TCheckpointInfo
 {
@@ -175,6 +184,8 @@ struct TCheckpointInfo
     TString UniqueId() const;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TPlacementGroupInfo
 {
     NProto::TPlacementGroupConfig Config;
@@ -191,6 +202,8 @@ struct TPlacementGroupInfo
     {
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TDiskRegistryState
 {
@@ -250,6 +263,8 @@ class TDiskRegistryState
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+        TVector<NProto::TDiskHistoryItem> History;
     };
 
     struct TVolumeDeviceOverrides
