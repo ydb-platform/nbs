@@ -208,6 +208,42 @@ struct TFixture
         return volume;
     } ();
 
+    const NProto::TVolume FastPathVolume = [&] {
+        NProto::TVolume volume;
+
+        volume.SetDiskId("vol0");
+        volume.SetBlocksCount(10'000);
+        volume.SetBlockSize(4_KB);
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        volume.SetIsFastPathEnabled(true);
+
+        {
+            auto* device = volume.AddDevices();
+            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceUUID("uuid1");
+            device->SetAgentId("host1");
+            device->SetBlockCount(4'000);
+            device->SetPhysicalOffset(32'000);
+            auto *rdma = device->MutableRdmaEndpoint();
+            rdma->SetHost("host1");
+            rdma->SetPort(1111);
+        }
+
+        {
+            auto* device = volume.AddDevices();
+            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceUUID("uuid2");
+            device->SetAgentId("host2");
+            device->SetBlockCount(6'000);
+            device->SetPhysicalOffset(0);
+            auto *rdma = device->MutableRdmaEndpoint();
+            rdma->SetHost("host2");
+            rdma->SetPort(2222);
+        }
+
+        return volume;
+    } ();
+
     THistory History;
 
     IEndpointListenerPtr Listener = CreateExternalVhostEndpointListener(
@@ -337,7 +373,7 @@ TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
 
 Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 {
-    Y_UNIT_TEST_F(ShouldStartExternalEndpoint, TFixture)
+    Y_UNIT_TEST_F(ShouldStartAioExternalEndpoint, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());
 
@@ -356,22 +392,16 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
 
             /*
-                --client-id ...                     2
-                --disk-id ...                       2
                 --serial local0                     2
                 --socket-path /tmp/socket.vhost     2
                 -q 2                                2
-                --device-backend ...                2
-                --block-size ...                    2
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
-                                                   19
+                                                   11
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
-            UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
-            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(11, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -379,8 +409,6 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 GetArg(create->CmdArgs, "--socket-path"));
 
             UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
-            UNIT_ASSERT_VALUES_EQUAL("aio", GetArg(create->CmdArgs, "--device-backend"));
-            UNIT_ASSERT_VALUES_EQUAL("4096", GetArg(create->CmdArgs, "--block-size"));
             UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
 
             auto devices = GetArgN(create->CmdArgs, "--device");
@@ -395,6 +423,94 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
+                    << (6'000 * 4_KB)
+                    << ":0",
+                devices[1]);
+
+            UNIT_ASSERT_VALUES_EQUAL(request.GetClientId(), create->ClientId);
+            UNIT_ASSERT_VALUES_EQUAL(2, create->Cgroups.size());
+            UNIT_ASSERT_VALUES_EQUAL("cg-1", create->Cgroups[0]);
+            UNIT_ASSERT_VALUES_EQUAL("cg-2", create->Cgroups[1]);
+
+            auto* start = std::get_if<TStartExternalEndpoint>(&History[1]);
+            UNIT_ASSERT_C(start, "actual entry: " << History[1].index());
+
+            History.clear();
+        }
+
+        {
+            auto error = Listener->StopEndpoint(SocketPath).GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, History.size());
+            auto* stop = std::get_if<TStopExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldStartRdmaExternalEndpoint, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, History.size());
+
+        {
+            auto request = CreateDefaultStartEndpointRequest();
+
+            auto error = Listener->StartEndpoint(request, FastPathVolume, Session)
+                .GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, History.size());
+
+            auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
+
+            UNIT_ASSERT_VALUES_EQUAL(Volume.GetDiskId(), create->DiskId);
+
+            /*
+                --serial local0                     2
+                --socket-path /tmp/socket.vhost     2
+                -q 2                                2
+                --client-id ...                     2
+                --disk-id ...                       2
+                --device-backend ...                2
+                --block-size ...                    2
+                --device ...                        2
+                --device ...                        2
+                --read-only                         1
+                                                   19
+            */
+
+            UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "/tmp/socket.vhost",
+                GetArg(create->CmdArgs, "--socket-path"));
+
+            UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
+
+            UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
+
+            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
+
+            UNIT_ASSERT_VALUES_EQUAL("rdma", GetArg(create->CmdArgs, "--device-backend"));
+
+            UNIT_ASSERT_VALUES_EQUAL("4096", GetArg(create->CmdArgs, "--block-size"));
+
+            UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
+
+            auto devices = GetArgN(create->CmdArgs, "--device");
+
+            UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+                    << "rdma://host1:1111/uuid1:"
+                    << (4'000 * 4_KB)
+                    << ":0",
+                devices[0]);
+
+            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+                    << "rdma://host2:2222/uuid2:"
                     << (6'000 * 4_KB)
                     << ":0",
                 devices[1]);
