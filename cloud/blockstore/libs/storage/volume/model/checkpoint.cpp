@@ -184,6 +184,16 @@ std::optional<TActiveCheckpointInfo> TCheckpointStore::GetCheckpoint(
     return ptr ? *ptr : std::optional<TActiveCheckpointInfo>{};
 }
 
+bool TCheckpointStore::IsCheckpointDeleted(const TString& checkpointId) const
+{
+    return DeletedCheckpoints.contains(checkpointId);
+}
+
+bool TCheckpointStore::IsCheckpointInSavedStatusExist(const TString& checkpointId) const
+{
+    return CheckpointsWithSavedRequest.contains(checkpointId);
+}
+
 TVector<TString> TCheckpointStore::GetLightCheckpoints() const
 {
     TVector<TString> checkpoints(Reserve(ActiveCheckpoints.size()));
@@ -252,6 +262,9 @@ TCheckpointRequest& TCheckpointStore::AddCheckpointRequest(
     auto [it, inserted] =
         CheckpointRequests.insert({requestId, std::move(checkpointRequest)});
     Y_DEBUG_ABORT_UNLESS(inserted);
+    if (it->second.State == ECheckpointRequestState::Saved) {
+        CheckpointsWithSavedRequest.insert(it->second.CheckpointId);
+    }
     Apply(it->second);
     return it->second;
 }
@@ -289,7 +302,11 @@ void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
 
 void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
 {
+    if (!ActiveCheckpoints.contains(checkpointId)) {
+        return;
+    }
     ActiveCheckpoints.erase(checkpointId);
+    DeletedCheckpoints.insert(checkpointId);
     CalcCheckpointsState();
 }
 
@@ -326,6 +343,130 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
             DeleteCheckpointData(checkpointRequest.CheckpointId);
             break;
         }
+    }
+}
+
+TSet<TString>& TCheckpointStore::GetCheckpoitsWithSavedRequest()
+{
+    return CheckpointsWithSavedRequest;
+}
+
+const TSet<TString>& TCheckpointStore::GetCheckpoitsWithSavedRequest() const
+{
+    return CheckpointsWithSavedRequest;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ECheckpointRequestValidityStatus TCheckpointStore::ValidateCheckpointRequest(
+    const TString& checkpointId,
+    ECheckpointRequestType requestType,
+    ECheckpointType checkpointType,
+    TString* message)
+{
+    if (checkpointId.empty()) {
+        *message = "Checkpoint id should be nonempty";
+        return ECheckpointRequestValidityStatus::Invalid;
+    }
+
+    if (checkpointType != ECheckpointType::Normal
+            && (requestType == ECheckpointRequestType::DeleteData
+            || requestType == ECheckpointRequestType::CreateWithoutData)) {
+        *message = ToString(requestType) + " request makes sence for normal checkpoints only";
+        return ECheckpointRequestValidityStatus::Invalid;
+    }
+
+    const auto actualCheckpointType = GetCheckpointType(checkpointId);
+
+    if (actualCheckpointType && actualCheckpointType != checkpointType) {
+        *message = TStringBuilder()
+            << "Checkpoint exists and has another type "
+            << ToString(*actualCheckpointType);
+        return ECheckpointRequestValidityStatus::Invalid;
+    }
+
+    const bool checkpointExists = actualCheckpointType.has_value();
+    const bool checkpointHasData = checkpointExists && DoesCheckpointHaveData(checkpointId);
+    const bool checkpointDeleted = IsCheckpointDeleted(checkpointId);
+
+    if (!checkpointExists && !checkpointDeleted) {
+        // Checkpoint never existed.
+        switch (requestType) {
+            case ECheckpointRequestType::Create:
+            case ECheckpointRequestType::CreateWithoutData: {
+                return ECheckpointRequestValidityStatus::Ok;
+            }
+            case ECheckpointRequestType::DeleteData: {
+                *message = "Checkpoint does not exist";
+                return ECheckpointRequestValidityStatus::Invalid;
+            }
+            case ECheckpointRequestType::Delete: {
+                *message = "Checkpoint does not exist";
+                return ECheckpointRequestValidityStatus::Already;
+            }
+        }
+    } else if (checkpointExists && checkpointHasData) {
+        // Checkpoint exists and has data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                *message = "Checkpoint exists";
+                return ECheckpointRequestValidityStatus::Already;
+            }
+            case ECheckpointRequestType::DeleteData: {
+                return ECheckpointRequestValidityStatus::Ok;
+            }
+            case ECheckpointRequestType::Delete: {
+                return ECheckpointRequestValidityStatus::Ok;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                *message = "Checkpoint exists and has data";
+                return ECheckpointRequestValidityStatus::Invalid;
+            }
+        }
+    } else if (checkpointExists && !checkpointHasData) {
+        // Checkpoint exists and has no data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                if (checkpointType == ECheckpointType::Normal) {
+                    *message = "Checkpoint exists and has no data";
+                    return ECheckpointRequestValidityStatus::Invalid;
+                } else {
+                    *message = "Checkpoint exists";
+                    return ECheckpointRequestValidityStatus::Already;
+                }
+            }
+            case ECheckpointRequestType::DeleteData: {
+                *message = "Data is already deleted";
+                return ECheckpointRequestValidityStatus::Already;
+            }
+            case ECheckpointRequestType::Delete: {
+                return ECheckpointRequestValidityStatus::Ok;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                *message = "Checkpoint exists";
+                return ECheckpointRequestValidityStatus::Already;
+            }
+        }
+    } else if (!checkpointExists && checkpointDeleted) {
+        // Checkpoint was deleted.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+            case ECheckpointRequestType::CreateWithoutData:
+                *message = "Checkpoint is already deleted";
+                return ECheckpointRequestValidityStatus::Invalid;
+            }
+            case ECheckpointRequestType::DeleteData: {
+                *message = "Checkpoint is already deleted";
+                return ECheckpointRequestValidityStatus::Invalid;
+            }
+            case ECheckpointRequestType::Delete: {
+                *message = "Checkpoint is already deleted";
+                return ECheckpointRequestValidityStatus::Already;
+            }
+        }
+    } else {
+        *message = "Checkpoint validation should never reach this line";
+        return ECheckpointRequestValidityStatus::Invalid;
     }
 }
 

@@ -398,6 +398,8 @@ struct TTxVolume
         const bool IsTraced;
         const ui64 TraceTs;
 
+        bool CanSave = false;
+
         TSaveCheckpointRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,

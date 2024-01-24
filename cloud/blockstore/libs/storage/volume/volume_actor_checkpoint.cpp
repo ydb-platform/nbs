@@ -918,8 +918,6 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
         msg.Record.GetCheckpointId(),
         ctx.Now(),
@@ -929,12 +927,11 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
         ProtoCheckpointType2CheckpointType(
             msg.Record.GetIsLight(),
             msg.Record.GetCheckpointType()));
-    ExecuteTx<TSaveCheckpointRequest>(
+
+    AddCheckpointRequest(
         ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
+        checkpointRequest,
+        {std::move(requestInfo), isTraced, traceTs});
 
     return true;
 }
@@ -956,8 +953,6 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     auto& checkpointStore = State->GetCheckpointStore();
     const auto& checkpointId = msg.Record.GetCheckpointId();
     const auto type = checkpointStore.GetCheckpointType(checkpointId);
@@ -967,12 +962,11 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
         ctx.Now(),
         ECheckpointRequestType::Delete,
         type.value_or(ECheckpointType::Normal));
-    ExecuteTx<TSaveCheckpointRequest>(
+
+    AddCheckpointRequest(
         ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
+        checkpointRequest,
+        {std::move(requestInfo), isTraced, traceTs});
 
     return true;
 }
@@ -994,19 +988,16 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
         msg.Record.GetCheckpointId(),
         ctx.Now(),
         ECheckpointRequestType::DeleteData,
         ECheckpointType::Normal);
-    ExecuteTx<TSaveCheckpointRequest>(
+
+    AddCheckpointRequest(
         ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
+        checkpointRequest,
+        {std::move(requestInfo), isTraced, traceTs});
 
     return true;
 }
@@ -1052,6 +1043,170 @@ bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
 
     reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
     return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::AddCheckpointRequest(
+    const TActorContext& ctx,
+    const TCheckpointRequest& request,
+    const TCheckpointRequestInfo& info)
+{
+    if (TryReplyToCheckpointRequestWithoutSaving(ctx, request, info)) {
+        return;
+    }
+
+    if (PostponedCheckpointRequests.HasPostponedRequest(request.CheckpointId)) {
+        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] CheckpointRequest %lu %s is postopned, it can not be saved because "
+            "there is already saved request for the same checkpoint id",
+            TabletID(),
+            request.RequestId,
+            request.CheckpointId.Quote().c_str());
+        PostponedCheckpointRequests.AddPostponedRequest(
+            request.CheckpointId,
+            {request.RequestId, info});
+        return;
+    }
+
+    // Saves checkpoint request if there is no another saved request with the same checkpoint id.
+    TrySaveCheckpointRequest(ctx, request, info);
+}
+
+bool TVolumeActor::TryReplyToCheckpointRequestWithoutSaving(
+    const TActorContext& ctx,
+    const TCheckpointRequest& request,
+    const TCheckpointRequestInfo& info)
+{
+    NProto::TError error;
+    ECheckpointRequestValidityStatus validityStatus =
+        ValidateCheckpointRequest(ctx, request, &error);
+
+    if (validityStatus == ECheckpointRequestValidityStatus::Ok) {
+        return false;
+    }
+
+    ReplyToCheckpointRequestWithoutSaving(ctx, request, info, error);
+    return true;
+}
+
+void TVolumeActor::ReplyToCheckpointRequestWithoutSaving(
+    const TActorContext& ctx,
+    const TCheckpointRequest& request,
+    const TCheckpointRequestInfo& info,
+    const NProto::TError& error)
+{
+    NActors::IEventBasePtr response;
+
+    switch (request.ReqType) {
+        case ECheckpointRequestType::Create:
+        case ECheckpointRequestType::CreateWithoutData: {
+            response = std::make_unique<TCreateCheckpointMethod::TResponse>(error);
+            break;
+        }
+        case ECheckpointRequestType::Delete: {
+            response = std::make_unique<TDeleteCheckpointMethod::TResponse>(error);
+            break;
+        }
+        case ECheckpointRequestType::DeleteData: {
+            response = std::make_unique<TDeleteCheckpointDataMethod::TResponse>(error);
+            break;
+        }
+    }
+
+    NCloud::Reply(
+        ctx,
+        *info.RequestInfo,
+        std::move(response));
+}
+
+void TVolumeActor::TrySaveCheckpointRequest(
+    const TActorContext& ctx,
+    const TCheckpointRequest& request,
+    const TCheckpointRequestInfo& info)
+{
+    AddTransaction(*info.RequestInfo);
+
+    ExecuteTx<TSaveCheckpointRequest>(
+        ctx,
+        info.RequestInfo,
+        request.RequestId,
+        info.IsTraced,
+        info.TraceTs);
+}
+
+void TVolumeActor::ProcessPostponedCheckpointRequests(
+    const TActorContext& ctx,
+    const TString& checkpointId)
+{
+    while (true) {
+        auto ponstponedRequestInfo =
+            PostponedCheckpointRequests.TakePostponedRequest(checkpointId);
+        if (!ponstponedRequestInfo) {
+            break;
+        }
+
+        const auto& request = State->GetCheckpointStore().GetRequestById(
+            ponstponedRequestInfo->RequestId);
+
+        if (!TryReplyToCheckpointRequestWithoutSaving(ctx, request, ponstponedRequestInfo->Info)) {
+            TrySaveCheckpointRequest(ctx, request, ponstponedRequestInfo->Info);
+            return;
+        }
+    }
+
+    ProcessNextCheckpointRequest(ctx);
+}
+
+ECheckpointRequestValidityStatus TVolumeActor::ValidateCheckpointRequest(
+    const TActorContext& ctx,
+    const TCheckpointRequest& request,
+    NProto::TError* error)
+{
+    TString message;
+    ECheckpointRequestValidityStatus validityStatus =
+        State->GetCheckpointStore().ValidateCheckpointRequest(
+            request.CheckpointId,
+            request.ReqType,
+            request.Type,
+            &message);
+
+    if (validityStatus == ECheckpointRequestValidityStatus::Ok) {
+        return validityStatus;
+    }
+
+    auto messageWithRequest = TStringBuilder()
+        << message << ", request: "
+        << " requestType = " << ToString(request.ReqType)
+        << ", checkpointId = " << request.CheckpointId
+        << ", checkpointType = " << ToString(request.Type);
+
+    bool succeeded = validityStatus == ECheckpointRequestValidityStatus::Already;
+
+    if (succeeded) {
+        TString message = TStringBuilder()
+            << "Checkpoint request is duplicate, nothing to do: "
+            << messageWithRequest.c_str();
+        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] %s: %s",
+            TabletID(),
+            TCreateCheckpointMethod::Name,
+            message.c_str());
+    } else {
+        TString message = TStringBuilder()
+            << "Checkpoint request is invalid: %s: "
+            << messageWithRequest.c_str();
+        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] %s: %s",
+            TabletID(),
+            TCreateCheckpointMethod::Name,
+            messageWithRequest.c_str());
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        *error = MakeError(E_PRECONDITION_FAILED, message, flags);
+    }
+
+    return validityStatus;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1215,8 +1370,6 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
-        default:
-            Y_ABORT();
     }
 
     Actors.insert(actorId);
@@ -1243,8 +1396,6 @@ void TVolumeActor::ExecuteSaveCheckpointRequest(
 {
     Y_UNUSED(ctx);
 
-    TVolumeDatabase db(tx.DB);
-
     // The request in memory has the Received status.
     // We save this request to the database with the Saved status.
     // After receiving confirmation of the transaction,
@@ -1253,8 +1404,18 @@ void TVolumeActor::ExecuteSaveCheckpointRequest(
         State->GetCheckpointStore().GetRequestById(args.RequestId);
     Y_DEBUG_ABORT_UNLESS(
         checkpointRequestCopy.State == ECheckpointRequestState::Received);
-    checkpointRequestCopy.State = ECheckpointRequestState::Saved;
 
+    auto& checkpointsWithSavedRequest =
+        State->GetCheckpointStore().GetCheckpoitsWithSavedRequest();
+    args.CanSave =
+        !checkpointsWithSavedRequest.contains(checkpointRequestCopy.CheckpointId);
+    if (!args.CanSave) {
+        return;
+    }
+    checkpointsWithSavedRequest.insert(checkpointRequestCopy.CheckpointId);
+
+    TVolumeDatabase db(tx.DB);
+    checkpointRequestCopy.State = ECheckpointRequestState::Saved;
     db.WriteCheckpointRequest(checkpointRequestCopy);
 }
 
@@ -1265,16 +1426,32 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
     const auto& checkpointRequest =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] CheckpointRequest %lu %s saved",
-        TabletID(),
-        checkpointRequest.RequestId,
-        checkpointRequest.CheckpointId.Quote().c_str());
+    if (!args.CanSave) {
+        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] CheckpointRequest %lu %s is postopned, it can not be saved because "
+            "there is another saved request for the same checkpoint id",
+            TabletID(),
+            checkpointRequest.RequestId,
+            checkpointRequest.CheckpointId.Quote().c_str());
 
-    State->GetCheckpointStore().SetCheckpointRequestSaved(args.RequestId);
+        PostponedCheckpointRequests.AddPostponedRequest(
+            checkpointRequest.CheckpointId,
+            {args.RequestId,
+            {args.RequestInfo,
+            args.IsTraced,
+            args.TraceTs}});
+    } else {
+        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
+            "[%lu] CheckpointRequest %lu %s saved",
+            TabletID(),
+            checkpointRequest.RequestId,
+            checkpointRequest.CheckpointId.Quote().c_str());
 
-    CheckpointRequests.insert(
-        {args.RequestId, {args.RequestInfo, args.IsTraced, args.TraceTs}});
+        State->GetCheckpointStore().SetCheckpointRequestSaved(args.RequestId);
+
+        CheckpointRequests.insert(
+            {args.RequestId, {args.RequestInfo, args.IsTraced, args.TraceTs}});
+    }
 
     RemoveTransaction(*args.RequestInfo);
     ProcessNextCheckpointRequest(ctx);
@@ -1322,6 +1499,13 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
     TTxVolume::TUpdateCheckpointRequest& args)
 {
     Y_UNUSED(ctx);
+
+    auto checkpointRequestCopy =
+        State->GetCheckpointStore().GetRequestById(args.RequestId);
+
+    auto& checkpointsWithSavedRequest =
+        State->GetCheckpointStore().GetCheckpoitsWithSavedRequest();
+    checkpointsWithSavedRequest.erase(checkpointRequestCopy.CheckpointId);
 
     TVolumeDatabase db(tx.DB);
     db.UpdateCheckpointRequest(
@@ -1392,7 +1576,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         Actors.erase(args.RequestInfo->Sender);
     }
 
-    ProcessNextCheckpointRequest(ctx);
+    ProcessPostponedCheckpointRequests(ctx, request.CheckpointId);
 }
 
 bool TVolumeActor::PrepareUpdateShadowDiskState(

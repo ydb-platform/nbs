@@ -136,15 +136,18 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(10, requestId);
+
         auto checkpoints = store.GetActiveCheckpoints();
         UNIT_ASSERT_VALUES_EQUAL(4, checkpoints.size());
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-1"));
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-2"));
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-6"));
+
         UNIT_ASSERT_VALUES_EQUAL(
             true,
             store.DoesCheckpointHaveData("checkpoint-2"));
@@ -170,6 +173,18 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ProcessedBlockCount,
             512);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-1"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-2"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-3"));
+        UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted("checkpoint-4"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-5"));
+
+        const auto& checkpoitsWithSavedRequest = store.GetCheckpoitsWithSavedRequest();
+        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-1"));
+        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, checkpoitsWithSavedRequest.contains("checkpoint-3"));
+        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-4"));
+        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-5"));
     }
 
     Y_UNIT_TEST(CreateFail)
@@ -188,6 +203,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(0, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestSaved(request.RequestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
@@ -195,6 +211,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestInProgress(requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
@@ -202,6 +219,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestFinished(
             requestId,
@@ -214,11 +232,14 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(CreateSuccess)
     {
         TCheckpointStore store({}, "disk-1");
+
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         const auto& request = store.CreateNew(
             "checkpoint",
@@ -243,6 +264,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_EQUAL(
             ECheckpointData::DataPresent,
             checkpoints[request.CheckpointId].Data);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(CreateWithShadowDisk)
@@ -364,6 +386,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
                 store.DoesCheckpointHaveData(request.CheckpointId));
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
         }
 
         // repeat delete data.
@@ -404,6 +427,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(
                 false,
                 store.DoesCheckpointHaveData(request.CheckpointId));
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
         }
 
         // repeat delete checkpoint.
@@ -437,6 +461,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(
                 false,
                 store.DoesCheckpointBlockingWritesExist());
+            UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted("checkpoint"));
         }
     }
 
@@ -579,6 +604,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 EShadowDiskState::None);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+
+            UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted(checkpointId));
         };
 
         {
@@ -633,7 +660,155 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetActiveCheckpoints().size());
+
+            for (TString checkpointId : {"checkpoint-1", "checkpoint-2", "checkpoint-3", "checkpoint-4"}) {
+                UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted(checkpointId));
+            }
         }
+    }
+
+    Y_UNIT_TEST(CheckpointRequestValidation)
+    {
+        TCheckpointStore store({}, "disk-1");
+
+        auto executeRequest = [&](
+            TString checkpointId,
+            ECheckpointRequestType requestType,
+            ECheckpointType checkpointType,
+            ECheckpointRequestValidityStatus expectedValidityStatus)
+        {
+            const auto& request = store.CreateNew(
+                checkpointId,
+                TInstant::Now(),
+                requestType,
+                checkpointType);
+
+            TString message;
+            auto validityStatus = store.ValidateCheckpointRequest(checkpointId, requestType, checkpointType, &message);
+            UNIT_ASSERT_VALUES_EQUAL(static_cast<int>(expectedValidityStatus), static_cast<int>(validityStatus));
+
+            store.SetCheckpointRequestSaved(request.RequestId);
+            store.SetCheckpointRequestInProgress(request.RequestId);
+            bool success = validityStatus != ECheckpointRequestValidityStatus::Invalid;
+            store.SetCheckpointRequestFinished(request.RequestId, success, "");
+        };
+
+        struct Step {
+            ECheckpointRequestType requestType;
+            ECheckpointRequestValidityStatus expectedValidityStatus;
+        };
+
+        int checkpointIndex = 0;
+
+        auto executeRequests = [&](ECheckpointType checkpointType, const TVector<Step>& steps)
+        {
+            TString checkpointId = TStringBuilder() << "checkpoint_" << checkpointIndex++;
+
+            for (const Step& step : steps) {
+                executeRequest(checkpointId, step.requestType, checkpointType, step.expectedValidityStatus);
+            }
+        };
+
+        executeRequests(ECheckpointType::Normal, TVector<Step>{
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Invalid},
+        });
+
+        executeRequests(ECheckpointType::Normal, TVector<Step>{
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Invalid},
+        });
+
+        executeRequests(ECheckpointType::Normal, TVector<Step>{
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Already},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Already},
+        });
+
+        for (auto checkpointType : {
+            ECheckpointType::Normal,
+            ECheckpointType::Light})
+        {
+            executeRequests(checkpointType, TVector<Step>{
+                {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Already},
+                {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Ok},
+                {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Already},
+                {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Ok},
+                {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Invalid},
+                {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Already},
+            });
+        }
+
+        executeRequests(ECheckpointType::Light, TVector<Step>{
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::Delete, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::DeleteData, ECheckpointRequestValidityStatus::Invalid},
+        });
+
+        executeRequests(ECheckpointType::Light, TVector<Step>{
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Invalid},
+            {ECheckpointRequestType::Create, ECheckpointRequestValidityStatus::Ok},
+            {ECheckpointRequestType::CreateWithoutData, ECheckpointRequestValidityStatus::Invalid},
+        });
+
+        executeRequest(
+            "",
+            ECheckpointRequestType::Create,
+            ECheckpointType::Normal,
+            ECheckpointRequestValidityStatus::Invalid);
+        executeRequest(
+            "",
+            ECheckpointRequestType::Create,
+            ECheckpointType::Light,
+            ECheckpointRequestValidityStatus::Invalid);
+    }
+
+    Y_UNIT_TEST(PostponedCheckpointRequestsQueue)
+    {
+        TPostponedCheckpointRequestsQueue<ui64> postponedRequests;
+
+        postponedRequests.AddPostponedRequest("ch_1", {1, 1});
+        postponedRequests.AddPostponedRequest("ch_1", {2, 2});
+        postponedRequests.AddPostponedRequest("ch_2", {3, 3});
+
+        UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_1"));
+        UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_2"));
+        UNIT_ASSERT_VALUES_EQUAL(false, postponedRequests.HasPostponedRequest("ch_0"));
+
+        auto request = postponedRequests.TakePostponedRequest("ch_1");
+        UNIT_ASSERT_VALUES_EQUAL(true, request.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(1, request->RequestId);
+        UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_1"));
+
+        request = postponedRequests.TakePostponedRequest("ch_1");
+        UNIT_ASSERT_VALUES_EQUAL(true, request.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(2, request->RequestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, postponedRequests.HasPostponedRequest("ch_1"));
+
+        postponedRequests.AddPostponedRequest("ch_1", {4, 4});
+        UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_1"));
+
+        request = postponedRequests.TakePostponedRequest("ch_0");
+        UNIT_ASSERT_VALUES_EQUAL(false, request.has_value());
     }
 }
 

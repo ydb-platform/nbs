@@ -1,5 +1,7 @@
 #include "volume_ut.h"
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NTestVolume;
@@ -3863,6 +3865,323 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
     }
 
+    void DoTestShouldNotCreateCheckpointIfItWasDeleted(
+        NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            mediaKind,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        TVector<bool> isLightCases{true};  // light checkpoint
+        if (!IsDiskRegistryMediaKind(mediaKind)) {
+            isLightCases.push_back(false);  // normal checkpoint
+        }
+
+        for (bool isLight : isLightCases) {
+            TString checkpointId = isLight ? "checkpoint_light" : "checkpoint_normal";
+
+            volume.CreateCheckpoint(checkpointId, isLight);
+            volume.DeleteCheckpoint(checkpointId);
+
+            volume.SendCreateCheckpointRequest(checkpointId, isLight);
+            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfItWasDeletedForBlobStorageBased)
+    {
+        DoTestShouldNotCreateCheckpointIfItWasDeleted(
+            NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfItWasDeletedForDiskRegistryBased)
+    {
+        DoTestShouldNotCreateCheckpointIfItWasDeleted(
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfCheckpointDataWasDeleted)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NProto::STORAGE_MEDIA_SSD,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        TString checkpointId = "checkpoint";
+
+        volume.CreateCheckpoint(checkpointId, false);
+        volume.DeleteCheckpointData(checkpointId);
+
+        volume.SendCreateCheckpointRequest(checkpointId, false);
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHandleInflightCheckpointRequests)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        // Enable Schedule for all actors!!!
+        runtime->SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NProto::STORAGE_MEDIA_SSD,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        TVector<std::unique_ptr<IEventHandle>> interseptedCheckpointRequests;
+        TSet<ui64> interceptedCheckpointRequests;
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolumePrivate::EvUpdateCheckpointRequestRequest: {
+                        auto msg = event->Get<TEvVolumePrivate::TEvUpdateCheckpointRequestRequest>();
+
+                        if (interceptedCheckpointRequests.contains(msg->RequestId)) {
+                            return TTestActorRuntime::DefaultObserverFunc(event);
+                        }
+
+                        interceptedCheckpointRequests.insert(msg->RequestId);
+                        interseptedCheckpointRequests.emplace_back(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        auto dispatchAndCheckNumberOfSavedRequests = [&](int expected) {
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(expected, interseptedCheckpointRequests.size());
+        };
+
+        TString checkpointId;
+        int requestIndex = 0;
+        int checkpointIndex = 0;
+        auto setupNewTestcase = [&](){
+            checkpointId = TStringBuilder() << "checkpoint_" << checkpointIndex++;
+            interseptedCheckpointRequests.clear();
+            requestIndex = 0;
+        };
+
+        setupNewTestcase();
+
+        {
+            // Only the first request should be saved.
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+            for (int i = 0; i < 5; ++i) {
+                volume.SendCreateCheckpointRequest(checkpointId, false);
+            }
+            dispatchAndCheckNumberOfSavedRequests(1);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(1);
+        }
+
+        setupNewTestcase();
+
+        {
+            // Only the first request of each type should be saved.
+            // In this case, queue is drained completely an then filled again.
+            for (int i = 0; i < 5; ++i) {
+                volume.SendCreateCheckpointRequest(checkpointId, false);
+            }
+            dispatchAndCheckNumberOfSavedRequests(1);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(1);
+
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendCreateCheckpointRequest(checkpointId);
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendCreateCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(2);
+
+            for (int i = 0; i < 5; ++i) {
+                volume.SendDeleteCheckpointRequest(checkpointId);
+            }
+            dispatchAndCheckNumberOfSavedRequests(3);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(3);
+        }
+
+        setupNewTestcase();
+
+        {
+            // Only the first request of each type should be saved.
+            // In this case, queue is drained partially (but not completely) an then filled again.
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(1);
+
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(3);
+
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(3);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(3);
+        }
+
+        setupNewTestcase();
+
+        {
+            // Only one request of each type should be saved.
+            // In this case, some requests are replied immidiately,
+            // i.e. without saving or putting them in the queue.
+            // In particular, all requests before
+            // the firstCreateCheckpointRequest should not be saved.
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(0);
+
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(1);
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(2);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+        }
+
+        setupNewTestcase();
+
+        {
+            // Requests for different checkpoints should not influence each other.
+            TString checkpointIdOther = "checkpoint_other";
+            for (int i = 0; i < 5; ++i) {
+                volume.SendCreateCheckpointRequest(checkpointId, false);
+            }
+            for (int i = 0; i < 5; ++i) {
+                volume.SendCreateCheckpointRequest(checkpointIdOther, false);
+            }
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(2);
+
+            for (int i = 0; i < 5; ++i) {
+                volume.SendDeleteCheckpointRequest(checkpointId);
+                volume.SendDeleteCheckpointRequest(checkpointIdOther);
+            }
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(4);
+        }
+
+        setupNewTestcase();
+
+        {
+            // Should work correctly when volume tablet reboots.
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+            volume.RebootTablet();
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(1);
+
+            volume.RebootTablet();
+            volume.SendCreateCheckpointRequest(checkpointId, false);
+            dispatchAndCheckNumberOfSavedRequests(1);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            volume.RebootTablet();
+            dispatchAndCheckNumberOfSavedRequests(2);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            // DeleteCheckpointRequest's should not be saved, so now they are forgotten.
+            dispatchAndCheckNumberOfSavedRequests(2);
+            volume.SendDeleteCheckpointDataRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(2);
+
+            volume.SendDeleteCheckpointRequest(checkpointId);
+            dispatchAndCheckNumberOfSavedRequests(3);
+            runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
+            dispatchAndCheckNumberOfSavedRequests(3);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
