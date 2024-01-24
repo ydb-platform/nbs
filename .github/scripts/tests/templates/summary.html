@@ -4,7 +4,7 @@
         th {
             text-transform: uppercase;
         }
-        
+
         th, td {
             padding: 5px;
         }
@@ -55,7 +55,7 @@
         <td>{{ t.full_name }}</td>
         <td><span title="{{ t.elapsed }}s">{{ t.elapsed_display }}</span></td>
         <td>
-            <span class="test_status test_{{ t.status_display }}">{{ t.status_display }}</span>
+            <span class="test_status test_{{ t.status_display }}">{{ t.status_display }}{% if t.is_timed_out %}(TIMEOUT){% endif %}</span>
         </td>
         {% if status in has_any_log %}
         <td>
@@ -65,7 +65,7 @@
 
                 {% endfor %}
             {% else %}
-                &nbsp;
+                LOGS ARE EMPTY
             {% endif %}
         </td>
         {% endif %}

@@ -32,6 +32,7 @@ class TestResult:
     status: TestStatus
     log_urls: Dict[str, str]
     elapsed: float
+    is_timed_out: bool
 
     @property
     def status_display(self):
@@ -63,8 +64,12 @@ class TestResult:
     def from_junit(cls, testcase):
         classname, name = testcase.get("classname"), testcase.get("name")
 
+        is_timed_out = False
         if testcase.find("failure") is not None:
             status = TestStatus.FAIL
+            if "Killed by timeout" in testcase.find("failure").text:
+                print(f"{classname}, {name} is_timed_out  = True")
+                is_timed_out = True
         elif testcase.find("error") is not None:
             status = TestStatus.ERROR
         elif get_property_value(testcase, "mute") is not None:
@@ -79,6 +84,9 @@ class TestResult:
             "log": get_property_value(testcase, "url:log"),
             "stdout": get_property_value(testcase, "url:stdout"),
             "stderr": get_property_value(testcase, "url:stderr"),
+            "backtrace": get_property_value(testcase, "url:backtrace"),
+            "recipe_stderr": get_property_value(testcase, "url:recipe stderr"),
+            "recipe_stdout": get_property_value(testcase, "url:recipe stdout"),
         }
         log_urls = {k: v for k, v in log_urls.items() if v}
 
@@ -92,7 +100,7 @@ class TestResult:
                 f"Unable to cast elapsed time for {classname}::{name}  value={elapsed!r}"
             )
 
-        return cls(classname, name, status, log_urls, elapsed)
+        return cls(classname, name, status, log_urls, elapsed, is_timed_out)
 
 
 class TestSummaryLine:
@@ -363,10 +371,7 @@ def update_pr_comment(
 
     body = "\n".join(body)
 
-    if comment is None:
-        pr.create_issue_comment(body)
-    else:
-        comment.edit(body)
+    pr.create_issue_comment(body)
 
 
 def main():

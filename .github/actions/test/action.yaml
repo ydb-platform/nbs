@@ -30,6 +30,10 @@ inputs:
   cache_update:
     required: false
     description: "Use cache for tests"
+  sync_to_s3:
+    required: false
+    default: 'false'
+    description: 'Sync failed tests folders to s3'
 runs:
   using: composite
   steps:
@@ -107,6 +111,7 @@ runs:
         readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
         readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
 
+        echo "::group::ya-make-test"
         sudo -E -H -u github ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' \
           ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
@@ -127,6 +132,7 @@ runs:
               fi
             fi
         )
+        echo "::endgroup::"
 
     - name: archive unitest reports (orig)
       shell: bash
@@ -185,12 +191,22 @@ runs:
             echo $path
             find "${GITHUB_WORKSPACE}/${path}" -print0 | xargs -0 xargs -0 cp -L -r --parents -t "$TESTS_DATA_DIR"
           done
+          chown -R github:github "$TESTS_DATA_DIR"
+          echo "::endgroup::"
+          echo "::group::remove-binaries-from-tests-data-dir"
+          find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
+          find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
           echo "::endgroup::"
           echo "::group::s3-sync"
-          #sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
+          if [ "$SYNC_TO_S3" = "true" ];
+          then
+            sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
+          fi
           echo "::endgroup::"
           exit $RC
         }
+      env:
+        SYNC_TO_S3: ${{ inputs.sync_to_s3 || 'false' }}
 
     - name: Sync test results to S3
       if: always()
@@ -224,11 +240,7 @@ runs:
         echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
         echo "::endgroup::"
 
-
-
     - name: show free space
       if: always()
       shell: bash
       run: df -h
-
-     
