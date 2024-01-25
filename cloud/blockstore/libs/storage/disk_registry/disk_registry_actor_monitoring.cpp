@@ -710,6 +710,33 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         GenerateVolumeActionsJS(out);
+
+        TAG(TH3) {
+            out << "History";
+        }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Timestamp"; }
+                    TABLEH() { out << "Message"; }
+                }
+
+                for (const auto& hi: info.History) {
+                    TABLER() {
+                        TABLED() {
+                            out << TInstant::MicroSeconds(hi.GetTimestamp())
+                                << " (" << hi.GetTimestamp() << ")";
+                        }
+                        TABLED() {
+                            PRE() {
+                                out << hi.GetMessage();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

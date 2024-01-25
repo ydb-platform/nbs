@@ -421,6 +421,10 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
 
+        for (auto& hi: *config.MutableHistory()) {
+            disk.History.push_back(std::move(hi));
+        }
+
         if (config.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT) {
             disk.MediaKind = config.GetStorageMediaKind();
         } else if (disk.ReplicaCount == 1) {
@@ -1181,7 +1185,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             query.NodeIds = { devicePtr->GetNodeId() };
         }
 
-
         auto [targetDevice, error] = AllocateReplacementDevice(
             db,
             diskId,
@@ -1201,6 +1204,14 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
         );
 
+        NProto::TDiskHistoryItem historyItem;
+        historyItem.SetTimestamp(timestamp.MicroSeconds());
+        historyItem.SetMessage(TStringBuilder() << "replaced device " << deviceId
+            << " -> " << targetDevice.GetDeviceUUID() << ", manual=" << manual
+            << (deviceReplacementId ? ", replacement device selected manually" : "")
+            << ", original message=" << message.Quote());
+        disk.History.push_back(historyItem);
+
         if (disk.MasterDiskId) {
             auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
             Y_DEBUG_ABORT_UNLESS(masterDisk);
@@ -1218,6 +1229,10 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
                     masterDisk->DeviceReplacementIds.push_back(
                         targetDevice.GetDeviceUUID());
                 }
+
+                *historyItem.MutableMessage() += TStringBuilder()
+                    << ", replica=" << diskId;
+                masterDisk->History.push_back(historyItem);
 
                 db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
 
@@ -3117,6 +3132,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.MasterDiskId = disk.MasterDiskId;
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
     diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
+    diskInfo.History = disk.History;
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -4444,6 +4460,10 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         auto& m = *config.AddMigrations();
         m.SetSourceDeviceId(sourceId);
         m.MutableTargetDevice()->SetDeviceUUID(targetId);
+    }
+
+    for (const auto& hi: diskState.History) {
+        config.AddHistory()->CopyFrom(hi);
     }
 
     return config;
