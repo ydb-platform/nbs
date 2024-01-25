@@ -1,0 +1,41 @@
+name: Nightly rebuild of all index files
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  index:
+    name: Rebuild index files
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v3
+    - name: Prepare VM
+      uses: ./.github/actions/prepare
+    - name: add user github if not exists
+      shell: bash
+      run: |
+        id -u github || sudo adduser github --gecos "" --disabled-password
+    - name: Prepare s3cmd
+      uses: ./.github/actions/s3cmd
+      with:
+        s3_bucket: ${{ vars.AWS_BUCKET }}
+        s3_endpoint: ${{ vars.AWS_ENDPOINT }}
+        s3_website_suffix: ${{ vars.AWS_WEBSITE_SUFFIX }}
+        s3_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        folder_prefix: nebius-
+        build_preset: "release"
+
+    - name: Create indices for repo
+      shell: bash
+      run: |
+        set -x
+        echo "::group::generate-listing"
+        sudo -E -H -u github python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/
+        echo "::endgroup::"
+      env:
+        S3_BUCKET: ${{ vars.AWS_BUCKET }}
+

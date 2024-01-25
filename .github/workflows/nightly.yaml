@@ -10,4 +10,5 @@ jobs:
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
-      cache_update: true
+      cache_update_build: true
+      cache_update_tests: false

@@ -31,7 +31,7 @@ Here is few examples how to use it:
 act -W .github/workflows/pr-github-actions.yaml workflow_dispatch
 ```
 
-You can add input values:
+You can add input values in `.input` file:
 
 ```bash
 echo <<EOF

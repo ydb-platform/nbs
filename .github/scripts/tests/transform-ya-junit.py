@@ -4,6 +4,7 @@ import re
 import json
 import os
 import sys
+import shutil
 import urllib.parse
 from xml.etree import ElementTree as ET
 from mute_utils import mute_target, pattern_to_re
@@ -62,7 +63,9 @@ class YTestReportTrace:
             return
 
         for folder in os.listdir(test_results_dir):
-            fn = os.path.join(self.out_root, test_results_dir, folder, "ytest.report.trace")
+            fn = os.path.join(
+                self.out_root, test_results_dir, folder, "ytest.report.trace"
+            )
 
             if not os.path.isfile(fn):
                 continue
@@ -72,16 +75,41 @@ class YTestReportTrace:
                     event = json.loads(line.strip())
                     if event["name"] == "subtest-finished":
                         event = event["value"]
-                        cls = event["class"]
+                        class_event = event["class"]
                         subtest = event["subtest"]
-                        cls = cls.replace("::", ".")
-                        self.traces[(cls, subtest)] = event
+                        class_event = class_event.replace("::", ".")
+                        log_print(f"loaded ({class_event}, {subtest})")
+                        self.traces[(class_event, subtest)] = event
+                    elif event["name"] == "chunk-event":
+                        event = event["value"]
+                        chunk_idx = event["chunk_index"]
+                        chunk_total = event["nchunks"]
+                        test_name = subdir
+                        log_print(f"loaded ({test_name}, {chunk_idx}, {chunk_total})")
+                        self.traces[(test_name, chunk_idx, chunk_total)] = event
 
-    def has(self, cls, name):
-        return (cls, name) in self.traces
+    def has(self, class_event, name):
+        return (class_event, name) in self.traces
 
-    def get_logs(self, cls, name):
-        trace = self.traces.get((cls, name))
+    def get_logs(self, class_event, name):
+        trace = self.traces.get((class_event, name))
+
+        if not trace:
+            return {}
+
+        logs = trace["logs"]
+
+        result = {}
+        for k, path in logs.items():
+            if k == "logsdir":
+                continue
+
+            result[k] = path.replace("$(BUILD_ROOT)", self.out_root)
+
+        return result
+
+    def get_logs_chunks(self, suite, idx, total):
+        trace = self.traces.get((suite, idx, total))
 
         if not trace:
             return {}
@@ -102,6 +130,7 @@ def filter_empty_logs(logs):
     result = {}
     for k, v in logs.items():
         if not os.path.isfile(v) or os.stat(v).st_size == 0:
+            log_print(f"skipping log file {v} as empty or missing")
             continue
         result[k] = v
     return result
@@ -130,7 +159,8 @@ def save_log(build_root, fn, out_dir, log_url_prefix, trunc_size):
                             break
                         out_fp.write(buf)
         else:
-            os.symlink(fn, out_fn)
+            if fn != out_fn:
+                shutil.copy(fn, out_fn)
     quoted_fpath = urllib.parse.quote(fpath)
     return f"{log_url_prefix}{quoted_fpath}"
 
@@ -162,14 +192,34 @@ def transform(
                 log_print("mute", suite_name, test_name)
                 mute_target(case)
 
-            if is_fail and "." in test_name:
-                test_cls, test_method = test_name.rsplit(".", maxsplit=1)
-                logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
+            if is_fail:
+                if "." in test_name:
+                    test_cls, test_method = test_name.rsplit(".", maxsplit=1)
+                    logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
+
+                elif "chunk" in test_name:
+                    if "sole" in test_name:
+                        chunk_idx = 0
+                        chunks_total = 1
+                    else:
+                        pattern = r"\[(\d+)/(\d+)\]"
+                        match = re.search(pattern, test_name)
+                        chunk_idx = int(match.group(1))
+                        chunks_total = int(match.group(2))
+                    logs = filter_empty_logs(
+                        traces.get_logs_chunks(suite_name, chunk_idx, chunks_total)
+                    )
+                else:
+                    continue
 
                 if logs:
-                    log_print(f"add {list(logs.keys())!r} properties for {test_cls}.{test_method}")
+                    log_print(
+                        f"add {list(logs.keys())!r} properties for {suite_name}/{test_name}"
+                    )
                     for name, fn in logs.items():
-                        url = save_log(ya_out_dir, fn, log_out_dir, log_url_prefix, log_trunc_size)
+                        url = save_log(
+                            ya_out_dir, fn, log_out_dir, log_url_prefix, log_trunc_size
+                        )
                         add_junit_link_property(case, name, url)
 
     if save_inplace:
@@ -195,10 +245,12 @@ def main():
         "--log-truncate-size",
         dest="log_trunc_size",
         type=int,
-        default=134217728,
+        default=0,
         help="truncate log after specific size, 0 disables truncation",
     )
-    parser.add_argument("--ya-out", help="ya make output dir (for searching logs and artifacts)")
+    parser.add_argument(
+        "--ya-out", help="ya make output dir (for searching logs and artifacts)"
+    )
     parser.add_argument("in_file", type=argparse.FileType("r"))
 
     args = parser.parse_args()

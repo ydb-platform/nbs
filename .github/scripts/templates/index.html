@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Directory Listing for {{ directory }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+        }
+        h1 {
+            background: #007bff;
+            color: white;
+            padding: 10px 15px;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        li {
+            background: white;
+            border-bottom: 1px solid #ddd;
+            padding: 8px 15px;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        a {
+            text-decoration: none;
+            color: #007bff;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .file-icon, .directory-icon {
+            margin-right: 5px;
+        }
+        .file-icon:before {
+            content: '📄'; /* File icon */
+        }
+        .directory-icon:before {
+            content: '📁'; /* Folder icon */
+        }
+        .date {
+            float: right;
+            color: #666;
+        }
+
+        #timestamp {
+            text-align: right;
+            font-size: small;
+        }
+    </style>
+</head>
+<body>
+    <h1>Directory listing for {{ directory }}</h1>
+    <ul>
+        {% for entry in entries %}
+            <li>
+                <span class="{{ 'directory-icon' if entry.type == 'directory' else 'file-icon' }}"></span>
+                <a href="{{ entry.url }}">{{ entry.name }}</a>
+                {% if entry.date %}
+                    <span class="date">{{ entry.date }}</span>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+    <p id="timestamp">Generated on: {{ timestamp }}</p>
+
+</body>
+</html>

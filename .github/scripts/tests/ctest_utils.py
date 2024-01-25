@@ -56,7 +56,9 @@ class CTestLog:
 
     def add_shard(self, name, status, log_url):
         common_name = get_common_shard_name(name)
-        shard = self.storage[common_name][name] = self.name_shard[name] = CTestLogShard(name, status, log_url)
+        shard = self.storage[common_name][name] = self.name_shard[name] = CTestLogShard(
+            name, status, log_url
+        )
         return shard
 
     def has_error_shard(self, name):
