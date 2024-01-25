@@ -51,7 +51,7 @@ jobs:
     steps:
       - name: Start YC runner
         id: start-yc-runner
-        uses: librarian/yc-github-runner@0.0.13
+        uses: librarian/yc-github-runner@0.0.15
         timeout-minutes: 60
         with:
           mode: start
@@ -78,12 +78,12 @@ jobs:
       runner_ipv4: ${{ steps.configure-ncp.outputs.runner_ipv4 }}
     steps:
       - name: Checkout PR
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
       - id: configure-ncp
         name: Configure NCP
@@ -132,7 +132,7 @@ jobs:
         run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
       - name: Stop YC runner
-        uses: librarian/yc-github-runner@0.0.13
+        uses: librarian/yc-github-runner@0.0.15
         if: always()
         timeout-minutes: 60
         with:
