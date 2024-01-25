@@ -58,6 +58,18 @@ runs:
         endpoint_url=https://storage.ai.nebius.cloud/
         EOF
 
+        mkdir -p /root/.aws/
+        cat <<EOF > /root/.aws/credentials
+        [default]
+        aws_access_key_id = ${s3_key_id}
+        aws_secret_access_key = ${s3_secret_access_key}
+        EOF
+        cat <<EOF > /root/.aws/config
+        [default]
+        region = eu-north1
+        endpoint_url=https://storage.ai.nebius.cloud/
+        EOF
+
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"
 
         case "${{ inputs.build_preset }}" in
