@@ -285,10 +285,20 @@ func TestDeleteCheckpointData(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	err = client.CreateCheckpoint(
+		ctx,
+		nbs.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpointID",
+		},
+	)
+	require.NoError(t, err)
+
 	err = client.DeleteCheckpointData(ctx, diskID, "checkpointID")
 	require.NoError(t, err)
 
 	// TODO: NBS-4665: check that CreateCheckpoint request returns error if checkpoint data was deleted.
+	// TODO: NBS-4665: check that CreateCheckpointWithoutData request returns error if checkpoint data was deleted.
 }
 
 func TestResizeDisk(t *testing.T) {
