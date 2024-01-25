@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "wait_mode.h"
-
 #include <cloud/blockstore/config/rdma.pb.h>
 
 #include <cloud/blockstore/libs/service/public.h>

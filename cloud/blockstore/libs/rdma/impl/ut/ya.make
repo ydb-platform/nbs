@@ -6,6 +6,8 @@ SRCS(
     buffer_ut.cpp
     client_ut.cpp
     server_ut.cpp
+    poll_ut.cpp
+    list_ut.cpp
 )
 
 PEERDIR(

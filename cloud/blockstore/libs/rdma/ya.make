@@ -1,9 +1,4 @@
 RECURSE(
     iface
+    impl
 )
-
-IF (NOT OPENSOURCE)
-    RECURSE(
-        impl
-    )
-ENDIF()
