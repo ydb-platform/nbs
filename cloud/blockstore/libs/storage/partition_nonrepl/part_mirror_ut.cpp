@@ -911,7 +911,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         // TODO trigger and test migration for petya and petya#1
     }
 
-    Y_UNIT_TEST(ShouldTransformIOErrorToRetriable)
+
+    void DoShouldTransformAnyErrorToRetriable(NProto::TError error)
     {
         TTestBasicRuntime runtime;
 
@@ -929,7 +930,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         const auto blockRange = TBlockRange64::WithLength(1024, 3072);
         client.WriteBlocksLocal(blockRange, TString(DefaultBlockSize, 'A'));
 
-        env.DiskAgentState->Error = MakeError(E_IO, "io error");
+        env.DiskAgentState->Error = std::move(error);
 
         {
             TVector<TString> blocks;
@@ -978,6 +979,82 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                 }
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_FAIL)
+    {
+        DoShouldTransformAnyErrorToRetriable(MakeError(E_FAIL, "E_FAIL error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_ARGUMENT)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_ARGUMENT, "E_ARGUMENT error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_INVALID_STATE)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_INVALID_STATE, "E_INVALID_STATE error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_NOT_FOUND)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_TIMEOUT, "E_TIMEOUT error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_TIMEOUT)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_TIMEOUT, "E_TIMEOUT error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_UNAUTHORIZED)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_UNAUTHORIZED, "E_UNAUTHORIZED error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_ABORTED)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_ABORTED, "E_ABORTED error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_TRY_AGAIN)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_TRY_AGAIN, "E_TRY_AGAIN error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_IO)
+    {
+        DoShouldTransformAnyErrorToRetriable(MakeError(E_IO, "E_IO error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_CANCELLED)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_CANCELLED, "E_CANCELLED error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_IO_SILENT)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_IO_SILENT, "E_IO_SILENT error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_RETRY_TIMEOUT)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_RETRY_TIMEOUT, "E_RETRY_TIMEOUT error"));
+    }
+
+    Y_UNIT_TEST(ShouldTransformAnyErrorToRetriable_E_PRECONDITION_FAILED)
+    {
+        DoShouldTransformAnyErrorToRetriable(
+            MakeError(E_PRECONDITION_FAILED, "E_PRECONDITION_FAILED error"));
     }
 
     Y_UNIT_TEST(ShouldReportSimpleCounters)
