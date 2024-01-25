@@ -657,8 +657,7 @@ func (s *storageYDB) createRegularTasks(
 	ctx context.Context,
 	session *persistence.Session,
 	state TaskState,
-	scheduleInterval time.Duration,
-	maxTasksInflight int,
+	schedule TaskSchedule,
 ) error {
 
 	state.Regular = true
@@ -686,14 +685,14 @@ func (s *storageYDB) createRegularTasks(
 	defer res.Close()
 
 	found := false
-	sch := schedule{}
+	schState := scheduleState{}
 
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			err = res.ScanNamed(
-				persistence.OptionalWithDefault("task_type", &sch.taskType),
-				persistence.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
-				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
+				persistence.OptionalWithDefault("task_type", &schState.taskType),
+				persistence.OptionalWithDefault("scheduled_at", &schState.scheduledAt),
+				persistence.OptionalWithDefault("tasks_inflight", &schState.tasksInflight),
 			)
 			if err != nil {
 				return err
@@ -706,30 +705,30 @@ func (s *storageYDB) createRegularTasks(
 	scheduled := false
 
 	if found {
-		schedulingTime := sch.scheduledAt.Add(scheduleInterval)
+		schedulingTime := schState.scheduledAt.Add(schedule.ScheduleInterval)
 
-		if sch.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
-			err := s.addRegularTasks(ctx, tx, state, maxTasksInflight)
+		if schState.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
+			err := s.addRegularTasks(ctx, tx, state, schedule.MaxTasksInflight)
 			if err != nil {
 				return err
 			}
 
-			sch.tasksInflight = uint64(maxTasksInflight)
+			schState.tasksInflight = uint64(schedule.MaxTasksInflight)
 			scheduled = true
 		}
 	} else {
-		err := s.addRegularTasks(ctx, tx, state, maxTasksInflight)
+		err := s.addRegularTasks(ctx, tx, state, schedule.MaxTasksInflight)
 		if err != nil {
 			return err
 		}
 
-		sch.taskType = state.TaskType
-		sch.tasksInflight = uint64(maxTasksInflight)
+		schState.taskType = state.TaskType
+		schState.tasksInflight = uint64(schedule.MaxTasksInflight)
 		scheduled = true
 	}
 
 	if scheduled {
-		sch.scheduledAt = state.CreatedAt
+		schState.scheduledAt = state.CreatedAt
 
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
@@ -741,9 +740,9 @@ func (s *storageYDB) createRegularTasks(
 			upsert into schedules (task_type, scheduled_at, tasks_inflight)
 			values ($task_type, $scheduled_at, $tasks_inflight)
 		`, s.tablesPath),
-			persistence.ValueParam("$task_type", persistence.UTF8Value(sch.taskType)),
-			persistence.ValueParam("$scheduled_at", persistence.TimestampValue(sch.scheduledAt)),
-			persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(sch.tasksInflight)),
+			persistence.ValueParam("$task_type", persistence.UTF8Value(schState.taskType)),
+			persistence.ValueParam("$scheduled_at", persistence.TimestampValue(schState.scheduledAt)),
+			persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(schState.tasksInflight)),
 		)
 		if err != nil {
 			return err
@@ -756,7 +755,7 @@ func (s *storageYDB) createRegularTasks(
 	}
 
 	if scheduled {
-		s.metrics.OnTaskCreated(state, maxTasksInflight)
+		s.metrics.OnTaskCreated(state, schedule.MaxTasksInflight)
 	}
 
 	return nil
@@ -1346,14 +1345,14 @@ func (s *storageYDB) decrementRegularTasksInflight(
 	defer res.Close()
 
 	found := false
-	sch := schedule{}
+	schState := scheduleState{}
 
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			err = res.ScanNamed(
-				persistence.OptionalWithDefault("task_type", &sch.taskType),
-				persistence.OptionalWithDefault("scheduled_at", &sch.scheduledAt),
-				persistence.OptionalWithDefault("tasks_inflight", &sch.tasksInflight),
+				persistence.OptionalWithDefault("task_type", &schState.taskType),
+				persistence.OptionalWithDefault("scheduled_at", &schState.scheduledAt),
+				persistence.OptionalWithDefault("tasks_inflight", &schState.tasksInflight),
 			)
 			if err != nil {
 				return err
@@ -1369,13 +1368,10 @@ func (s *storageYDB) decrementRegularTasksInflight(
 			return err
 		}
 
-		return errors.NewNonRetriableErrorf(
-			"schedule %v is not found",
-			taskType,
-		)
+		return errors.NewNonRetriableErrorf("schedule %v is not found", taskType)
 	}
 
-	if sch.tasksInflight == 0 {
+	if schState.tasksInflight == 0 {
 		err = tx.Commit(ctx)
 		if err != nil {
 			return err
@@ -1387,7 +1383,7 @@ func (s *storageYDB) decrementRegularTasksInflight(
 		)
 	}
 
-	sch.tasksInflight--
+	schState.tasksInflight--
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1399,9 +1395,9 @@ func (s *storageYDB) decrementRegularTasksInflight(
 		upsert into schedules (task_type, scheduled_at, tasks_inflight)
 		values ($task_type, $scheduled_at, $tasks_inflight)
 	`, s.tablesPath),
-		persistence.ValueParam("$task_type", persistence.UTF8Value(sch.taskType)),
-		persistence.ValueParam("$scheduled_at", persistence.TimestampValue(sch.scheduledAt)),
-		persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(sch.tasksInflight)),
+		persistence.ValueParam("$task_type", persistence.UTF8Value(schState.taskType)),
+		persistence.ValueParam("$scheduled_at", persistence.TimestampValue(schState.scheduledAt)),
+		persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(schState.tasksInflight)),
 	)
 	return err
 }

@@ -153,6 +153,11 @@ func (s *scheduler) ScheduleRegularTasks(
 				"x-request-id": requestID.String(),
 			})
 
+			schedule := tasks_storage.TaskSchedule{
+				ScheduleInterval: scheduleInterval,
+				MaxTasksInflight: maxTasksInflight,
+			}
+
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
 				ID:           "",
 				TaskType:     taskType,
@@ -164,7 +169,7 @@ func (s *scheduler) ScheduleRegularTasks(
 				Status:       tasks_storage.TaskStatusReadyToRun,
 				Metadata:     metadata,
 				Dependencies: tasks_storage.NewStringSet(),
-			}, scheduleInterval, maxTasksInflight)
+			}, schedule)
 			if err != nil {
 				logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)
 			}

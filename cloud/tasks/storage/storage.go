@@ -255,6 +255,11 @@ type TaskInfo struct {
 	TaskType     string
 }
 
+type TaskSchedule struct {
+	ScheduleInterval time.Duration
+	MaxTasksInflight int
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Storage interface {
@@ -268,8 +273,7 @@ type Storage interface {
 	CreateRegularTasks(
 		ctx context.Context,
 		state TaskState,
-		scheduleInterval time.Duration,
-		maxTasksInflight int,
+		schedule TaskSchedule,
 	) error
 
 	GetTask(ctx context.Context, taskID string) (TaskState, error)
