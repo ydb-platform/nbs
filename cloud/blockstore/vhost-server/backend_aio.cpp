@@ -146,7 +146,7 @@ private:
     io_context_t Io = {};
 
     ui32 BatchSize = 0;
-    TVector<iocb*> Batch;
+    TVector<TVector<iocb*>> Batches;
 
     std::thread CompletionThread;
 
@@ -158,7 +158,10 @@ public:
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
     void Stop() override;
-    void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats) override;
+    void ProcessQueue(
+        ui32 queueIndex,
+        vhd_request_queue* queue,
+        TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
 
 private:
@@ -186,7 +189,10 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
 
     Y_ABORT_UNLESS(io_setup(BatchSize, &Io) >= 0, "io_setup");
 
-    Batch.reserve(BatchSize);
+    for (ui32 i = 0; i < options.QueueCount; i++) {
+        Batches.emplace_back();
+        Batches.back().reserve(BatchSize);
+    }
 
     EOpenMode flags =
         EOpenModeFlag::OpenExisting | EOpenModeFlag::DirectAligned |
@@ -283,22 +289,27 @@ void TAioBackend::Stop()
     Devices.clear();
 }
 
-void TAioBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats)
+void TAioBackend::ProcessQueue(
+    ui32 queueIndex,
+    vhd_request_queue* queue,
+    TSimpleStats& queueStats)
 {
     int ret;
+
+    auto& batch = Batches[queueIndex];
 
     for (;;) {
         const TCpuCycles now = GetCycleCount();
 
         // append new requests to the tail of the batch
-        queueStats.Dequeued += PrepareBatch(queue, Batch, now);
+        queueStats.Dequeued += PrepareBatch(queue, batch, now);
 
-        if (Batch.empty()) {
+        if (batch.empty()) {
             break;
         }
 
         do {
-            ret = io_submit(Io, Batch.size(), Batch.data());
+            ret = io_submit(Io, batch.size(), batch.data());
         } while (ret == -EINTR);
 
         // kernel queue full, punt the re-submission to later event loop
@@ -314,16 +325,16 @@ void TAioBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStat
 
             ++queueStats.SubFailed;
 
-            if (Batch[0]->data) {
+            if (batch[0]->data) {
                 CompleteRequest(
-                    Batch[0],
-                    static_cast<TAioCompoundRequest*>(Batch[0]->data),
+                    batch[0],
+                    static_cast<TAioCompoundRequest*>(batch[0]->data),
                     VHD_BDEV_IOERR,
                     queueStats,
                     now);
             } else {
                 CompleteRequest(
-                    static_cast<TAioRequest*>(Batch[0]),
+                    static_cast<TAioRequest*>(batch[0]),
                     VHD_BDEV_IOERR,
                     queueStats,
                     now);
@@ -337,10 +348,10 @@ void TAioBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStat
 #ifndef NDEBUG
         STORAGE_DEBUG(
             "submitted " << ret << ": "
-                         << ToString(std::span(Batch.data(), ret)));
+                         << ToString(std::span(batch.data(), ret)));
 #endif
         // remove submitted items from the batch
-        Batch.erase(Batch.begin(), Batch.begin() + ret);
+        batch.erase(batch.begin(), batch.begin() + ret);
     }
 }
 

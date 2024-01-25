@@ -251,7 +251,7 @@ void TServer::QueueThreadFunc(ui32 queueIndex)
             break;
         }
 
-        Backend->ProcessQueue(queue, queueStats);
+        Backend->ProcessQueue(queueIndex, queue, queueStats);
 
         SyncQueueStats(queueIndex, queueStats);
     }
