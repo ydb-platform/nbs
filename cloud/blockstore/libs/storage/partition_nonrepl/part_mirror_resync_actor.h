@@ -52,6 +52,8 @@ private:
 
     TPartitionDiskCountersPtr MirrorCounters;
     bool UpdateCountersScheduled = false;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
 
     bool ResyncFinished = false;
 

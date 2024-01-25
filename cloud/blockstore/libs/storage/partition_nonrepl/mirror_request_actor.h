@@ -161,7 +161,9 @@ void TMirrorRequestActor<TMethod>::Done(const NActors::TActorContext& ctx)
     using TCompletion =
         TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted;
     auto completion =
-        std::make_unique<TCompletion>(NonreplicatedRequestCounter);
+        std::make_unique<TCompletion>(
+            NonreplicatedRequestCounter,
+            RequestInfo->GetTotalCycles());
 
     NCloud::Send(ctx, ParentActorId, std::move(completion));
 

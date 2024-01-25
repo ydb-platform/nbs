@@ -16,6 +16,8 @@ void TMirrorPartitionResyncActor::HandlePartCounters(
 
     if (ev->Sender == MirrorActorId) {
         MirrorCounters = std::move(msg->DiskCounters);
+        NetworkBytes = msg->NetworkBytes;
+        CpuUsage = msg->CpuUsage;
     } else {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
@@ -40,6 +42,9 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
         MakeIntrusive<TCallContext>(),
         std::move(stats));
+
+    request->NetworkBytes = NetworkBytes;
+    request->CpuUsage = CpuUsage;
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

@@ -33,6 +33,11 @@ void TNonreplicatedPartitionRdmaActor::SendStats(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(),
         std::move(PartCounters));
 
+    request->NetworkBytes = NetworkBytes;
+    request->CpuUsage = CpuUsage;
+    NetworkBytes = 0;
+    CpuUsage = {};
+
     PartCounters =
         CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
 
