@@ -14,6 +14,7 @@ target_link_libraries(checkpoint-validator PUBLIC
   yutil
   apps-client-lib
   eternal_tests-checkpoint-validator-lib
+  libs-iam-iface
 )
 target_link_options(checkpoint-validator PRIVATE
   -ldl

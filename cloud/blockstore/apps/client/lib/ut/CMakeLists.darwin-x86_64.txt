@@ -17,6 +17,7 @@ target_link_libraries(cloud-blockstore-apps-client-lib-ut PUBLIC
   library-cpp-cpuid_check
   cpp-testing-unittest_main
   apps-client-lib
+  libs-iam-iface
 )
 target_link_options(cloud-blockstore-apps-client-lib-ut PRIVATE
   -Wl,-platform_version,macos,11.0,11.0
