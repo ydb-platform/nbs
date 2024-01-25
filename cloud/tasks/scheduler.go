@@ -10,6 +10,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type TaskSchedule struct {
+	ScheduleInterval time.Duration
+	MaxTasksInflight int
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Scheduler interface {
 	// Requires "idempotency-key" header in ctx metadata.
 	// Returns id of the task.
@@ -38,8 +45,7 @@ type Scheduler interface {
 	ScheduleRegularTasks(
 		ctx context.Context,
 		taskType string,
-		scheduleInterval time.Duration,
-		maxTasksInflight int,
+		schedule TaskSchedule,
 	)
 
 	// Marks task as cancelled.

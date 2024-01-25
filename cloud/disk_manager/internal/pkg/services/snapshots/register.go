@@ -74,8 +74,10 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"snapshots.ClearDeletedSnapshots",
-		clearDeletedSnapshotsTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: clearDeletedSnapshotsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return nil

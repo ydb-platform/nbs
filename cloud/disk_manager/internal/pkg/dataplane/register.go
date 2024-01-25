@@ -180,8 +180,10 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"dataplane.CollectSnapshots",
-		collectSnapshotsTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: collectSnapshotsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	snapshotMetricsCollectionInterval, err := time.ParseDuration(
@@ -215,8 +217,10 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"dataplane.CollectSnapshotMetrics",
-		collectSnapshotMetricsTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: collectSnapshotMetricsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return nil

@@ -231,38 +231,48 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ScheduleBaseDisks",
-		scheduleBaseDisksTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: scheduleBaseDisksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	if config.GetRegularBaseDiskOptimizationEnabled() {
 		taskScheduler.ScheduleRegularTasks(
 			ctx,
 			"pools.OptimizeBaseDisks",
-			optimizeBaseDisksTaskScheduleInterval,
-			1,
+			tasks.TaskSchedule{
+				ScheduleInterval: optimizeBaseDisksTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
 		)
 	}
 
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.DeleteBaseDisks",
-		deleteBaseDisksTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: deleteBaseDisksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ClearDeletedBaseDisks",
-		clearDeletedBaseDisksTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: clearDeletedBaseDisksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"pools.ClearReleasedSlots",
-		clearReleasedSlotsTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: clearReleasedSlotsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return nil

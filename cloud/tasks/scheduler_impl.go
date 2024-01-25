@@ -117,8 +117,7 @@ func (s *scheduler) ScheduleZonalTask(
 func (s *scheduler) ScheduleRegularTasks(
 	ctx context.Context,
 	taskType string,
-	scheduleInterval time.Duration,
-	maxTasksInflight int,
+	schedule TaskSchedule,
 ) {
 
 	// TODO: Don't schedule new goroutine for each regular task type.
@@ -154,8 +153,8 @@ func (s *scheduler) ScheduleRegularTasks(
 			})
 
 			schedule := tasks_storage.TaskSchedule{
-				ScheduleInterval: scheduleInterval,
-				MaxTasksInflight: maxTasksInflight,
+				ScheduleInterval: schedule.ScheduleInterval,
+				MaxTasksInflight: schedule.MaxTasksInflight,
 			}
 
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
@@ -582,8 +581,10 @@ func NewScheduler(
 	s.ScheduleRegularTasks(
 		ctx,
 		"tasks.ClearEndedTasks",
-		clearEndedTasksTaskScheduleInterval,
-		1,
+		TaskSchedule{
+			ScheduleInterval: clearEndedTasksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	listerMetricsCollectionInterval, err := time.ParseDuration(
@@ -616,8 +617,10 @@ func NewScheduler(
 	s.ScheduleRegularTasks(
 		ctx,
 		"tasks.CollectListerMetrics",
-		collectListerMetricsTaskScheduleInterval,
-		1,
+		TaskSchedule{
+			ScheduleInterval: collectListerMetricsTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return s, nil
