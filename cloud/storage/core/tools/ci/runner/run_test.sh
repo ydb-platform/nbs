@@ -12,3 +12,4 @@ mkdir -p "$logs_root"
 "${nbs_path}/ya" make -A -j10 --keep-going --output "$logs_root" --junit "${logs_dir}/${result_xml}" "$test_path"
 
 find "${logs_dir}" -maxdepth 1 -mindepth 1 -type f -not -name "${result_xml}" -exec rm {} \;
+find "${logs_dir}" -type f -exec chmod 644 {} \;
