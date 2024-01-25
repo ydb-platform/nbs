@@ -1041,6 +1041,23 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             TVector<TString>{},
             diskInfo.DeviceReplacementIds);
 
+        UNIT_ASSERT_VALUES_EQUAL(1, diskInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/0", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, replicaInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/1", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/2", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.History.size());
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
             TVector<TVector<TDeviceConfig>> replicas;
