@@ -49,8 +49,10 @@ public:
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
     void Stop() override;
-    void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats)
-        override;
+    void ProcessQueue(
+        ui32 queueIndex,
+        vhd_request_queue* queue,
+        TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
 
 private:
@@ -179,9 +181,12 @@ void TRdmaBackend::Stop()
 }
 
 void TRdmaBackend::ProcessQueue(
+    ui32 queueIndex,
     vhd_request_queue* queue,
     TSimpleStats& queueStats)
 {
+    Y_UNUSED(queueIndex);
+
     vhd_request req;
     while (vhd_dequeue_request(queue, &req)) {
         ++queueStats.Dequeued;

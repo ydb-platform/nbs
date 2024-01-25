@@ -23,7 +23,10 @@ public:
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
     void Stop() override;
-    void ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats) override;
+    void ProcessQueue(
+        ui32 queueIndex,
+        vhd_request_queue* queue,
+        TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
 };
 
@@ -60,8 +63,12 @@ void TNullBackend::Start()
 void TNullBackend::Stop()
 {}
 
-void TNullBackend::ProcessQueue(vhd_request_queue* queue, TSimpleStats& queueStats)
+void TNullBackend::ProcessQueue(
+    ui32 queueIndex,
+    vhd_request_queue* queue,
+    TSimpleStats& queueStats)
 {
+    Y_UNUSED(queueIndex);
     Y_UNUSED(queueStats);
 
     vhd_request req;
