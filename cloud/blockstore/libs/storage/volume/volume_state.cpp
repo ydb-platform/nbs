@@ -266,6 +266,10 @@ void TVolumeState::Reset()
         for (const auto& r: Meta.GetReplicas()) {
             addFreshDevices(r.GetDevices());
         }
+    } else {
+        FilteredFreshDeviceIds = THashSet<TString>(
+            Meta.GetFreshDeviceIds().begin(),
+            Meta.GetFreshDeviceIds().end());
     }
 }
 
