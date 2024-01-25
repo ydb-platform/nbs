@@ -29,11 +29,12 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends  s3cmd
+        sudo apt-get install -y --no-install-recommends s3cmd
     - name: configure s3cmd
       shell: bash
       run: |
-        export S3CMD_CONFIG=$(mktemp)
+        export S3CMD_CONFIG=$(mktemp -p /home/github)
+        chown github:github $S3CMD_CONFIG
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
         export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}
         cat <<EOF > $S3CMD_CONFIG
@@ -43,6 +44,30 @@ runs:
         bucket_location = eu-north1
         host_base = storage.ai.nebius.cloud
         host_bucket = %(bucket)s.storage.ai.nebius.cloud
+        EOF
+
+        mkdir -p /home/github/.aws/
+        cat <<EOF > /home/github/.aws/credentials
+        [default]
+        aws_access_key_id = ${s3_key_id}
+        aws_secret_access_key = ${s3_secret_access_key}
+        EOF
+        cat <<EOF > /home/github/.aws/config
+        [default]
+        region = eu-north1
+        endpoint_url=https://storage.ai.nebius.cloud/
+        EOF
+
+        mkdir -p /root/.aws/
+        cat <<EOF > /root/.aws/credentials
+        [default]
+        aws_access_key_id = ${s3_key_id}
+        aws_secret_access_key = ${s3_secret_access_key}
+        EOF
+        cat <<EOF > /root/.aws/config
+        [default]
+        region = eu-north1
+        endpoint_url=https://storage.ai.nebius.cloud/
         EOF
 
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"
@@ -65,9 +90,9 @@ runs:
             ;;
         esac
 
-        echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
-        echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
-        echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_BUCKET_PATH=s3://${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_URL_PREFIX=${{ inputs.s3_endpoint }}/${{ inputs.s3_bucket }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
+        echo "S3_WEBSITE_PREFIX=https://${{ inputs.s3_bucket }}.${{ inputs.s3_website_suffix }}/${{ github.repository }}/${GITHUB_WORKFLOW_NO_SPACES}/${{ github.run_id }}/${{ github.run_attempt || '1' }}/${{ inputs.folder_prefix }}${folder}" >> $GITHUB_ENV
       env:
         s3_key_id: ${{ inputs.s3_key_id }}
         s3_secret_access_key: ${{ inputs.s3_key_secret }}

@@ -12,7 +12,6 @@ from operator import attrgetter
 from typing import List, Dict
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from junit_utils import get_property_value, iter_xml_files
-from contextlib import nullcontext
 
 
 class TestStatus(Enum):
@@ -33,6 +32,7 @@ class TestResult:
     status: TestStatus
     log_urls: Dict[str, str]
     elapsed: float
+    is_timed_out: bool
 
     @property
     def status_display(self):
@@ -64,8 +64,13 @@ class TestResult:
     def from_junit(cls, testcase):
         classname, name = testcase.get("classname"), testcase.get("name")
 
+        is_timed_out = False
         if testcase.find("failure") is not None:
             status = TestStatus.FAIL
+            text = testcase.find("failure").text
+            if text is not None and "Killed by timeout" in text:
+                print(f"{classname}, {name} is_timed_out  = True")
+                is_timed_out = True
         elif testcase.find("error") is not None:
             status = TestStatus.ERROR
         elif get_property_value(testcase, "mute") is not None:
@@ -80,6 +85,9 @@ class TestResult:
             "log": get_property_value(testcase, "url:log"),
             "stdout": get_property_value(testcase, "url:stdout"),
             "stderr": get_property_value(testcase, "url:stderr"),
+            "backtrace": get_property_value(testcase, "url:backtrace"),
+            "recipe_stderr": get_property_value(testcase, "url:recipe stderr"),
+            "recipe_stdout": get_property_value(testcase, "url:recipe stdout"),
         }
         log_urls = {k: v for k, v in log_urls.items() if v}
 
@@ -89,9 +97,11 @@ class TestResult:
             elapsed = float(elapsed)
         except (TypeError, ValueError):
             elapsed = 0
-            print(f"Unable to cast elapsed time for {classname}::{name}  value={elapsed!r}")
+            print(
+                f"Unable to cast elapsed time for {classname}::{name}  value={elapsed!r}"
+            )
 
-        return cls(classname, name, status, log_urls, elapsed)
+        return cls(classname, name, status, log_urls, elapsed, is_timed_out)
 
 
 class TestSummaryLine:
@@ -145,6 +155,10 @@ class TestSummary:
         self.is_failed |= line.is_failed
         self.lines.append(line)
 
+    @property
+    def is_empty(self):
+        return len(self.lines) == 0
+
     def render_line(self, items):
         return f"| {' | '.join(items)} |"
 
@@ -154,7 +168,11 @@ class TestSummary:
 
         footnote_url = f"{github_srv}/{repo}/tree/main/.github/config"
 
-        footnote = "[^1]" if add_footnote else f'<sup>[?]({footnote_url} "All mute rules are defined here")</sup>'
+        footnote = (
+            "[^1]"
+            if add_footnote
+            else f'<sup>[?]({footnote_url} "All mute rules are defined here")</sup>'
+        )
 
         columns = ["TESTS", "PASSED", "ERRORS", "FAILED", "SKIPPED", f"MUTED{footnote}"]
 
@@ -217,7 +235,9 @@ def render_pm(value, url, diff=None):
 def render_testlist_html(rows, fn):
     TEMPLATES_PATH = os.path.join(os.path.dirname(__file__), "templates")
 
-    env = Environment(loader=FileSystemLoader(TEMPLATES_PATH), undefined=StrictUndefined)
+    env = Environment(
+        loader=FileSystemLoader(TEMPLATES_PATH), undefined=StrictUndefined
+    )
 
     status_test = {}
     has_any_log = set()
@@ -230,24 +250,48 @@ def render_testlist_html(rows, fn):
     for status in status_test.keys():
         status_test[status].sort(key=attrgetter("full_name"))
 
-    status_order = [TestStatus.ERROR, TestStatus.FAIL, TestStatus.SKIP, TestStatus.MUTE, TestStatus.PASS]
+    status_order = [
+        TestStatus.ERROR,
+        TestStatus.FAIL,
+        TestStatus.SKIP,
+        TestStatus.MUTE,
+        TestStatus.PASS,
+    ]
 
     # remove status group without tests
     status_order = [s for s in status_order if s in status_test]
 
-    content = env.get_template("summary.html").render(status_order=status_order, tests=status_test, has_any_log=has_any_log)
+    content = env.get_template("summary.html").render(
+        status_order=status_order, tests=status_test, has_any_log=has_any_log
+    )
 
     with open(fn, "w") as fp:
         fp.write(content)
 
 
-def write_summary(summary: TestSummary):
-    summary_fn = os.environ.get("GITHUB_STEP_SUMMARY")
+def write_summary(summary: TestSummary, summary_out_env_path=""):
+    if summary_out_env_path == "":
+        summary_fn = os.environ.get("GITHUB_STEP_SUMMARY")
+    else:
+        summary_fn = summary_out_env_path
 
-    with open(summary_fn, "at") if summary_fn else nullcontext(sys.stdout) as fp:  # noqa: SIM115
+    if summary_fn:
+        fp = open(summary_fn, "at")
+    else:
+        fp = sys.stdout
+
+    if summary.is_empty:
+        fp.write(
+            ":red_circle: Test run completed, no test results found. Please check build logs."
+        )
+    else:
         for line in summary.render(add_footnote=True):
             fp.write(f"{line}\n")
-        fp.write("\n")
+
+    fp.write("\n")
+
+    if summary_fn:
+        fp.close()
 
 
 def gen_summary(summary_url_prefix, summary_out_folder, paths):
@@ -260,17 +304,29 @@ def gen_summary(summary_url_prefix, summary_out_folder, paths):
             test_result = TestResult.from_junit(case)
             summary_line.add(test_result)
 
+        if not summary_line.tests:
+            continue
+
         report_url = f"{summary_url_prefix}{html_fn}"
 
-        render_testlist_html(summary_line.tests, os.path.join(summary_out_folder, html_fn))
+        render_testlist_html(
+            summary_line.tests, os.path.join(summary_out_folder, html_fn)
+        )
         summary_line.add_report(html_fn, report_url)
         summary.add_line(summary_line)
 
     return summary
 
 
-def get_comment_text(pr: PullRequest, summary: TestSummary, build_preset: str, test_history_url: str):
-    if summary.is_failed:
+def get_comment_text(
+    pr: PullRequest, summary: TestSummary, build_preset: str, test_history_url: str
+):
+    if summary.is_empty:
+        return [
+            f":red_circle: **{build_preset}**: Test run completed, no test results found for commit {pr.head.sha}. "
+            f"Please check build logs."
+        ]
+    elif summary.is_failed:
         result = f":red_circle: **{build_preset}**: some tests FAILED"
     else:
         result = f":green_circle: **{build_preset}**: all tests PASSED"
@@ -286,7 +342,13 @@ def get_comment_text(pr: PullRequest, summary: TestSummary, build_preset: str, t
     return body
 
 
-def update_pr_comment(run_number: int, pr: PullRequest, summary: TestSummary, build_preset: str, test_history_url: str):
+def update_pr_comment(
+    run_number: int,
+    pr: PullRequest,
+    summary: TestSummary,
+    build_preset: str,
+    test_history_url: str,
+):
     header = f"<!-- status pr={pr.number}, run={{}} -->"
     header_re = re.compile(header.format(r"(\d+)"))
 
@@ -310,18 +372,23 @@ def update_pr_comment(run_number: int, pr: PullRequest, summary: TestSummary, bu
 
     body = "\n".join(body)
 
-    if comment is None:
-        pr.create_issue_comment(body)
-    else:
-        comment.edit(body)
+    pr.create_issue_comment(body)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary-out-path", required=True)
+    parser.add_argument(
+        "--summary-out-env-path",
+        required=False,
+        help="File to write out summary instead of GITHUB_STEP_SUMMARY",
+        default="",
+    )
     parser.add_argument("--summary-url-prefix", required=True)
     parser.add_argument("--test-history-url", required=False)
-    parser.add_argument("--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False)
+    parser.add_argument(
+        "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
+    )
     parser.add_argument("args", nargs="+", metavar="TITLE html_out path")
     args = parser.parse_args()
 
@@ -333,7 +400,7 @@ def main():
     title_path = list(zip(paths, paths, paths))
 
     summary = gen_summary(args.summary_url_prefix, args.summary_out_path, title_path)
-    write_summary(summary)
+    write_summary(summary, args.summary_out_env_path)
 
     if os.environ.get("GITHUB_EVENT_NAME") in ("pull_request", "pull_request_target"):
         gh = Github(auth=GithubAuth.Token(os.environ["GITHUB_TOKEN"]))
@@ -343,7 +410,9 @@ def main():
 
         run_number = int(os.environ.get("GITHUB_RUN_NUMBER"))
         pr = gh.create_from_raw_data(PullRequest, event["pull_request"])
-        update_pr_comment(run_number, pr, summary, args.build_preset, args.test_history_url)
+        update_pr_comment(
+            run_number, pr, summary, args.build_preset, args.test_history_url
+        )
 
 
 if __name__ == "__main__":

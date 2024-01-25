@@ -1,5 +1,3 @@
-cloud/blockstore/tools/fs/cleanup-ext4-meta *
-cloud/blockstore/libs/notify *
 cloud/blockstore/tests/fio/qemu-vhost-local-test *
 cloud/blockstore/tests/fio/qemu-vhost-null-test *
 cloud/blockstore/tests/rdma/rdma-test *

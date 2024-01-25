@@ -27,6 +27,15 @@ jobs:
       with:
         ref: refs/heads/stable-23-3
 
+    - name: Configure NCP
+      uses: ./.github/actions/ncp
+      with:
+        runner_label: dp7329odurnhplpf5ff0
+        sa_json: ${{ secrets.NEBIUS_GITHUB_USER_SA_JSON}}
+    - name: add user github if not exists
+      shell: bash
+      run: |
+        id -u github || sudo adduser github --gecos "" --disabled-password
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare s3cmd

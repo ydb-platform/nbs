@@ -7,8 +7,20 @@ import re
 from xml.etree import ElementTree as ET
 from pathlib import Path
 from typing import List
-from log_parser import ctest_log_parser, parse_yunit_fails, parse_gtest_fails, log_reader, GTEST_MARK, YUNIT_MARK
-from junit_utils import add_junit_log_property, create_error_testcase, create_error_testsuite, suite_case_iterator
+from log_parser import (
+    ctest_log_parser,
+    parse_yunit_fails,
+    parse_gtest_fails,
+    log_reader,
+    GTEST_MARK,
+    YUNIT_MARK,
+)
+from junit_utils import (
+    add_junit_log_property,
+    create_error_testcase,
+    create_error_testsuite,
+    suite_case_iterator,
+)
 from ctest_utils import CTestLog
 
 fn_shard_part_re = re.compile(r"-\d+$")
@@ -132,16 +144,23 @@ def attach_to_unittests(ctest_log: CTestLog, unit_path):
 
         fn = f"{shard}-0000.xml"
         print(f"create {fn}")
-        testcases = [create_error_testcase(t.shard.name, t.classname, t.method, t.fn, t.url) for t in extra_logs]
+        testcases = [
+            create_error_testcase(t.shard.name, t.classname, t.method, t.fn, t.url)
+            for t in extra_logs
+        ]
 
         testsuite = create_error_testsuite(testcases)
-        testsuite.write(os.path.join(unit_path, fn), xml_declaration=True, encoding="UTF-8")
+        testsuite.write(
+            os.path.join(unit_path, fn), xml_declaration=True, encoding="UTF-8"
+        )
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url-prefix", default="./")
-    parser.add_argument("--decompress", action="store_true", default=False, help="decompress ctest log")
+    parser.add_argument(
+        "--decompress", action="store_true", default=False, help="decompress ctest log"
+    )
     parser.add_argument("--ctest-report")
     parser.add_argument("--junit-reports-path")
     parser.add_argument("ctest_log")
@@ -149,7 +168,11 @@ def main():
 
     args = parser.parse_args()
 
-    ctest_log = extract_logs(log_reader(args.ctest_log, args.decompress), Path(args.out_log_dir), args.url_prefix)
+    ctest_log = extract_logs(
+        log_reader(args.ctest_log, args.decompress),
+        Path(args.out_log_dir),
+        args.url_prefix,
+    )
 
     if ctest_log.has_logs:
         attach_to_ctest(ctest_log, args.ctest_report)
