@@ -180,6 +180,8 @@ public:
     [[nodiscard]] bool DoesCheckpointBlockingWritesExist() const;
     [[nodiscard]] bool DoesCheckpointHaveData(
         const TString& checkpointId) const;
+    [[nodiscard]] bool IsCheckpointDataPreparingOrPresent(
+        const TString& checkpointId) const;
 
     [[nodiscard]] std::optional<ECheckpointType> GetCheckpointType(
         const TString& checkpointId) const;

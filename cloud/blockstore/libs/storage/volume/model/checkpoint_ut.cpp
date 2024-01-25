@@ -157,6 +157,24 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(
             false,
             store.DoesCheckpointHaveData("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.DoesCheckpointHaveData("checkpoint-6"));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetCheckpointsWithData().size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            store.IsCheckpointDataPreparingOrPresent("checkpoint-2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.IsCheckpointDataPreparingOrPresent("checkpoint-1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.IsCheckpointDataPreparingOrPresent("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            store.IsCheckpointDataPreparingOrPresent("checkpoint-6"));
 
         // The checkpoint without the shadow disk has the correct state.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -173,10 +191,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ProcessedBlockCount,
             512);
+
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-1"));
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-2"));
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-3"));
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted("checkpoint-4"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-5"));
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-5"));
 
         const auto& checkpoitsWithSavedRequest = store.GetCheckpoitsWithSavedRequest();
@@ -185,6 +205,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, checkpoitsWithSavedRequest.contains("checkpoint-3"));
         UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-4"));
         UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-6"));
     }
 
     Y_UNIT_TEST(CreateFail)
