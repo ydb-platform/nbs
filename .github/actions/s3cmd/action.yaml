@@ -22,6 +22,9 @@ inputs:
   build_preset:
     required: true
     description: "build preset like relwithdebinfo"
+  user:
+    required: false
+    description: "github user"
 runs:
   using: composite
   steps:
@@ -33,11 +36,11 @@ runs:
     - name: configure s3cmd
       shell: bash
       run: |
-        export S3CMD_CONFIG=$(mktemp -p /home/github)
-        chown github:github $S3CMD_CONFIG
+        export S3CMD_CONFIG=$(sudo -E -H -u $user mktemp -p /home/$user)
+        sudo chown $user: $S3CMD_CONFIG
         echo "S3CMD_CONFIG=$S3CMD_CONFIG" >> $GITHUB_ENV
         export GITHUB_WORKFLOW_NO_SPACES=${GITHUB_WORKFLOW// /-}
-        cat <<EOF > $S3CMD_CONFIG
+        cat <<EOF | sudo -E -H -u $user tee $S3CMD_CONFIG
         [default]
         access_key = ${s3_key_id}
         secret_key = ${s3_secret_access_key}
@@ -46,25 +49,25 @@ runs:
         host_bucket = %(bucket)s.storage.ai.nebius.cloud
         EOF
 
-        mkdir -p /home/github/.aws/
-        cat <<EOF > /home/github/.aws/credentials
+        sudo -E -H -u $user mkdir -p /home/$user/.aws/
+        cat <<EOF | sudo -E -H -u $user tee /home/$user/.aws/credentials
         [default]
         aws_access_key_id = ${s3_key_id}
         aws_secret_access_key = ${s3_secret_access_key}
         EOF
-        cat <<EOF > /home/github/.aws/config
+        cat <<EOF | sudo -E -H -u $user tee /home/$user/.aws/config
         [default]
         region = eu-north1
         endpoint_url=https://storage.ai.nebius.cloud/
         EOF
 
-        mkdir -p /root/.aws/
-        cat <<EOF > /root/.aws/credentials
+        sudo mkdir -p /root/.aws/
+        cat <<EOF | sudo tee /root/.aws/credentials
         [default]
         aws_access_key_id = ${s3_key_id}
         aws_secret_access_key = ${s3_secret_access_key}
         EOF
-        cat <<EOF > /root/.aws/config
+        cat <<EOF | sudo tee /root/.aws/config
         [default]
         region = eu-north1
         endpoint_url=https://storage.ai.nebius.cloud/
@@ -96,6 +99,9 @@ runs:
       env:
         s3_key_id: ${{ inputs.s3_key_id }}
         s3_secret_access_key: ${{ inputs.s3_key_secret }}
+        user: ${{ inputs.user || 'github'}}
     - name: test s3cmd
       shell: bash
-      run: s3cmd ls
+      run: sudo -E -H -u $user s3cmd ls
+      env:
+        user: ${{ inputs.user || 'github'}}
