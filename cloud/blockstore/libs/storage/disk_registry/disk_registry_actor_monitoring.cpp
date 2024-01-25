@@ -1635,7 +1635,7 @@ void TDiskRegistryActor::RenderAgentList(
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Agent"; }
-                    TABLEH() { out << "RejectAgentTimeout(" << now << ")"; }
+                    TABLEH() { out << "RejectAgentTimeout (" << now << ")"; }
                 }
 
                 TABLER() {
@@ -1646,7 +1646,7 @@ void TDiskRegistryActor::RenderAgentList(
                         out << State->GetRejectAgentTimeout(now, "");
                     }
                 }
-                for (const auto& agentId : State->GetAgentIdsWithOverridedListParams()) {
+                for (const auto& agentId: State->GetAgentIdsWithOverriddenListParams()) {
                     TABLER() {
                         TABLED() {
                             out << agentId << " (overridden)";
