@@ -2,6 +2,8 @@
 
 #include "keyring.h"
 
+#include <library/cpp/string_utils/base64/base64.h>
+
 #include <util/folder/path.h>
 #include <util/generic/hash.h>
 #include <util/stream/file.h>
@@ -30,7 +32,7 @@ public:
         , EndpointsKeyringDesc(std::move(endpointsKeyringDesc))
     {}
 
-    TResultOrError<TVector<ui32>> GetEndpointIds() override
+    TResultOrError<TVector<TString>> GetEndpointIds() override
     {
         auto keyringsOrError = GetEndpointKeyrings();
         if (HasError(keyringsOrError)) {
@@ -39,14 +41,14 @@ public:
 
         auto keyrings = keyringsOrError.ExtractResult();
 
-        TVector<ui32> endpointIds;
+        TVector<TString> endpointIds;
         for (auto keyring: keyrings) {
-            endpointIds.push_back(keyring.GetId());
+            endpointIds.push_back(ToString(keyring.GetId()));
         }
         return endpointIds;
     }
 
-    TResultOrError<TString> GetEndpoint(ui32 endpointId) override
+    TResultOrError<TString> GetEndpoint(const TString& endpointId) override
     {
         auto keyringsOrError = GetEndpointKeyrings();
         if (HasError(keyringsOrError)) {
@@ -55,7 +57,7 @@ public:
 
         auto keyrings = keyringsOrError.ExtractResult();
         for (auto keyring: keyrings) {
-            if (keyring.GetId() == endpointId) {
+            if (ToString(keyring.GetId()) == endpointId) {
                 return GetKeyringValue(keyring);
             }
         }
@@ -64,14 +66,17 @@ public:
             << "Failed to find endpoint with id " << endpointId);
     }
 
-    TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) override
+    NProto::TError AddEndpoint(
+        const TString& endpointId,
+        const TString& endpointSpec) override
     {
+        Y_UNUSED(endpointId);
         Y_UNUSED(endpointSpec);
         // TODO:
         return MakeError(E_NOT_IMPLEMENTED, "Failed to add endpoint to storage");
     }
 
-    NProto::TError RemoveEndpoint(ui32 endpointId) override
+    NProto::TError RemoveEndpoint(const TString& endpointId) override
     {
         Y_UNUSED(endpointId);
         // TODO:
@@ -128,7 +133,7 @@ public:
         : DirPath(std::move(dirPath))
     {}
 
-    TResultOrError<TVector<ui32>> GetEndpointIds() override
+    TResultOrError<TVector<TString>> GetEndpointIds() override
     {
         TGuard guard(Mutex);
 
@@ -140,19 +145,23 @@ public:
         TVector<TFsPath> endpointFiles;
         DirPath.List(endpointFiles);
 
-        TVector<ui32> endpointIds;
+        TVector<TString> endpointIds;
         for (const auto& endpointFile: endpointFiles) {
-            auto keyringId = FromString<ui32>(endpointFile.GetName());
-            endpointIds.push_back(keyringId);
+            auto [endpointId, error] = SafeBase64Decode(endpointFile.GetName());
+            if (HasError(error)) {
+                // TODO: ReportCritEvent()
+                continue;
+            }
+            endpointIds.push_back(endpointId);
         }
         return endpointIds;
     }
 
-    TResultOrError<TString> GetEndpoint(ui32 endpointId) override
+    TResultOrError<TString> GetEndpoint(const TString& endpointId) override
     {
         TGuard guard(Mutex);
 
-        auto endpointFile = DirPath.Child(ToString(endpointId));
+        auto endpointFile = DirPath.Child(Base64EncodeUrl(endpointId));
         if (!endpointFile.Exists()) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
                 << "Failed to find endpoint with id " << endpointId);
@@ -161,23 +170,23 @@ public:
         return ReadFile(endpointFile);
     }
 
-    TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) override
+    NProto::TError AddEndpoint(
+        const TString& endpointId,
+        const TString& endpointSpec) override
     {
         TGuard guard(Mutex);
 
-        auto id = GetFreeId();
         TFsPath tmpFilePath(MakeTempName(nullptr, "endpoint"));
         TFileOutput(tmpFilePath).Write(endpointSpec);
-        tmpFilePath.ForceRenameTo(DirPath.Child(ToString(id)));
-
-        return id;
+        tmpFilePath.ForceRenameTo(DirPath.Child(Base64EncodeUrl(endpointId)));
+        return {};
     }
 
-    NProto::TError RemoveEndpoint(ui32 endpointId) override
+    NProto::TError RemoveEndpoint(const TString& endpointId) override
     {
         TGuard guard(Mutex);
 
-        auto filepath = DirPath.Child(ToString(endpointId));
+        auto filepath = DirPath.Child(Base64EncodeUrl(endpointId));
         filepath.DeleteIfExists();
         return {};
     }
@@ -202,23 +211,13 @@ private:
         return TFileInput(file).ReadAll();
     }
 
-    ui32 GetFreeId()
+    TResultOrError<TString> SafeBase64Decode(const TString& s)
     {
-        auto idsOrError = GetEndpointIds();
-        if (HasError(idsOrError)) {
-            return 0;
+        try {
+            return Base64Decode(s);
+        } catch (...) {
+            return MakeError(E_ARGUMENT, CurrentExceptionMessage());
         }
-
-        auto ids = idsOrError.GetResult();
-        std::sort(ids.begin(), ids.end());
-
-        ui32 freeId = 1;
-        for (size_t i = 0; i < ids.size(); ++i, ++freeId) {
-            if (ids[i] != freeId) {
-                break;
-            }
-        }
-        return freeId;
     }
 };
 

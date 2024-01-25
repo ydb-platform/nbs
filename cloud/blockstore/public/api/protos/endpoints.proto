@@ -168,7 +168,7 @@ message TListKeyringsResponse
 {
     message TKeyringEndpoint
     {
-        uint32 KeyringId = 1;
+        string KeyringId = 1;
         TStartEndpointRequest Request = 2;
     }
 
