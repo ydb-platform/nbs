@@ -105,6 +105,8 @@ public:
         ui32 status,
         size_t responseBytes) override
     {
+        TRequestScope timer(*RequestInfo);
+
         auto guard = Guard(Lock);
 
         auto* dr = static_cast<TDeviceReadRequestContext*>(req->Context.get());
@@ -138,6 +140,9 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(Error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+
+        timer.Finish();
+        completion->ExecCycles = RequestInfo->GetExecCycles();
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(

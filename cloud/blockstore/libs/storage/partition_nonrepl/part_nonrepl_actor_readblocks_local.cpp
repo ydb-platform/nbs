@@ -176,6 +176,8 @@ void TDiskAgentReadActor::Done(
     counters.SetBlocksCount(blocks);
     completion->Failed = failed;
 
+    completion->ExecCycles = RequestInfo->GetExecCycles();
+
     NCloud::Send(
         ctx,
         Part,

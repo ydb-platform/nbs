@@ -43,6 +43,7 @@ struct TEvNonreplPartitionPrivate
         TInstant WriteStartTs;
         TDuration WriteDuration;
         TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+        ui64 ExecCycles;
 
         TRangeMigrated(
                 TBlockRange64 range,
@@ -50,13 +51,15 @@ struct TEvNonreplPartitionPrivate
                 TDuration readDuration,
                 TInstant writeStartTs,
                 TDuration writeDuration,
-                TVector<IProfileLog::TBlockInfo> affectedBlockInfos)
+                TVector<IProfileLog::TBlockInfo> affectedBlockInfos,
+                ui64 execCycles)
             : Range(std::move(range))
             , ReadStartTs(readStartTs)
             , ReadDuration(readDuration)
             , WriteStartTs(writeStartTs)
             , WriteDuration(writeDuration)
             , AffectedBlockInfos(std::move(affectedBlockInfos))
+            , ExecCycles(execCycles)
         {
         }
     };
@@ -76,9 +79,13 @@ struct TEvNonreplPartitionPrivate
     struct TWriteOrZeroCompleted
     {
         ui64 RequestCounter;
+        ui64 TotalCycles;
 
-        TWriteOrZeroCompleted(ui64 requestCounter)
+        TWriteOrZeroCompleted(
+                ui64 requestCounter,
+                ui64 totalCycles)
             : RequestCounter(requestCounter)
+            , TotalCycles(totalCycles)
         {
         }
     };

@@ -138,7 +138,8 @@ void TCopyRangeActor::Done(const TActorContext& ctx)
         ReadDuration,
         WriteStartTs,
         WriteDuration,
-        std::move(AffectedBlockInfos)
+        std::move(AffectedBlockInfos),
+        RequestInfo->GetExecCycles()
     );
 
     LWTRACK(
