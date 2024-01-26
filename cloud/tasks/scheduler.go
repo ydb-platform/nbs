@@ -13,6 +13,12 @@ import (
 type TaskSchedule struct {
 	ScheduleInterval time.Duration
 	MaxTasksInflight int
+
+	// Crontab params.
+	// Schedules task every day - only 'hour' and 'min' are supported.
+	UseCrontab bool // If set, ScheduleInterval is ignored.
+	Hour       int  // (0 - 23)
+	Min        int  // (0 - 59)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
