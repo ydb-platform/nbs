@@ -563,37 +563,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, freshDeviceNotFoundInConfig->Val());
     }
 
-    Y_UNIT_TEST(ShouldNotReportFreshDeviceNotFoundInConfigForOldDisks)
-    {
-        // testing that we do not report this problem for the disks that were
-        // created before NBS-4383 got fixed - roughly the end of August 2023
-        using namespace NMonitoring;
-
-        TEnv env;
-        env.FreshDeviceIds = {"nonexistent_device", "2_1", "3_1"};
-        const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
-        // only SSD/HDD distinction matters
-        env.Init({oldDate, NProto::STORAGE_MEDIA_SSD_MIRROR3});
-
-        TDynamicCountersPtr counters = new TDynamicCounters();
-        InitCriticalEventsCounter(counters);
-        auto freshDeviceNotFoundInConfig = counters->GetCounter(
-            "AppCriticalEvents/FreshDeviceNotFoundInConfig",
-            true);
-
-        TMirrorPartitionState state(
-            std::make_shared<TStorageConfig>(
-                NProto::TStorageServiceConfig(),
-                nullptr),
-            "xxx",      // rwClientId
-            env.Config,
-            env.Migrations,
-            {env.ReplicaDevices}
-        );
-
-        UNIT_ASSERT_VALUES_EQUAL(0, freshDeviceNotFoundInConfig->Val());
-    }
-
     // TODO: test config validation
 
 #undef TEST_READ_REPLICA

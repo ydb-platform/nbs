@@ -53,10 +53,13 @@ struct TDiskInfo
     TString CheckpointId;
     TString SourceDiskId;
     TInstant MigrationStartTs;
+    TVector<NProto::TDiskHistoryItem> History;
 
     ui64 GetBlocksCount() const;
     TString GetPoolName() const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TRackInfo
 {
@@ -93,17 +96,59 @@ struct TRackInfo
     using TPlacementPartitionInfo = TSet<ui32>;
     TMap<TString, TPlacementPartitionInfo> PlacementGroups;
 
-    TRackInfo(TString name)
+    explicit TRackInfo(TString name)
         : Name(std::move(name))
     {
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TBrokenCounter
+{
+public:
+    explicit TBrokenCounter(NProto::EPlacementStrategy strategy)
+        : Strategy(strategy)
+    {}
+
+    void Increment(ui32 partitionIndex) {
+        ++BrokenDisksCount;
+        if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
+            BrokenPartitions.insert(partitionIndex);
+        }
+    }
+
+    [[nodiscard]] ui32 GetBrokenPartitionsCount() const {
+        switch (Strategy) {
+            case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
+                return BrokenDisksCount;
+            case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
+                return BrokenPartitions.size();
+            default:
+                Y_FAIL("Unknown partition strategy");
+        }
+    }
+
+private:
+    NProto::EPlacementStrategy Strategy;
+    ui32 BrokenDisksCount = 0;
+    THashSet<ui32> BrokenPartitions;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBrokenGroupInfo
 {
-    ui32 TotalBrokenDiskCount = 0;
-    ui32 RecentlyBrokenDiskCount = 0;
+    explicit TBrokenGroupInfo(NProto::EPlacementStrategy strategy)
+        : Total(strategy)
+        , Recently(strategy)
+    {}
+
+    TBrokenCounter Total;
+    TBrokenCounter Recently;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TCheckpointInfo
 {
@@ -133,6 +178,8 @@ struct TCheckpointInfo
     TString UniqueId() const;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TPlacementGroupInfo
 {
     NProto::TPlacementGroupConfig Config;
@@ -149,6 +196,8 @@ struct TPlacementGroupInfo
     {
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TDiskRegistryState
 {
@@ -208,6 +257,8 @@ class TDiskRegistryState
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+        TVector<NProto::TDiskHistoryItem> History;
     };
 
     struct TVolumeDeviceOverrides
@@ -292,7 +343,6 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices,
         THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams);
 
-public:
     NProto::TError RegisterAgent(
         TDiskRegistryDatabase& db,
         NProto::TAgentConfig config,
@@ -670,6 +720,7 @@ public:
         NProto::EDevicePoolKind poolKind) const;
 
     NProto::TError MarkReplacementDevice(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         const TDeviceId& deviceId,
@@ -906,12 +957,14 @@ private:
         TDiskId& affectedDisk);
 
     bool RestartDeviceMigration(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TDiskState& disk,
         const TDeviceId& targetId);
 
     void CancelDeviceMigration(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TDiskState& disk,

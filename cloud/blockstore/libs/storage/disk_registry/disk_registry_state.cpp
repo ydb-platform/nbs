@@ -421,6 +421,10 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MediaKind = NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
 
+        for (auto& hi: *config.MutableHistory()) {
+            disk.History.push_back(std::move(hi));
+        }
+
         if (config.GetStorageMediaKind() != NProto::STORAGE_MEDIA_DEFAULT) {
             disk.MediaKind = config.GetStorageMediaKind();
         } else if (disk.ReplicaCount == 1) {
@@ -947,8 +951,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
 
             if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
                 auto& disk = Disks[diskId];
-                if (!RestartDeviceMigration(db, diskId, disk, uuid)) {
-                    CancelDeviceMigration(db, diskId, disk, uuid);
+                if (!RestartDeviceMigration(timestamp, db, diskId, disk, uuid)) {
+                    CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
                 }
             }
 
@@ -1181,7 +1185,6 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             query.NodeIds = { devicePtr->GetNodeId() };
         }
 
-
         auto [targetDevice, error] = AllocateReplacementDevice(
             db,
             diskId,
@@ -1201,6 +1204,14 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
             logicalBlockCount * disk.LogicalBlockSize / targetDevice.GetBlockSize()
         );
 
+        NProto::TDiskHistoryItem historyItem;
+        historyItem.SetTimestamp(timestamp.MicroSeconds());
+        historyItem.SetMessage(TStringBuilder() << "replaced device " << deviceId
+            << " -> " << targetDevice.GetDeviceUUID() << ", manual=" << manual
+            << (deviceReplacementId ? ", replacement device selected manually" : "")
+            << ", original message=" << message.Quote());
+        disk.History.push_back(historyItem);
+
         if (disk.MasterDiskId) {
             auto* masterDisk = Disks.FindPtr(disk.MasterDiskId);
             Y_DEBUG_ABORT_UNLESS(masterDisk);
@@ -1218,6 +1229,10 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
                     masterDisk->DeviceReplacementIds.push_back(
                         targetDevice.GetDeviceUUID());
                 }
+
+                *historyItem.MutableMessage() += TStringBuilder()
+                    << ", replica=" << diskId;
+                masterDisk->History.push_back(historyItem);
 
                 db.UpdateDisk(BuildDiskConfig(disk.MasterDiskId, *masterDisk));
 
@@ -1248,7 +1263,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         DeviceList.ReleaseDevice(deviceId);
         db.UpdateDirtyDevice(deviceId, diskId);
 
-        CancelDeviceMigration(db, diskId, disk, deviceId);
+        CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
 
         *it = targetDevice.GetDeviceUUID();
 
@@ -1482,6 +1497,12 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
         sourceDeviceId);
 
     DeleteDeviceMigration(sourceDiskId, sourceDeviceId);
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "started migration: "
+        << sourceDeviceId << " -> " << targetDevice.GetDeviceUUID());
+    disk.History.push_back(std::move(historyItem));
 
     UpdatePlacementGroup(db, sourceDiskId, disk, "StartDeviceMigration");
     UpdateAndReallocateDisk(db, sourceDiskId, disk);
@@ -3117,6 +3138,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.MasterDiskId = disk.MasterDiskId;
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
     diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
+    diskInfo.History = disk.History;
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -3607,22 +3629,25 @@ THashMap<TString, TBrokenGroupInfo> TDiskRegistryState::GatherBrokenGroupsInfo(
 {
     THashMap<TString, TBrokenGroupInfo> groups;
 
-    for (const auto& x: Disks) {
-        if (x.second.State != NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE &&
-            x.second.State != NProto::DISK_STATE_ERROR)
+    for (const auto& [diskId, disk]: Disks) {
+        if (disk.State != NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE &&
+            disk.State != NProto::DISK_STATE_ERROR)
         {
             continue;
         }
 
-        if (x.second.PlacementGroupId.empty()) {
+        const auto& groupId = disk.PlacementGroupId;
+        if (groupId.empty()) {
             continue;
         }
 
-        TBrokenGroupInfo& info = groups[x.second.PlacementGroupId];
+        const auto& config = PlacementGroups.at(groupId).Config;
+        auto res = groups.try_emplace(groupId, config.GetPlacementStrategy());
+        TBrokenGroupInfo& info = res.first->second;
 
-        ++info.TotalBrokenDiskCount;
-        if (now - period < x.second.StateTs) {
-            ++info.RecentlyBrokenDiskCount;
+        info.Total.Increment(disk.PlacementPartitionIndex);
+        if (now - period < disk.StateTs) {
+            info.Recently.Increment(disk.PlacementPartitionIndex);
         }
     }
 
@@ -3888,35 +3913,51 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             TimeBetweenFailures.GetBrokenCount()
         : 0);
 
-    ui32 placementGroupsWithRecentlyBrokenSingleDisk = 0;
-    ui32 placementGroupsWithRecentlyBrokenTwoOrMoreDisks = 0;
-    ui32 placementGroupsWithBrokenSingleDisk = 0;
-    ui32 placementGroupsWithBrokenTwoOrMoreDisks = 0;
+    ui32 placementGroupsWithRecentlyBrokenSinglePartition = 0;
+    ui32 placementGroupsWithRecentlyBrokenTwoOrMorePartitions = 0;
+    ui32 placementGroupsWithBrokenSinglePartition = 0;
+    ui32 placementGroupsWithBrokenTwoOrMorePartitions = 0;
 
     auto brokenGroups = GatherBrokenGroupsInfo(
         now,
         StorageConfig->GetPlacementGroupAlertPeriod());
 
-    for (const auto& kv: brokenGroups) {
-        const auto [total, recently] = kv.second;
+    for (const auto& [groupId, bg]: brokenGroups) {
+        const auto recently = bg.Recently.GetBrokenPartitionsCount();
+        const auto total = bg.Total.GetBrokenPartitionsCount();
 
-        placementGroupsWithRecentlyBrokenSingleDisk += recently == 1;
-        placementGroupsWithRecentlyBrokenTwoOrMoreDisks += recently > 1;
-        placementGroupsWithBrokenSingleDisk += total == 1;
-        placementGroupsWithBrokenTwoOrMoreDisks += total > 1;
+        placementGroupsWithRecentlyBrokenSinglePartition += recently == 1;
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions += recently > 1;
+
+        placementGroupsWithBrokenSinglePartition += total == 1;
+        placementGroupsWithBrokenTwoOrMorePartitions += total > 1;
     }
 
+    // TODO(dvrazumov): left for compatibility (NBSNEBIUS-26)
     SelfCounters.PlacementGroupsWithRecentlyBrokenSingleDisk->Set(
-        placementGroupsWithRecentlyBrokenSingleDisk);
+        placementGroupsWithRecentlyBrokenSinglePartition);
 
     SelfCounters.PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithRecentlyBrokenTwoOrMoreDisks);
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions);
 
     SelfCounters.PlacementGroupsWithBrokenSingleDisk->Set(
-        placementGroupsWithBrokenSingleDisk);
+        placementGroupsWithBrokenSinglePartition);
 
     SelfCounters.PlacementGroupsWithBrokenTwoOrMoreDisks->Set(
-        placementGroupsWithBrokenTwoOrMoreDisks);
+        placementGroupsWithBrokenTwoOrMorePartitions);
+    // remove above ^^^^
+
+    SelfCounters.PlacementGroupsWithRecentlyBrokenSinglePartition->Set(
+        placementGroupsWithRecentlyBrokenSinglePartition);
+
+    SelfCounters.PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions->Set(
+        placementGroupsWithRecentlyBrokenTwoOrMorePartitions);
+
+    SelfCounters.PlacementGroupsWithBrokenSinglePartition->Set(
+        placementGroupsWithBrokenSinglePartition);
+
+    SelfCounters.PlacementGroupsWithBrokenTwoOrMorePartitions->Set(
+        placementGroupsWithBrokenTwoOrMorePartitions);
 
     auto replicaCountStats = ReplicaTable.CalculateReplicaCountStats();
     SelfCounters.Mirror2Disks->Set(replicaCountStats.Mirror2DiskMinus0);
@@ -4420,6 +4461,10 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
         m.MutableTargetDevice()->SetDeviceUUID(targetId);
     }
 
+    for (const auto& hi: diskState.History) {
+        config.AddHistory()->CopyFrom(hi);
+    }
+
     return config;
 }
 
@@ -4536,7 +4581,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
         auto& disk = Disks[diskId];
 
         // check if deviceId is target for migration
-        if (RestartDeviceMigration(db, diskId, disk, deviceId)) {
+        if (RestartDeviceMigration(timestamp, db, diskId, disk, deviceId)) {
             continue;
         }
 
@@ -4599,7 +4644,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 }
             }
 
-            CancelDeviceMigration(db, diskId, disk, deviceId);
+            CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
         }
 
         if (isAffected) {
@@ -4898,6 +4943,12 @@ bool TDiskRegistryState::TryUpdateDiskState(
 
     disk.State = newState;
     disk.StateTs = timestamp;
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(timestamp.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "state changed: "
+        << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
+    disk.History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, disk);
 
@@ -5350,7 +5401,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     // check if uuid is target for migration
-    if (RestartDeviceMigration(db, diskId, *disk, uuid)) {
+    if (RestartDeviceMigration(now, db, diskId, *disk, uuid)) {
         return;
     }
 
@@ -5394,7 +5445,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (device.GetState() != NProto::DEVICE_STATE_WARNING) {
-        CancelDeviceMigration(db, diskId, *disk, uuid);
+        CancelDeviceMigration(now, db, diskId, *disk, uuid);
         return;
     }
 
@@ -5404,6 +5455,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
 }
 
 bool TDiskRegistryState::RestartDeviceMigration(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TDiskState& disk,
@@ -5417,7 +5469,7 @@ bool TDiskRegistryState::RestartDeviceMigration(
 
     TDeviceId sourceId = it->second;
 
-    CancelDeviceMigration(db, diskId, disk, sourceId);
+    CancelDeviceMigration(now, db, diskId, disk, sourceId);
 
     AddMigration(disk, diskId, sourceId);
 
@@ -5441,6 +5493,7 @@ void TDiskRegistryState::DeleteDeviceMigration(
 }
 
 void TDiskRegistryState::CancelDeviceMigration(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TDiskState& disk,
@@ -5475,6 +5528,12 @@ void TDiskRegistryState::CancelDeviceMigration(
     if (disk.MigrationSource2Target.empty()) {
         disk.MigrationStartTs = {};
     }
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "cancelled migration: "
+        << sourceId << " -> " << targetId);
+    disk.History.push_back(std::move(historyItem));
 
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 
@@ -5516,6 +5575,12 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         for (auto& x: SourceDeviceMigrationsInProgress) {
             x.second.erase(sourceId);
         }
+
+        NProto::TDiskHistoryItem historyItem;
+        historyItem.SetTimestamp(timestamp.MicroSeconds());
+        historyItem.SetMessage(TStringBuilder() << "finished migration: "
+            << sourceId << " -> " << targetId);
+        disk.History.push_back(std::move(historyItem));
     }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
@@ -6274,6 +6339,7 @@ NProto::TError TDiskRegistryState::ValidateUpdateDiskReplicaCountParams(
 }
 
 NProto::TError TDiskRegistryState::MarkReplacementDevice(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     const TDeviceId& deviceId,
@@ -6289,6 +6355,9 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
 
     auto it = Find(disk->DeviceReplacementIds, deviceId);
 
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+
     if (isReplacement) {
         if (it != disk->DeviceReplacementIds.end()) {
             return MakeError(
@@ -6298,6 +6367,9 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
         }
 
         disk->DeviceReplacementIds.push_back(deviceId);
+
+        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
+            << " marked as a replacement device");
     } else {
         if (it == disk->DeviceReplacementIds.end()) {
             return MakeError(
@@ -6307,7 +6379,12 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
         }
 
         disk->DeviceReplacementIds.erase(it);
+
+        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
+            << " no more marked as a replacement device");
     }
+
+    disk->History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, *disk);
     ReplicaTable.MarkReplacementDevice(diskId, deviceId, isReplacement);

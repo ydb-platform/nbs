@@ -422,6 +422,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* checkpointsTabName = "Checkpoints";
     const char* tracesTabName = "Traces";
     const char* storageConfigTabName = "StorageConfig";
+    const char* rawVolumeConfigTabName = "RawVolumeConfig";
 
     const char* activeTab = "tab-pane active";
     const char* inactiveTab = "tab-pane";
@@ -431,6 +432,7 @@ void TVolumeActor::HandleHttpInfo_Default(
     const char* checkpointsTab = inactiveTab;
     const char* tracesTab = inactiveTab;
     const char* storageConfigTab = inactiveTab;
+    const char* rawVolumeConfigTab = inactiveTab;
 
     if (tabName.Empty() || tabName == overviewTabName) {
         overviewTab = activeTab;
@@ -442,6 +444,8 @@ void TVolumeActor::HandleHttpInfo_Default(
         tracesTab = activeTab;
     } else if (tabName == storageConfigTabName) {
         storageConfigTab = activeTab;
+    } else if (tabName == rawVolumeConfigTabName) {
+        rawVolumeConfigTab = activeTab;
     }
 
     TStringStream out;
@@ -470,6 +474,10 @@ void TVolumeActor::HandleHttpInfo_Default(
 
                 DIV_CLASS_ID(storageConfigTab, storageConfigTabName) {
                     RenderStorageConfig(out);
+                }
+
+                DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName) {
+                    RenderRawVolumeConfig(out);
                 }
             }
         }
@@ -738,6 +746,27 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+void TVolumeActor::RenderRawVolumeConfig(IOutputStream& out) const
+{
+    if (!State) {
+        return;
+    }
+
+    const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
+
+    HTML(out) {
+        DIV_CLASS("row") {
+            TAG(TH3) {
+                out << "RawVolumeConfig";
+            }
+
+            PRE() {
+                SerializeToTextFormatPretty(volumeConfig, out);
             }
         }
     }
@@ -1239,8 +1268,8 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 {
     HTML(out) {
         bool active = State->GetMeta().GetMigrations().size()
-            || State->GetMeta().GetFreshDeviceIds().size();
-        TStringBuf label = State->GetMeta().GetFreshDeviceIds().empty()
+            || State->GetFilteredFreshDevices().size();
+        TStringBuf label = State->GetFilteredFreshDevices().empty()
             ? "Migration" : "Replication";
 
         TAG(TH3) {

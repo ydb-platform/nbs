@@ -1001,26 +1001,47 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
+        auto now = TInstant::Seconds(1);
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
-            auto error =
-                state.MarkReplacementDevice(db, "disk-1", "uuid-10", false);
+            auto error = state.MarkReplacementDevice(
+                now,
+                db,
+                "disk-1",
+                "uuid-10",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-            error =
-                state.MarkReplacementDevice(db, "nonexistent-disk", "", false);
+            error = state.MarkReplacementDevice(
+                now,
+                db,
+                "nonexistent-disk",
+                "",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
 
             error = state.MarkReplacementDevice(
+                now,
                 db,
                 "disk-1",
                 "nonexistent-device",
                 false);
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
 
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-1", false);
+            error = state.MarkReplacementDevice(
+                now,
+                db,
+                "disk-1",
+                "uuid-1",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
 
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-10", false);
+            error = state.MarkReplacementDevice(
+                now,
+                db,
+                "disk-1",
+                "uuid-10",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
         });
 
@@ -1040,6 +1061,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(
             TVector<TString>{},
             diskInfo.DeviceReplacementIds);
+
+        // 1 autoreplacement + 1 unmark replacement
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/0", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, replicaInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/1", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.History.size());
+
+        replicaInfo = {};
+        error = state.GetDiskInfo("disk-1/2", replicaInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, replicaInfo.History.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -1302,9 +1341,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         ASSERT_VECTORS_EQUAL(TVector<TString>{}, diskIdsWithUpdatedStates);
         deleteDisksToNotify();
 
+        auto now = TInstant::Seconds(1);
+
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             auto error =
-                state.MarkReplacementDevice(db, "disk-1", "uuid-6", false);
+                state.MarkReplacementDevice(now, db, "disk-1", "uuid-6", false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         });
 
@@ -1857,11 +1898,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
 
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-7", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs1,
+                db,
+                "disk-1",
+                "uuid-7",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-8", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs1,
+                db,
+                "disk-1",
+                "uuid-8",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-9", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs1,
+                db,
+                "disk-1",
+                "uuid-9",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             error = state.UpdateAgentState(
@@ -1876,11 +1932,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
 
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-10", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs2,
+                db,
+                "disk-1",
+                "uuid-10",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-11", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs2,
+                db,
+                "disk-1",
+                "uuid-11",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-            error = state.MarkReplacementDevice(db, "disk-1", "uuid-12", false);
+            error = state.MarkReplacementDevice(
+                changeStateTs2,
+                db,
+                "disk-1",
+                "uuid-12",
+                false);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         });
 
@@ -1904,6 +1975,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             "uuid-12",
             diskInfo.Replicas[0][2].GetDeviceUUID());
         ASSERT_VECTORS_EQUAL(TVector<TString>(), diskInfo.DeviceReplacementIds);
+
+        diskInfo = {};
+        error = state.GetDiskInfo("disk-1/0", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        // 2 x state change + 3 x replacement
+        UNIT_ASSERT_VALUES_EQUAL(5, diskInfo.History.size());
+
+        diskInfo = {};
+        error = state.GetDiskInfo("disk-1/1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        // 2 x state change + 3 x replacement
+        UNIT_ASSERT_VALUES_EQUAL(5, diskInfo.History.size());
 
         auto dirtyDevices = state.GetDirtyDevices();
         UNIT_ASSERT_VALUES_EQUAL(6, dirtyDevices.size());
@@ -2210,6 +2293,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
         });
+
+        TDiskInfo diskInfo;
+        state.GetDiskInfo("disk-1/0", diskInfo);
+        // state change + migration start + migration finish + state change
+        UNIT_ASSERT_VALUES_EQUAL(4, diskInfo.History.size());
+
+        diskInfo = {};
+        state.GetDiskInfo("disk-1/1", diskInfo);
+        // state change + migration start + migration finish + state change
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.History.size());
+
+        diskInfo = {};
+        state.GetDiskInfo("disk-1/2", diskInfo);
+        // state change + migration start + migration finish + state change
+        UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.History.size());
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             state.DeallocateDisk(db, "disk-1");

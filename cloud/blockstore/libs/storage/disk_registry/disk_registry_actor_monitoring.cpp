@@ -710,6 +710,33 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         GenerateVolumeActionsJS(out);
+
+        TAG(TH3) {
+            out << "History";
+        }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Timestamp"; }
+                    TABLEH() { out << "Message"; }
+                }
+
+                for (const auto& hi: info.History) {
+                    TABLER() {
+                        TABLED() {
+                            out << TInstant::MicroSeconds(hi.GetTimestamp())
+                                << " (" << hi.GetTimestamp() << ")";
+                        }
+                        TABLED() {
+                            PRE() {
+                                out << hi.GetMessage();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1424,11 +1451,11 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         auto it = brokenGroups.find(x.first);
 
                         if (it != brokenGroups.end()) {
-                            if (it->second.RecentlyBrokenDiskCount == 1) {
+                            if (it->second.Recently.GetBrokenPartitionsCount() == 1) {
                                 out << "<font color=yellow>&#9632;&nbsp;</font>";
                             }
 
-                            if (it->second.RecentlyBrokenDiskCount > 1) {
+                            if (it->second.Recently.GetBrokenPartitionsCount() > 1) {
                                 out << "<font color=red>&#9632;&nbsp;</font>";
                             }
                         }

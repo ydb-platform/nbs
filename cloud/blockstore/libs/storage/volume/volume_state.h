@@ -107,6 +107,8 @@ private:
     const NProto::TPartitionConfig* Config;
     TRuntimeVolumeParams VolumeParams;
     ui64 BlockCount = 0;
+    // only for mirrored disks
+    THashSet<TString> FilteredFreshDeviceIds;
 
     TPartitionInfoList Partitions;
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
@@ -172,6 +174,16 @@ public:
     const TVector<TVolumeMetaHistoryItem>& GetMetaHistory() const
     {
         return MetaHistory;
+    }
+
+    const THashSet<TString>& GetFilteredFreshDevices() const
+    {
+        return FilteredFreshDeviceIds;
+    }
+
+    TInstant GetCreationTs() const
+    {
+        return TInstant::MicroSeconds(Meta.GetVolumeConfig().GetCreationTs());
     }
 
     const TRuntimeVolumeParams& GetVolumeParams() const;
@@ -607,6 +619,8 @@ private:
         ui64 proposedFillGeneration);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
+
+    THashSet<TString> MakeFilteredDeviceIds() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

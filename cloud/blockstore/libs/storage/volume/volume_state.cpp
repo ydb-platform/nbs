@@ -241,6 +241,42 @@ void TVolumeState::Reset()
 
     UseMirrorResync = StorageConfig->GetUseMirrorResync();
     ForceMirrorResync = StorageConfig->GetForceMirrorResync();
+
+    // this filtration is needed due to a bug that caused some disks to have
+    // garbage in FreshDeviceIds list
+    FilteredFreshDeviceIds = MakeFilteredDeviceIds();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+THashSet<TString> TVolumeState::MakeFilteredDeviceIds() const
+{
+    const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+    const auto& ids = Meta.GetFreshDeviceIds();
+    if (GetCreationTs() > oldDate) {
+        return {ids.begin(), ids.end()};
+    }
+
+    THashSet<TString> filtered;
+    auto addFreshDevices = [&] (const auto& devices) {
+        for (const auto& device: devices) {
+            const bool found = Find(
+                ids.begin(),
+                ids.end(),
+                device.GetDeviceUUID()) != ids.end();
+
+            if (found) {
+                filtered.insert(device.GetDeviceUUID());
+            }
+        }
+    };
+
+    addFreshDevices(Meta.GetDevices());
+    for (const auto& r: Meta.GetReplicas()) {
+        addFreshDevices(r.GetDevices());
+    }
+
+    return filtered;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

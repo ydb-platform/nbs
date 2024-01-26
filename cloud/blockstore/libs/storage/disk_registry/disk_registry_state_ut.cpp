@@ -3475,7 +3475,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents({config})
-            .WithPlacementGroups({"group-1"})
+            .WithSpreadPlacementGroups({"group-1"})
             .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -8287,7 +8287,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCountBrokenPlacementGroups)
+    Y_UNIT_TEST(ShouldCountBrokenPlacementGroupsWithSpreadStrategy)
     {
         const TVector agents {
             AgentConfig(1000, {Device("dev-1", "uuid-1", "rack-1")}),
@@ -8325,9 +8325,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-8", {"uuid-8"}),
                 Disk("disk-9", {"uuid-9"}),
             })
-            .AddPlacementGroup("group-1", {"disk-1", "disk-2", "disk-3"})
-            .AddPlacementGroup("group-2", {"disk-4", "disk-5", "disk-6"})
-            .AddPlacementGroup("group-3", {"disk-7", "disk-8", "disk-9"})
+            .WithPlacementGroups({
+                SpreadPlacementGroup("group-1", {"disk-1", "disk-2", "disk-3"}),
+                SpreadPlacementGroup("group-2", {"disk-4", "disk-5", "disk-6"}),
+                SpreadPlacementGroup("group-3", {"disk-7", "disk-8", "disk-9"}),
+            })
             .Build();
 
         TTestExecutor executor;
@@ -8336,13 +8338,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         });
 
         auto recentlySingle = diskRegistryGroup->GetCounter(
-            "PlacementGroupsWithRecentlyBrokenSingleDisk");
+            "PlacementGroupsWithRecentlyBrokenSinglePartition");
         auto recentlyTwoOrMore = diskRegistryGroup->GetCounter(
-            "PlacementGroupsWithRecentlyBrokenTwoOrMoreDisks");
+            "PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions");
         auto totalSingle = diskRegistryGroup->GetCounter(
-            "PlacementGroupsWithBrokenSingleDisk");
+            "PlacementGroupsWithBrokenSinglePartition");
         auto totalTwoOrMore = diskRegistryGroup->GetCounter(
-            "PlacementGroupsWithBrokenTwoOrMoreDisks");
+            "PlacementGroupsWithBrokenTwoOrMorePartitions");
 
         state.PublishCounters(TInstant::Zero());
 
@@ -8380,9 +8382,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Hours(13));
 
-        // group-1: [disk-1(r) disk-2 (r) disk-2]     2/2
-        // group-2: [disk-4(r) disk-5     disk-6]     1/1
-        // group-3: [disk-7(r) disk-8(r)  disk-9 (r)] 3/3
+        // group-1: [disk-1(r) disk-2(r) disk-3   ]  2/2
+        // group-2: [disk-4(r) disk-5    disk-6   ]  1/1
+        // group-3: [disk-7(r) disk-8(r) disk-9(r)]  3/3
         UNIT_ASSERT_VALUES_EQUAL(1, recentlySingle->Val());    // group-2
         UNIT_ASSERT_VALUES_EQUAL(2, recentlyTwoOrMore->Val()); // group-1 group-3
         UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());
@@ -8390,9 +8392,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Hours(27));
 
-        // group-1: [disk-1(d) disk-2 (r) disk-2]     1/2
-        // group-2: [disk-4(r) disk-5     disk-6]     1/1
-        // group-3: [disk-7(r) disk-8(r)  disk-9 (r)] 3/3
+        // group-1: [disk-1(d) disk-2(r) disk-3   ]  1/2
+        // group-2: [disk-4(r) disk-5    disk-6   ]  1/1
+        // group-3: [disk-7(r) disk-8(r) disk-9(r)]  3/3
         UNIT_ASSERT_VALUES_EQUAL(2, recentlySingle->Val());    // group-1 group-2
         UNIT_ASSERT_VALUES_EQUAL(1, recentlyTwoOrMore->Val()); // group-3
         UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());
@@ -8400,9 +8402,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Hours(31));
 
-        // group-1: [disk-1(d) disk-2 (d) disk-2]     0/2
-        // group-2: [disk-4(d) disk-5     disk-6]     0/1
-        // group-3: [disk-7(r) disk-8(r)  disk-9 (r)] 3/3
+        // group-1: [disk-1(d) disk-2(d) disk-3   ]  0/2
+        // group-2: [disk-4(d) disk-5    disk-6   ]  0/1
+        // group-3: [disk-7(r) disk-8(r) disk-9(r)]  3/3
         UNIT_ASSERT_VALUES_EQUAL(0, recentlySingle->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, recentlyTwoOrMore->Val()); // group-3
         UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());
@@ -8410,9 +8412,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Hours(35));
 
-        // group-1: [disk-1(d) disk-2 (d) disk-2]     0/2
-        // group-2: [disk-4(d) disk-5     disk-6]     0/1
-        // group-3: [disk-7(d) disk-8(d)  disk-9 (r)] 1/3
+        // group-1: [disk-1(d) disk-2(d) disk-3   ]  0/2
+        // group-2: [disk-4(d) disk-5    disk-6   ]  0/1
+        // group-3: [disk-7(d) disk-8(d) disk-9(r)]  1/3
         UNIT_ASSERT_VALUES_EQUAL(1, recentlySingle->Val()); // group-3
         UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());
@@ -8420,13 +8422,162 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         state.PublishCounters(TInstant::Hours(37));
 
-        // group-1: [disk-1(d) disk-2 (d) disk-2]     0/2
-        // group-2: [disk-4(d) disk-5     disk-6]     0/1
-        // group-3: [disk-7(d) disk-8(d)  disk-9 (d)] 0/3
+        // group-1: [disk-1(d) disk-2(d) disk-3   ]  0/2
+        // group-2: [disk-4(d) disk-5    disk-6   ]  0/1
+        // group-3: [disk-7(d) disk-8(d) disk-9(d)]  0/3
         UNIT_ASSERT_VALUES_EQUAL(0, recentlySingle->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, totalTwoOrMore->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCountBrokenPlacementGroupsWithPartitionStrategy)
+    {
+        const TVector agents {
+            AgentConfig(1000, {Device("dev-1", "uuid-1", "rack-1")}),
+            AgentConfig(2000, {Device("dev-1", "uuid-2", "rack-2")}),
+            AgentConfig(3000, {Device("dev-1", "uuid-3", "rack-3")}),
+            AgentConfig(4000, {Device("dev-1", "uuid-4", "rack-4")}),
+            AgentConfig(5000, {Device("dev-1", "uuid-5", "rack-5")}),
+            AgentConfig(6000, {Device("dev-1", "uuid-6", "rack-6")}),
+            AgentConfig(7000, {Device("dev-1", "uuid-7", "rack-7")}),
+            AgentConfig(8000, {Device("dev-1", "uuid-8", "rack-8")}),
+            AgentConfig(9000, {Device("dev-1", "uuid-9", "rack-9")}),
+        };
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto diskRegistryGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry");
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithKnownAgents(agents)
+            .With(diskRegistryGroup)
+            .WithStorageConfig([] {
+                auto config = CreateDefaultStorageConfigProto();
+                config.SetPlacementGroupAlertPeriod(TDuration::Days(1).MilliSeconds());
+                return config;
+            }())
+            .WithDisks({
+                Disk("disk-1", {"uuid-1"}),
+                Disk("disk-2", {"uuid-2"}),
+                Disk("disk-3", {"uuid-3"}),
+                Disk("disk-4", {"uuid-4"}),
+                Disk("disk-5", {"uuid-5"}),
+                Disk("disk-6", {"uuid-6"}),
+                Disk("disk-7", {"uuid-7"}),
+                Disk("disk-8", {"uuid-8"}),
+                Disk("disk-9", {"uuid-9"}),
+            })
+            .WithPlacementGroups({
+                PartitionPlacementGroup("group-1", {
+                    {"disk-1", "disk-2", "disk-3"},
+                    {"disk-4", "disk-5", "disk-6"}
+                }),
+                PartitionPlacementGroup("group-2", {
+                    {"disk-7", "disk-8", "disk-9"}
+                }),
+            })
+            .Build();
+
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto recentlySingle = diskRegistryGroup->GetCounter(
+            "PlacementGroupsWithRecentlyBrokenSinglePartition");
+        auto recentlyTwoOrMore = diskRegistryGroup->GetCounter(
+            "PlacementGroupsWithRecentlyBrokenTwoOrMorePartitions");
+        auto totalSingle = diskRegistryGroup->GetCounter(
+            "PlacementGroupsWithBrokenSinglePartition");
+        auto totalTwoOrMore = diskRegistryGroup->GetCounter(
+            "PlacementGroupsWithBrokenTwoOrMorePartitions");
+
+        state.PublishCounters(TInstant::Zero());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlySingle->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, totalSingle->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, totalTwoOrMore->Val());
+
+        auto breakDisk = [&] (int i, auto ts) {
+            executor.WriteTx([&] (TDiskRegistryDatabase db) {
+                TString affectedDisk;
+                UNIT_ASSERT_SUCCESS(state.UpdateDeviceState(
+                    db,
+                    Sprintf("uuid-%d", i),
+                    NProto::DEVICE_STATE_ERROR,
+                    ts,
+                    "test",
+                    affectedDisk));
+
+                const auto expectedId = Sprintf("disk-%d", i);
+
+                UNIT_ASSERT_VALUES_EQUAL(expectedId, affectedDisk);
+                UNIT_ASSERT_VALUES_UNEQUAL(0, state.GetDiskStateUpdates().size());
+                const auto& update = state.GetDiskStateUpdates().back();
+                UNIT_ASSERT_DISK_STATE(expectedId, DISK_STATE_ERROR, update);
+            });
+        };
+
+        breakDisk(1, TInstant::Hours(2));
+        breakDisk(2, TInstant::Hours(4));
+        breakDisk(4, TInstant::Hours(6));
+        breakDisk(7, TInstant::Hours(8));
+        breakDisk(8, TInstant::Hours(10));
+        breakDisk(9, TInstant::Hours(12));
+
+        state.PublishCounters(TInstant::Hours(13));
+
+        // group-1 part-1: [disk-1(r) disk-2(r) disk-3   ]
+        //         part-2: [disk-4(r) disk-5    disk-6   ]
+        // group-2 part-1: [disk-7(r) disk-8(r) disk-9(r)]
+        UNIT_ASSERT_VALUES_EQUAL(1, recentlySingle->Val());    // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, recentlyTwoOrMore->Val()); // group-1
+        UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());       // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, totalTwoOrMore->Val());    // group-1
+
+        state.PublishCounters(TInstant::Hours(27));
+
+        // group-1 part-1: [disk-1(d) disk-2(r) disk-3   ]
+        //         part-2: [disk-4(r) disk-5    disk-6   ]
+        // group-2 part-1: [disk-7(r) disk-8(r) disk-9(r)]
+        UNIT_ASSERT_VALUES_EQUAL(1, recentlySingle->Val());    // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, recentlyTwoOrMore->Val()); // group-1
+        UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());       // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, totalTwoOrMore->Val());    // group-1
+
+        state.PublishCounters(TInstant::Hours(29));
+
+        // group-1 part-1: [disk-1(d) disk-2(d) disk-3   ]
+        //         part-2: [disk-4(r) disk-5    disk-6   ]
+        // group-2 part-1: [disk-7(r) disk-8(r) disk-9(r)]
+        UNIT_ASSERT_VALUES_EQUAL(2, recentlySingle->Val());    // group-1 group-2
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());       // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, totalTwoOrMore->Val());    // group-2
+
+        state.PublishCounters(TInstant::Hours(35));
+
+        // group-1 part-1: [disk-1(d) disk-2(d) disk-3   ]
+        //         part-2: [disk-4(d) disk-5    disk-6   ]
+        // group-2 part-1: [disk-7(d) disk-8(d) disk-9(r)]
+        UNIT_ASSERT_VALUES_EQUAL(1, recentlySingle->Val());    // group-2
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());       // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, totalTwoOrMore->Val());    // group-1
+
+        state.PublishCounters(TInstant::Hours(37));
+
+        // group-1 part-1: [disk-1(d) disk-2(d) disk-3   ]
+        //         part-2: [disk-4(d) disk-5    disk-6   ]
+        // group-3 part-1: [disk-7(d) disk-8(d) disk-9(d)]
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlySingle->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, recentlyTwoOrMore->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, totalSingle->Val());       // group-2
+        UNIT_ASSERT_VALUES_EQUAL(1, totalTwoOrMore->Val());    // group-1
     }
 
     Y_UNIT_TEST(ShouldCountFreeBytes)
@@ -9351,7 +9502,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         const TVector<TString> expected {"group1", "group2", "group3"};
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithPlacementGroups(expected)
+            .WithSpreadPlacementGroups(expected)
             .Build();
 
         TVector<TPlacementGroupInfo> groups;
