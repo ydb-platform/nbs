@@ -1661,16 +1661,26 @@ void TDiskRegistryActor::RenderAgentList(
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
-                    TABLEH() { out << "Name"; }
-                    TABLEH() { out << "Value"; }
+                    TABLEH() { out << "Agent"; }
+                    TABLEH() { out << "RejectAgentTimeout (" << now << ")"; }
                 }
 
                 TABLER() {
                     TABLED() {
-                        out << "RejectAgentTimeout(" << now << ")";
+                        out << "default";
                     }
                     TABLED() {
                         out << State->GetRejectAgentTimeout(now, "");
+                    }
+                }
+                for (const auto& agentId: State->GetAgentIdsWithOverriddenListParams()) {
+                    TABLER() {
+                        TABLED() {
+                            out << agentId << " (overridden)";
+                        }
+                        TABLED() {
+                            out << State->GetRejectAgentTimeout(now, agentId);
+                        }
                     }
                 }
             }
