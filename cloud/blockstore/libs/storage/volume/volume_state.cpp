@@ -244,29 +244,39 @@ void TVolumeState::Reset()
 
     // this filtration is needed due to a bug that caused some disks to have
     // garbage in FreshDeviceIds list
-    FilteredFreshDeviceIds.clear();
+    FilteredFreshDeviceIds = MakeFilteredDeviceIds();
+}
 
+////////////////////////////////////////////////////////////////////////////////
+
+THashSet<TString> TVolumeState::MakeFilteredDeviceIds() const
+{
+    const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
+    const auto& ids = Meta.GetFreshDeviceIds();
+    if (GetCreationTs() > oldDate) {
+        return {ids.begin(), ids.end()};
+    }
+
+    THashSet<TString> filtered;
     auto addFreshDevices = [&] (const auto& devices) {
         for (const auto& device: devices) {
             const bool found = Find(
-                Meta.GetFreshDeviceIds().begin(),
-                Meta.GetFreshDeviceIds().end(),
-                device.GetDeviceUUID()) != Meta.GetFreshDeviceIds().end();
+                ids.begin(),
+                ids.end(),
+                device.GetDeviceUUID()) != ids.end();
 
             if (found) {
-                FilteredFreshDeviceIds.insert(device.GetDeviceUUID());
+                filtered.insert(device.GetDeviceUUID());
             }
         }
     };
 
-    // XXX the aforementioned bug affects only "old" disks, see NBS-4383
-    const TInstant oldDate = TInstant::ParseIso8601("2023-08-30");
-    if (GetCreationTs() <= oldDate) {
-        addFreshDevices(Meta.GetDevices());
-        for (const auto& r: Meta.GetReplicas()) {
-            addFreshDevices(r.GetDevices());
-        }
+    addFreshDevices(Meta.GetDevices());
+    for (const auto& r: Meta.GetReplicas()) {
+        addFreshDevices(r.GetDevices());
     }
+
+    return filtered;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
