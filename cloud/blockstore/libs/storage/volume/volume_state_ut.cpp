@@ -1658,6 +1658,43 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 volumeState.GetFilteredFreshDevices().begin(),
                 volumeState.GetFilteredFreshDevices().end()));
     }
+
+    Y_UNIT_TEST(ShouldNotFilterFreshDeviceIdsForNewDisks)
+    {
+        // testing that we do not filter out garbage fresh device ids for the
+        // disks created after NBS-4383 got fixed
+        auto volumeState = CreateVolumeState();
+        auto meta = volumeState.GetMeta();
+        const TInstant newDate = TInstant::ParseIso8601("2023-08-31");
+        meta.MutableVolumeConfig()->SetCreationTs(newDate.MicroSeconds());
+        meta.AddDevices()->SetDeviceUUID("d1");
+        meta.AddDevices()->SetDeviceUUID("d2");
+        auto& r1 = *meta.AddReplicas();
+        r1.AddDevices()->SetDeviceUUID("d3");
+        r1.AddDevices()->SetDeviceUUID("d4");
+        auto& r2 = *meta.AddReplicas();
+        r2.AddDevices()->SetDeviceUUID("d5");
+        r2.AddDevices()->SetDeviceUUID("d6");
+        meta.AddFreshDeviceIds("d2");
+        meta.AddFreshDeviceIds("d3");
+        meta.AddFreshDeviceIds("d5");
+        meta.AddFreshDeviceIds("garbage1");
+        meta.AddFreshDeviceIds("garbage2");
+        meta.AddFreshDeviceIds("garbage3");
+        volumeState.ResetMeta(meta);
+
+        ASSERT_VECTOR_CONTENTS_EQUAL(
+            TVector<TString>({
+                "d2",
+                "d3",
+                "d5",
+                "garbage1",
+                "garbage2",
+                "garbage3"}),
+            TVector<TString>(
+                volumeState.GetFilteredFreshDevices().begin(),
+                volumeState.GetFilteredFreshDevices().end()));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
