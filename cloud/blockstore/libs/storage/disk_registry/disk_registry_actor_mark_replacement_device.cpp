@@ -56,6 +56,7 @@ void TDiskRegistryActor::ExecuteMarkReplacementDevice(
     TDiskRegistryDatabase db(tx.DB);
 
     args.Error = State->MarkReplacementDevice(
+        ctx.Now(),
         db,
         args.DiskId,
         args.DeviceId,
