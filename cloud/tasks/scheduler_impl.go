@@ -155,6 +155,10 @@ func (s *scheduler) ScheduleRegularTasks(
 			schedule := tasks_storage.TaskSchedule{
 				ScheduleInterval: schedule.ScheduleInterval,
 				MaxTasksInflight: schedule.MaxTasksInflight,
+
+				UseCrontab: schedule.UseCrontab,
+				Hour:       schedule.Hour,
+				Min:        schedule.Min,
 			}
 
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{

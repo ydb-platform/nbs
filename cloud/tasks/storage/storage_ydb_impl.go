@@ -702,21 +702,19 @@ func (s *storageYDB) createRegularTasks(
 		}
 	}
 
-	scheduled := false
+	shouldSchedule := false
 
 	if found {
 		schedulingTime := schState.scheduledAt.Add(schedule.ScheduleInterval)
 
 		if schState.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
-			err := s.addRegularTasks(ctx, tx, state, schedule.MaxTasksInflight)
-			if err != nil {
-				return err
-			}
-
-			schState.tasksInflight = uint64(schedule.MaxTasksInflight)
-			scheduled = true
+			shouldSchedule = true
 		}
 	} else {
+		shouldSchedule = true
+	}
+
+	if shouldSchedule {
 		err := s.addRegularTasks(ctx, tx, state, schedule.MaxTasksInflight)
 		if err != nil {
 			return err
@@ -724,10 +722,6 @@ func (s *storageYDB) createRegularTasks(
 
 		schState.taskType = state.TaskType
 		schState.tasksInflight = uint64(schedule.MaxTasksInflight)
-		scheduled = true
-	}
-
-	if scheduled {
 		schState.scheduledAt = state.CreatedAt
 
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -754,7 +748,7 @@ func (s *storageYDB) createRegularTasks(
 		return err
 	}
 
-	if scheduled {
+	if shouldSchedule {
 		s.metrics.OnTaskCreated(state, schedule.MaxTasksInflight)
 	}
 
