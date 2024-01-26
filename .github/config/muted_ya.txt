@@ -8,6 +8,9 @@ cloud/filestore/tests/fio_index_migration/qemu-intrahost-migration-local-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-nemesis-test *
 cloud/filestore/tests/fio_index/qemu-kikimr-test *
 cloud/filestore/tests/fio_index/qemu-local-test *
+cloud/filestore/tests/fio_migration/qemu-intrahost-migration-kikimr-nemesis-test *
+cloud/filestore/tests/fio_migration/qemu-intrahost-migration-kikimr-test *
+cloud/filestore/tests/fio_migration/qemu-intrahost-migration-local-test *
 cloud/filestore/tests/fio/qemu-kikimr-nemesis-test *
 cloud/filestore/tests/fio/qemu-kikimr-test *
 cloud/filestore/tests/fio/qemu-local-test *
