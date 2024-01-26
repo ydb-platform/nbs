@@ -165,8 +165,10 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"disks.ClearDeletedDisks",
-		clearDeletedDisksTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: clearDeletedDisksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return nil

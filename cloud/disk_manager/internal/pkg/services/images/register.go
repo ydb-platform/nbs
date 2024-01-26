@@ -113,8 +113,10 @@ func RegisterForExecution(
 	taskScheduler.ScheduleRegularTasks(
 		ctx,
 		"images.ClearDeletedImages",
-		clearDeletedImagesTaskScheduleInterval,
-		1,
+		tasks.TaskSchedule{
+			ScheduleInterval: clearDeletedImagesTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
 	)
 
 	return nil
