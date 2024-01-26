@@ -125,9 +125,9 @@ TString GetMonitoringYDBGroupUrl(
            << data.MonitoringUrl
            << "/projects/kikimr/explorer/"
               "queries?q.0.s=histogram_percentile(99, {project=\"kikimr"
-           << "\", cluster=\"" << data.MonitoringClusterName
-           << "\", storagePool=\"" << storagePool << "\", group=\"" << groupId
-           << "\", host=\"*\", service=\"vdisks\", "
+           << "\", cluster=\"*\", storagePool=\"" << storagePool
+           << "\", group=\"" << groupId << "\", host=\"" << GetShortHostName()
+           << "\", service=\"vdisks\", "
               "subsystem=\"latency_histo\", "
               "handleclass=\"GetFast\"})&q.0.name=A&from=now-1d&to=now&refresh="
               "60000";
