@@ -620,6 +620,8 @@ private:
         ui64 proposedFillGeneration);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
+
+    THashSet<TString> MakeFilteredDeviceIds() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
