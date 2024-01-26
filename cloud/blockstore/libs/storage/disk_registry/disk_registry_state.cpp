@@ -951,8 +951,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
 
             if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
                 auto& disk = Disks[diskId];
-                if (!RestartDeviceMigration(db, diskId, disk, uuid)) {
-                    CancelDeviceMigration(db, diskId, disk, uuid);
+                if (!RestartDeviceMigration(timestamp, db, diskId, disk, uuid)) {
+                    CancelDeviceMigration(timestamp, db, diskId, disk, uuid);
                 }
             }
 
@@ -1263,7 +1263,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         DeviceList.ReleaseDevice(deviceId);
         db.UpdateDirtyDevice(deviceId, diskId);
 
-        CancelDeviceMigration(db, diskId, disk, deviceId);
+        CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
 
         *it = targetDevice.GetDeviceUUID();
 
@@ -1497,6 +1497,12 @@ NProto::TDeviceConfig TDiskRegistryState::StartDeviceMigrationImpl(
         sourceDeviceId);
 
     DeleteDeviceMigration(sourceDiskId, sourceDeviceId);
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "started migration: "
+        << sourceDeviceId << " -> " << targetDevice.GetDeviceUUID());
+    disk.History.push_back(std::move(historyItem));
 
     UpdatePlacementGroup(db, sourceDiskId, disk, "StartDeviceMigration");
     UpdateAndReallocateDisk(db, sourceDiskId, disk);
@@ -4575,7 +4581,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
         auto& disk = Disks[diskId];
 
         // check if deviceId is target for migration
-        if (RestartDeviceMigration(db, diskId, disk, deviceId)) {
+        if (RestartDeviceMigration(timestamp, db, diskId, disk, deviceId)) {
             continue;
         }
 
@@ -4638,7 +4644,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
                 }
             }
 
-            CancelDeviceMigration(db, diskId, disk, deviceId);
+            CancelDeviceMigration(timestamp, db, diskId, disk, deviceId);
         }
 
         if (isAffected) {
@@ -4937,6 +4943,12 @@ bool TDiskRegistryState::TryUpdateDiskState(
 
     disk.State = newState;
     disk.StateTs = timestamp;
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(timestamp.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "state changed: "
+        << static_cast<int>(oldState) << " -> " << static_cast<int>(newState));
+    disk.History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, disk);
 
@@ -5389,7 +5401,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     // check if uuid is target for migration
-    if (RestartDeviceMigration(db, diskId, *disk, uuid)) {
+    if (RestartDeviceMigration(now, db, diskId, *disk, uuid)) {
         return;
     }
 
@@ -5433,7 +5445,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     }
 
     if (device.GetState() != NProto::DEVICE_STATE_WARNING) {
-        CancelDeviceMigration(db, diskId, *disk, uuid);
+        CancelDeviceMigration(now, db, diskId, *disk, uuid);
         return;
     }
 
@@ -5443,6 +5455,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
 }
 
 bool TDiskRegistryState::RestartDeviceMigration(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TDiskState& disk,
@@ -5456,7 +5469,7 @@ bool TDiskRegistryState::RestartDeviceMigration(
 
     TDeviceId sourceId = it->second;
 
-    CancelDeviceMigration(db, diskId, disk, sourceId);
+    CancelDeviceMigration(now, db, diskId, disk, sourceId);
 
     AddMigration(disk, diskId, sourceId);
 
@@ -5480,6 +5493,7 @@ void TDiskRegistryState::DeleteDeviceMigration(
 }
 
 void TDiskRegistryState::CancelDeviceMigration(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     TDiskState& disk,
@@ -5514,6 +5528,12 @@ void TDiskRegistryState::CancelDeviceMigration(
     if (disk.MigrationSource2Target.empty()) {
         disk.MigrationStartTs = {};
     }
+
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+    historyItem.SetMessage(TStringBuilder() << "cancelled migration: "
+        << sourceId << " -> " << targetId);
+    disk.History.push_back(std::move(historyItem));
 
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 
@@ -5555,6 +5575,12 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         for (auto& x: SourceDeviceMigrationsInProgress) {
             x.second.erase(sourceId);
         }
+
+        NProto::TDiskHistoryItem historyItem;
+        historyItem.SetTimestamp(timestamp.MicroSeconds());
+        historyItem.SetMessage(TStringBuilder() << "finished migration: "
+            << sourceId << " -> " << targetId);
+        disk.History.push_back(std::move(historyItem));
     }
 
     const ui64 seqNo = AddReallocateRequest(db, diskId);
@@ -6313,6 +6339,7 @@ NProto::TError TDiskRegistryState::ValidateUpdateDiskReplicaCountParams(
 }
 
 NProto::TError TDiskRegistryState::MarkReplacementDevice(
+    TInstant now,
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
     const TDeviceId& deviceId,
@@ -6328,6 +6355,9 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
 
     auto it = Find(disk->DeviceReplacementIds, deviceId);
 
+    NProto::TDiskHistoryItem historyItem;
+    historyItem.SetTimestamp(now.MicroSeconds());
+
     if (isReplacement) {
         if (it != disk->DeviceReplacementIds.end()) {
             return MakeError(
@@ -6337,6 +6367,9 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
         }
 
         disk->DeviceReplacementIds.push_back(deviceId);
+
+        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
+            << " marked as a replacement device");
     } else {
         if (it == disk->DeviceReplacementIds.end()) {
             return MakeError(
@@ -6346,7 +6379,12 @@ NProto::TError TDiskRegistryState::MarkReplacementDevice(
         }
 
         disk->DeviceReplacementIds.erase(it);
+
+        historyItem.SetMessage(TStringBuilder() << "device " << deviceId
+            << " no more marked as a replacement device");
     }
+
+    disk->History.push_back(std::move(historyItem));
 
     UpdateAndReallocateDisk(db, diskId, *disk);
     ReplicaTable.MarkReplacementDevice(diskId, deviceId, isReplacement);

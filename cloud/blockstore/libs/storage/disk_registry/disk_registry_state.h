@@ -720,6 +720,7 @@ public:
         NProto::EDevicePoolKind poolKind) const;
 
     NProto::TError MarkReplacementDevice(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         const TDeviceId& deviceId,
@@ -956,12 +957,14 @@ private:
         TDiskId& affectedDisk);
 
     bool RestartDeviceMigration(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TDiskState& disk,
         const TDeviceId& targetId);
 
     void CancelDeviceMigration(
+        TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
         TDiskState& disk,
