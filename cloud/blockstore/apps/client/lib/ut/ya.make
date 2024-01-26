@@ -8,6 +8,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/apps/client/lib
+    cloud/storage/core/libs/iam/iface
 )
 
 END()
