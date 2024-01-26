@@ -43,7 +43,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 bytesCount = 0;
         ui32 partStatsSaved = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
             } else if (event->Recipient == MakeStorageStatsServiceId()
@@ -54,7 +54,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -199,7 +199,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 loadTime = 0;
         ui64 startTime = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->GetTypeRewrite() == TEvVolumePrivate::EvPartStatsSaved) {
                 ++partStatsSaved;
             } else if (event->Recipient == MakeStorageStatsServiceId()
@@ -222,7 +222,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             }
 
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(obs);
@@ -333,7 +333,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 network = 0;
         TDuration cpu;
         ui64 nonEmptyReports = 0;
-        auto observer = [&](TAutoPtr<IEventHandle>& event)
+        auto observer = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                     TEvVolume::EvDiskRegistryBasedPartitionCounters)
@@ -347,7 +347,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(observer);
@@ -403,7 +403,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volume.AddClient(clientInfo);
 
         ui32 nonEmptyReports = 0;
-        auto observer = [&](TAutoPtr<IEventHandle>& event)
+        auto observer = [&](auto& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                     TEvVolume::EvDiskRegistryBasedPartitionCounters)
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(observer);
