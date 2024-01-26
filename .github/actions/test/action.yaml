@@ -204,6 +204,7 @@ runs:
           echo "::group::s3-sync"
           if [ "$SYNC_TO_S3" = "true" ];
           then
+            du -h "$TESTS_DATA_DIR/"
             sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
           fi
           echo "::endgroup::"

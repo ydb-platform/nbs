@@ -44,9 +44,10 @@
         .directory-icon:before {
             content: '📁'; /* Folder icon */
         }
-        .date {
+        .date, .size {
             float: right;
-            color: #666;
+            margin-left: 20px;
+            color: #999;
         }
 
         #timestamp {
@@ -64,6 +65,9 @@
                 <a href="{{ entry.url }}">{{ entry.name }}</a>
                 {% if entry.date %}
                     <span class="date">{{ entry.date }}</span>
+                {% endif %}
+                {% if entry.size %}
+                    <span class="size">{{ entry.size }}</span>
                 {% endif %}
             </li>
         {% endfor %}

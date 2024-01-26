@@ -14,6 +14,15 @@ logging.basicConfig(
 )
 
 
+def sizeof_fmt(num, suffix="B"):
+    """Converts file size to a human-readable format."""
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
+
+
 def list_files(client, bucket, prefix):
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
@@ -49,6 +58,7 @@ def generate_index_html(bucket, files, dirs, current_prefix):
                 "url": generate_absolute_url(bucket, parent_dir),
                 "type": "directory",
                 "date": "",
+                "size": "",  # Directories don't have a size
             }
         )
     for d in dirs:
@@ -61,6 +71,7 @@ def generate_index_html(bucket, files, dirs, current_prefix):
                     "url": dir_url,
                     "type": "directory",
                     "date": "",
+                    "size": "",  # Directories don't have a size
                 }
             )
     for f in files:
@@ -70,12 +81,14 @@ def generate_index_html(bucket, files, dirs, current_prefix):
             file_date = datetime.fromtimestamp(f["LastModified"].timestamp()).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
+            file_size = sizeof_fmt(f["Size"])
             entries.append(
                 {
                     "name": os.path.basename(file_key),
                     "url": file_url,
                     "type": "file",
                     "date": file_date,
+                    "size": file_size,
                 }
             )
 
