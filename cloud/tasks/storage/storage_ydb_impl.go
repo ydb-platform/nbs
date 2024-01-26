@@ -704,14 +704,33 @@ func (s *storageYDB) createRegularTasks(
 
 	shouldSchedule := false
 
-	if found {
-		schedulingTime := schState.scheduledAt.Add(schedule.ScheduleInterval)
+	if schedule.UseCrontab {
+		year, month, day := state.CreatedAt.Date()
+		hour, min, _ := state.CreatedAt.Clock()
 
-		if schState.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
-			shouldSchedule = true
+		if found {
+			lastRunYear, lastRunMonth, lastRunDay := schState.scheduledAt.Date()
+
+			if year >= lastRunYear && month >= lastRunMonth && day > lastRunDay {
+				if hour >= schedule.Hour && min >= schedule.Min {
+					shouldSchedule = true
+				}
+			}
+		} else {
+			if hour >= schedule.Hour && min >= schedule.Min {
+				shouldSchedule = true
+			}
 		}
 	} else {
-		shouldSchedule = true
+		if found {
+			schedulingTime := schState.scheduledAt.Add(schedule.ScheduleInterval)
+
+			if schState.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
+				shouldSchedule = true
+			}
+		} else {
+			shouldSchedule = true
+		}
 	}
 
 	if shouldSchedule {
