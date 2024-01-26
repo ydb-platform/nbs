@@ -527,6 +527,7 @@ func (s *storageYDB) shallowCopySnapshot(
 		common.ChannelWithCancellation{}, // holeValues
 		s.shallowCopyInflightLimit,
 	)
+	defer inflightQueue.Close()
 
 	waitSaver := func() error { return nil }
 	var saverError <-chan error
