@@ -16,6 +16,7 @@ struct IBackend: public IStartable
 
     virtual vhd_bdev_info Init(const TOptions& options) = 0;
     virtual void ProcessQueue(
+        ui32 queueIndex,
         vhd_request_queue* queue,
         TSimpleStats& queueStats) = 0;
     virtual std::optional<TSimpleStats> GetCompletionStats(

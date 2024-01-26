@@ -9,6 +9,7 @@
 #include <cloud/contrib/vhost/virtio/virtio_blk_spec.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/size_literals.h>
 #include <util/system/file.h>
@@ -384,6 +385,58 @@ Y_UNIT_TEST_SUITE(TServerTest)
                         std::count(padding, padding + PaddingSize, 'P'));
                 }
             }
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleMutlipleQueues, TFixture)
+    {
+        StartServer();
+
+        const ui32 requestCount = 10;
+        const ui64 sectorsPerChunk = ChunkByteCount / SectorSize;
+        const ui64 sectorCount = sectorsPerChunk * ChunkCount;
+
+        TVector<std::span<char>> statuses;
+        TVector<NThreading::TFuture<ui32>> futures;
+
+        for (ui64 i = 0; i != requestCount; ++i) {
+            std::span hdr = Hdr(Memory, {
+                .type = VIRTIO_BLK_T_OUT,
+                .sector = i % sectorCount
+            });
+            std::span sector = Memory.Allocate(SectorSize);
+            std::span status = Memory.Allocate(1);
+
+            UNIT_ASSERT_VALUES_EQUAL(SectorSize, sector.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, status.size());
+
+            memset(sector.data(), 'A' + i % 26, sector.size_bytes());
+
+            statuses.push_back(status);
+            futures.push_back(Client.WriteAsync(
+                i % QueueCount,
+                { hdr, sector },
+                { status }
+            ));
+        }
+
+        WaitAll(futures).Wait();
+
+        TSimpleStats prevStats;
+        auto stats = Server->GetStats(prevStats);
+
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Submitted);
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Completed);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.CompFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.SubFailed);
+
+        for (ui32 i = 0; i != requestCount; ++i) {
+            const ui32 len = futures[i].GetValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statuses[i].size(), len,
+                sectorsPerChunk << " | " << i);
+            UNIT_ASSERT_VALUES_EQUAL(0, statuses[i][0]);
         }
     }
 }
