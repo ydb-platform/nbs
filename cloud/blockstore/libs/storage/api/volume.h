@@ -131,6 +131,8 @@ struct TEvVolume
     struct TDiskRegistryBasedPartitionCounters
     {
         TPartitionDiskCountersPtr DiskCounters;
+        ui64 NetworkBytes = 0;
+        TDuration CpuUsage;
 
         TDiskRegistryBasedPartitionCounters(
                 TPartitionDiskCountersPtr diskCounters)

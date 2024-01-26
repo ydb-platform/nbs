@@ -26,6 +26,8 @@ void TNonreplicatedPartitionMigrationActor::HandlePartCounters(
 
         Y_DEBUG_ABORT_UNLESS(0);
     }
+    NetworkBytes += msg->NetworkBytes;
+    CpuUsage += msg->CpuUsage;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,6 +59,11 @@ void TNonreplicatedPartitionMigrationActor::SendStats(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
         MakeIntrusive<TCallContext>(),
         std::move(stats));
+
+    request->NetworkBytes = NetworkBytes;
+    request->CpuUsage = CpuUsage;
+    NetworkBytes = 0;
+    CpuUsage = {};
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

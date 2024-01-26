@@ -187,6 +187,8 @@ void TDiskAgentChecksumActor::Done(
     counters.SetBlocksCount(blocks);
     completion->Failed = failed;
 
+    completion->ExecCycles = RequestInfo->GetExecCycles();
+
     NCloud::Send(
         ctx,
         Part,
@@ -334,6 +336,8 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
+    NetworkBytes += requestBytes;
+    CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     RequestsInProgress.RemoveRequest(ev->Sender);
     if (!msg->Failed) {

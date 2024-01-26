@@ -44,6 +44,8 @@ private:
 
     TDeque<TPartitionDiskCountersPtr> ReplicaCounters;
     bool UpdateCountersScheduled = false;
+    ui64 NetworkBytes = 0;
+    TDuration CpuUsage;
 
     TRequestsInProgress<ui64> RequestsInProgress{EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{

@@ -103,6 +103,24 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 {
     auto* msg = ev->Get();
 
+    if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
+        bool changed = false;
+        if (msg->CpuUsage) {
+            resourceMetrics->CPU.Increment(
+                msg->CpuUsage.MicroSeconds(),
+                ctx.Now());
+            changed = true;
+        }
+        if (msg->NetworkBytes) {
+            resourceMetrics->Network.Increment(msg->NetworkBytes, ctx.Now());
+            changed = true;
+        }
+
+        if (changed) {
+            resourceMetrics->TryUpdate(ctx);
+        }
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
