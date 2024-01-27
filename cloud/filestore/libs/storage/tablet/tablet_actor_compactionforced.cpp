@@ -22,10 +22,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TForcedCompactionActor final
-    : public TActorBootstrapped<TForcedCompactionActor>
+/**
+ * @brief An actor that performs forced compaction or forced cleanup. It is
+ * implemented as a template class to avoid code duplication.
+ *
+ * @tparam TRequestConstructor A functor that constructs a unique_ptr to a
+ * request that is necessary to be performed to passed range.
+ */
+template <typename TResponseType, typename TRequestConstructor>
+class TForcedCompactionActorBase final
+    : public TActorBootstrapped<
+          TForcedCompactionActorBase<TResponseType, TRequestConstructor>>
 {
 private:
+    using TBase = NActors::TActorBootstrapped<
+        TForcedCompactionActorBase<TResponseType, TRequestConstructor>>;
+
     const TActorId Tablet;
     const TString LogTag;
     const TDuration RetryTimeout;
@@ -34,7 +46,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
 public:
-    TForcedCompactionActor(
+    TForcedCompactionActorBase(
         TActorId tablet,
         TString logTag,
         TDuration retry,
@@ -49,7 +61,7 @@ private:
     void SendCompactionRequest(const TActorContext& ctx);
 
     void HandleCompactionResponse(
-        const TEvIndexTabletPrivate::TEvCompactionResponse::TPtr& ev,
+        const TResponseType::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWakeUp(
@@ -67,7 +79,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TForcedCompactionActor::TForcedCompactionActor(
+template <typename TResponseType, typename TRequestConstructor>
+TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    TForcedCompactionActorBase(
         TActorId tablet,
         TString logTag,
         TDuration retry,
@@ -79,12 +93,14 @@ TForcedCompactionActor::TForcedCompactionActor(
     , State(std::move(state))
     , RequestInfo(std::move(requestInfo))
 {
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
+    TBase::ActivityType = TFileStoreActivities::TABLET_WORKER;
 }
 
-void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::Bootstrap(
+    const TActorContext& ctx)
 {
-    Become(&TThis::StateWork);
+    TBase::Become(&TBase::TThis::StateWork);
 
     FILESTORE_TRACK(
         RequestReceived_TabletWorker,
@@ -94,21 +110,24 @@ void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
     SendCompactionRequest(ctx);
 }
 
-void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    SendCompactionRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
-        State->GetCurrentRange(), true);
+    auto request = TRequestConstructor()(State->GetCurrentRange());
 
     ctx.Send(Tablet, request.release());
 }
 
-STFUNC(TForcedCompactionActor::StateWork)
+template <typename TResponseType, typename TRequestConstructor>
+STFUNC(
+    (TForcedCompactionActorBase<TResponseType, TRequestConstructor>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvCompactionResponse, HandleCompactionResponse);
+        HFunc(TResponseType, HandleCompactionResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -116,9 +135,11 @@ STFUNC(TForcedCompactionActor::StateWork)
     }
 }
 
-void TForcedCompactionActor::HandleCompactionResponse(
-    const TEvIndexTabletPrivate::TEvCompactionResponse::TPtr& ev,
-    const TActorContext& ctx)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    HandleCompactionResponse(
+        const TResponseType::TPtr& ev,
+        const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -138,30 +159,32 @@ void TForcedCompactionActor::HandleCompactionResponse(
     SendCompactionRequest(ctx);
 }
 
-void TForcedCompactionActor::HandleWakeUp(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     SendCompactionRequest(ctx);
 }
 
-void TForcedCompactionActor::HandlePoisonPill(
-    const TEvents::TEvPoison::TPtr& ev,
-    const TActorContext& ctx)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    HandlePoisonPill(
+        const TEvents::TEvPoison::TPtr& ev,
+        const TActorContext& ctx)
 {
     Y_UNUSED(ev);
     ReplyAndDie(ctx, MakeError(E_FAIL, "actor killed"));
 }
 
-void TForcedCompactionActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+    ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionCompleted>(
-            error);
+        auto response = std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedCompactionCompleted>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -172,13 +195,44 @@ void TForcedCompactionActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionResponse>(
-            error);
+        auto response = std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedCompactionResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
-    Die(ctx);
+    TBase::Die(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TCompactionRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvCompactionRequest> operator()(
+        const ui32 range) const
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
+            range,
+            true);
+    }
+};
+
+struct TCleanupRequestConstructor
+{
+    std::unique_ptr<TEvIndexTabletPrivate::TEvCleanupRequest> operator()(
+        const ui32 range) const
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupRequest>(
+            range);
+    }
+};
+
+using TForcedCompactionActor = TForcedCompactionActorBase<
+    TEvIndexTabletPrivate::TEvCompactionResponse,
+    TCompactionRequestConstructor>;
+
+using TForcedCleanupActor = TForcedCompactionActorBase<
+    TEvIndexTabletPrivate::TEvCleanupResponse,
+    TCleanupRequestConstructor>;
 
 }   // namespace
 
@@ -190,13 +244,15 @@ void TIndexTabletActor::EnqueueForcedCompactionIfNeeded(const TActorContext& ctx
         return;
     }
 
-    auto ranges = DequeueForcedCompaction();
-    if (ranges.empty()) {
+    auto pendingRequest = DequeueForcedCompaction();
+    if (pendingRequest.Ranges.empty()) {
         return;
     }
 
     auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionRequest>(std::move(ranges));
+        std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionRequest>(
+            std::move(pendingRequest.Ranges),
+            pendingRequest.Mode);
     ctx.Send(ctx.SelfID, request.release());
 }
 
@@ -206,20 +262,21 @@ void TIndexTabletActor::HandleForcedCompaction(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ForcedCompaction request for %lu ranges",
         LogTag.c_str(),
         msg->Ranges.size());
 
-    auto replyError = [&] (
-        const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
         if (ev->Sender == ctx.SelfID) {
             return;
         }
 
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionResponse>(error);
+        auto response = std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedCompactionResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -228,25 +285,41 @@ void TIndexTabletActor::HandleForcedCompaction(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     // will loose original request info in case of enqueueing external request
     if (IsForcedCompactionRunning()) {
-        EnqueueForcedCompaction(std::move(msg->Ranges));
+        EnqueueForcedCompaction(std::move(msg->Ranges), msg->Mode);
         return;
     }
 
     StartForcedCompaction(std::move(msg->Ranges));
 
-    auto actor = std::make_unique<TForcedCompactionActor>(
-        ctx.SelfID,
-        LogTag,
-        Config->GetCompactionRetryTimeout(),
-        GetForcedCompactionState(),
-        std::move(requestInfo));
+    std::unique_ptr<IActor> actor;
+
+    switch (msg->Mode) {
+        case TEvIndexTabletPrivate::EForcedCompactionMode::Compaction:
+            actor = std::make_unique<TForcedCompactionActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                GetForcedCompactionState(),
+                std::move(requestInfo));
+            break;
+
+        case TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup:
+            actor = std::make_unique<TForcedCleanupActor>(
+                ctx.SelfID,
+                LogTag,
+                Config->GetCompactionRetryTimeout(),
+                GetForcedCompactionState(),
+                std::move(requestInfo));
+            break;
+
+        default:
+            TABLET_VERIFY_C(false, "unexpected forced compaction mode");
+    }
 
     auto actorId = ctx.Register(actor.release());
     WorkerActors.insert(actorId);

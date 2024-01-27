@@ -229,6 +229,24 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         "Force compaction",
         "Are you sure you want to force compaction for ALL ranges?",
         "forceCompactionAll();");
+
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-cleanup'>Force Full Cleanup</a></p>"
+        << "<form method='POST' name='ForceCleanup' style='display:none'>"
+        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
+        << "<input type='hidden' name='action' value='compactAll'/>"
+        << "<input type='hidden' name='Cleanup' value='true'/>"
+        << "<input class='btn btn-primary' type='button' value='Cleanup ALL "
+           "ranges'"
+        << " data-toggle='modal' data-target='#force-cleanup'/>"
+        << "</form>";
+
+    BuildConfirmActionDialog(
+        out,
+        "force-cleanup",
+        "Force cleanup",
+        "Are you sure you want to force cleanup for ALL ranges?",
+        "forceCleanupAll();");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,6 +690,14 @@ void GenerateActionsJS(IOutputStream& out)
         }
         </script>
     )___";
+
+    out << R"___(
+        <script type='text/javascript'>
+        function forceCleanupAll() {
+            document.forms['ForceCleanup'].submit();
+        }
+        </script>
+    )___";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1008,7 +1034,12 @@ void TIndexTabletActor::HandleHttpInfo_Compaction(
         ranges = GetNonEmptyCompactionRanges();
     }
 
-    EnqueueForcedCompaction(std::move(ranges));
+    TEvIndexTabletPrivate::EForcedCompactionMode mode =
+        params.Has("Cleanup")
+            ? TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup
+            : TEvIndexTabletPrivate::EForcedCompactionMode::Compaction;
+
+    EnqueueForcedCompaction(std::move(ranges), mode);
     EnqueueForcedCompactionIfNeeded(ctx);
 
     SendHttpResponse(

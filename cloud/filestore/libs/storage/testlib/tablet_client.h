@@ -299,10 +299,14 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
     }
 
-    auto CreateForcedCompactionRequest(TVector<ui32> ranges)
+    auto CreateForcedCompactionRequest(
+        TVector<ui32> ranges,
+        TEvIndexTabletPrivate::EForcedCompactionMode mode)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionRequest>(
-            std::move(ranges));
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvForcedCompactionRequest>(
+            std::move(ranges),
+            mode);
     }
 
     auto CreateCollectGarbageRequest()

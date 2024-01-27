@@ -885,12 +885,20 @@ public:
     using TForcedCompactionStatePtr = std::shared_ptr<TForcedCompactionState>;
 
 private:
-    TVector<TVector<ui32>> PendingForcedCompactions;
+    struct TPendingForcedCompaction
+    {
+        TVector<ui32> Ranges;
+        TEvIndexTabletPrivate::EForcedCompactionMode Mode;
+    };
+
+    TVector<TPendingForcedCompaction> PendingForcedCompactions;
     TForcedCompactionStatePtr ForcedCompactionState;
 
 public:
-    void EnqueueForcedCompaction(TVector<ui32> ranges);
-    TVector<ui32> DequeueForcedCompaction();
+    void EnqueueForcedCompaction(
+        TVector<ui32> ranges,
+        TEvIndexTabletPrivate::EForcedCompactionMode mode);
+    TPendingForcedCompaction DequeueForcedCompaction();
 
     void StartForcedCompaction(TVector<ui32> ranges);
     void CompleteForcedCompaction();

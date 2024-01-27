@@ -1,4 +1,3 @@
-#include "tablet.h"
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -2496,12 +2495,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.ForcedCompaction(::xrange(0, 10, 1));
+        tablet.ForcedCompaction(
+            ::xrange(0, 10, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 10);
         UNIT_ASSERT_VALUES_EQUAL(ranges.front(), 0);
         UNIT_ASSERT_VALUES_EQUAL(ranges.back(), 9);
 
-        tablet.AssertForcedCompactionFailed(TVector<ui32>{});
+        tablet.AssertForcedCompactionFailed(
+            TVector<ui32>{},
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
     }
 
     TABLET_TEST(ShouldRetryForcedCompaction)
@@ -2550,7 +2553,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.ForcedCompaction(::xrange(0, 2, 1));
+        tablet.ForcedCompaction(
+            ::xrange(0, 2, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 3);
         UNIT_ASSERT_VALUES_EQUAL(ranges[0], 0);
         UNIT_ASSERT_VALUES_EQUAL(ranges[1], 0);
@@ -2593,15 +2598,177 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.SendForcedCompactionRequest(::xrange(0, 1, 1));
+        tablet.SendForcedCompactionRequest(
+            ::xrange(0, 1, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(request);
 
-        tablet.SendForcedCompactionRequest(::xrange(1, 2, 1));
+        tablet.SendForcedCompactionRequest(
+            ::xrange(1, 2, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         env.GetRuntime().Send(request.Release(), 1 /* node index */);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(ranges.size(), 2);
+    }
+
+    TABLET_TEST(ShouldForceCompactAndCleanup)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TVector<ui32> compactionRanges;
+        TVector<ui32> cleanupRanges;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvCompactionRequest: {
+                        auto* msg = event->Get<
+                            TEvIndexTabletPrivate::TEvCompactionRequest>();
+                        compactionRanges.push_back(msg->RangeId);
+                        break;
+                    }
+                    case TEvIndexTabletPrivate::EvCleanupRequest: {
+                        auto* msg = event->Get<
+                            TEvIndexTabletPrivate::TEvCleanupRequest>();
+                        cleanupRanges.push_back(msg->RangeId);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        tablet.ForcedCompaction(
+            ::xrange(0, 10, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
+        UNIT_ASSERT_VALUES_EQUAL(compactionRanges.size(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(compactionRanges.front(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(compactionRanges.back(), 9);
+
+        tablet.ForcedCompaction(
+            ::xrange(5, 15, 1),
+            TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup);
+        UNIT_ASSERT_VALUES_EQUAL(cleanupRanges.size(), 10);
+        UNIT_ASSERT_VALUES_EQUAL(cleanupRanges.front(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(cleanupRanges.back(), 14);
+    }
+
+    TABLET_TEST(ForcedCleanupShouldRemoveStaleData)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto rangesCount = 13;
+        const auto dataSize = BlockGroupSize * block * rangesCount;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        ui32 cleanupCount = 0;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvCleanupRequest: {
+                        ++cleanupCount;
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        TVector<ui32> rangesSubjectToCleanup;
+        for (ui32 i = 0; i < rangesCount * BlockGroupSize; ++i) {
+            rangesSubjectToCleanup.push_back(GetMixedRangeIndex(id, i));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            THashSet<ui32>(
+                rangesSubjectToCleanup.begin(),
+                rangesSubjectToCleanup.end())
+                .size(),
+            rangesCount);
+
+        ui64 handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, dataSize, 'a');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), rangesCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlocksCount(),
+                rangesCount * BlockGroupSize);
+        }
+
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.DestroyHandle(handle);
+
+        ui32 id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetMixedRangeIndex(id, 0),
+            GetMixedRangeIndex(id2, 0));
+
+        handle = CreateHandle(tablet, id2);
+        tablet.WriteData(handle, 0, dataSize, 'a');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlobsCount(),
+                rangesCount * 2);
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlobsCount(),
+                rangesCount * 2);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlocksCount(),
+                rangesCount * 2 * BlockGroupSize);
+        }
+
+        tablet.ForcedCompaction(
+            rangesSubjectToCleanup,
+            TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup);
+
+        UNIT_ASSERT_VALUES_EQUAL(cleanupCount, rangesCount * BlockGroupSize);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), rangesCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.GetMixedBlocksCount(),
+                rangesCount * BlockGroupSize);
+        }
     }
 
     TABLET_TEST(ShouldForceCompactRangeAndRemoveStaleNodesData)
@@ -2664,7 +2831,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
         }
 
-        tablet.ForcedCompaction(TVector<ui32>{rangeId});
+        tablet.ForcedCompaction(
+            TVector<ui32>{rangeId},
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
@@ -2691,7 +2860,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
         }
 
-        tablet.ForcedCompaction(TVector<ui32>{rangeId});
+        tablet.ForcedCompaction(
+            TVector<ui32>{rangeId},
+            TEvIndexTabletPrivate::EForcedCompactionMode::Compaction);
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();

@@ -375,12 +375,22 @@ struct TEvIndexTabletPrivate
     // ForcedCompaction
     //
 
+    enum EForcedCompactionMode
+    {
+        Compaction = 0,
+        Cleanup = 1,
+    };
+
     struct TForcedCompactionRequest
     {
         TVector<ui32> Ranges;
+        EForcedCompactionMode Mode;
 
-        TForcedCompactionRequest(TVector<ui32> ranges)
+        TForcedCompactionRequest(
+            TVector<ui32> ranges,
+            EForcedCompactionMode mode)
             : Ranges(std::move(ranges))
+            , Mode(mode)
         {}
     };
 

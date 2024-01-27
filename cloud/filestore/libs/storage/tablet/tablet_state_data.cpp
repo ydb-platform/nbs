@@ -1058,12 +1058,15 @@ void TIndexTabletState::LoadCompactionMap(
     }
 }
 
-void TIndexTabletState::EnqueueForcedCompaction(TVector<ui32> ranges)
+void TIndexTabletState::EnqueueForcedCompaction(
+    TVector<ui32> ranges,
+    TEvIndexTabletPrivate::EForcedCompactionMode mode)
 {
-    PendingForcedCompactions.emplace_back(std::move(ranges));
+    PendingForcedCompactions.emplace_back(std::move(ranges), mode);
 }
 
-TVector<ui32> TIndexTabletState::DequeueForcedCompaction()
+TIndexTabletState::TPendingForcedCompaction TIndexTabletState::
+    DequeueForcedCompaction()
 {
     if (PendingForcedCompactions.empty()) {
         return {};
