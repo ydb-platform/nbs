@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
 
@@ -12,9 +11,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,12 +60,6 @@ TBlockRange64 TNonreplicatedPartitionMigrationCommonActor::
     GetNextProcessingRange() const
 {
     return ProcessingBlocks.BuildProcessingRange();
-}
-
-TProcessingBlocks& TNonreplicatedPartitionMigrationCommonActor::
-    GetProcessingBlocksForTesting()
-{
-    return ProcessingBlocks;
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::KillActors(

@@ -5,6 +5,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+///////////////////////////////////////////////////////////////////////////////
+
 TMigrationTimeoutCalculator::TMigrationTimeoutCalculator(
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partitionConfig)

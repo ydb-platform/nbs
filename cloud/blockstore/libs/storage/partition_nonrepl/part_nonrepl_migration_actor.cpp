@@ -44,7 +44,7 @@ void TNonreplicatedPartitionMigrationActor::Bootstrap(
 {
     TNonreplicatedPartitionMigrationCommonActor::Bootstrap(ctx);
 
-    StartWork(ctx, CreateSrcActor(ctx), CreateDestActor(ctx));
+    StartWork(ctx, CreateSrcActor(ctx), CreateDstActor(ctx));
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMessage(
@@ -137,7 +137,7 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateSrcActor(
         CreateNonreplicatedPartition(Config, SrcConfig, SelfId(), RdmaClient));
 }
 
-NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDestActor(
+NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
     const NActors::TActorContext& ctx)
 {
     Y_ABORT_UNLESS(!Migrations.empty());

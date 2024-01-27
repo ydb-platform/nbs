@@ -3,10 +3,10 @@ LIBRARY()
 SRCS(
     config.cpp
     copy_range.cpp
+    migration_timeout_calculator.cpp
+    mirror_request_actor.cpp
     replica_info.cpp
     resync_range.cpp
-
-    mirror_request_actor.cpp
 
     part_mirror.cpp
     part_mirror_actor.cpp

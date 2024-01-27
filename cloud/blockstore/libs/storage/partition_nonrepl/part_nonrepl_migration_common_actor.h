@@ -127,10 +127,8 @@ public:
     // Called from the inheritor to mark ranges that do not need to be processed.
     void MarkMigratedBlocks(TBlockRange64 range);
 
-    // Called from the inheritor to get to get the next processing range.
+    // Called from the inheritor to get the next processing range.
     TBlockRange64 GetNextProcessingRange() const;
-
-    TProcessingBlocks& GetProcessingBlocksForTesting();
 
 private:
     void KillActors(const NActors::TActorContext& ctx);

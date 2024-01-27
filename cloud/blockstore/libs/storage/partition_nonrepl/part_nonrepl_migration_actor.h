@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/storage/partition_nonrepl/model/migration_timeout_calculator.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -48,7 +48,7 @@ public:
 private:
     void FinishMigration(const NActors::TActorContext& ctx, bool isRetry);
     NActors::TActorId CreateSrcActor(const NActors::TActorContext& ctx);
-    NActors::TActorId CreateDestActor(const NActors::TActorContext& ctx);
+    NActors::TActorId CreateDstActor(const NActors::TActorContext& ctx);
 
     void HandleMigrationStateUpdated(
         const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
