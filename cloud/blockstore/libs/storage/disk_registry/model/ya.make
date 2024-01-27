@@ -1,5 +1,7 @@
 LIBRARY()
 
+#INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+
 SRCS(
     agent_counters.cpp
     agent_list.cpp

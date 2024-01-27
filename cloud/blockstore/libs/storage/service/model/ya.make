@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+
 SRCS(
     ping_metrics.cpp
 )
