@@ -687,12 +687,11 @@ func TestTasksRunningLimit(t *testing.T) {
 			)
 			require.NoError(t, err)
 
+			logging.Debug(ctx, "Listed running tasks: %v+", runningTasks)
+
 			runningLongTaskCount := 0
 			for _, task := range runningTasks {
-				taskState, err := s.storage.GetTask(ctx, task.ID)
-				require.NoError(t, err)
-
-				if taskState.TaskType == "long" {
+				if task.TaskType == "long" {
 					runningLongTaskCount++
 				}
 			}

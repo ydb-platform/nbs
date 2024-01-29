@@ -99,6 +99,13 @@ func (l *lister) loop(ctx context.Context) {
 					value, _ := l.inflightTasksByType.LoadOrStore(task.TaskType, int64(0))
 					taskCount := value.(int64)
 
+					logging.Debug(
+						ctx,
+						"lister listed %v tasks with taskType %v",
+						taskCount,
+						task.TaskType,
+					)
+
 					if taskCount >= taskLimit {
 						taskIdx++
 						// Skip task in order not to exceed limit for inflight tasks count
