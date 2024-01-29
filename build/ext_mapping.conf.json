@@ -15,7 +15,8 @@
         "5274078903": "https://storage.ai.nebius.cloud/nbs-oss-resources/panic.img",
         "4709742882": "https://storage.ai.nebius.cloud/nbs-oss-resources/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk",
         "4915490540": "https://storage.ai.nebius.cloud/nbs-oss-resources/root.squashfs",
-        "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs"
+        "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs",
+        "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
@@ -26,6 +27,7 @@
         "4449551218": "cloud/storage/core/tools/testing/qemu/bin",
         "3307630510": "cloud/storage/core/tools/testing/qemu/image",
         "4556399018": "cloud/storage/core/tools/testing/virtiofs_server/bin",
+        "5734000725": "cloud/storage/core/tools/testing/ydb/bin",
         "2513045473": "cloud/filestore/tools/testing/fs_posix_compliance/suite/bin",
         "2951476475": "cloud/disk_manager/internal/pkg/dataplane/url/qcow2/tests|cloud/disk_manager/internal/pkg/facade/image_service_test|cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test",
         "3064742393": "cloud/disk_manager/internal/pkg/dataplane/url/qcow2/tests",
