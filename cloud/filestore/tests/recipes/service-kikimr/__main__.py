@@ -33,7 +33,7 @@ def start(argv):
     parser.add_argument("--restart-interval", action="store", default=None)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = common.binary_path("ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
     if args.kikimr_package_path is not None:
         kikimr_binary_path = common.build_path("{}/Berkanavt/kikimr/bin/kikimr".format(args.kikimr_package_path))
 

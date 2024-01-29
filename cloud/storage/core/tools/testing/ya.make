@@ -6,4 +6,5 @@ RECURSE(
     threadpool-test
     unstable-process
     virtiofs_server
+    ydb
 )
