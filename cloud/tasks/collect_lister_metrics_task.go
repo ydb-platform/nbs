@@ -53,6 +53,20 @@ func (c collectListerMetricsTask) Run(
 		err = c.collectTasksMetrics(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
+				return c.storage.ListTasksRunning(
+					ctx,        // excludingHostname
+					^uint64(0), // limit
+				)
+			},
+			storage.TaskStatusToString(storage.TaskStatusRunning),
+		)
+		if err != nil {
+			return err
+		}
+
+		err = c.collectTasksMetrics(
+			ctx,
+			func(context.Context) ([]storage.TaskInfo, error) {
 				return c.storage.ListTasksReadyToCancel(
 					ctx,        // excludingHostname
 					^uint64(0), // limit
@@ -60,6 +74,20 @@ func (c collectListerMetricsTask) Run(
 				)
 			},
 			storage.TaskStatusToString(storage.TaskStatusReadyToCancel),
+		)
+		if err != nil {
+			return err
+		}
+
+		err = c.collectTasksMetrics(
+			ctx,
+			func(context.Context) ([]storage.TaskInfo, error) {
+				return c.storage.ListTasksCancelling(
+					ctx,        // excludingHostname
+					^uint64(0), // limit
+				)
+			},
+			storage.TaskStatusToString(storage.TaskStatusCancelling),
 		)
 		if err != nil {
 			return err
