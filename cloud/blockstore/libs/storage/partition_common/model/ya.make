@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+
 SRCS(
     blob_markers.cpp
     fresh_blob.cpp
