@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -231,6 +232,7 @@ public:
         NKikimr::TLogoBlobID BlobId;
         TActorId Proxy;
         TVector<ui16> BlobOffsets;
+        TVector<ui32> Checksums;
         TVector<ui64> Requests; // block indices, ui64 needed for integration
                                 // with sglist-related code
         ui32 GroupId = 0;
@@ -241,11 +243,13 @@ public:
                 const NKikimr::TLogoBlobID& blobId,
                 TActorId proxy,
                 TVector<ui16> blobOffsets,
+                TVector<ui32> checksums,
                 TVector<ui64> requests,
                 ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
+            , Checksums(std::move(checksums))
             , Requests(std::move(requests))
             , GroupId(groupId)
         {}
@@ -263,6 +267,7 @@ private:
     const IReadBlocksHandlerPtr ReadHandler;
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
+    const bool ChecksumsEnabled;
 
     const ui64 CommitId;
 
@@ -287,6 +292,7 @@ public:
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool checksumsEnabled,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -307,6 +313,8 @@ private:
         const TActorContext& ctx,
         IEventBasePtr response,
         const NProto::TError& error);
+
+    bool VerifyChecksums(const TActorContext& ctx, const TBatchRequest& batch);
 
 private:
     STFUNC(StateWork);
@@ -335,6 +343,7 @@ TReadBlocksActor::TReadBlocksActor(
         IReadBlocksHandlerPtr readHandler,
         const TBlockRange32& readRange,
         bool replyLocal,
+        bool checksumsEnabled,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -347,6 +356,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadHandler(std::move(readHandler))
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
+    , ChecksumsEnabled(checksumsEnabled)
     , CommitId(commitId)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -392,6 +402,7 @@ void TReadBlocksActor::ReadBlocks(
                     current.BlobId,
                     current.Proxy,
                     std::move(current.BlobOffsets),
+                    std::move(current.Checksums),
                     std::move(current.Requests),
                     current.GroupId);
             }
@@ -401,6 +412,7 @@ void TReadBlocksActor::ReadBlocks(
         }
 
         current.BlobOffsets.push_back(r.BlobOffset);
+        current.Checksums.push_back(r.BlockChecksum);
         current.Requests.push_back(r.BlockIndex);
     }
 
@@ -409,11 +421,14 @@ void TReadBlocksActor::ReadBlocks(
             current.BlobId,
             current.Proxy,
             std::move(current.BlobOffsets),
+            std::move(current.Checksums),
             std::move(current.Requests),
             current.GroupId);
     }
 
-    for (ui32 batchIndex = batchRequestsOldSize; batchIndex < BatchRequests.size(); ++batchIndex) {
+    for (ui32 batchIndex = batchRequestsOldSize;
+            batchIndex < BatchRequests.size(); ++batchIndex)
+    {
         auto& batch = BatchRequests[batchIndex];
 
         RequestsScheduled += batch.Requests.size();
@@ -493,6 +508,45 @@ void TReadBlocksActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TReadBlocksActor::VerifyChecksums(
+    const TActorContext& ctx,
+    const TBatchRequest& batch)
+{
+    if (!ChecksumsEnabled) {
+        return true;
+    }
+
+    const auto sgList = ReadHandler->GetGuardedSgList(batch.Requests).Acquire();
+    if (!sgList) {
+        return true;
+    }
+
+    Y_DEBUG_ABORT_UNLESS(batch.Requests.size() == sgList.Get().size());
+    if (batch.Requests.size() != sgList.Get().size()) {
+        return true;
+    }
+
+    for (ui32 i = 0; i < batch.Requests.size(); ++i) {
+        const auto block = sgList.Get()[i];
+
+        auto error = VerifyBlockChecksum(
+            block,
+            batch.BlobId,
+            batch.Requests[i],
+            batch.BlobOffsets[i],
+            batch.Checksums[i]);
+
+        if (HasError(error)) {
+            HandleError(ctx, error);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TReadBlocksActor::HandleReadBlobResponse(
     const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -511,6 +565,10 @@ void TReadBlocksActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
+    if (!VerifyChecksums(ctx, batch)) {
+        return;
+    }
+
     RequestsCompleted += batch.Requests.size();
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
     if (RequestsCompleted < RequestsScheduled) {
@@ -521,7 +579,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    for (auto context: ForkedCallContexts) {
+    for (auto& context: ForkedCallContexts) {
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
 
@@ -565,7 +623,8 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
                 MakeBlobStorageProxyID(value.BSGroupId),
                 value.BlobOffset,
                 value.BlockIndex,
-                value.BSGroupId);
+                value.BSGroupId,
+                0 /* checksum */);
         }
     }
 
@@ -966,6 +1025,36 @@ bool TPartitionActor::PrepareReadBlocks(
         commitId
     );
 
+    const ui32 checksumBoundary =
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
+        / State->GetBlockSize();
+    args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary
+        && Config->GetCheckBlockChecksumsInBlobsUponRead();
+
+    for (auto& mark: args.BlockMarks) {
+        if (!std::holds_alternative<TBlobMark>(mark)) {
+            continue;
+        }
+
+        const auto& value = std::get<TBlobMark>(mark);
+
+        if (args.ChecksumsEnabled) {
+            TMaybe<NProto::TBlobMeta> meta;
+            auto blobId = MakePartialBlobId(value.BlobId);
+            if (db.ReadBlobMeta(blobId, meta)) {
+                Y_ABORT_UNLESS(meta.Defined(),
+                    "Could not read blob meta for blob: %s",
+                    ToString(value.BlobId).data());
+            } else {
+                ready = false;
+            }
+
+            if (ready) {
+                args.BlobId2Meta[blobId] = std::move(meta.GetRef());
+            }
+        }
+    }
+
     return ready;
 }
 
@@ -1019,12 +1108,26 @@ void TPartitionActor::CompleteReadBlocks(
     for (const auto& mark: args.BlockMarks) {
         if (std::holds_alternative<TBlobMark>(mark)) {
             const auto& value = std::get<TBlobMark>(mark);
+
+            ui32 checksum = 0;
+
+            if (args.ChecksumsEnabled) {
+                const auto* meta =
+                    args.BlobId2Meta.FindPtr(MakePartialBlobId(value.BlobId));
+                Y_DEBUG_ABORT_UNLESS(meta);
+
+                if (meta && value.BlobOffset < meta->BlockChecksumsSize()) {
+                    checksum = meta->GetBlockChecksums(value.BlobOffset);
+                }
+            }
+
             requests.emplace_back(
                 value.BlobId,
                 MakeBlobStorageProxyID(value.BSGroupId),
                 value.BlobOffset,
                 blockIndex,
-                value.BSGroupId);
+                value.BSGroupId,
+                checksum);
         }
         ++blockIndex;
     }
@@ -1047,6 +1150,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadHandler,
             args.ReadRange,
             args.ReplyLocal,
+            args.ChecksumsEnabled,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),

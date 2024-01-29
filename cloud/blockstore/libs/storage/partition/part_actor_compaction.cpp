@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -38,6 +39,7 @@ struct TRangeCompactionInfo
     const TBlockMask ZeroBlobSkipMask;
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
+    const TVector<ui32> BlockChecksums;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
@@ -56,6 +58,7 @@ struct TRangeCompactionInfo
             TBlockMask zeroBlobSkipMask,
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
+            TVector<ui32> blockChecksums,
             TBlockBuffer blobContent,
             TVector<ui32> zeroBlocks,
             TAffectedBlobs affectedBlobs,
@@ -68,6 +71,7 @@ struct TRangeCompactionInfo
         , ZeroBlobSkipMask(zeroBlobSkipMask)
         , BlobsSkippedByCompaction(blobsSkippedByCompaction)
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+        , BlockChecksums(std::move(blockChecksums))
         , BlobContent(std::move(blobContent))
         , ZeroBlocks(std::move(zeroBlocks))
         , AffectedBlobs(std::move(affectedBlobs))
@@ -408,6 +412,10 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             subset.push_back(srcSglist[r->IndexInBlobContent]);
         }
 
+        // TODO: initialize checksums at UnchangedBlobOffsets - right now we
+        // leave zeroes at those offsets => checksum verification can produce
+        // false negatives in case BlobPatchingEnabled == true
+
         auto subSgList = blobContent.CreateGuardedSgList(std::move(subset));
 
         auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
@@ -535,6 +543,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         const TPartialBlobId& blobId,
         TBlockRange32 range,
         TBlockMask skipMask,
+        const TVector<ui32>& blockChecksums,
         ui32 blobsSkipped,
         ui32 blocksSkipped)
     {
@@ -547,7 +556,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             --range.End;
         }
 
-        mergedBlobs.emplace_back(blobId, range, skipMask);
+        mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
 
         blobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
     };
@@ -558,6 +567,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.DataBlobId,
                 rc.BlockRange,
                 rc.DataBlobSkipMask,
+                rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction);
         }
@@ -575,6 +585,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.ZeroBlobId,
                 rc.BlockRange,
                 rc.ZeroBlobSkipMask,
+                rc.BlockChecksums,
                 blobsSkipped,
                 blocksSkipped);
         }
@@ -605,6 +616,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             Y_ABORT_UNLESS(affectedBlob.Offsets.empty());
             Y_ABORT_UNLESS(affectedBlob.BlockMask.Empty());
             Y_ABORT_UNLESS(affectedBlob.AffectedBlockIndices.empty());
+            Y_ABORT_UNLESS(affectedBlob.BlobMeta.Empty());
             affectedBlob = std::move(it->second);
 
             ++it;
@@ -769,6 +781,28 @@ void TCompactionActor::HandleReadBlobResponse(
 
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
+    const auto& rc = *batch.RangeCompactionInfo;
+
+    if (rc.BlockChecksums) {
+        for (const auto* r: batch.Requests) {
+            const auto block =
+                rc.BlobContent.Get().GetBlock(r->IndexInBlobContent);
+            const auto expectedChecksum =
+                rc.BlockChecksums[r->IndexInBlobContent];
+
+            auto error = VerifyBlockChecksum(
+                block,
+                MakeBlobId(TabletId, r->BlobId),
+                r->BlockIndex,
+                r->BlobOffset,
+                expectedChecksum);
+
+            if (HasError(error)) {
+                HandleError(ctx, error);
+                return;
+            }
+        }
+    }
 
     RealReadRequestsCompleted += batch.Requests.size();
     ReadRequestsCompleted += batch.Requests.size();
@@ -1343,6 +1377,14 @@ void TPartitionActor::HandleCompactionCompleted(
         TabletID(),
         commitId);
 
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            "[%lu] Compaction @%lu failed: %s",
+            TabletID(),
+            commitId,
+            FormatError(msg->GetError()).c_str());
+    }
+
     UpdateStats(msg->Stats);
 
     State->GetCommitQueue().ReleaseBarrier(commitId);
@@ -1544,6 +1586,11 @@ void PrepareRangeCompaction(
         }
     }
 
+    const ui32 checksumBoundary =
+        config.GetDiskPrefixLengthWithBlockChecksumsInBlobs()
+        / state.GetBlockSize();
+    args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
+
     for (auto& kv: args.AffectedBlobs) {
         if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
             Y_ABORT_UNLESS(kv.second.BlockMask.Defined(),
@@ -1551,6 +1598,16 @@ void PrepareRangeCompaction(
                 ToString(MakeBlobId(tabletId, kv.first)).data());
         } else {
             ready = false;
+        }
+
+        if (args.ChecksumsEnabled) {
+            if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
+                Y_ABORT_UNLESS(kv.second.BlobMeta.Defined(),
+                    "Could not read blob meta for blob: %s",
+                    ToString(MakeBlobId(tabletId, kv.first)).data());
+            } else {
+                ready = false;
+            }
         }
     }
 }
@@ -1620,6 +1677,7 @@ void CompleteRangeCompaction(
 
     // now build the blob content for all blocks to be written
     TBlockBuffer blobContent(TProfilingAllocator::Instance());
+    TVector<ui32> blockChecksums;
     TVector<ui32> zeroBlocks;
 
     ui32 blockIndex = args.BlockRange.Start;
@@ -1644,6 +1702,11 @@ void CompleteRangeCompaction(
                     mark.BlockContent.Size()
                 });
 
+                if (args.ChecksumsEnabled) {
+                    blockChecksums.push_back(
+                        ComputeDefaultDigest(blobContent.GetBlocks().back()));
+                }
+
                 if (zeroBlobId) {
                     zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
                 }
@@ -1665,6 +1728,24 @@ void CompleteRangeCompaction(
 
                 // we will read this block later
                 blobContent.AddBlock(state.GetBlockSize(), char(0));
+
+                // block checksum is simply moved from the affected blob's meta
+                if (args.ChecksumsEnabled) {
+                    ui32 blockChecksum = 0;
+
+                    auto* affectedBlob = args.AffectedBlobs.FindPtr(mark.BlobId);
+                    Y_DEBUG_ABORT_UNLESS(affectedBlob);
+                    if (affectedBlob) {
+                        if (auto* meta = affectedBlob->BlobMeta.Get()) {
+                            if (mark.BlobOffset < meta->BlockChecksumsSize()) {
+                                blockChecksum =
+                                    meta->GetBlockChecksums(mark.BlobOffset);
+                            }
+                        }
+                    }
+
+                    blockChecksums.push_back(blockChecksum);
+                }
 
                 if (zeroBlobId) {
                     zeroBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
@@ -1757,6 +1838,7 @@ void CompleteRangeCompaction(
         zeroBlobSkipMask,
         args.BlobsSkipped,
         args.BlocksSkipped,
+        std::move(blockChecksums),
         std::move(blobContent),
         std::move(zeroBlocks),
         std::move(args.AffectedBlobs),

@@ -169,6 +169,10 @@ private:
             mixedBlocks.AddBlocks(blockIndex);
         }
 
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
+
         db.WriteBlobMeta(blob.BlobId, blobMeta);
 
         if (!IsDeletionMarker(blob.BlobId)) {
@@ -225,6 +229,10 @@ private:
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
+        }
 
         db.WriteBlobMeta(blob.BlobId, blobMeta);
 
@@ -287,6 +295,10 @@ private:
         for (const auto& block: blob.Blocks) {
             mixedBlocks.AddBlocks(block.BlockIndex);
             mixedBlocks.AddCommitIds(block.CommitId);
+        }
+
+        for (ui32 checksum: blob.Checksums) {
+            blobMeta.AddBlockChecksums(checksum);
         }
 
         db.WriteBlobMeta(blob.BlobId, blobMeta);

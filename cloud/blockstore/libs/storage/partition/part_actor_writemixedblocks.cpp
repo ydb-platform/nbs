@@ -47,16 +47,19 @@ public:
             const bool Empty;
             const TRequestInfoPtr RequestInfo;
             const bool ReplyLocal;
+            const TVector<ui32> Checksums;
 
             TSubRequest(
                     const TBlockRange32 writeRange,
                     const bool empty,
                     TRequestInfoPtr requestInfo,
-                    bool replyLocal)
+                    bool replyLocal,
+                    TVector<ui32> checksums)
                 : WriteRange(writeRange)
                 , Empty(empty)
                 , RequestInfo(std::move(requestInfo))
                 , ReplyLocal(replyLocal)
+                , Checksums(std::move(checksums))
             {
             }
         };
@@ -253,6 +256,7 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
     for (const auto& req: Requests) {
         ui32 blockCount = 0;
         TVector<ui32> blocks(Reserve(blockCount));
+        TVector<ui32> checksums(Reserve(blockCount));
 
         for (const auto& sr: req.SubRequests) {
             if (!sr.Empty) {
@@ -260,6 +264,10 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
 
                 for (ui32 idx: xrange(sr.WriteRange)) {
                     blocks.push_back(idx);
+                }
+
+                for (const auto& checksum: sr.Checksums) {
+                    checksums.push_back(checksum);
                 }
             }
             if (!sr.RequestInfo->CallContext->LWOrbit.Fork(CombinedContext->LWOrbit)) {
@@ -271,7 +279,7 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
             }
         }
 
-        blobs.emplace_back(req.BlobId, std::move(blocks));
+        blobs.emplace_back(req.BlobId, std::move(blocks), std::move(checksums));
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -303,8 +311,12 @@ void TWriteMixedBlocksActor::NotifyCompleted(
     ui64 waitCycles = 0;
 
     for (const auto& r: Requests) {
-        ev->ExecCycles = Max(ev->ExecCycles, r.SubRequests.front().RequestInfo->GetExecCycles());
-        ev->TotalCycles = Max(ev->TotalCycles, r.SubRequests.front().RequestInfo->GetTotalCycles());
+        ev->ExecCycles = Max(
+            ev->ExecCycles,
+            r.SubRequests.front().RequestInfo->GetExecCycles());
+        ev->TotalCycles = Max(
+            ev->TotalCycles,
+            r.SubRequests.front().RequestInfo->GetTotalCycles());
 
         for (const auto& sr: r.SubRequests) {
             if (!sr.Empty) {
@@ -312,7 +324,9 @@ void TWriteMixedBlocksActor::NotifyCompleted(
             }
         }
 
-        waitCycles = Max(waitCycles, r.SubRequests.front().RequestInfo->GetWaitCycles());
+        waitCycles = Max(
+            waitCycles,
+            r.SubRequests.front().RequestInfo->GetWaitCycles());
     }
 
     ev->CommitId = CommitId;
@@ -491,11 +505,30 @@ bool TPartitionActor::WriteMixedBlocks(
                 DescribeRange(request->Data.Range).data()
             );
 
+            TVector<ui32> checksums;
+
+            const ui32 checksumBoundary =
+                Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
+                / State->GetBlockSize();
+            const bool checksumsEnabled =
+                request->Data.Range.Start < checksumBoundary;
+
+            if (checksumsEnabled) {
+                auto sgList = request->Data.Handler->GetBlocks(
+                    ConvertRangeSafe(request->Data.Range));
+                if (auto g = sgList.Acquire()) {
+                    for (const auto& blockContent: g.Get()) {
+                        checksums.push_back(ComputeDefaultDigest(blockContent));
+                    }
+                }
+            }
+
             requests.back().SubRequests.emplace_back(
                 request->Data.Range,
                 !request->Weight,
                 request->Data.RequestInfo,
-                request->Data.ReplyLocal
+                request->Data.ReplyLocal,
+                std::move(checksums)
             );
         }
 

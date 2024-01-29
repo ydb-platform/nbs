@@ -13,6 +13,19 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui32 ComputeDefaultDigest(TBlockDataRef blockContent)
+{
+    Y_DEBUG_ABORT_UNLESS(blockContent.Data() != nullptr);
+
+    if (blockContent.Data() != nullptr) {
+        return Crc32c(blockContent.Data(), blockContent.Size());
+    }
+
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TExt4BlockDigestGenerator final
     : IBlockDigestGenerator
 {
@@ -38,7 +51,7 @@ struct TExt4BlockDigestGenerator final
         }
 
         if (blockContent.Data() != nullptr) {
-            return Crc32c(blockContent.Data(), blockContent.Size());
+            return ComputeDefaultDigest(blockContent);
         }
 
         double idx = log2(static_cast<double>(blockContent.Size()) / DefaultBlockSize);

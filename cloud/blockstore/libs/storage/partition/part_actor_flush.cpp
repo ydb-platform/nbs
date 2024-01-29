@@ -36,13 +36,16 @@ public:
         TPartialBlobId BlobId;
         TGuardedBuffer<TBlockBuffer> BlobContent;
         TVector<TBlock> Blocks;
+        TVector<ui32> Checksums;
 
         TRequest(const TPartialBlobId& blobId,
                  TBlockBuffer blobContent,
-                 TVector<TBlock> blocks)
+                 TVector<TBlock> blocks,
+                 TVector<ui32> checksums)
             : BlobId(blobId)
             , BlobContent(std::move(blobContent))
             , Blocks(std::move(blocks))
+            , Checksums(std::move(checksums))
         {}
     };
 
@@ -218,7 +221,10 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
 
     for (auto& req: Requests) {
         BlocksCount += req.Blocks.size();
-        freshBlobs.emplace_back(req.BlobId, std::move(req.Blocks));
+        freshBlobs.emplace_back(
+            req.BlobId,
+            std::move(req.Blocks),
+            std::move(req.Checksums));
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -380,10 +386,15 @@ struct TBlob
 {
     TBlockBuffer BlobContent;
     TVector<TBlock> Blocks;
+    TVector<ui32> Checksums;
 
-    TBlob(TBlockBuffer blobContent, TVector<TBlock> blocks)
+    TBlob(
+            TBlockBuffer blobContent,
+            TVector<TBlock> blocks,
+            TVector<ui32> checksums)
         : BlobContent(std::move(blobContent))
         , Blocks(std::move(blocks))
+        , Checksums(std::move(checksums))
     {
     }
 };
@@ -399,10 +410,12 @@ private:
     const ui32 FlushBlobSizeThreshold;
     const ui32 MaxBlobRangeSize;
     const ui32 MaxBlocksInBlob;
+    const ui64 DiskPrefixLengthWithBlockChecksumsInBlobs;
 
     TBlockBuffer BlobContent { TProfilingAllocator::Instance() };
 
     TVector<TBlock> Blocks;
+    TVector<ui32> Checksums;
     TVector<TBlock> ZeroBlocks;
 
 public:
@@ -411,12 +424,15 @@ public:
             ui32 blockSize,
             ui32 flushBlobSizeThreshold,
             ui32 maxBlobRangeSize,
-            ui32 maxBlocksInBlob)
+            ui32 maxBlocksInBlob,
+            ui64 diskPrefixLengthWithBlockChecksumsInBlobs)
         : Blobs(blobs)
         , BlockSize(blockSize)
         , FlushBlobSizeThreshold(flushBlobSizeThreshold)
         , MaxBlobRangeSize(maxBlobRangeSize)
         , MaxBlocksInBlob(maxBlocksInBlob)
+        , DiskPrefixLengthWithBlockChecksumsInBlobs(
+            diskPrefixLengthWithBlockChecksumsInBlobs)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -426,26 +442,52 @@ public:
             if (GetBlobRangeSize(Blocks, block.Meta.BlockIndex)
                     > MaxBlobRangeSize / BlockSize)
             {
-                Blobs.emplace_back(std::move(BlobContent), std::move(Blocks));
+                Blobs.emplace_back(
+                    std::move(BlobContent),
+                    std::move(Blocks),
+                    std::move(Checksums));
             }
 
             BlobContent.AddBlock({block.Content.Data(), block.Content.Size()});
-            Blocks.emplace_back(block.Meta.BlockIndex, block.Meta.CommitId, block.Meta.IsStoredInDb);
+            Blocks.emplace_back(
+                block.Meta.BlockIndex,
+                block.Meta.CommitId,
+                block.Meta.IsStoredInDb);
+
+            const ui32 checksumBoundary =
+                DiskPrefixLengthWithBlockChecksumsInBlobs / BlockSize;
+            const bool checksumsEnabled =
+                block.Meta.BlockIndex < checksumBoundary;
+
+            if (checksumsEnabled) {
+                Checksums.resize(Blocks.size());
+                Checksums[Blocks.size() - 1] =
+                    ComputeDefaultDigest(BlobContent.GetBlocks().back());
+            }
 
             if (Blocks.size() == MaxBlocksInBlob) {
-                Blobs.emplace_back(std::move(BlobContent), std::move(Blocks));
+                Blobs.emplace_back(
+                    std::move(BlobContent),
+                    std::move(Blocks),
+                    std::move(Checksums));
             }
         } else {
             const auto blobRangeSize =
                 GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
             if (blobRangeSize > MaxBlobRangeSize / BlockSize) {
-                Blobs.emplace_back(TBlockBuffer(), std::move(ZeroBlocks));
+                Blobs.emplace_back(
+                    TBlockBuffer(),
+                    std::move(ZeroBlocks),
+                    TVector<ui32>() /* checksums */);
             }
 
             ZeroBlocks.emplace_back(block.Meta.BlockIndex, block.Meta.CommitId, block.Meta.IsStoredInDb);
 
             if (ZeroBlocks.size() == MaxBlocksInBlob) {
-                Blobs.emplace_back(TBlockBuffer(), std::move(ZeroBlocks));
+                Blobs.emplace_back(
+                    TBlockBuffer(),
+                    std::move(ZeroBlocks),
+                    TVector<ui32>() /* checksums */);
             }
         }
 
@@ -456,11 +498,17 @@ public:
     {
         const auto dataSize = Blocks.size() * BlockSize;
         if (Blocks && (!Blobs || dataSize >= FlushBlobSizeThreshold)) {
-            Blobs.emplace_back(std::move(BlobContent), std::move(Blocks));
+            Blobs.emplace_back(
+                std::move(BlobContent),
+                std::move(Blocks),
+                std::move(Checksums));
         }
 
         if (ZeroBlocks && (!Blobs || ZeroBlocks.size() >= FlushBlobSizeThreshold)) {
-            Blobs.emplace_back(TBlockBuffer(), std::move(ZeroBlocks));
+            Blobs.emplace_back(
+                TBlockBuffer(),
+                std::move(ZeroBlocks),
+                TVector<ui32>() /* checksums */);
         }
     }
 
@@ -639,7 +687,8 @@ void TPartitionActor::HandleFlush(
             State->GetBlockSize(),
             flushBlobSizeThreshold,
             Config->GetMaxBlobRangeSize(),
-            State->GetMaxBlocksInBlob());
+            State->GetMaxBlocksInBlob(),
+            Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
@@ -673,7 +722,8 @@ void TPartitionActor::HandleFlush(
         requests.emplace_back(
             blobId,
             std::move(blob.BlobContent),
-            std::move(blob.Blocks));
+            std::move(blob.Blocks),
+            std::move(blob.Checksums));
     }
 
     Y_ABORT_UNLESS(requests);

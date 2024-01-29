@@ -27,6 +27,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -643,5 +644,14 @@ void SetCounters(
     const TDuration execTime,
     const TDuration waitTime,
     ui64 blocksCount);
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError VerifyBlockChecksum(
+    const TBlockDataRef& block,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
