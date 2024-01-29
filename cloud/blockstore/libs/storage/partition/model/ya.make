@@ -1,5 +1,7 @@
 LIBRARY()
 
+#INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+
 GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
 
