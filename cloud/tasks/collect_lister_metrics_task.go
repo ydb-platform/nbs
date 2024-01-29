@@ -54,7 +54,7 @@ func (c collectListerMetricsTask) Run(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
 				return c.storage.ListTasksRunning(
-					ctx,        // excludingHostname
+					ctx,
 					^uint64(0), // limit
 				)
 			},
@@ -68,7 +68,7 @@ func (c collectListerMetricsTask) Run(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
 				return c.storage.ListTasksReadyToCancel(
-					ctx,        // excludingHostname
+					ctx,
 					^uint64(0), // limit
 					nil,
 				)
@@ -83,7 +83,7 @@ func (c collectListerMetricsTask) Run(
 			ctx,
 			func(context.Context) ([]storage.TaskInfo, error) {
 				return c.storage.ListTasksCancelling(
-					ctx,        // excludingHostname
+					ctx,
 					^uint64(0), // limit
 				)
 			},
