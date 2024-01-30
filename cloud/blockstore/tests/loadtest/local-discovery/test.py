@@ -115,27 +115,28 @@ def test_load():
         use_in_memory_pdisks=True,
     )
 
-    ret = run_test(
-        "load",
-        common.source_path(
-            "cloud/blockstore/tests/loadtest/local-discovery/local.txt"),
-        env.nbs_port,
-        env.mon_port,
-        env_processes=[env.nbs],
-    )
+    try:
+        ret = run_test(
+            "load",
+            common.source_path(
+                "cloud/blockstore/tests/loadtest/local-discovery/local.txt"),
+            env.nbs_port,
+            env.mon_port,
+            env_processes=[env.nbs],
+        )
 
-    results_path = os.path.join(common.output_path(), "results.txt")
+        results_path = os.path.join(common.output_path(), "results.txt")
 
-    def is_good(port):
-        return port in good_ports
+        def is_good(port):
+            return port in good_ports
 
-    with open(results_path, "r") as f:
-        for line in f:
-            data = json.loads(line)
-            ports = [x['Port'] for x in data['Instances']]
-            for port in ports:
-                assert is_good(port)
-
-    env.tear_down()
+        with open(results_path, "r") as f:
+            for line in f:
+                data = json.loads(line)
+                ports = [x['Port'] for x in data['Instances']]
+                for port in ports:
+                    assert is_good(port)
+    finally:
+        env.tear_down()
 
     return ret

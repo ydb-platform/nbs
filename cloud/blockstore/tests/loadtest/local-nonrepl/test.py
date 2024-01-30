@@ -318,20 +318,21 @@ def __run_test(test_case):
         client = TClientConfig()
         client.NbdSocketSuffix = nbd_socket_suffix
 
-        ret = run_test(
-            test_case.name,
-            config_path,
-            nbs.nbs_port,
-            nbs.mon_port,
-            nbs_log_path=nbs.stderr_file_name,
-            client_config=client,
-            env_processes=disk_agents + [nbs])
+        try:
+            ret = run_test(
+                test_case.name,
+                config_path,
+                nbs.nbs_port,
+                nbs.mon_port,
+                nbs_log_path=nbs.stderr_file_name,
+                client_config=client,
+                env_processes=disk_agents + [nbs])
+        finally:
+            for disk_agent in disk_agents:
+                disk_agent.stop()
 
-        for disk_agent in disk_agents:
-            disk_agent.stop()
-
-        nbs.stop()
-        kikimr_cluster.stop()
+            nbs.stop()
+            kikimr_cluster.stop()
     finally:
         if not test_case.use_memory_devices:
             cleanup_file_devices(devices)
