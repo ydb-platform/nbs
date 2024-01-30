@@ -98,14 +98,11 @@ func (t *retireBaseDisksTask) Run(
 		idempotencyKey := fmt.Sprintf("%v_%v", execCtx.GetTaskID(), baseDiskID)
 
 		var srcDisk *types.Disk
-		var srcDiskCheckpointID string
 		if t.request.UseBaseDiskAsSrc {
 			srcDisk = &types.Disk{
 				ZoneId: zoneID,
 				DiskId: baseDiskID,
 			}
-			// Note: we use image id as checkpoint id.
-			srcDiskCheckpointID = imageID
 		}
 
 		taskID, err := t.scheduler.ScheduleTask(
