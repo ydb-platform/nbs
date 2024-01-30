@@ -10509,6 +10509,62 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 WriteBlob,
             true);
     }
+
+    Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobs)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto config = DefaultConfig();
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+
+        partition.WriteBlocks(range, 1);
+
+        TGuardedSgList sgList;
+        ui32 corruptedPos = 0;
+        int corruptValue = 0;
+        auto corruptData = [&] () {
+            auto g = sgList.Acquire();
+            UNIT_ASSERT(g);
+            const char* block = g.Get()[corruptedPos].Data();
+            memset(const_cast<char*>(block), corruptValue, DefaultBlockSize);
+        };
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        using TEv =
+                            TEvPartitionCommonPrivate::TEvReadBlobRequest;
+                        auto* msg = event->Get<TEv>();
+                        sgList = msg->Sglist;
+
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse: {
+                        corruptData();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(
+            blocks,
+            range.Size(),
+            TString::TUninitialized(DefaultBlockSize));
+        partition.SendReadBlocksLocalRequest(range, std::move(sglist));
+        auto response = partition.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

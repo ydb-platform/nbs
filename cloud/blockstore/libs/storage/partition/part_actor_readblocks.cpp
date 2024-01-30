@@ -436,7 +436,7 @@ void TReadBlocksActor::ReadBlocks(
         auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             batch.BlobId,
             batch.Proxy,
-            std::move(batch.BlobOffsets),
+            batch.BlobOffsets,
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
             batch.GroupId);
 
@@ -516,7 +516,8 @@ bool TReadBlocksActor::VerifyChecksums(
         return true;
     }
 
-    const auto guard = ReadHandler->GetGuardedSgList(batch.Requests).Acquire();
+    const auto sublist = ReadHandler->GetGuardedSgList(batch.Requests);
+    const auto guard = sublist.Acquire();
     if (!guard) {
         return true;
     }

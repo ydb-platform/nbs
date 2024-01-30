@@ -46,6 +46,7 @@ def default_storage_config(tablet_version, cache_folder):
 
     storage.InactiveClientsTimeout = 10000
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30  # 1 GiB
+    storage.CheckBlockChecksumsInBlobsUponRead = True
 
     if tablet_version == 2:
         storage.BlockDigestsEnabled = True
