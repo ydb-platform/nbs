@@ -10547,7 +10547,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             memset(const_cast<char*>(block), corruptValue, DefaultBlockSize);
         };
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionCommonPrivate::EvReadBlobRequest: {
                         using TEv =
@@ -10563,7 +10563,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             }
         );
 
