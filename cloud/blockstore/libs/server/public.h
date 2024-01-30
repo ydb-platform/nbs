@@ -19,8 +19,7 @@ struct IServer;
 using IServerPtr = std::shared_ptr<IServer>;
 
 struct IClientStorageFactory;
-using IClientStorageFactoryPtr =
-    std::shared_ptr<IClientStorageFactory>;
+using IClientStorageFactoryPtr = std::shared_ptr<IClientStorageFactory>;
 
 }   // namespace NServer
 }   // namespace NCloud::NBlockStore
