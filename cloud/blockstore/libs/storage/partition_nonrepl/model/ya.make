@@ -8,7 +8,6 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/common
-
     cloud/storage/core/libs/common
 )
 

@@ -1,0 +1,269 @@
+#include "part_nonrepl_migration_common_actor.h"
+
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/core/unimplemented.h>
+
+#include <contrib/ydb/core/base/appdata.h>
+
+namespace NCloud::NBlockStore::NStorage {
+
+using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TNonreplicatedPartitionMigrationCommonActor::
+    TNonreplicatedPartitionMigrationCommonActor(
+        IMigrationOwner* migrationOwner,
+        TStorageConfigPtr config,
+        TString diskId,
+        ui64 blockCount,
+        ui64 blockSize,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr digestGenerator,
+        ui64 initialMigrationIndex,
+        TString rwClientId,
+        NActors::TActorId statActorId)
+    : MigrationOwner(migrationOwner)
+    , Config(std::move(config))
+    , ProfileLog(std::move(profileLog))
+    , DiskId(std::move(diskId))
+    , BlockSize(blockSize)
+    , BlockDigestGenerator(std::move(digestGenerator))
+    , RWClientId(std::move(rwClientId))
+    , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
+    , StatActorId(statActorId)
+{
+    ActivityType = TBlockStoreActivities::PARTITION;
+}
+
+TNonreplicatedPartitionMigrationCommonActor::
+    ~TNonreplicatedPartitionMigrationCommonActor() = default;
+
+void TNonreplicatedPartitionMigrationCommonActor::Bootstrap(
+    const TActorContext& ctx)
+{
+    ScheduleCountersUpdate(ctx);
+
+    Become(&TThis::StateWork);
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::MarkMigratedBlocks(
+    TBlockRange64 range)
+{
+    ProcessingBlocks.MarkProcessed(range);
+}
+
+TBlockRange64 TNonreplicatedPartitionMigrationCommonActor::
+    GetNextProcessingRange() const
+{
+    return ProcessingBlocks.BuildProcessingRange();
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::KillActors(
+    const TActorContext& ctx)
+{
+    NCloud::Send<TEvents::TEvPoisonPill>(ctx, SrcActorId);
+
+    if (DstActorId) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, DstActorId);
+    }
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::ReplyAndDie(
+    const TActorContext& ctx)
+{
+    NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
+    Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Become(&TThis::StateZombie);
+
+    KillActors(ctx);
+
+    Poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
+
+    Y_DEBUG_ABORT_UNLESS(SrcActorId || DstActorId);
+
+    if (SrcActorId || DstActorId) {
+        return;
+    }
+
+    ReplyAndDie(ctx);
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonTaken(
+    const TEvents::TEvPoisonTaken::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (SrcActorId == ev->Sender) {
+        SrcActorId = {};
+    }
+
+    if (DstActorId == ev->Sender) {
+        DstActorId = {};
+    }
+
+    if (SrcActorId || DstActorId) {
+        return;
+    }
+
+    ReplyAndDie(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TNonreplicatedPartitionMigrationCommonActor::ScheduleCountersUpdate(
+    const TActorContext& ctx)
+{
+    if (!UpdateCountersScheduled) {
+        ctx.Schedule(
+            UpdateCountersInterval,
+            new TEvNonreplPartitionPrivate::TEvUpdateCounters());
+        UpdateCountersScheduled = true;
+    }
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::HandleUpdateCounters(
+    const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    UpdateCountersScheduled = false;
+
+    SendStats(ctx);
+    ScheduleCountersUpdate(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)           \
+    void TNonreplicatedPartitionMigrationCommonActor::Handle##name( \
+        const ns::TEv##name##Request::TPtr& ev,                     \
+        const TActorContext& ctx)                                   \
+    {                                                               \
+        RejectUnimplementedRequest<ns::T##name##Method>(ev, ctx);   \
+    }                                                               \
+                                                                    \
+    // BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST
+
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(DescribeBlocks, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(CompactRange, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetCompactionStatus, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(RebuildMetadata, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetRebuildMetadataStatus, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(ScanDisk, TEvVolume);
+BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvUpdateCounters,
+            HandleUpdateCounters);
+
+        HFunc(TEvService::TEvReadBlocksRequest, HandleReadBlocks);
+        HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
+        HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroBlocks);
+
+        HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
+        HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
+
+        HFunc(
+            NPartition::TEvPartition::TEvDrainRequest,
+            DrainActorCompanion.HandleDrain);
+
+        HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            HandleGetCompactionStatus);
+        HFunc(TEvVolume::TEvCompactRangeRequest, HandleCompactRange);
+        HFunc(TEvVolume::TEvRebuildMetadataRequest, HandleRebuildMetadata);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            HandleGetRebuildMetadataStatus);
+        HFunc(TEvVolume::TEvScanDiskRequest, HandleScanDisk);
+        HFunc(TEvVolume::TEvGetScanDiskStatusRequest, HandleGetScanDiskStatus);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted,
+            HandleWriteOrZeroCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvRangeMigrated,
+            HandleRangeMigrated);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMigrateNextRange,
+            HandleMigrateNextRange);
+        HFunc(TEvVolume::TEvRWClientIdChanged, HandleRWClientIdChanged);
+        HFunc(
+            TEvVolume::TEvDiskRegistryBasedPartitionCounters,
+            HandlePartCounters);
+
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        default:
+            // Give the inheritor a chance to process the message.
+            MigrationOwner->OnMessage(ev);
+            break;
+    }
+}
+
+STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
+{
+    switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
+
+        HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
+        HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);
+        HFunc(TEvService::TEvZeroBlocksRequest, RejectZeroBlocks);
+
+        HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
+        HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
+
+        HFunc(NPartition::TEvPartition::TEvDrainRequest, RejectDrain);
+
+        HFunc(TEvVolume::TEvDescribeBlocksRequest, RejectDescribeBlocks);
+        HFunc(
+            TEvVolume::TEvGetCompactionStatusRequest,
+            RejectGetCompactionStatus);
+        HFunc(TEvVolume::TEvCompactRangeRequest, RejectCompactRange);
+        HFunc(TEvVolume::TEvRebuildMetadataRequest, RejectRebuildMetadata);
+        HFunc(
+            TEvVolume::TEvGetRebuildMetadataStatusRequest,
+            RejectGetRebuildMetadataStatus);
+        HFunc(TEvVolume::TEvScanDiskRequest, RejectScanDisk);
+        HFunc(TEvVolume::TEvGetScanDiskStatusRequest, RejectGetScanDiskStatus);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvRangeMigrated);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvMigrateNextRange);
+        IgnoreFunc(TEvDiskRegistry::TEvFinishMigrationResponse);
+        IgnoreFunc(TEvVolume::TEvMigrationStateUpdated);
+        IgnoreFunc(TEvVolume::TEvRWClientIdChanged);
+        IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
+
+        IgnoreFunc(TEvents::TEvPoisonPill);
+        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+
+        default:
+            // Give the inheritor a chance to process the message.
+            MigrationOwner->OnMessage(ev);
+            break;
+    }
+}
+
+}   // namespace NCloud::NBlockStore::NStorage

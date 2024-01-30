@@ -3,10 +3,10 @@ LIBRARY()
 SRCS(
     config.cpp
     copy_range.cpp
+    migration_timeout_calculator.cpp
+    mirror_request_actor.cpp
     replica_info.cpp
     resync_range.cpp
-
-    mirror_request_actor.cpp
 
     part_mirror.cpp
     part_mirror_actor.cpp
@@ -46,12 +46,13 @@ SRCS(
 
     part_nonrepl_migration.cpp
     part_nonrepl_migration_actor.cpp
-    part_nonrepl_migration_actor_migration.cpp
-    part_nonrepl_migration_actor_mirror.cpp
-    part_nonrepl_migration_actor_readblocks.cpp
-    part_nonrepl_migration_actor_readblocks_local.cpp
-    part_nonrepl_migration_actor_stats.cpp
-    part_nonrepl_migration_state.cpp
+
+    part_nonrepl_migration_common_actor.cpp
+    part_nonrepl_migration_common_actor_migration.cpp
+    part_nonrepl_migration_common_actor_mirror.cpp
+    part_nonrepl_migration_common_actor_readblocks_local.cpp
+    part_nonrepl_migration_common_actor_readblocks.cpp
+    part_nonrepl_migration_common_actor_stats.cpp
 )
 
 PEERDIR(
