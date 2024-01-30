@@ -182,16 +182,12 @@ func (s *StorageMock) RetireBaseDisk(
 	ctx context.Context,
 	baseDiskID string,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) ([]storage.RebaseInfo, error) {
 
 	args := s.Called(
 		ctx,
 		baseDiskID,
 		srcDisk,
-		srcDiskCheckpointID,
-		srcDiskCheckpointSize,
 	)
 	return args.Get(0).([]storage.RebaseInfo), args.Error(1)
 }
