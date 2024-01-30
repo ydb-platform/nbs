@@ -88,6 +88,7 @@ constexpr TDuration Seconds(int s)
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
     xxx(EndpointStorageDir,          TString,               {}                )\
     xxx(VhostServerPath,             TString,               {}                )\
+    xxx(VhostServerExtArgs,          TVector<TString>,      {}                )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -116,11 +117,7 @@ template <>
 TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
-    TVector<TString> v;
-    for (const auto& x : value) {
-        v.push_back(x);
-    }
-    return v;
+    return { value.begin(), value.end() };
 }
 
 template <>
@@ -128,7 +125,7 @@ TVector<TCertificate> ConvertValue(
     const google::protobuf::RepeatedPtrField<NCloud::NProto::TCertificate>& value)
 {
     TVector<TCertificate> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back({x.GetCertFile(), x.GetCertPrivateKeyFile()});
     }
     return v;

@@ -168,6 +168,10 @@ message TServerConfig
 
     // Path to vhost server executable.
     optional string VhostServerPath = 108;
+
+    // Additional vhost server command line arguments
+    // e.g. ["--pid-file", "/tmp/test-vhost-server-pid", "--verbose", "debug"]
+    repeated string VhostServerExtArgs = 109;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

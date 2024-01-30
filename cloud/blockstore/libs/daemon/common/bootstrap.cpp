@@ -407,6 +407,7 @@ void TBootstrapBase::Init()
                 ServerStats,
                 Executor,
                 Configs->ServerConfig->GetVhostServerPath(),
+                Configs->ServerConfig->GetVhostServerExtArgs(),
                 Configs->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),

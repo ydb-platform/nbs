@@ -37,6 +37,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     TString binaryPath,
+    TVector<TString> extArgs,
     TString localAgentId,
     IEndpointListenerPtr fallbackListener);
 
