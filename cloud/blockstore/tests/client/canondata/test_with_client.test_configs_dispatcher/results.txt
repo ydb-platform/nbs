@@ -1,2 +1,0 @@
-[{"NodeId": 1, "Address": "", "Port": "<first_static_node_port>", "Host": "localhost", "InterconnectHost": "localhost", "IsStatic": true, "Location": "DC=1/R=1/U=1/"}]
-[{"NodeId": 1, "Address": "", "Port": "<first_static_node_port>", "Host": "localhost", "InterconnectHost": "localhost", "IsStatic": true, "Location": "DC=1/R=1/U=1/"}, {"NodeId": 2, "Address": "", "Port": "<second_static_node_port>", "Host": "localhost", "InterconnectHost": "localhost", "IsStatic": true, "Location": "DC=2/R=2/U=2/"}]

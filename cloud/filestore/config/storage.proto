@@ -199,4 +199,7 @@ message TStorageConfig
 
     // Enables DescribeData + ReadBlob instead of ReadData for reading.
     optional bool TwoStageReadEnabled = 331;
+
+    // Enables runtime config update tool.
+    optional bool ConfigsDispatcherServiceEnabled = 332;
 }

@@ -363,7 +363,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateGetNameserverNodes(
+    TResultOrError<NActors::IActorPtr> CreateGetNameserverNodesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 };

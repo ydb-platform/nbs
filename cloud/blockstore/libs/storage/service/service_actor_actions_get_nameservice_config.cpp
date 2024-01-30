@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/private/api/protos/configs.pb.h>
 
 #include <library/cpp/json/json_writer.h>
 
@@ -119,23 +120,21 @@ void TGetDynamicNameserverNodes::HandleNameserviceConfig(
         return;
     }
 
-    NJsonWriter::TBuf result;
-    auto nodes = result.BeginObject().WriteKey("Nodes").BeginList();
+    NPrivateProto::TGetNameserverNodesResponse result;
     for (const TEvInterconnect::TNodeInfo& nodeInfo: msg->Nodes) {
-        auto node = nodes.BeginObject();
-        node.WriteKey("NodeId").WriteULongLong(nodeInfo.NodeId);
-        node.WriteKey("Address").WriteString(nodeInfo.Address);
-        node.WriteKey("Port").WriteULongLong(nodeInfo.Port);
-        node.WriteKey("Host").WriteString(nodeInfo.Host);
-        node.WriteKey("InterconnectHost").WriteString(nodeInfo.ResolveHost);
-        node.WriteKey("IsStatic").WriteBool(nodeInfo.IsStatic);
-        node.WriteKey("Location")
-            .WriteString(nodeInfo.Location.ToString());
-        node.EndObject();
+        NPrivateProto::TNodeInfo info;
+        info.SetNodeId(nodeInfo.NodeId);
+        info.SetAddress(nodeInfo.Address);
+        info.SetHost(nodeInfo.Host);
+        info.SetPort(nodeInfo.Port);
+        info.SetResolveHost(nodeInfo.ResolveHost);
+        info.SetIsStatic(nodeInfo.IsStatic);
+        info.SetLocation(nodeInfo.Location.ToString());
+        *result.AddNodes() = std::move(info);
     }
-    nodes.EndList().EndObject();
-
-    HandleSuccess(ctx, result.Str());
+    TString output;
+    google::protobuf::util::MessageToJsonString(result, &output);
+    HandleSuccess(ctx, output);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +154,7 @@ STFUNC(TGetDynamicNameserverNodes::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateGetNameserverNodes(
+TResultOrError<IActorPtr> TServiceActor::CreateGetNameserverNodesActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
