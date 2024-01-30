@@ -784,9 +784,9 @@ void TCompactionActor::HandleReadBlobResponse(
     const auto& rc = *batch.RangeCompactionInfo;
 
     if (rc.BlockChecksums) {
+        const auto& buffer = rc.BlobContent.Get();
         for (const auto* r: batch.Requests) {
-            const auto block =
-                rc.BlobContent.Get().GetBlock(r->IndexInBlobContent);
+            const auto block = buffer.GetBlock(r->IndexInBlobContent);
             const auto expectedChecksum =
                 rc.BlockChecksums[r->IndexInBlobContent];
 

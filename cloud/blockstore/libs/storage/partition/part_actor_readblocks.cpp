@@ -516,18 +516,20 @@ bool TReadBlocksActor::VerifyChecksums(
         return true;
     }
 
-    const auto sgList = ReadHandler->GetGuardedSgList(batch.Requests).Acquire();
-    if (!sgList) {
+    const auto guard = ReadHandler->GetGuardedSgList(batch.Requests).Acquire();
+    if (!guard) {
         return true;
     }
 
-    Y_DEBUG_ABORT_UNLESS(batch.Requests.size() == sgList.Get().size());
-    if (batch.Requests.size() != sgList.Get().size()) {
+    const auto& sgList = guard.Get();
+
+    Y_DEBUG_ABORT_UNLESS(batch.Requests.size() == sgList.size());
+    if (batch.Requests.size() != sgList.size()) {
         return true;
     }
 
     for (ui32 i = 0; i < batch.Requests.size(); ++i) {
-        const auto block = sgList.Get()[i];
+        const auto block = sgList[i];
 
         auto error = VerifyBlockChecksum(
             block,
