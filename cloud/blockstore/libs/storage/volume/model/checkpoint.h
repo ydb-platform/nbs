@@ -251,20 +251,25 @@ public:
         Requests[checkpointId].push(std::move(request));
     }
 
-    std::optional<TRequest> TakePostponedRequest(TString checkpointId)
+    std::optional<TRequest> GetPostponedRequest(const TString& checkpointId) const
     {
         auto queue = Requests.FindPtr(checkpointId);
         if (!queue) {
             return std::nullopt;
         }
 
-        auto request = std::move(queue->front());
+        return queue->front();
+    }
+
+    void RemovePostponedRequest(const TString& checkpointId)
+    {
+        auto queue = Requests.FindPtr(checkpointId);
+        Y_DEBUG_ABORT_UNLESS(queue);
+
         queue->pop();
         if (queue->empty()) {
             Requests.erase(checkpointId);
         }
-
-        return request;
     }
 };
 

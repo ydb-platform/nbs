@@ -653,25 +653,18 @@ private:
         const TCheckpointRequest& request,
         const TCheckpointRequestInfo& info);
 
-    void ProcessPostponedCheckpointRequests(
-        const NActors::TActorContext& ctx,
-        const TString& checkpointId);
-
-    void TrySaveCheckpointRequest(
+    void SaveCheckpointRequest(
         const NActors::TActorContext& ctx,
         const TCheckpointRequest& request,
         const TCheckpointRequestInfo& info);
 
-    void ReplyToCheckpointRequestWithoutSaving(
+    void ProcessPostponedCheckpointRequests(
         const NActors::TActorContext& ctx,
-        const TCheckpointRequest& request,
-        const TCheckpointRequestInfo& info,
-        const NProto::TError& error);
+        const TString& checkpointId);
 
-    ECheckpointRequestValidityStatus ValidateCheckpointRequest(
+    std::optional<NProto::TError> ValidateCheckpointRequest(
         const NActors::TActorContext& ctx,
-        const TCheckpointRequest& request,
-        NProto::TError* error);
+        const TCheckpointRequest& request) const;
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 

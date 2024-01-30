@@ -815,20 +815,24 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_2"));
         UNIT_ASSERT_VALUES_EQUAL(false, postponedRequests.HasPostponedRequest("ch_0"));
 
-        auto request = postponedRequests.TakePostponedRequest("ch_1");
+        auto request = postponedRequests.GetPostponedRequest("ch_1");
         UNIT_ASSERT_VALUES_EQUAL(true, request.has_value());
         UNIT_ASSERT_VALUES_EQUAL(1, request->RequestId);
+
+        postponedRequests.RemovePostponedRequest("ch_1");
         UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_1"));
 
-        request = postponedRequests.TakePostponedRequest("ch_1");
+        request = postponedRequests.GetPostponedRequest("ch_1");
         UNIT_ASSERT_VALUES_EQUAL(true, request.has_value());
         UNIT_ASSERT_VALUES_EQUAL(2, request->RequestId);
+
+        postponedRequests.RemovePostponedRequest("ch_1");
         UNIT_ASSERT_VALUES_EQUAL(false, postponedRequests.HasPostponedRequest("ch_1"));
 
         postponedRequests.AddPostponedRequest("ch_1", {4, 4});
         UNIT_ASSERT_VALUES_EQUAL(true, postponedRequests.HasPostponedRequest("ch_1"));
 
-        request = postponedRequests.TakePostponedRequest("ch_0");
+        request = postponedRequests.GetPostponedRequest("ch_0");
         UNIT_ASSERT_VALUES_EQUAL(false, request.has_value());
     }
 }

@@ -2841,7 +2841,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Checkpoint deletion should be idempotent.
         UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
+            S_ALREADY,
             volume.DeleteCheckpoint("c1")->GetStatus());
 
         {
@@ -2855,12 +2855,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c5")->GetStatus());
         // Checkpoint deletion should be idempotent.
-        for (auto checkpointId : TVector<TString>{"c5", "c5"}) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                volume.DeleteCheckpoint(checkpointId)->GetStatus());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            volume.DeleteCheckpoint("c5")->GetStatus());
 
         // Should return error because all light checkpoints were deleted.
         {
@@ -2899,7 +2900,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00100000, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c6, c7"}) {
+        for (auto checkpointId : TVector<TString>{"c6", "c7"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
