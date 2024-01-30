@@ -1,11 +1,10 @@
-#include "part_nonrepl_migration_actor.h"
-
-#include "mirror_request_actor.h"
+#include "part_nonrepl_migration_common_actor.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -15,7 +14,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationActor::HandleWriteOrZeroCompleted(
+void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -30,11 +29,12 @@ void TNonreplicatedPartitionMigrationActor::HandleWriteOrZeroCompleted(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TNonreplicatedPartitionMigrationActor::MirrorRequest(
+void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     if (!DstActorId) {
+        // TODO(drbasic) use WriteAndZeroRequestsInProgress
         ForwardRequestWithNondeliveryTracking(
             ctx,
             SrcActorId,
@@ -52,12 +52,10 @@ void TNonreplicatedPartitionMigrationActor::MirrorRequest(
 
     auto* msg = ev->Get();
 
-    const auto range = BuildRequestBlockRange(
-        *msg,
-        SrcConfig->GetBlockSize());
+    const auto range = BuildRequestBlockRange(*msg, BlockSize);
 
-    if (State.IsMigrationStarted()) {
-        const auto migrationRange = State.BuildMigrationRange();
+    if (ProcessingBlocks.IsProcessingStarted()) {
+        const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
         if (range.Overlaps(migrationRange)) {
             replyError(E_REJECTED, TStringBuilder()
                 << "Request " << TMethod::Name
@@ -76,7 +74,7 @@ void TNonreplicatedPartitionMigrationActor::MirrorRequest(
         std::move(requestInfo),
         TVector<TActorId>{SrcActorId, DstActorId},
         std::move(msg->Record),
-        SrcConfig->GetName(),
+        DiskId,
         SelfId(),
         WriteAndZeroRequestsInProgress.AddWriteRequest(range),
         false // shouldProcessError
@@ -85,21 +83,21 @@ void TNonreplicatedPartitionMigrationActor::MirrorRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationActor::HandleWriteBlocks(
+void TNonreplicatedPartitionMigrationCommonActor::HandleWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     MirrorRequest<TEvService::TWriteBlocksMethod>(ev, ctx);
 }
 
-void TNonreplicatedPartitionMigrationActor::HandleWriteBlocksLocal(
+void TNonreplicatedPartitionMigrationCommonActor::HandleWriteBlocksLocal(
     const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     MirrorRequest<TEvService::TWriteBlocksLocalMethod>(ev, ctx);
 }
 
-void TNonreplicatedPartitionMigrationActor::HandleZeroBlocks(
+void TNonreplicatedPartitionMigrationCommonActor::HandleZeroBlocks(
     const TEvService::TEvZeroBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {

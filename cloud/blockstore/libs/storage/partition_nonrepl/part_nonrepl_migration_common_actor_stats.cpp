@@ -1,4 +1,4 @@
-#include "part_nonrepl_migration_actor.h"
+#include "part_nonrepl_migration_common_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
@@ -8,7 +8,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationActor::HandlePartCounters(
+void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -22,7 +22,7 @@ void TNonreplicatedPartitionMigrationActor::HandlePartCounters(
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),
-            SrcConfig->GetName().Quote().c_str());
+            DiskId.Quote().c_str());
 
         Y_DEBUG_ABORT_UNLESS(0);
     }
@@ -32,7 +32,8 @@ void TNonreplicatedPartitionMigrationActor::HandlePartCounters(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationActor::SendStats(const TActorContext& ctx)
+void TNonreplicatedPartitionMigrationCommonActor::SendStats(
+    const TActorContext& ctx)
 {
     auto stats =
         CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased);
