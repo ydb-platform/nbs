@@ -902,7 +902,10 @@ message TStorageServiceConfig
     // Affects only blobstorage-based disks.
     optional uint64 DiskPrefixLengthWithBlockChecksumsInBlobs = 345;
 
-    // Read BlobMeta upon ReadBlob, calculate crc32c checksums for the fetched
+    // Read BlobMeta upon ReadBlocks, calculate crc32c checksums for the fetched
     // blocks and compare these checksums to the checksums from BlobMeta.
+    //
+    // IMPORTANT: Compaction verifies block checksums for the blocks affected by
+    // it regardless of this flag!
     optional bool CheckBlockChecksumsInBlobsUponRead = 346;
 }

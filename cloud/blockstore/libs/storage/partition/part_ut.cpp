@@ -10521,16 +10521,29 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
 
         const auto range = TBlockRange32::WithLength(0, 1024);
-
         partition.WriteBlocks(range, 1);
 
         TGuardedSgList sgList;
-        ui32 corruptedPos = 0;
+        TVector<ui16> blobOffsets;
+        ui32 corruptedOffset = 0;
         int corruptValue = 0;
         auto corruptData = [&] () {
             auto g = sgList.Acquire();
             UNIT_ASSERT(g);
-            const char* block = g.Get()[corruptedPos].Data();
+            ui32 i = 0;
+            while (i < blobOffsets.size()) {
+                if (blobOffsets[i] == corruptedOffset) {
+                    break;
+                }
+
+                ++i;
+            }
+
+            if (i == blobOffsets.size()) {
+                return;
+            }
+
+            const char* block = g.Get()[i].Data();
             memset(const_cast<char*>(block), corruptValue, DefaultBlockSize);
         };
 
@@ -10540,6 +10553,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                         using TEv =
                             TEvPartitionCommonPrivate::TEvReadBlobRequest;
                         auto* msg = event->Get<TEv>();
+                        blobOffsets = msg->BlobOffsets;
                         sgList = msg->Sglist;
 
                         break;
@@ -10553,17 +10567,57 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         );
 
-        TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            range.Size(),
-            TString::TUninitialized(DefaultBlockSize));
-        partition.SendReadBlocksLocalRequest(range, std::move(sglist));
-        auto response = partition.RecvReadBlocksLocalResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            response->GetStatus(),
-            response->GetErrorReason());
+        // direct read should fail
+        {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                range.Size(),
+                TString::TUninitialized(DefaultBlockSize));
+            partition.SendReadBlocksLocalRequest(range, std::move(sglist));
+            auto response = partition.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // compaction should also run into the same corrupt block and fail
+        {
+            partition.SendCompactionRequest(0);
+            auto response = partition.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        const auto smallRange = TBlockRange32::WithLength(0, 1);
+        partition.WriteBlocks(smallRange, 1);
+
+        // data was rewritten - compaction shouldn't see blobOffset 0 anymore
+        // => compaction won't read any corrupt data and should succeed
+        {
+            partition.SendCompactionRequest(0);
+            auto response = partition.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        partition.Flush();
+
+        // but now compaction should fail because we again corrupted a blob -
+        // this time we corrupted the blob written by Flush
+        {
+            partition.SendCompactionRequest(0);
+            auto response = partition.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
     }
 }
 

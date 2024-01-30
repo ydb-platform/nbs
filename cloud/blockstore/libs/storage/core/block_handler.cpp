@@ -132,6 +132,7 @@ public:
             Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
 
             size_t index = blockIndex - ReadRange.Start;
+            Y_ABORT_UNLESS(index < Blocks.BuffersSize());
             const auto& block = Blocks.GetBuffers(index);
             sglist.emplace_back(block.data(), BlockSize);
         }
