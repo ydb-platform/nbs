@@ -2029,8 +2029,6 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 		config.zoneID,
 		config.imageSize,
 		nil, // srcDisk
-		"",  // srcDiskCheckpointID
-		0,   // srcDiskCheckpointSize
 	)
 
 	// size and capacity are measured in slots, not base disks.
@@ -3146,8 +3144,6 @@ func (s *storageYDB) retireBaseDisk(
 				zoneID,
 				imageSize,
 				srcDisk,
-				srcDiskCheckpointID,
-				srcDiskCheckpointSize,
 			)
 			logging.Info(
 				ctx,
