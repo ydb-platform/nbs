@@ -3027,8 +3027,6 @@ func (s *storageYDB) retireBaseDisk(
 	session *persistence.Session,
 	baseDiskID string,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) ([]RebaseInfo, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)

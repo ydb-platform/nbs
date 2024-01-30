@@ -129,8 +129,6 @@ type Storage interface {
 		ctx context.Context,
 		baseDiskID string,
 		srcDisk *types.Disk,
-		srcDiskCheckpointID string,
-		srcDiskCheckpointSize uint64,
 	) ([]RebaseInfo, error)
 
 	IsBaseDiskRetired(ctx context.Context, baseDiskID string) (bool, error)
