@@ -182,18 +182,19 @@ def __run_test(test_case):
         bs_cache_file_path=cache_folder + "/bs_cache.txt",
     )
 
-    ret = run_test(
-        test_case.name,
-        test_case.config_path,
-        env.nbs_port,
-        env.mon_port,
-        stat_filter=test_case.stat_filter,
-        nbs_log_path=env.nbs_log_path,
-        track_filter=test_case.track_filter,
-        env_processes=[env.nbs],
-    )
-
-    env.tear_down()
+    try:
+        ret = run_test(
+            test_case.name,
+            test_case.config_path,
+            env.nbs_port,
+            env.mon_port,
+            stat_filter=test_case.stat_filter,
+            nbs_log_path=env.nbs_log_path,
+            track_filter=test_case.track_filter,
+            env_processes=[env.nbs],
+        )
+    finally:
+        env.tear_down()
 
     return ret
 

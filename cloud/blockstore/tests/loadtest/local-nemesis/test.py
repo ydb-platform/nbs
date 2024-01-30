@@ -107,18 +107,19 @@ def __run_test(test_case):
     client.NbdSocketSuffix = nbd_socket_suffix
     client.NbdStructuredReply = test_case.nbd_structured_reply
 
-    ret = run_test(
-        test_case.name,
-        test_case.config_path,
-        env.nbs_port,
-        env.mon_port,
-        nbs_log_path=env.nbs_log_path,
-        client_config=client,
-        endpoint_storage_dir=endpoint_storage_dir,
-        env_processes=[env.nbs],
-    )
-
-    env.tear_down()
+    try:
+        ret = run_test(
+            test_case.name,
+            test_case.config_path,
+            env.nbs_port,
+            env.mon_port,
+            nbs_log_path=env.nbs_log_path,
+            client_config=client,
+            endpoint_storage_dir=endpoint_storage_dir,
+            env_processes=[env.nbs],
+        )
+    finally:
+        env.tear_down()
 
     return ret
 

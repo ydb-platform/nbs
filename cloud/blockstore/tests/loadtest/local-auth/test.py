@@ -43,17 +43,18 @@ def test_load():
         "cloud/blockstore/tests/certs/server.crt")
     client.AuthToken = "test_auth_token"
 
-    ret = run_test(
-        "load",
-        common.source_path(
-            "cloud/blockstore/tests/loadtest/local-auth/local.txt"),
-        env.nbs_secure_port,
-        env.mon_port,
-        client_config=client,
-        enable_tls=True,
-        env_processes=[env.nbs],
-    )
-
-    env.tear_down()
+    try:
+        ret = run_test(
+            "load",
+            common.source_path(
+                "cloud/blockstore/tests/loadtest/local-auth/local.txt"),
+            env.nbs_secure_port,
+            env.mon_port,
+            client_config=client,
+            enable_tls=True,
+            env_processes=[env.nbs],
+        )
+    finally:
+        env.tear_down()
 
     return ret

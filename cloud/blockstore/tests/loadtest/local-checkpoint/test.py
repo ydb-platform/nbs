@@ -123,16 +123,17 @@ def __run_test(test_case):
         use_in_memory_pdisks=True,
     )
 
-    ret = run_test(
-        test_case.name,
-        test_case.config_path,
-        env.nbs_port,
-        env.mon_port,
-        nbs_log_path=env.nbs_log_path,
-        env_processes=[env.nbs],
-    )
-
-    env.tear_down()
+    try:
+        ret = run_test(
+            test_case.name,
+            test_case.config_path,
+            env.nbs_port,
+            env.mon_port,
+            nbs_log_path=env.nbs_log_path,
+            env_processes=[env.nbs],
+        )
+    finally:
+        env.tear_down()
 
     return ret
 
