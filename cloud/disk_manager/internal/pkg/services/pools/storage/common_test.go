@@ -16,7 +16,7 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 	check := func(
 		actual baseDisk,
 		imageSize uint64,
-		srcDiskCheckpointSize uint64,
+		srcDisk *types.Disk,
 	) {
 
 		require.NotEmpty(t, actual.id)
@@ -29,10 +29,10 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 		require.True(t, actual.fromPool)
 		require.Equal(t, baseDiskStatusScheduling, actual.status)
 
-		if srcDiskCheckpointSize != 0 {
+		if imageSize != 0 && srcDisk != nil {
 			require.Equal(t, "src_disk_zone", actual.srcDiskZoneID)
 			require.Equal(t, "src_disk", actual.srcDiskID)
-			require.Equal(t, "src_disk_checkpoint", actual.srcDiskCheckpointID)
+			require.Equal(t, "image", actual.srcDiskCheckpointID)
 		}
 	}
 
@@ -43,28 +43,24 @@ func TestCommonGenerateBaseDiskForPool(t *testing.T) {
 		}
 
 		imageSize := requiredSize
-		var srcDiskCheckpointSize uint64
+		var srcDisk *types.Disk
 
 		baseDisk := storage.generateBaseDisk(
 			"image",
 			"zone",
 			imageSize,
-			nil,
-			"",
-			srcDiskCheckpointSize,
+			srcDisk,
 		)
-		check(baseDisk, imageSize, srcDiskCheckpointSize)
+		check(baseDisk, imageSize, srcDisk)
 
-		srcDiskCheckpointSize = requiredSize
+		srcDisk = &types.Disk{ZoneId: "src_disk_zone", DiskId: "src_disk"}
 		baseDisk = storage.generateBaseDisk(
 			"image",
 			"zone",
 			imageSize,
-			&types.Disk{ZoneId: "src_disk_zone", DiskId: "src_disk"},
-			"src_disk_checkpoint",
-			srcDiskCheckpointSize,
+			srcDisk,
 		)
-		check(baseDisk, imageSize, srcDiskCheckpointSize)
+		check(baseDisk, imageSize, srcDisk)
 		return baseDisk
 	}
 

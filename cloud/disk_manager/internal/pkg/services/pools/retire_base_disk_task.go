@@ -47,40 +47,10 @@ func (t *retireBaseDiskTask) Run(
 	baseDiskID := t.request.BaseDiskId
 	selfTaskID := execCtx.GetTaskID()
 
-	if t.request.SrcDisk != nil {
-		client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
-		if err != nil {
-			return err
-		}
-
-		err = client.GetCheckpointSize(
-			ctx,
-			func(blockIndex uint64, checkpointSize uint64) error {
-				t.state.SrcDiskMilestoneBlockIndex = blockIndex
-				t.state.SrcDiskMilestoneCheckpointSize = checkpointSize
-				return execCtx.SaveState(ctx)
-			},
-			t.request.SrcDisk.DiskId,
-			t.request.SrcDiskCheckpointId,
-			t.state.SrcDiskMilestoneBlockIndex,
-			t.state.SrcDiskMilestoneCheckpointSize,
-		)
-		if err != nil {
-			if nbs.IsDiskNotFoundError(err) {
-				// Should be idempotent.
-				return nil
-			}
-
-			return err
-		}
-	}
-
 	rebaseInfos, err := t.storage.RetireBaseDisk(
 		ctx,
 		baseDiskID,
 		t.request.SrcDisk,
-		t.request.SrcDiskCheckpointId,
-		t.state.SrcDiskMilestoneCheckpointSize,
 	)
 	if err != nil {
 		return err

@@ -79,7 +79,6 @@ func (s *privateService) RetireBaseDisk(
 				ZoneId: req.SrcDiskId.ZoneId,
 				DiskId: req.SrcDiskId.DiskId,
 			},
-			SrcDiskCheckpointId: req.SrcDiskCheckpointId,
 		},
 	)
 	if err != nil {

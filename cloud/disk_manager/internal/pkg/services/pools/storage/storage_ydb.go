@@ -317,8 +317,6 @@ func (s *storageYDB) RetireBaseDisk(
 	ctx context.Context,
 	baseDiskID string,
 	srcDisk *types.Disk,
-	srcDiskCheckpointID string,
-	srcDiskCheckpointSize uint64,
 ) ([]RebaseInfo, error) {
 
 	var rebaseInfos []RebaseInfo
@@ -332,8 +330,6 @@ func (s *storageYDB) RetireBaseDisk(
 				session,
 				baseDiskID,
 				srcDisk,
-				srcDiskCheckpointID,
-				srcDiskCheckpointSize,
 			)
 			return err
 		},

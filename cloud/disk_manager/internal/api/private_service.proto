@@ -58,9 +58,10 @@ message RebaseOverlayDiskRequest {
 }
 
 message RetireBaseDiskRequest {
+    reserved 3;
+    
     string base_disk_id = 1;
     yandex.cloud.priv.disk_manager.v1.DiskId src_disk_id = 2;
-    string src_disk_checkpoint_id = 3;
 }
 
 message RetireBaseDisksRequest {
