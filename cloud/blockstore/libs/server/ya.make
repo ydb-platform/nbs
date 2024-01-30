@@ -1,12 +1,10 @@
 LIBRARY()
 
 SRCS(
-    client_acceptor.cpp
+    client_storage_factory.cpp
     config.cpp
-    endpoint_poller.cpp
     server.cpp
     server_test.cpp
-    socket_poller.cpp
 )
 
 PEERDIR(
@@ -18,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
     cloud/storage/core/libs/grpc
+    cloud/storage/core/libs/uds
 
     contrib/ydb/library/actors/prof
     library/cpp/monlib/service

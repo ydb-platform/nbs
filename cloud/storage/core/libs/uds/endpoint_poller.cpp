@@ -1,6 +1,5 @@
 #include "endpoint_poller.h"
 
-#include "client_acceptor.h"
 #include "socket_poller.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -18,7 +17,7 @@
 
 #include <array>
 
-namespace NCloud::NBlockStore::NServer {
+namespace NCloud::NStorage::NServer {
 
 namespace {
 
@@ -42,7 +41,7 @@ using TConnectionPtr = std::shared_ptr<TConnection>;
 struct TEndpoint final
     : public ICookie
 {
-    const IBlockStorePtr Service;
+    const IClientStoragePtr ClientStorage;
     const bool MultiClient;
     const NProto::ERequestSource Source;
 
@@ -51,10 +50,10 @@ struct TEndpoint final
     TSet<TConnectionPtr> Connections;
 
     TEndpoint(
-            IBlockStorePtr service,
+            IClientStoragePtr clientStorage,
             bool multiClient,
             NProto::ERequestSource source)
-        : Service(std::move(service))
+        : ClientStorage(std::move(clientStorage))
         , MultiClient(multiClient)
         , Source(source)
     {}
@@ -142,8 +141,6 @@ class TEndpointPoller::TImpl final
     : public ISimpleThread
 {
 private:
-    const IClientAcceptorPtr ClientAcceptor;
-
     TSocketPoller SocketPoller;
 
     TMutex CookieLock;
@@ -153,14 +150,10 @@ private:
     TMap<TString, TEndpointPtr> Endpoints;
 
 public:
-    TImpl(IClientAcceptorPtr clientAcceptor)
-        : ClientAcceptor(std::move(clientAcceptor))
-    {}
-
     void Stop()
     {
         with_lock (EndpointLock) {
-            for (const auto& item : Endpoints) {
+            for (const auto& item: Endpoints) {
                 const auto& endpoint = item.second;
                 StopListenEndpointImpl(endpoint, false);
             }
@@ -186,10 +179,10 @@ public:
         ui32 unixSocketBacklog,
         bool multiClient,
         NProto::ERequestSource source,
-        IBlockStorePtr service)
+        IClientStoragePtr clientStorage)
     {
         auto endpoint = std::make_shared<TEndpoint>(
-            std::move(service),
+            std::move(clientStorage),
             multiClient,
             source);
 
@@ -320,9 +313,8 @@ private:
 
             SocketPoller.WaitClose(connection->Socket, connection.get());
 
-            ClientAcceptor->Accept(
+            endpoint->ClientStorage->AddClient(
                 connection->Socket,
-                endpoint->Service,
                 endpoint->Source);
         }
     }
@@ -331,7 +323,7 @@ private:
     {
         CookieHolders.insert(connection->shared_from_this());
 
-        ClientAcceptor->Remove(connection->Socket);
+        connection->Endpoint->ClientStorage->RemoveClient(connection->Socket);
 
         SocketPoller.Unwait(connection->Socket);
 
@@ -341,8 +333,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEndpointPoller::TEndpointPoller(IClientAcceptorPtr clientAcceptor)
-    : Impl(std::make_unique<TImpl>(std::move(clientAcceptor)))
+TEndpointPoller::TEndpointPoller()
+    : Impl(std::make_unique<TImpl>())
 {}
 
 TEndpointPoller::~TEndpointPoller()
@@ -363,14 +355,14 @@ NProto::TError TEndpointPoller::StartListenEndpoint(
     ui32 backlog,
     bool multiClient,
     NProto::ERequestSource source,
-    IBlockStorePtr service)
+    IClientStoragePtr clientStorage )
 {
     return Impl->StartListenEndpoint(
         unixSocketPath,
         backlog,
         multiClient,
         source,
-        std::move(service));
+        std::move(clientStorage));
 }
 
 NProto::TError TEndpointPoller::StopListenEndpoint(const TString& unixSocketPath)
@@ -378,4 +370,4 @@ NProto::TError TEndpointPoller::StopListenEndpoint(const TString& unixSocketPath
     return Impl->StopListenEndpoint(unixSocketPath);
 }
 
-}   // namespace NCloud::NBlockStore::NServer
+}   // namespace NCloud::NStorage::NServer

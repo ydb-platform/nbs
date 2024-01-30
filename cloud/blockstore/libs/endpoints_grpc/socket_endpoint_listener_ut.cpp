@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/server/client_acceptor.h>
+#include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/server/server_test.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -38,30 +38,39 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestClientAcceptor final
-    : public IClientAcceptor
+using NStorage::NServer::IClientStorage;
+using NStorage::NServer::IClientStoragePtr;
+
+class TTestClientStorage
+    : public IClientStorageFactory
+    , public IClientStorage
+    , public std::enable_shared_from_this<TTestClientStorage>
 {
 private:
     TMutex Lock;
-    TMap<SOCKET, IBlockStorePtr> Sessions;
+    TSet<SOCKET> Sessions;
 
 public:
-    void Accept(
+    IClientStoragePtr CreateClientStorage(
+            IBlockStorePtr service) override
+    {
+        Y_UNUSED(service);
+        return shared_from_this();
+    }
+
+    void AddClient(
         const TSocketHolder& socket,
-        IBlockStorePtr sessionService,
         NProto::ERequestSource source) override
     {
         Y_UNUSED(source);
 
         with_lock (Lock) {
-            auto [it, inserted] = Sessions.emplace(
-                socket,
-                std::move(sessionService));
+            auto [it, inserted] = Sessions.emplace(socket);
             UNIT_ASSERT(inserted);
         }
     }
 
-    void Remove(const TSocketHolder& socket) override
+    void RemoveClient(const TSocketHolder& socket) override
     {
         with_lock (Lock) {
             auto it = Sessions.find(socket);
@@ -267,7 +276,8 @@ TBootstrap CreateBootstrap(TOptions options)
     auto endpointListener = CreateSocketEndpointListener(
         testFactory.Logging,
         options.UnixSocketBacklog);
-    endpointListener->SetClientAcceptor(server->GetClientAcceptor());
+    endpointListener->SetClientStorageFactory(
+        server->GetClientStorageFactory());
 
     NProto::TStartEndpointRequest request;
     request.SetUnixSocketPath(options.UnixSocketPath);
@@ -331,9 +341,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto logging = CreateLoggingService("console");
         TFsPath unixSocket("./testSocket");
 
-        auto clientAcceptor = std::make_shared<TTestClientAcceptor>();
+        auto clientStorage = std::make_shared<TTestClientStorage>();
         auto listener = CreateSocketEndpointListener(logging, 16);
-        listener->SetClientAcceptor(clientAcceptor);
+        listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {
             listener->Stop();
@@ -359,7 +369,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         };
 
         Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientAcceptor->GetSessionCount() == 1);
+        UNIT_ASSERT(clientStorage->GetSessionCount() == 1);
 
         {
             auto future = listener->StopEndpoint(unixSocket.GetPath());
@@ -368,7 +378,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         }
 
         Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientAcceptor->GetSessionCount() == 0);
+        UNIT_ASSERT(clientStorage->GetSessionCount() == 0);
     }
 
     Y_UNIT_TEST(ShouldHandleClientDisconnection)
@@ -376,9 +386,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto logging = CreateLoggingService("console");
         TFsPath unixSocket("./testSocket");
 
-        auto clientAcceptor = std::make_shared<TTestClientAcceptor>();
+        auto clientStorage = std::make_shared<TTestClientStorage>();
         auto listener = CreateSocketEndpointListener(logging, 16);
-        listener->SetClientAcceptor(clientAcceptor);
+        listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {
             listener->Stop();
@@ -397,7 +407,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         clientEndpoint->Start();
 
         Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientAcceptor->GetSessionCount() == 1);
+        UNIT_ASSERT(clientStorage->GetSessionCount() == 1);
 
         clientEndpoint->Stop();
         clientEndpoint.reset();
@@ -406,7 +416,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         client.reset();
 
         Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientAcceptor->GetSessionCount() == 0);
+        UNIT_ASSERT(clientStorage->GetSessionCount() == 0);
     }
 
     Y_UNIT_TEST(ShouldNotAcceptClientAfterServerStopped)
@@ -429,7 +439,8 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto endpointListener = CreateSocketEndpointListener(
             testFactory.Logging,
             unixSocketBacklog);
-        endpointListener->SetClientAcceptor(server->GetClientAcceptor());
+        endpointListener->SetClientStorageFactory(
+            server->GetClientStorageFactory());
 
         endpointListener->Start();
         server->Start();
@@ -1101,9 +1112,9 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         auto logging = CreateLoggingService("console");
         TString unixSocket("./invalid/path/to/socket");
 
-        auto clientAcceptor = std::make_shared<TTestClientAcceptor>();
+        auto clientStorage = std::make_shared<TTestClientStorage>();
         auto listener = CreateSocketEndpointListener(logging, 16);
-        listener->SetClientAcceptor(clientAcceptor);
+        listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {
             listener->Stop();

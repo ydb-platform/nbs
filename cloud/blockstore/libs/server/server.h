@@ -16,7 +16,7 @@ struct IServer
     : public IStartable
     , public IIncompleteRequestProvider
 {
-    virtual IClientAcceptorPtr GetClientAcceptor() = 0;
+    virtual IClientStorageFactoryPtr GetClientStorageFactory() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

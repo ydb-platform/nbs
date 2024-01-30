@@ -15,7 +15,7 @@ struct ISocketEndpointListener
     : public IEndpointListener
     , public IStartable
 {
-    virtual void SetClientAcceptor(IClientAcceptorPtr clientAcceptor) = 0;
+    virtual void SetClientStorageFactory(IClientStorageFactoryPtr factory) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

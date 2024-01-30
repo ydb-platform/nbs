@@ -18,8 +18,9 @@ using TServerAppConfigPtr = std::shared_ptr<TServerAppConfig>;
 struct IServer;
 using IServerPtr = std::shared_ptr<IServer>;
 
-struct IClientAcceptor;
-using IClientAcceptorPtr = std::shared_ptr<IClientAcceptor>;
+struct IClientStorageFactory;
+using IClientStorageFactoryPtr =
+    std::shared_ptr<IClientStorageFactory>;
 
 }   // namespace NServer
 }   // namespace NCloud::NBlockStore

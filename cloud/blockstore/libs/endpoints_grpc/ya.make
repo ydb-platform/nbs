@@ -13,6 +13,7 @@ PEERDIR(
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/server
     cloud/blockstore/libs/service
+    cloud/storage/core/libs/uds
 )
 
 END()
