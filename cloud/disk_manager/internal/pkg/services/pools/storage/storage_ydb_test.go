@@ -1211,6 +1211,70 @@ func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestStorageYDBRelocateOverlayDiskWithoutPool(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(
+		ctx,
+		"image",
+		"zone",
+		makeDefaultConfig().GetMaxActiveSlots()+1,
+		0,
+	)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(baseDisks))
+
+	for i := 0; i < len(baseDisks); i++ {
+		baseDisks[i].CreateTaskID = "create"
+	}
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	slot := Slot{
+		OverlayDisk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "overlay",
+		},
+	}
+
+	source, err := storage.AcquireBaseDiskSlot(ctx, "image", slot)
+	require.NoError(t, err)
+	require.Contains(t, baseDisks, source)
+
+	for _, baseDisk := range baseDisks {
+		err = storage.BaseDiskCreated(ctx, baseDisk)
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < len(baseDisks); i++ {
+		baseDisks[i].Ready = true
+	}
+
+	_, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+}
+
 func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
