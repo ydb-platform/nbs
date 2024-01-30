@@ -76,4 +76,22 @@ jobs:
           echo "=========="
         done
         echo "::endgroup::"
+    - name: additional info in case of failure
+      if: failure()
+      shell: bash
+      run: |
+        cd $TMP_DIR
+        grep FAILED RESULT | awk -F: '{print $1}' | while read f;
+        do
+          echo "=========="
+          echo $f
+          cat $f
+          grep $f MD5SUMS
+          md5sum $f
+          if [ -f "${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f}" ];
+          then
+            diff -u ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f} ${f}
+          fi
+          echo "=========="
+        done
 
