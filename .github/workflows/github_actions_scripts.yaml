@@ -1,0 +1,79 @@
+name: NBS Github Actions script testing
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  index:
+    name: Test GA scripts
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Prepare VM
+      uses: ./.github/actions/prepare
+    - name: Prepare env
+      shell: bash
+      run: |
+        echo "SHELLOPTS=$SHELLOPTS:xtrace" >> $GITHUB_ENV
+        echo "TMP_DIR=$(mktemp -d)" >> $GITHUB_ENV
+    - name: Launch transform-ya-junit.py
+      shell: bash
+      run: |
+        set -x
+        echo "::group::transform-junit"
+        find .github/scripts/tests/test-data/ -name ".test_results" -delete
+        python3 .github/scripts/tests/transform-ya-junit.py \
+          --output "$TMP_DIR/junit.xml" \
+          -m .github/config/muted_ya.txt \
+          --ya-out "$GITHUB_WORKSPACE/.github/scripts/tests/test-data/" \
+          --log-url-prefix "LOG_URL_PREFIX" \
+          --log-out-dir "$TMP_DIR" \
+          ".github/scripts/tests/test-data/junit.xml"
+        echo "::endgroup::"
+
+    - name: Launch generate-summary.py
+      shell: bash
+      run: |
+        set -x
+        echo "::group::generate-summary"
+        python3 .github/scripts/tests/generate-summary.py \
+          --summary-out-path "$TMP_DIR" \
+          --summary-out-env-path "$TMP_DIR/summary_env" \
+          --summary-url-prefix "SUMMARY_URL_PREFIX" \
+          --build-preset "linux-x64-relwithdebinfo" \
+          "Tests" ya-test.html "$TMP_DIR/junit.xml"
+        echo "::endgroup::"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REPOSITORY: "ydb-platform/nbs"
+
+    - name: Launch fail-checker.py
+      shell: bash
+      run: |
+        set -x
+        echo "::group::fail-checker"
+        python3 .github/scripts/tests/fail-checker.py "$TMP_DIR/junit.xml" --paths-only | sort | tee -a "$TMP_DIR/fail-checker"
+        echo "::endgroup::"
+    - name: check md5
+      shell: bash
+      run: |
+        echo "::group::check-md5"
+        # find . -type f -exec md5sum {} + > ../test-data/MD5SUMS
+        cp .github/scripts/tests/test-data/MD5SUMS $TMP_DIR/MD5SUMS
+        cd $TMP_DIR
+        md5sum -c MD5SUMS | tee -a RESULT | grep FAILED | awk -F: '{print $1}' | while read f;
+        do
+          echo "=========="
+          echo $f
+          cat $f
+          grep $f MD5SUMS
+          md5sum $f
+          if [ -f "${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f}" ];
+          then
+            diff -u ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f} ${f}
+          fi
+          echo "=========="
+        done
+        echo "::endgroup::"
+

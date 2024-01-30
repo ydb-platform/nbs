@@ -1,0 +1,4 @@
+cloud/blockstore/tests/loadtest/local-encryption
+cloud/blockstore/tests/loadtest/local-mirror
+cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test
+cloud/disk_manager/internal/pkg/facade/image_service_test

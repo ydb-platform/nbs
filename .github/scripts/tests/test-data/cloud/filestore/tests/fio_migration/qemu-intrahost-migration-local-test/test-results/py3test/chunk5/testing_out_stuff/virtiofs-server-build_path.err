@@ -1,0 +1,2 @@
+FUSE : INFO: Virtiofs test server started
+VHD : INFO: virtio_session_exit:395: unregister device /tmp/build_path-6a3299db-afe4-4

@@ -1,0 +1,6 @@
+| TESTS | PASSED | ERRORS | FAILED | SKIPPED | MUTED[^1] |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| [5015](SUMMARY_URL_PREFIXya-test.html) | [4903](SUMMARY_URL_PREFIXya-test.html#PASS) | 0 | [13](SUMMARY_URL_PREFIXya-test.html#FAIL) | [5](SUMMARY_URL_PREFIXya-test.html#SKIP) | [94](SUMMARY_URL_PREFIXya-test.html#MUTE) |
+
+[^1]: All mute rules are defined [here](https://github.com/ydb-platform/nbs/tree/main/.github/config).
+

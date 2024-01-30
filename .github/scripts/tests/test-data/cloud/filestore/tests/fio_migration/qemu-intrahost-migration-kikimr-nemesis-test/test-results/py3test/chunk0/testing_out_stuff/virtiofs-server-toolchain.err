@@ -1,0 +1,2 @@
+FUSE : INFO: Virtiofs test server started
+VHD : INFO: virtio_session_exit:395: unregister device /tmp/toolchain-f7282316-dc55-48

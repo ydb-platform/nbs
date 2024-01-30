@@ -1,0 +1,1 @@
+contrib/python/ydb/py3/ydb/__init__.py:36: UserWarning: Used deprecated behavior, for fix ADD PEERDIR kikimr/public/sdk/python/y

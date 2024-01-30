@@ -1,0 +1,5 @@
+PC=0x10d3e41 m=0 sigcode=0
+
+goroutine 0 [idle]:
+runtime.futex()
+	/-S/contrib/go/_std_1.21/src/runtime/sys_linux_amd64.s:557 +0x2

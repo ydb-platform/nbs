@@ -17,6 +17,10 @@ defaults:
   run:
     shell: bash
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   shell:
     runs-on: ubuntu-latest
@@ -124,3 +128,7 @@ jobs:
               repo: context.repo.repo,
               body: '${{ steps.lint.outputs.WORKFLOW_LINT }}'
             })
+  nbs-github-actions:
+    name: Launch scripts on test-data
+    uses: ./.github/workflows/github_actions_scripts.yaml
+    secrets: inherit

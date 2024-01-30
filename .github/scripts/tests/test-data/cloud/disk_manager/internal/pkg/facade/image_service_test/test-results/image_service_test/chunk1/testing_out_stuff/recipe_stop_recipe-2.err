@@ -1,0 +1,1 @@
+contrib/ydb/tests/library/harness/kikimr_runner.py:8: DeprecationWarning: pkg_resources is deprecated as an API. See https://set

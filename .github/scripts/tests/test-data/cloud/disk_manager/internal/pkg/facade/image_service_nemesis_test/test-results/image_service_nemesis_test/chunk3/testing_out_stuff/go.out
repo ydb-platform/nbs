@@ -1,0 +1,2 @@
+=== RUN   TestImageServiceShouldFailCreateImageFromNonExistentFile
+2024-01-26T03:54:07.455Z	DEBUG	client/client.go:53	Waiting fo
