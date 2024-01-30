@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -947,6 +948,42 @@ void SetCounters(
     counters.SetExecTime(execTime.MicroSeconds());
     counters.SetWaitTime(waitTime.MicroSeconds());
     counters.SetBlocksCount(blocksCount);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError VerifyBlockChecksum(
+    const TBlockDataRef& block,
+    const NKikimr::TLogoBlobID& blobID,
+    const ui64 blockIndex,
+    const ui16 blobOffset,
+    const ui32 expectedChecksum)
+{
+    if (expectedChecksum == 0) {
+        // 0 is a special case - block digest calculation can be
+        // switched on and off => some blobs may not have digests for
+        // some blocks
+        //
+        // we should just skip validation for this block
+
+        return {};
+    }
+
+    const auto actualChecksum = ComputeDefaultDigest(block);
+
+    if (actualChecksum != expectedChecksum) {
+        ReportBlockDigestMismatchInBlob();
+        // we might read proper data upon retry - let's give it a chance
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "block digest mismatch, block="
+                << blockIndex << ", offset=" << blobOffset
+                << ", blobId=" << blobID
+                << ", expected=" << expectedChecksum
+                << ", actual=" << actualChecksum);
+    }
+
+    return {};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -47,12 +47,15 @@ struct TAddMixedBlob
 {
     const TPartialBlobId BlobId;
     const TVector<ui32> Blocks;
+    const TVector<ui32> Checksums;
 
     TAddMixedBlob(
             const TPartialBlobId& blobId,
-            TVector<ui32> blocks)
+            TVector<ui32> blocks,
+            TVector<ui32> checksums)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
+        , Checksums(std::move(checksums))
     {}
 };
 
@@ -63,14 +66,17 @@ struct TAddMergedBlob
     const TPartialBlobId BlobId;
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
+    const TVector<ui32> Checksums;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
             const TBlockRange32& blockRange,
-            const TBlockMask& skipMask)
+            const TBlockMask& skipMask,
+            TVector<ui32> checksums)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
+        , Checksums(std::move(checksums))
     {}
 };
 
@@ -80,12 +86,15 @@ struct TAddFreshBlob
 {
     const TPartialBlobId BlobId;
     const TVector<TBlock> Blocks;
+    const TVector<ui32> Checksums;
 
     TAddFreshBlob(
             const TPartialBlobId& blobId,
-            TVector<TBlock> blocks)
+            TVector<TBlock> blocks,
+            TVector<ui32> checksums)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
+        , Checksums(std::move(checksums))
     {}
 };
 
@@ -109,6 +118,10 @@ struct TAffectedBlob
     TVector<ui16> Offsets;
     TMaybe<TBlockMask> BlockMask;
     TVector<ui32> AffectedBlockIndices;
+
+    // Filled only if a flag is set. BlobMeta is needed only to do some extra
+    // consistency checks.
+    TMaybe<NProto::TBlobMeta> BlobMeta;
 };
 
 using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
@@ -175,18 +188,21 @@ struct TReadBlocksRequest
     ui16 BlobOffset;
     ui32 BlockIndex;
     ui32 GroupId;
+    ui32 BlockChecksum;
 
     TReadBlocksRequest(
             const NKikimr::TLogoBlobID& blobId,
             NActors::TActorId proxy,
             ui16 blobOffset,
             ui32 blockIndex,
-            ui32 groupId)
+            ui32 groupId,
+            ui32 blockChecksum)
         : BlobId(blobId)
         , BSProxy(proxy)
         , BlobOffset(blobOffset)
         , BlockIndex(blockIndex)
         , GroupId(groupId)
+        , BlockChecksum(blockChecksum)
     {}
 };
 

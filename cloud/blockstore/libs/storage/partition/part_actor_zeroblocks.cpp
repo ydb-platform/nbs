@@ -320,7 +320,11 @@ void TPartitionActor::HandleZeroBlocks(
                 0,  // deletion marker
                 blobIndex++);
 
-            requests.emplace_back(blobId, range, TBlockMask());
+            requests.emplace_back(
+                blobId,
+                range,
+                TBlockMask(), // skipMask
+                TVector<ui32>() /* checksums */);
         }
 
         Y_ABORT_UNLESS(requests);

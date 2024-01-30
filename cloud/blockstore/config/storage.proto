@@ -896,4 +896,16 @@ message TStorageServiceConfig
 
     // Create shadow disks for checkpoints for DiskRegistry-based disks.
     optional bool UseShadowDisksForNonreplDiskCheckpoints = 344;
+
+    // Calculate crc32c checksums for blocks in the half-interval [0, X) upon
+    // write and store these checksums in local db.
+    // Affects only blobstorage-based disks.
+    optional uint64 DiskPrefixLengthWithBlockChecksumsInBlobs = 345;
+
+    // Read BlobMeta upon ReadBlocks, calculate crc32c checksums for the fetched
+    // blocks and compare these checksums to the checksums from BlobMeta.
+    //
+    // IMPORTANT: Compaction verifies block checksums for the blocks affected by
+    // it regardless of this flag!
+    optional bool CheckBlockChecksumsInBlobsUponRead = 346;
 }
