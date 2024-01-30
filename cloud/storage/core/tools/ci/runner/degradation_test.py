@@ -23,12 +23,12 @@ from report_common import ROOT_DIR, build_report
 # If the performance of a test case degrades by this factor, it is considered a
 # degradation. For metrics that are supposed to be as low as possible (e.g.
 # latency), the factor is inverted.
-DEGRADATION_FACTOR = 0.7
+DEGRADATION_FACTOR = 0.8
 
 # For degradation tests, we compare performance over `LAST_PERIOD_DAYS` against
 # the performance over `OVERALL_PERIOD_DAYS`.
 OVERALL_PERIOD_DAYS = 14
-LAST_PERIOD_DAYS = 3
+LAST_PERIOD_DAYS = 5
 
 # Use median as the aggregate function for the test case results.
 AGGREGATE_FUNCTION = lambda x: sorted(x)[len(x) // 2] if len(x) > 0 else 0
@@ -77,12 +77,18 @@ def generate_metrics_report(
         if expected_to_grow
         else last > overall / DEGRADATION_FACTOR
     )
+    improved = (
+        last > overall / DEGRADATION_FACTOR
+        if expected_to_grow
+        else last < overall * DEGRADATION_FACTOR
+    )
 
     result = {
         f"last {OVERALL_PERIOD_DAYS} days": overall,
         f"last {LAST_PERIOD_DAYS} days": last,
         "degraded": str(degraded),
-        "status": "fail" if degraded else "ok",
+        "improved": str(improved),
+        "status": "fail" if degraded else ("ok" if not improved else "improved"),
         "name": name,
         "date": str(date),
         "description": description,
@@ -90,6 +96,8 @@ def generate_metrics_report(
 
     if degraded:
         result["error_message"] = f"Performance degraded"
+    if improved:
+        result["highlight_color"] = "#ffffcc"
 
     return result
 
@@ -111,11 +119,11 @@ def generate_reports_local(
         )
 
         for test_tag, history in by_all_time.items():
-            for getter in [
-                lambda x: x.read_iops,
-                lambda x: x.write_iops,
-                lambda x: x.read_bw,
-                lambda x: x.write_bw,
+            for getter, sensor_name in [
+                (lambda x: x.read_iops, "read_iops"), 
+                (lambda x: x.write_iops, "write_iops"), 
+                (lambda x: x.read_bw, "read_bw"), 
+                (lambda x: x.write_bw, "write_bw") 
             ]:
                 report = generate_metrics_report(
                     history.points,
@@ -126,7 +134,7 @@ def generate_reports_local(
                     expected_to_grow=True,
                     name=test_tag,
                     date=today,
-                    description=f"{suite_kind} {test_tag}",
+                    description=f"{suite_kind} {test_tag} {sensor_name}",
                 )
                 reports.append(report)
 
@@ -219,7 +227,7 @@ def generate_reports_monitoring(
                 expected_to_grow=sensor["expected_to_grow"],
                 name=sensor["title"],
                 date=today,
-                description=sensor["url"],
+                description=f"{sensor['url']} {sensor['query']}",
             )
             reports.append(report)
 
@@ -227,14 +235,15 @@ def generate_reports_monitoring(
 if __name__ == "__main__":
     output_dir = sys.argv[1]
     cluster = sys.argv[2]
-    sensors = json.loads(open(sys.argv[3]).read())
+    profile = sys.argv[3]
+    sensors = json.loads(open(sys.argv[4]).read())
 
     today = datetime.datetime.now().date()
 
     reports = []
 
     generate_reports_local(["fio", "nfs_fio"], reports, cluster)
-    generate_reports_monitoring(cluster, reports, sensors)
+    generate_reports_monitoring(profile, reports, sensors)
 
     reports.sort(key=lambda x: x.get("status", "ok"))
 
