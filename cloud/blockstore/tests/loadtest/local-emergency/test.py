@@ -99,15 +99,16 @@ def __run_test(test_case):
     env.kikimr_cluster.restart_nodes()
     env.nbs.restart()
 
-    ret = run_test(
-        "emergency-%s" % test_case.name,
-        common.source_path(test_case.config_path),
-        env.nbs_port,
-        env.mon_port,
-        env_processes=[env.nbs],
-    )
-
-    env.tear_down()
+    try:
+        ret = run_test(
+            "emergency-%s" % test_case.name,
+            common.source_path(test_case.config_path),
+            env.nbs_port,
+            env.mon_port,
+            env_processes=[env.nbs],
+        )
+    finally:
+        env.tear_down()
 
     return ret
 
