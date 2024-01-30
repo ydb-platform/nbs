@@ -38,7 +38,7 @@ target_sources(blockstore-libs-storage-partition_nonrepl-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_state_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_state_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_rdma_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_ut.cpp
