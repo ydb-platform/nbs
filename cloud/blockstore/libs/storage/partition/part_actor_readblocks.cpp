@@ -1033,14 +1033,14 @@ bool TPartitionActor::PrepareReadBlocks(
     args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary
         && Config->GetCheckBlockChecksumsInBlobsUponRead();
 
-    for (auto& mark: args.BlockMarks) {
-        if (!std::holds_alternative<TBlobMark>(mark)) {
-            continue;
-        }
+    if (args.ChecksumsEnabled) {
+        for (auto& mark: args.BlockMarks) {
+            if (!std::holds_alternative<TBlobMark>(mark)) {
+                continue;
+            }
 
-        const auto& value = std::get<TBlobMark>(mark);
+            const auto& value = std::get<TBlobMark>(mark);
 
-        if (args.ChecksumsEnabled) {
             TMaybe<NProto::TBlobMeta> meta;
             auto blobId = MakePartialBlobId(value.BlobId);
             if (db.ReadBlobMeta(blobId, meta)) {
