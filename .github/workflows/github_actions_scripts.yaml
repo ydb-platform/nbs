@@ -62,19 +62,7 @@ jobs:
         # find . -type f -exec md5sum {} + > ../test-data/MD5SUMS
         cp .github/scripts/tests/test-data/MD5SUMS $TMP_DIR/MD5SUMS
         cd $TMP_DIR
-        md5sum -c MD5SUMS | tee -a RESULT | grep FAILED | awk -F: '{print $1}' | while read f;
-        do
-          echo "=========="
-          echo $f
-          cat $f
-          grep $f MD5SUMS
-          md5sum $f
-          if [ -f "${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f}" ];
-          then
-            diff -u ${GITHUB_WORKSPACE}/.github/scripts/tests/test-data/${f} ${f}
-          fi
-          echo "=========="
-        done
+        md5sum -c MD5SUMS | tee -a RESULT
         echo "::endgroup::"
     - name: additional info in case of failure
       if: failure()
