@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+
 SRCS(
     commit.cpp
     partial_blob_id.cpp
