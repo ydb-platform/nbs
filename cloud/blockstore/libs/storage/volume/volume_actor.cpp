@@ -966,6 +966,8 @@ STFUNC(TVolumeActor::StateZombie)
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
+        IgnoreFunc(TEvBootstrapper::TEvStatus);
+
         default:
             if (!RejectRequests(ev)) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);

@@ -457,6 +457,11 @@ TDuration MSeconds(ui32 value)
     xxx(AssignIdToWriteAndZeroRequestsEnabled,     bool,      false           )\
                                                                                \
     xxx(AgentListExpiredParamsCleanupInterval,     TDuration, Seconds(1)      )\
+                                                                               \
+    xxx(UseShadowDisksForNonreplDiskCheckpoints,   bool,      false           )\
+                                                                               \
+    xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
+    xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

@@ -20,8 +20,8 @@ def parse_storage_config(param):
 
 
 def default_storage_config(tablet_version, cache_folder):
-    bw = 1 << 6     # 64 MB/s
-    iops = 1 << 12  # 4096 iops
+    bw = 1 << 6     # 64 MiB/s
+    iops = 1 << 12  # 4096 IOPS
 
     storage = TStorageServiceConfig()
     storage.ThrottlingEnabled = True
@@ -45,6 +45,8 @@ def default_storage_config(tablet_version, cache_folder):
     storage.HDDMaxWriteIops = iops
 
     storage.InactiveClientsTimeout = 10000
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30  # 1 GiB
+    storage.CheckBlockChecksumsInBlobsUponRead = True
 
     if tablet_version == 2:
         storage.BlockDigestsEnabled = True

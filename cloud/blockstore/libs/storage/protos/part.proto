@@ -165,6 +165,12 @@ message TBlobMeta
         TMixedBlocks MixedBlocks = 1;
         TMergedBlocks MergedBlocks = 2;
     }
+
+    // May be empty. Checksums are calculated and stored only if the
+    // corresponding flag in TStorageServiceConfig is set.
+    // May contain zeroes. Zeroes are treated as "no checksum" and thus
+    // verification doesn't work for actual zero checksums.
+    repeated uint32 BlockChecksums = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

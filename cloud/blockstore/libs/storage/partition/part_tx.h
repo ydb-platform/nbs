@@ -230,10 +230,12 @@ struct TTxPartition
         const TBlockRange32 ReadRange;
         const IReadBlocksHandlerPtr ReadHandler;
         const bool ReplyLocal;
+        bool ChecksumsEnabled = false;
         bool Interrupted = false;
 
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
+        THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
@@ -255,8 +257,10 @@ struct TTxPartition
         void Clear()
         {
             ReadHandler->Clear();
+            ChecksumsEnabled = false;
             std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
             std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
+            BlobId2Meta.clear();
             BlockInfos.clear();
         }
 
@@ -358,6 +362,7 @@ struct TTxPartition
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
         bool Discarded = false;
+        bool ChecksumsEnabled = false;
 
         TRangeCompaction(ui32 rangeIdx, const TBlockRange32& blockRange)
             : RangeIdx(rangeIdx)
@@ -373,6 +378,7 @@ struct TTxPartition
             BlobsSkipped = 0;
             BlocksSkipped = 0;
             Discarded = false;
+            ChecksumsEnabled = false;
         }
 
         TBlockMark& GetBlockMark(ui32 blockIndex)

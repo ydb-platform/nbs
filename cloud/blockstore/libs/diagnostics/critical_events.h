@@ -53,6 +53,7 @@ namespace NCloud::NBlockStore {
     xxx(EndpointSwitchFailure)                                                 \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
+    xxx(BlockDigestMismatchInBlob)                                             \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

@@ -94,6 +94,11 @@ Y_UNIT_TEST_SUITE(TBlockDigestGeneratorTest)
         UNIT_ASSERT(!gen->ShouldProcess(0, 10, 4_KB));
         UNIT_ASSERT(!gen->ShouldProcess(100500, 10, 4_KB));
     }
+
+    Y_UNIT_TEST(TestComputeDefaultDigest)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(3387363646, ComputeDefaultDigest({"vasya", 5}));
+    }
 }
 
 }   // namespace NCloud::NBlockStore

@@ -30,4 +30,8 @@ IBlockDigestGeneratorPtr CreateExt4BlockDigestGenerator(
 IBlockDigestGeneratorPtr CreateTestBlockDigestGenerator();
 IBlockDigestGeneratorPtr CreateBlockDigestGeneratorStub();
 
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 ComputeDefaultDigest(TBlockDataRef blockContent);
+
 }   // namespace NCloud::NBlockStore
