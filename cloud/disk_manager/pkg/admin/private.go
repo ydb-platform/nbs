@@ -91,11 +91,10 @@ func newRebaseOverlayDiskCmd(config *client_config.ClientConfig) *cobra.Command 
 ////////////////////////////////////////////////////////////////////////////////
 
 type retireBaseDisk struct {
-	config              *client_config.ClientConfig
-	baseDiskID          string
-	srcDiskZoneID       string
-	srcDiskID           string
-	srcDiskCheckpointID string
+	config        *client_config.ClientConfig
+	baseDiskID    string
+	srcDiskZoneID string
+	srcDiskID     string
 }
 
 func (c *retireBaseDisk) run() error {
@@ -113,7 +112,6 @@ func (c *retireBaseDisk) run() error {
 			ZoneId: c.srcDiskZoneID,
 			DiskId: c.srcDiskID,
 		},
-		SrcDiskCheckpointId: c.srcDiskCheckpointID,
 	}
 
 	resp, err := client.RetireBaseDisk(getRequestContext(ctx), req)
@@ -155,12 +153,6 @@ func newRetireBaseDiskCmd(config *client_config.ClientConfig) *cobra.Command {
 		"zone ID where source disk is located",
 	)
 	cmd.Flags().StringVar(&c.srcDiskID, "src-disk-id", "", "id of source disk")
-	cmd.Flags().StringVar(
-		&c.srcDiskCheckpointID,
-		"src-disk-checkpoint-id",
-		"",
-		"id of source disk checkpoint",
-	)
 
 	return cmd
 }

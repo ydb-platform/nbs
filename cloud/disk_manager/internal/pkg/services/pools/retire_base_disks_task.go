@@ -117,9 +117,8 @@ func (t *retireBaseDisksTask) Run(
 				zoneID,
 			),
 			&protos.RetireBaseDiskRequest{
-				BaseDiskId:          baseDiskID,
-				SrcDisk:             srcDisk,
-				SrcDiskCheckpointId: srcDiskCheckpointID,
+				BaseDiskId: baseDiskID,
+				SrcDisk:    srcDisk,
 			},
 			"",
 			"",
