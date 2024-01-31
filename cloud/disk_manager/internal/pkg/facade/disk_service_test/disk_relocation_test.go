@@ -191,7 +191,7 @@ func setupMigrateEmptyOverlayDiskTest(
 	imageID := t.Name()
 	diskSize := migrationTestsDiskSize
 	imageSize := diskSize / 2
-	_, storageSize := testcommon.CreateImage(
+	testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -241,12 +241,8 @@ func setupMigrateEmptyOverlayDiskTest(
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), changedBytes)
 
-	if withAliveSrcImage {
-		// storageSize is 0 because we should not copy base disk data.
-		return 0
-	}
-
-	return storageSize
+	// storageSize is 0 because we should not copy base disk data.
+	return 0
 }
 
 func successfullyMigrateEmptyOverlayDisk(

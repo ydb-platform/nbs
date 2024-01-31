@@ -1273,6 +1273,43 @@ func TestStorageYDBRelocateOverlayDiskWithoutPool(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
+
+	for i := 0; i < len(baseDisks); i++ {
+		baseDisks[i].CreateTaskID = "create"
+	}
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	for _, baseDisk := range baseDisks {
+		err = storage.BaseDiskCreated(ctx, baseDisk)
+		require.NoError(t, err)
+	}
+
+	relocateInfo, err := relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
+	require.NoError(t, err)
+	require.Equal(t, baseDisks[0].ID, relocateInfo.TargetBaseDiskID)
+
+	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
+
+	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
+		OverlayDisk:      relocateInfo.OverlayDisk,
+		TargetZoneID:     relocateInfo.TargetZoneID,
+		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+		SlotGeneration:   relocateInfo.SlotGeneration,
+	})
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {

@@ -1293,6 +1293,11 @@ func (s *storageYDB) relocateOverlayDiskTx(
 				SlotGeneration:   acquiredSlot.generation,
 			}
 
+			err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo, *acquiredSlot)
+			if err != nil {
+				return RebaseInfo{}, err
+			}
+
 			logging.Info(ctx, "Overlay disk relocating with RebaseInfo %+v", rebaseInfo)
 			return rebaseInfo, nil
 		}
@@ -1343,13 +1348,19 @@ func (s *storageYDB) relocateOverlayDiskTx(
 	}
 
 	imageID := acquiredSlot.imageID
+	isPoolConfigured, err := s.isPoolConfiguredTx(ctx, tx, imageID, targetZoneID)
+	if err != nil {
+		return RebaseInfo{}, err
+	}
 
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
 	if err != nil {
 		return RebaseInfo{}, err
 	}
 
-	if len(freeBaseDisks) == 0 {
+	// If pool is configured baseDisks will be eventually created.
+	// Else we should create it manually.
+	if len(freeBaseDisks) == 0 && !isPoolConfigured {
 		acquiredBaseDisk, err := s.findBaseDisk(ctx, tx, acquiredSlot.baseDiskID)
 		if err != nil {
 			return RebaseInfo{}, err
@@ -1370,16 +1381,28 @@ func (s *storageYDB) relocateOverlayDiskTx(
 			baseDisk,
 		)
 
-		err = s.updateBaseDisksAndSlots(
+		err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, acquiredSlot)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		acquiredSlotOldState := *acquiredSlot
+
+		acquiredSlot.generation += 1
+		acquiredSlot.targetZoneID = baseDisk.zoneID
+		acquiredSlot.targetBaseDiskID = baseDisk.id
+
+		err = s.updateBaseDiskAndSlot(
 			ctx,
 			tx,
-			[]baseDiskTransition{
-				{
-					oldState: nil,
-					state:    &baseDisk,
-				},
+			baseDiskTransition{
+				oldState: nil,
+				state:    &baseDisk,
 			},
-			nil,
+			slotTransition{
+				oldState: &acquiredSlotOldState,
+				state:    acquiredSlot,
+			},
 		)
 		if err != nil {
 			return RebaseInfo{}, err
@@ -1390,7 +1413,7 @@ func (s *storageYDB) relocateOverlayDiskTx(
 			return RebaseInfo{}, err
 		}
 
-		// Should wait until target base disk is ready.
+		// Should wait until base disk is ready.
 		return RebaseInfo{}, errors.NewInterruptExecutionError()
 	}
 
