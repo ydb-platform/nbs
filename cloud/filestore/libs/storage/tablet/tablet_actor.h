@@ -294,7 +294,7 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
-    void HandleHttpInfo_Compaction(
+    void HandleHttpInfo_ForceOperation(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

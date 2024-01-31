@@ -218,7 +218,8 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
     out << "<p><a href='' data-toggle='modal' data-target='#force-compaction'>Force Full Compaction</a></p>"
         << "<form method='POST' name='ForceCompaction' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='compactAll'/>"
+        << "<input type='hidden' name='action' value='forceOperationAll'/>"
+        << "<input type='hidden' name='mode' value='compaction'/>"
         << "<input class='btn btn-primary' type='button' value='Compact ALL ranges'"
         << " data-toggle='modal' data-target='#force-compaction'/>"
         << "</form>";
@@ -234,8 +235,8 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
            "data-target='#force-cleanup'>Force Full Cleanup</a></p>"
         << "<form method='POST' name='ForceCleanup' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='compactAll'/>"
-        << "<input type='hidden' name='Cleanup' value='true'/>"
+        << "<input type='hidden' name='action' value='forceOperationAll'/>"
+        << "<input type='hidden' name='mode' value='cleanup'/>"
         << "<input class='btn btn-primary' type='button' value='Cleanup ALL "
            "ranges'"
         << " data-toggle='modal' data-target='#force-cleanup'/>"
@@ -848,7 +849,8 @@ void TIndexTabletActor::HandleHttpInfo(
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
     static const THttpHandlers postActions = {{
-        {"compactAll",      &TIndexTabletActor::HandleHttpInfo_Compaction },
+        {"forceOperationAll",
+         &TIndexTabletActor::HandleHttpInfo_ForceOperation},
     }};
 
     static const THttpHandlers getActions {{
@@ -996,7 +998,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
-void TIndexTabletActor::HandleHttpInfo_Compaction(
+void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
@@ -1035,7 +1037,7 @@ void TIndexTabletActor::HandleHttpInfo_Compaction(
     }
 
     TEvIndexTabletPrivate::EForcedCompactionMode mode =
-        params.Has("Cleanup")
+        params.Get("mode") == "cleanup"
             ? TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup
             : TEvIndexTabletPrivate::EForcedCompactionMode::Compaction;
 

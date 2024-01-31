@@ -30,13 +30,13 @@ namespace {
  * request that is necessary to be performed to passed range.
  */
 template <typename TResponseType, typename TRequestConstructor>
-class TForcedCompactionActorBase final
+class TForcedOperationActor final
     : public TActorBootstrapped<
-          TForcedCompactionActorBase<TResponseType, TRequestConstructor>>
+          TForcedOperationActor<TResponseType, TRequestConstructor>>
 {
 private:
     using TBase = NActors::TActorBootstrapped<
-        TForcedCompactionActorBase<TResponseType, TRequestConstructor>>;
+        TForcedOperationActor<TResponseType, TRequestConstructor>>;
 
     const TActorId Tablet;
     const TString LogTag;
@@ -46,7 +46,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
 public:
-    TForcedCompactionActorBase(
+    TForcedOperationActor(
         TActorId tablet,
         TString logTag,
         TDuration retry,
@@ -80,8 +80,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TResponseType, typename TRequestConstructor>
-TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
-    TForcedCompactionActorBase(
+TForcedOperationActor<TResponseType, TRequestConstructor>::
+    TForcedOperationActor(
         TActorId tablet,
         TString logTag,
         TDuration retry,
@@ -97,7 +97,7 @@ TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::Bootstrap(
+void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
     const TActorContext& ctx)
 {
     TBase::Become(&TBase::TThis::StateWork);
@@ -111,7 +111,7 @@ void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::Bootstrap(
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
     SendCompactionRequest(const TActorContext& ctx)
 {
     auto request = TRequestConstructor()(State->GetCurrentRange());
@@ -121,7 +121,7 @@ void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
 
 template <typename TResponseType, typename TRequestConstructor>
 STFUNC(
-    (TForcedCompactionActorBase<TResponseType, TRequestConstructor>::StateWork))
+    (TForcedOperationActor<TResponseType, TRequestConstructor>::StateWork))
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
@@ -136,7 +136,7 @@ STFUNC(
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
     HandleCompactionResponse(
         const TResponseType::TPtr& ev,
         const TActorContext& ctx)
@@ -160,7 +160,7 @@ void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
     HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
 {
     Y_UNUSED(ev);
@@ -168,7 +168,7 @@ void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
     HandlePoisonPill(
         const TEvents::TEvPoison::TPtr& ev,
         const TActorContext& ctx)
@@ -178,7 +178,7 @@ void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
 }
 
 template <typename TResponseType, typename TRequestConstructor>
-void TForcedCompactionActorBase<TResponseType, TRequestConstructor>::
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
     ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
 {
     {
@@ -226,11 +226,11 @@ struct TCleanupRequestConstructor
     }
 };
 
-using TForcedCompactionActor = TForcedCompactionActorBase<
+using TForcedCompactionActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCompactionResponse,
     TCompactionRequestConstructor>;
 
-using TForcedCleanupActor = TForcedCompactionActorBase<
+using TForcedCleanupActor = TForcedOperationActor<
     TEvIndexTabletPrivate::TEvCleanupResponse,
     TCleanupRequestConstructor>;
 
