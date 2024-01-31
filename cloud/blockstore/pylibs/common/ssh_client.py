@@ -287,6 +287,7 @@ class SftpClient:
 
     def __init__(self, client: SshClient) -> None:
         self._client = client
+        self._tmp_dir.mkdir(exist_ok=True)
 
     def put(self, src, dst) -> None:
         self._client.upload_file(src, dst)
