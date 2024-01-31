@@ -51,6 +51,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskRegistryDeviceNotFoundSoft)                                        \
     xxx(DiskRegistrySourceDiskNotFound)                                        \
     xxx(EndpointSwitchFailure)                                                 \
+    xxx(ExternalEndpointUnexpectedExit)                                        \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(BlockDigestMismatchInBlob)                                             \

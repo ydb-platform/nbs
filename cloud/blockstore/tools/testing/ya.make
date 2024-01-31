@@ -4,6 +4,7 @@ RECURSE(
     eternal_tests
     fake-conductor
     fake-nbs
+    fake-vhost-server
     generate-agents
     infra-client
     loadtest
