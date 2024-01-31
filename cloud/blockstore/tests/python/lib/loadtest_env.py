@@ -140,7 +140,7 @@ class LocalLoadTest:
         
         # It may be beneficial to save dmesg output for debugging purposes.
         try:
-            with open("dmesg.txt", "w") as dmesg_output:
+            with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
                 subprocess.run(
                     ["sudo", "dmesg", "-T"],
                     stdout=dmesg_output,
