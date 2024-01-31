@@ -16,13 +16,15 @@ struct IEndpointStorage
 {
     virtual ~IEndpointStorage() = default;
 
-    virtual TResultOrError<TVector<ui32>> GetEndpointIds() = 0;
+    virtual TResultOrError<TVector<TString>> GetEndpointIds() = 0;
 
-    virtual TResultOrError<TString> GetEndpoint(ui32 endpointId) = 0;
+    virtual TResultOrError<TString> GetEndpoint(const TString& endpointId) = 0;
 
-    virtual TResultOrError<ui32> AddEndpoint(const TString& endpointSpec) = 0;
+    virtual NProto::TError AddEndpoint(
+        const TString& endpointId,
+        const TString& endpointSpec) = 0;
 
-    virtual NProto::TError RemoveEndpoint(ui32 endpointId) = 0;
+    virtual NProto::TError RemoveEndpoint(const TString& endpointId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

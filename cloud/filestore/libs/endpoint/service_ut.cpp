@@ -144,6 +144,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 {
     Y_UNIT_TEST(ShouldHandleKickEndpoint)
     {
+        auto keyringId = 13;
         TString id = "id";
         TString unixSocket = "testSocket";
 
@@ -182,11 +183,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(start);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto error = endpointStorage->AddEndpoint(
+            ToString(keyringId),
+            strOrError.GetResult());
+        UNIT_ASSERT_C(!HasError(error), error);
 
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
-        request->SetKeyringId(keyOrError.GetResult());
+        request->SetKeyringId(keyringId);
 
         auto future = service->KickEndpoint(
             MakeIntrusive<TCallContext>(),
@@ -206,7 +209,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         UNIT_ASSERT(comparator.Equals(created.Config, *config));
 
         // kick unexisting
-        auto wrongKeyringId = keyOrError.GetResult() + 42;
+        auto wrongKeyringId = keyringId + 42;
         response = KickEndpoint(*service, wrongKeyringId);
 
         UNIT_ASSERT(HasError(response));
@@ -220,6 +223,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
     Y_UNIT_TEST(ShouldAllowToChangeReadonlyAndMountSeqNumber)
     {
+        auto keyringId = 13;
         TString id = "id";
         TString unixSocket = "testSocket";
 
@@ -258,11 +262,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(start);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto error = endpointStorage->AddEndpoint(
+            ToString(keyringId),
+            strOrError.GetResult());
+        UNIT_ASSERT_C(!HasError(error), error);
 
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
-        request->SetKeyringId(keyOrError.GetResult());
+        request->SetKeyringId(keyringId);
 
         auto future = service->KickEndpoint(
             MakeIntrusive<TCallContext>(),
@@ -305,11 +311,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(start);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto keyringId = 57;
+            auto error = endpointStorage->AddEndpoint(
+                ToString(keyringId),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
-            request->SetKeyringId(keyOrError.GetResult());
+            request->SetKeyringId(keyringId);
 
             auto future = service->KickEndpoint(
                 MakeIntrusive<TCallContext>(),

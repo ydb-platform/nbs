@@ -388,7 +388,7 @@ public:
             }
 
             if (auto ptr = weakPtr.lock()) {
-                ptr->RemovePersistentEndpointFromStorage(req);
+                ptr->EndpointStorage->RemoveEndpoint(req.GetUnixSocketPath());
             }
             return response;
         });
@@ -448,7 +448,7 @@ private:
         std::shared_ptr<NProto::TKickEndpointRequest> request)
     {
         auto requestOrError = EndpointStorage->GetEndpoint(
-            request->GetKeyringId());
+            ToString(request->GetKeyringId()));
 
         if (HasError(requestOrError)) {
             return MakeFuture<NProto::TKickEndpointResponse>(
@@ -494,41 +494,12 @@ private:
             return error;
         }
 
-        error = EndpointStorage->AddEndpoint(data).GetError();
+        error = EndpointStorage->AddEndpoint(request.GetUnixSocketPath(), data);
         if (HasError(error)) {
             return error;
         }
 
         return {};
-    }
-
-    NProto::TError RemovePersistentEndpointFromStorage(
-        const NProto::TStopEndpointRequest& request)
-    {
-        const auto& socketPath = request.GetUnixSocketPath();
-
-        auto [ids, error] = EndpointStorage->GetEndpointIds();
-        if (HasError(error)) {
-            return error;
-        }
-
-        for (auto id: ids) {
-            auto [data, error] = EndpointStorage->GetEndpoint(id);
-            if (HasError(error)) {
-                continue;
-            }
-
-            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(data);
-            if (req && req->GetUnixSocketPath() == socketPath) {
-                if (req->GetPersistent()) {
-                    return EndpointStorage->RemoveEndpoint(id);
-                }
-                break;
-            }
-        }
-
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "Couldn't find endpoint " << socketPath);
     }
 };
 

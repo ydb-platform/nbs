@@ -19,7 +19,7 @@ struct IMutableEndpointStorage
     virtual NProto::TError Init() = 0;
     virtual NProto::TError Remove() = 0;
 
-    virtual TResultOrError<ui32> AddEndpoint(
+    virtual TResultOrError<TString> AddEndpoint(
         const TString& key,
         const TString& data) = 0;
 
