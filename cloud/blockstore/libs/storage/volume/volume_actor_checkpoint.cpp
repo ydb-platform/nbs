@@ -1052,7 +1052,7 @@ void TVolumeActor::AddCheckpointRequest(
     const TCheckpointRequest& request,
     const TCheckpointRequestInfo& info)
 {
-    if (TryReplyToCheckpointRequestWithoutSaving(ctx, request, info)) {
+    if (TryReplyToCheckpointRequest(ctx, request, info)) {
         return;
     }
 
@@ -1069,8 +1069,7 @@ void TVolumeActor::AddCheckpointRequest(
         return;
     }
 
-    if (!State->GetCheckpointStore().GetCheckpoitsWithSavedRequest().contains(
-            request.CheckpointId)) {
+    if (!State->GetCheckpointStore().HasSavedRequest(request.CheckpointId)) {
         SaveCheckpointRequest(ctx, request, info);
         return;
     }
@@ -1087,15 +1086,15 @@ void TVolumeActor::AddCheckpointRequest(
         info});
 }
 
-bool TVolumeActor::TryReplyToCheckpointRequestWithoutSaving(
+bool TVolumeActor::TryReplyToCheckpointRequest(
     const TActorContext& ctx,
     const TCheckpointRequest& request,
     const TCheckpointRequestInfo& info)
 {
-    std::optional<NProto::TError> error =
+    std::optional<NProto::TError> validationResult =
         ValidateCheckpointRequest(ctx, request);
 
-    if (!error) {
+    if (!validationResult) {
         return false;
     }
 
@@ -1104,15 +1103,15 @@ bool TVolumeActor::TryReplyToCheckpointRequestWithoutSaving(
     switch (request.ReqType) {
         case ECheckpointRequestType::Create:
         case ECheckpointRequestType::CreateWithoutData: {
-            response = std::make_unique<TCreateCheckpointMethod::TResponse>(*error);
+            response = std::make_unique<TCreateCheckpointMethod::TResponse>(*validationResult);
             break;
         }
         case ECheckpointRequestType::Delete: {
-            response = std::make_unique<TDeleteCheckpointMethod::TResponse>(*error);
+            response = std::make_unique<TDeleteCheckpointMethod::TResponse>(*validationResult);
             break;
         }
         case ECheckpointRequestType::DeleteData: {
-            response = std::make_unique<TDeleteCheckpointDataMethod::TResponse>(*error);
+            response = std::make_unique<TDeleteCheckpointDataMethod::TResponse>(*validationResult);
             break;
         }
     }
@@ -1139,9 +1138,8 @@ void TVolumeActor::ProcessPostponedCheckpointRequests(
         const auto& request = State->GetCheckpointStore().GetRequestById(
             ponstponedRequestInfo->RequestId);
 
-        if (!TryReplyToCheckpointRequestWithoutSaving(ctx, request, ponstponedRequestInfo->Info)) {
-            if (!State->GetCheckpointStore().GetCheckpoitsWithSavedRequest().contains(
-                    request.CheckpointId)) {
+        if (!TryReplyToCheckpointRequest(ctx, request, ponstponedRequestInfo->Info)) {
+            if (!State->GetCheckpointStore().HasSavedRequest(request.CheckpointId)) {
                 PostponedCheckpointRequests.RemovePostponedRequest(checkpointId);
                 SaveCheckpointRequest(ctx, request, ponstponedRequestInfo->Info);
             }
@@ -1166,8 +1164,7 @@ void TVolumeActor::SaveCheckpointRequest(
     const TCheckpointRequest& request,
     const TCheckpointRequestInfo& info)
 {
-    State->GetCheckpointStore().GetCheckpoitsWithSavedRequest().insert(
-        request.CheckpointId);
+    State->GetCheckpointStore().MarkHasSavedRequest(request.CheckpointId);
 
     AddTransaction(*info.RequestInfo);
 
@@ -1497,9 +1494,7 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
     auto checkpointRequestCopy =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    auto& checkpointsWithSavedRequest =
-        State->GetCheckpointStore().GetCheckpoitsWithSavedRequest();
-    checkpointsWithSavedRequest.erase(checkpointRequestCopy.CheckpointId);
+    State->GetCheckpointStore().MarkHasNoSavedRequest(checkpointRequestCopy.CheckpointId);
 
     TVolumeDatabase db(tx.DB);
     db.UpdateCheckpointRequest(

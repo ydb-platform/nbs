@@ -199,13 +199,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-5"));
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-5"));
 
-        const auto& checkpoitsWithSavedRequest = store.GetCheckpoitsWithSavedRequest();
-        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoitsWithSavedRequest.contains("checkpoint-3"));
-        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-4"));
-        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(false, checkpoitsWithSavedRequest.contains("checkpoint-6"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasSavedRequest("checkpoint-1"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasSavedRequest("checkpoint-2"));
+        UNIT_ASSERT_VALUES_EQUAL(true, store.HasSavedRequest("checkpoint-3"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasSavedRequest("checkpoint-4"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasSavedRequest("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasSavedRequest("checkpoint-6"));
     }
 
     Y_UNIT_TEST(CreateFail)

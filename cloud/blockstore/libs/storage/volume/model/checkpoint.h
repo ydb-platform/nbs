@@ -202,8 +202,9 @@ public:
 
     [[nodiscard]] TVector<TCheckpointRequest> GetCheckpointRequests() const;
 
-    TSet<TString>& GetCheckpoitsWithSavedRequest();
-    const TSet<TString>& GetCheckpoitsWithSavedRequest() const;
+    bool HasSavedRequest(const TString& checkpointId) const;
+    void MarkHasSavedRequest(TString checkpointId);
+    void MarkHasNoSavedRequest(TString checkpointId);
 
 private:
     [[nodiscard]] TCheckpointRequest& GetRequest(ui64 requestId);

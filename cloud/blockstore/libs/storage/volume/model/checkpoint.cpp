@@ -355,14 +355,21 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
     }
 }
 
-TSet<TString>& TCheckpointStore::GetCheckpoitsWithSavedRequest()
+bool TCheckpointStore::HasSavedRequest(const TString& checkpointId) const
 {
-    return CheckpointsWithSavedRequest;
+    return CheckpointsWithSavedRequest.contains(checkpointId);
 }
 
-const TSet<TString>& TCheckpointStore::GetCheckpoitsWithSavedRequest() const
+void TCheckpointStore::MarkHasSavedRequest(TString checkpointId)
 {
-    return CheckpointsWithSavedRequest;
+    Y_DEBUG_ABORT_UNLESS(!CheckpointsWithSavedRequest.contains(checkpointId));
+    CheckpointsWithSavedRequest.insert(checkpointId);
+}
+
+void TCheckpointStore::MarkHasNoSavedRequest(TString checkpointId)
+{
+    Y_DEBUG_ABORT_UNLESS(CheckpointsWithSavedRequest.contains(checkpointId));
+    CheckpointsWithSavedRequest.erase(checkpointId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

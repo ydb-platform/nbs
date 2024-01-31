@@ -648,7 +648,7 @@ private:
         const TCheckpointRequest& request,
         const TCheckpointRequestInfo& info);
 
-    bool TryReplyToCheckpointRequestWithoutSaving(
+    bool TryReplyToCheckpointRequest(
         const NActors::TActorContext& ctx,
         const TCheckpointRequest& request,
         const TCheckpointRequestInfo& info);
