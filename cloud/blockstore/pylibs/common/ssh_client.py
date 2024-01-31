@@ -264,12 +264,12 @@ class SftpClient:
             self._path = path
 
         def read(self) -> str:
-            path = SftpClient._tmp_dir / uuid.uuid4()
+            path = SftpClient._tmp_dir / str(uuid.uuid4())
             self._client.download_file(str(path.resolve()), path)
             return path.read_text()
 
         def write(self, text: str | bytes) -> None:
-            path = SftpClient._tmp_dir / uuid.uuid4()
+            path = SftpClient._tmp_dir / str(uuid.uuid4())
             if isinstance(text, str):
                 path.write_text(text)
             else:
