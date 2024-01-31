@@ -22,7 +22,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentLargeTest)
         const ui32 blockSize = 4_KB;
         const ui64 totalBlockCount = totalSize / blockSize;
         const TString uuid = "FileDevice-1";
-        const auto filePath = TFsPath(GetSystemTempDir()) / "test";
+        TTempDir tempDir;
+        const auto filePath = tempDir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(totalSize);

@@ -11,6 +11,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
+#include <util/folder/tempdir.h>
 #include <util/generic/size_literals.h>
 #include <util/system/file.h>
 
@@ -43,6 +44,7 @@ struct TFixture
     NCloud::ILoggingServicePtr Logging;
     std::shared_ptr<IServer> Server;
     TVector<TFile> Files;
+    TTempDir TempDir;
 
     TOptions Options {
         .SocketPath = SocketPath,
@@ -65,7 +67,7 @@ public:
         Files.reserve(ChunkCount);
         for (ui32 i = 0; i != ChunkCount; ++i) {
             auto& file = Files.emplace_back(
-                "nrd_" + ToString(i),
+                TempDir.Path() / ("nrd_" + ToString(i)),
                 EOpenModeFlag::CreateAlways);
 
             Options.Layout.push_back({

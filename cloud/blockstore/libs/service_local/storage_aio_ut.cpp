@@ -94,14 +94,6 @@ TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
 
 }
 
-TFsPath TryGetRamDrivePath()
-{
-    auto p = GetRamDrivePath();
-    return !p
-        ? GetSystemTempDir()
-        : p;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,7 +106,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui64 blockCount = 1024;
         const ui64 startIndex = 10;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * (blockCount + startIndex));
@@ -223,7 +216,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4096;
         const ui64 blockCount = 32_MB / blockSize;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
 
@@ -332,7 +326,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4_KB;
         const ui64 blockCount = 8_GB / blockSize;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
@@ -466,7 +461,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4_KB;
         const ui64 blockCount = 32_MB / blockSize;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
@@ -531,7 +527,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4_KB;
         const ui64 blockCount = 32_MB / blockSize;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
@@ -594,7 +591,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4_KB;
         const ui64 blockCount = 32_MB / blockSize;
-        const auto filePath = TryGetRamDrivePath() / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * blockCount);
