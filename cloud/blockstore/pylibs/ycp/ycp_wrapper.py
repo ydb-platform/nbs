@@ -61,7 +61,8 @@ class YcpWrapper:
                         platform_id: str = None,
                         auto_delete: bool = True,
                         local_disk_size: int = None,
-                        description: str = None) -> Ycp.Instance:
+                        description: str = None,
+                        underlay_vm: bool = False) -> Ycp.Instance:
         self._logger.info('Creating instance')
         create_instance_cfg = Ycp.CreateInstanceConfig(
             name=name or '{}{}'.format(self.TMP_INSTANCE_PREFIX, self._ycp_engine.generate_id()),
@@ -79,6 +80,7 @@ class YcpWrapper:
             platform_id=platform_id,
             local_disk_size=local_disk_size,
             description=description,
+            underlay_vm=underlay_vm,
         )
         self._logger.debug(f'create_instance_config: {create_instance_cfg}')
         try:

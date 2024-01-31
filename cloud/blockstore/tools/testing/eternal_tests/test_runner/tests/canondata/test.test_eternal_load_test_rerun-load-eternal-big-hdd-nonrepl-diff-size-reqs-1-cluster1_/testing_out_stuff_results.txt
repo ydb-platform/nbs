@@ -3,4 +3,4 @@ Input=
 SSH 1:1:1:1:1:1:1:1: pkill -f "^/usr/bin/eternal-load.*vdb"
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
 SFTP FILE 1:1:1:1:1:1:1:1//tmp/load-config.json f=w
-SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1Execute command /usr/bin/eternal-load --config-type file --restore-config-path /tmp/load-config.json --file /dev/vdb --dump-config-path /tmp/load-config.json  >> /tmp/eternal-load.log 2>&1
+SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1Execute command nohup sh -c "/usr/bin/eternal-load --config-type file --restore-config-path /tmp/load-config.json --file /dev/vdb --dump-config-path /tmp/load-config.json  >> /tmp/eternal-load.log 2>&1" &>/dev/null &

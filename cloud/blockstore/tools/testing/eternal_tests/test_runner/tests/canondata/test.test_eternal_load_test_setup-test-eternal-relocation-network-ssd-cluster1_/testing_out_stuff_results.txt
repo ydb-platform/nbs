@@ -16,4 +16,4 @@ Input=
 SFTP PUT 1:1:1:1:1:1:1:1/../eternal-load/bin/eternal-load -> /usr/bin/eternal-load
 SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/eternal-load f=493
 SFTP FILE 1:1:1:1:1:1:1:1//etc/systemd/system/eternalload_vdb.service f=w
-SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1Execute command systemctl daemon-reload && systemctl enable eternalload_vdb.serviceExecute command systemctl start eternalload_vdb.service
+SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1Execute command nohup sh -c "systemctl daemon-reload && systemctl enable eternalload_vdb.service" &>/dev/null &Execute command nohup sh -c "systemctl start eternalload_vdb.service" &>/dev/null &

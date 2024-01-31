@@ -153,6 +153,7 @@ class Ycp:
         platform_id: str
         local_disk_size: int
         description: str
+        underlay_vm: bool
 
     @dataclass
     class CreateDiskConfig:
@@ -184,11 +185,14 @@ class Ycp:
 
         def __init__(self, info):
             self.id = info['id']
-            network_interface = info['network_interfaces'][0]
-            address_key = "primary_v6_address"
-            if address_key not in network_interface:
-                address_key = "primary_v4_address"
-            self.ip = network_interface[address_key]['address']
+            if 'underlay_networks' in info:
+                self.ip = info['underlay_networks'][0]['ipv6_address']
+            else:
+                network_interface = info['network_interfaces'][0]
+                address_key = 'primary_v6_address'
+                if address_key not in network_interface:
+                    address_key = 'primary_v4_address'
+                self.ip = network_interface[address_key]['address']
             self.compute_node = info.get('compute_node')
             self.name = info['name']
             self.created_at = dateparser.parse(info['created_at'])
@@ -392,6 +396,7 @@ class Ycp:
                 platform_id=config.platform_id or 'standard-v2',
                 local_disk_size=config.local_disk_size,
                 description=config.description,
+                underlay_vm=config.underlay_vm,
             )
 
             cmd = self._ycp.compute.instance.create(request='-')

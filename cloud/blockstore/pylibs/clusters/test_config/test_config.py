@@ -20,6 +20,7 @@ class FolderDesc:
     service_account_id: str = None
     symmetric_key_id: str = None
     hot_attach_fs: bool = True
+    create_underlay_vms: bool = False
 
 
 @dataclass

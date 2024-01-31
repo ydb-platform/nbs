@@ -2,4 +2,4 @@ Command=ycp --format json --profile cluster1 compute instance list --folder-id f
 Input=
 SFTP PUT 1:1:1:1:1:1:1:1/../eternal-load/bin/eternal-load -> /usr/bin/eternal-load
 SFTP CHMOD 1:1:1:1:1:1:1:1//usr/bin/eternal-load f=493
-Execute command /usr/bin/eternal-load --config-type file --restore-config-path /tmp/load-config.json --file /dev/vdb --dump-config-path /tmp/load-config.json  >> /tmp/eternal-load.log 2>&1
+Execute command nohup sh -c "/usr/bin/eternal-load --config-type file --restore-config-path /tmp/load-config.json --file /dev/vdb --dump-config-path /tmp/load-config.json  >> /tmp/eternal-load.log 2>&1" &>/dev/null &

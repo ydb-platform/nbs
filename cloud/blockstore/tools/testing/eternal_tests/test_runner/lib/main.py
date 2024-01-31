@@ -208,7 +208,7 @@ class EternalTestHelper:
         self.logger.info(f'Running command on instance:\n{command}')
 
         channel = self.module_factories.make_ssh_channel(self.args.dry_run, instance_ip, user='root', ssh_key_path=self.args.ssh_key_path)
-        channel.exec_command(command)
+        channel.exec_command(f'nohup sh -c "{command}" &>/dev/null &')
 
     @common.retry(tries=5, delay=5, exception=Error)
     def _wait_until_killing(self, instance_ip: str, command: str):
@@ -380,7 +380,8 @@ class EternalTestHelper:
                 host_group=self.args.host_group,
                 local_disk_size=local_disk_size,
                 auto_delete=False,
-                description=f"Eternal test: {self.args.test_case}") as instance:
+                description=f"Eternal test: {self.args.test_case}",
+                underlay_vm=self.test_config.ycp_config.folder.create_underlay_vms) as instance:
 
             self.logger.info(f'Waiting until instance ip=<{instance.ip}> becomes available via ssh')
             self.helpers.wait_until_instance_becomes_available_via_ssh(instance.ip)
