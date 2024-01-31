@@ -39,7 +39,8 @@ Y_UNIT_TEST_SUITE(TAioStorageTest)
     {
         const ui32 blockSize = 4_KB;
         const ui64 totalBlockCount = 5_GB / blockSize;
-        const auto filePath = TFsPath(GetSystemTempDir()) / "test";
+        TTempDir dir;
+        const auto filePath = dir.Path() / "test";
 
         TFile fileData(filePath, EOpenModeFlag::CreateAlways);
         fileData.Resize(blockSize * totalBlockCount);

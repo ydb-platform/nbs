@@ -41,14 +41,6 @@ NLWTrace::TQuery QueryFromString(const TString& text)
     return query;
 }
 
-TFsPath TryGetRamDrivePath()
-{
-    auto p = GetRamDrivePath();
-    return !p
-        ? GetSystemTempDir()
-        : p;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1333,7 +1325,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
     Y_UNIT_TEST(ShouldUpdateStats)
     {
-        auto const workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        auto const workingDir = tempDir.Path();
 
         TTestBasicRuntime runtime;
 
@@ -1600,7 +1593,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
 
-        auto const workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        auto const workingDir = tempDir.Path();
 
         *agentConfig.AddFileDevices() = PrepareFileDevice(
             workingDir / "test",
@@ -1781,7 +1775,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetAcquireRequired(true);
         agentConfig.SetEnabled(true);
 
-        const auto workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        const auto workingDir = tempDir.Path();
         const auto filePath = workingDir / "test";
 
         {
@@ -2044,7 +2039,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
 
-        auto const workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        auto const workingDir = tempDir.Path();
 
         *agentConfig.AddFileDevices() = PrepareFileDevice(
             workingDir / "test-1",
@@ -2211,7 +2207,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetAgentId("agent-id");
         agentConfig.SetEnabled(true);
 
-        auto const workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        auto const workingDir = tempDir.Path();
 
         *agentConfig.AddFileDevices() = PrepareFileDevice(
             workingDir / "test-1",
@@ -2237,7 +2234,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         agentConfig.SetEnabled(true);
         agentConfig.SetAcquireRequired(true);
 
-        auto const workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        auto const workingDir = tempDir.Path();
 
         *agentConfig.AddFileDevices() = PrepareFileDevice(
             workingDir / "test-1",
@@ -3221,7 +3219,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             }
         };
 
-        const auto workingDir = TryGetRamDrivePath();
+        TTempDir tempDir;
+        const auto workingDir = tempDir.Path();
         TTestBasicRuntime runtime;
         auto mockSp = new TMockStorageProvider();
         std::shared_ptr<IStorageProvider> sp(mockSp);
