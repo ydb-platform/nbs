@@ -1293,6 +1293,11 @@ func (s *storageYDB) relocateOverlayDiskTx(
 				SlotGeneration:   acquiredSlot.generation,
 			}
 
+			err = s.overlayDiskRebasingTx(ctx, tx, rebaseInfo, *acquiredSlot)
+			if err != nil {
+				return RebaseInfo{}, err
+			}
+
 			logging.Info(ctx, "Overlay disk relocating with RebaseInfo %+v", rebaseInfo)
 			return rebaseInfo, nil
 		}
@@ -1348,13 +1353,68 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		return RebaseInfo{}, err
 	}
 
-	if !isPoolConfigured {
-		return RebaseInfo{}, nil
-	}
-
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
 	if err != nil {
 		return RebaseInfo{}, err
+	}
+
+	// If pool is configured baseDisks will be eventually created.
+	// Else we should create it manually.
+	if len(freeBaseDisks) == 0 && !isPoolConfigured {
+		acquiredBaseDisk, err := s.findBaseDisk(ctx, tx, acquiredSlot.baseDiskID)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		baseDisk := s.generateBaseDisk(
+			imageID,
+			targetZoneID,
+			acquiredBaseDisk.imageSize,
+			&types.Disk{
+				ZoneId: acquiredBaseDisk.zoneID,
+				DiskId: acquiredBaseDisk.id,
+			},
+		)
+		logging.Info(
+			ctx,
+			"generated base disk: %+v",
+			baseDisk,
+		)
+
+		err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, acquiredSlot)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		acquiredSlotOldState := *acquiredSlot
+
+		acquiredSlot.generation += 1
+		acquiredSlot.targetZoneID = baseDisk.zoneID
+		acquiredSlot.targetBaseDiskID = baseDisk.id
+
+		err = s.updateBaseDiskAndSlot(
+			ctx,
+			tx,
+			baseDiskTransition{
+				oldState: nil,
+				state:    &baseDisk,
+			},
+			slotTransition{
+				oldState: &acquiredSlotOldState,
+				state:    acquiredSlot,
+			},
+		)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return RebaseInfo{}, err
+		}
+
+		// Should wait until base disk is ready.
+		return RebaseInfo{}, errors.NewInterruptExecutionError()
 	}
 
 	for _, baseDisk := range freeBaseDisks {
