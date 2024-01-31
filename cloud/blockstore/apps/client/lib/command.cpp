@@ -439,7 +439,9 @@ void TCommand::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
 
-    InitClientConfig(InitIamTokenClient());
+    InitIamTokenClient();
+
+    InitClientConfig();
 
     const auto& logConfig = ClientConfig->GetLogConfig();
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
@@ -565,7 +567,7 @@ void TCommand::InitLWTrace()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
 }
 
-TString TCommand::InitIamTokenClient()
+void TCommand::InitIamTokenClient()
 {
     NProto::TIamClientConfig iamConfig;
     if (IamConfigFile) {
@@ -582,9 +584,16 @@ TString TCommand::InitIamTokenClient()
         CreateLoggingService("console"),
         Scheduler,
         Timer);
-    IamClient->Start();
 
+    IamClient->Start();
+}
+
+TString TCommand::GetIamTokenFromClient()
+{
     TString iamToken;
+    if (!IamClient) {
+        return iamToken;
+    }
     try {
         auto tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
         if (!HasError(tokenInfo)) {
@@ -597,7 +606,7 @@ TString TCommand::InitIamTokenClient()
     return iamToken;
 }
 
-void TCommand::InitClientConfig(TString IamTokenFromClient)
+void TCommand::InitClientConfig()
 {
     NProto::TClientAppConfig appConfig;
     if (ConfigFile) {
@@ -676,7 +685,7 @@ void TCommand::InitClientConfig(TString IamTokenFromClient)
             iamToken = GetIamTokenFromFile(IamTokenFile);
         }
         if (!iamToken) {
-            iamToken = std::move(IamTokenFromClient);
+            iamToken = GetIamTokenFromClient();
         }
         clientConfig.SetAuthToken(std::move(iamToken));
     }

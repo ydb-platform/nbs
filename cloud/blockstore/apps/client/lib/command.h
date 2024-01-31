@@ -173,8 +173,10 @@ private:
 
     void Init();
     void InitLWTrace();
-    TString InitIamTokenClient();
-    void InitClientConfig(TString IamTokenFromClient);
+    void InitIamTokenClient();
+    void InitClientConfig();
+
+    TString GetIamTokenFromClient();
 
     void Start();
     void Stop();
