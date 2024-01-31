@@ -17,6 +17,8 @@ fi
 cd $nbspath &&
 git pull
 
+"${nbspath}/ya" gc cache
+
 logs_dir="/var/www/build/logs/run_$(date +%y_%m_%d__%H)" &&
 rm -rf "$logs_dir" &&
 mkdir -p "$logs_dir"
