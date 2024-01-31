@@ -158,7 +158,8 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
             strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
-        auto requestOrError = endpointStorage->GetEndpoint(keyOrError.GetResult());
+        auto requestOrError = endpointStorage->GetEndpoint(
+            ToString(keyOrError.GetResult()));
         UNIT_ASSERT_C(!HasError(requestOrError), requestOrError.GetError());
         auto storedRequest = DeserializeEndpoint<TProtoMessage>(
             requestOrError.GetResult());
@@ -204,7 +205,8 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
 
         auto wrongKeyringId = keyOrError.GetResult() + 42;
 
-        auto requestOrError = endpointStorage->GetEndpoint(wrongKeyringId);
+        auto requestOrError = endpointStorage->GetEndpoint(
+            ToString(wrongKeyringId));
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             requestOrError.GetError().GetCode(),

@@ -134,6 +134,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 {
     Y_UNIT_TEST(ShouldHandleKickEndpoint)
     {
+        auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
@@ -180,14 +181,16 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto error = endpointStorage->AddEndpoint(
+            ToString(keyringId),
+            strOrError.GetResult());
+        UNIT_ASSERT_C(!HasError(error), error);
 
         {
             ui32 requestId = 325;
             auto response = KickEndpoint(
                 *endpointService,
-                keyOrError.GetResult(),
+                keyringId,
                 requestId);
             UNIT_ASSERT(!HasError(response));
 
@@ -200,7 +203,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto wrongKeyringId = keyOrError.GetResult() + 42;
+            auto wrongKeyringId = keyringId + 42;
             auto response = KickEndpoint(*endpointService, wrongKeyringId);
             UNIT_ASSERT(HasError(response)
                 && response.GetError().GetCode() == E_INVALID_STATE);
@@ -332,12 +335,15 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(startRequest);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto keyringId = 13;
+            auto error = endpointStorage->AddEndpoint(
+                ToString(keyringId),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
 
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
             request->MutableHeaders()->SetRequestTimeout(100);
-            request->SetKeyringId(keyOrError.GetResult());
+            request->SetKeyringId(keyringId);
 
             auto future = endpointService->KickEndpoint(
                 MakeIntrusive<TCallContext>(),
@@ -404,13 +410,16 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
+        size_t counter = 0;
         size_t wrongDataCount = 3;
         size_t wrongSocketCount = 4;
         size_t correctCount = 5;
 
         for (size_t i = 0; i < wrongDataCount; ++i) {
-            auto keyOrError = endpointStorage->AddEndpoint("invalid proto request data");
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto error = endpointStorage->AddEndpoint(
+                ToString(++counter),
+                "invalid proto request data");
+            UNIT_ASSERT_C(!HasError(error), error);
         }
 
         for (size_t i = 0; i < wrongSocketCount; ++i) {
@@ -420,8 +429,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto error = endpointStorage->AddEndpoint(
+                ToString(++counter),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
         }
 
         for (size_t i = 0; i < correctCount; ++i) {
@@ -431,8 +442,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto error = endpointStorage->AddEndpoint(
+                ToString(++counter),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
         }
 
         auto endpointService = CreateMultipleEndpointService(
@@ -552,8 +565,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto error = endpointStorage->AddEndpoint(
+                ToString(i),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
         }
 
         auto endpointService = CreateMultipleEndpointService(
@@ -620,7 +635,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         };
 
         ui32 endpointCount = 42;
-        THashMap<ui32, NProto::TStartEndpointRequest> requests;
+        THashMap<TString, NProto::TStartEndpointRequest> requests;
 
         for (size_t i = 0; i < endpointCount; ++i) {
             NProto::TStartEndpointRequest request;
@@ -631,10 +646,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            auto error = endpointStorage->AddEndpoint(
+                ToString(i),
+                strOrError.GetResult());
+            UNIT_ASSERT_C(!HasError(error), error);
 
-            requests.emplace(keyOrError.GetResult(), request);
+            requests.emplace(ToString(i), request);
         }
 
         auto endpointService = CreateMultipleEndpointService(
@@ -854,6 +871,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
     Y_UNIT_TEST(ShouldWaitForRestoredEndpoints)
     {
+        auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
@@ -916,8 +934,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto strOrError = SerializeEndpoint(*startRequest);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = endpointStorage->AddEndpoint(strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto error = endpointStorage->AddEndpoint(
+            ToString(keyringId),
+            strOrError.GetResult());
+        UNIT_ASSERT_C(!HasError(error), error);
 
         auto restoreFuture = endpointService->RestoreEndpoints();
 
