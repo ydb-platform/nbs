@@ -24,7 +24,7 @@ rm -rf "$logs_dir" &&
 mkdir -p "$logs_dir"
 
 lineArr=()
-while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST|GO_X?TEST_SRCS)" "$nbspath/cloud"))
+while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST|Y_BENCHMARK|G_BENCHMARK|GO_X?TEST_SRCS)" "$nbspath/cloud"))
 for line in "${lineArr[@]}"; do
     echo "run test " "$line"
     ${scripts}/run_test.sh $nbspath "$line" "$logs_dir"
