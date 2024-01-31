@@ -1280,6 +1280,16 @@ func TestStorageYDBRelocateOverlayDiskWithoutPool(t *testing.T) {
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
 	require.NoError(t, err)
 
+	_, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
 	for _, baseDisk := range baseDisks {
 		err = storage.BaseDiskCreated(ctx, baseDisk)
 		require.NoError(t, err)
