@@ -271,6 +271,10 @@ void TIndexTabletActor::HandleFlush(
     };
 
     if (!CompactionStateLoadStatus.Finished) {
+        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
+            FlushState.Complete();
+        }
+
         replyError(
             ctx,
             *ev,

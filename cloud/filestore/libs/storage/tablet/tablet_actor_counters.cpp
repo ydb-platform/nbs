@@ -352,6 +352,12 @@ void TIndexTabletActor::HandleGetStorageStats(
         }
     }
 
+    stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
+    stats->SetBlobIndexOpState(static_cast<ui32>(
+        BlobIndexOpState.GetOperationState()));
+    stats->SetCollectGarbageState(static_cast<ui32>(
+        CollectGarbageState.GetOperationState()));
+
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

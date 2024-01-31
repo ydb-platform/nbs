@@ -2,6 +2,7 @@
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
+#include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -2878,6 +2879,126 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(7, loadChunkCount);
 
         checkCompactionMap();
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(BackgroundOperationsShouldNotGetStuckForeverDuringCompactionMapLoading)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        // hard to test anything apart from Compaction - it shares
+        // EOperationState with Cleanup and FlushBytes
+        storageConfig.SetCompactionThreshold(2);
+        // Flush has a separate EOperationState
+        storageConfig.SetFlushThreshold(1);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // generating at least one compaction range
+        tablet.WriteData(handle, 0, block, 'a');
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        ui32 flushCount = 0;
+        ui32 compactionCount = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvFlushRequest: {
+                    ++flushCount;
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvCompactionRequest: {
+                    ++compactionCount;
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    ++loadChunkCount;
+
+                    // catching the second chunk - first one should be loaded
+                    // so that we are able to write (and thus trigger our
+                    // background ops)
+                    if (loadChunkCount == 2) {
+                        loadChunk = event.Release();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        // rebooting to trigger compaction map reloading
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        handle = CreateHandle(tablet, id);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
+        // this write should succeed - it targets the range that should be
+        // loaded at this point of time
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Flush should've been triggered and its operation state should've
+        // been reset to Idle
+        UNIT_ASSERT_VALUES_EQUAL(1, flushCount);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EOperationState::Idle),
+                static_cast<ui32>(stats.GetFlushState()));
+        }
+
+        // this write should succeed - it targets the range that should be
+        // loaded at this point of time
+        tablet.SendWriteDataRequest(handle, 0, 2 * block, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // Compaction should've been triggered and its operation state should've
+        // been reset to Idle
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionCount);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EOperationState::Idle),
+                static_cast<ui32>(stats.GetBlobIndexOpState()));
+        }
 
         tablet.DestroyHandle(handle);
     }
