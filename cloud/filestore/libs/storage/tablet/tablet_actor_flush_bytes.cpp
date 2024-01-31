@@ -490,6 +490,10 @@ void TIndexTabletActor::HandleFlushBytes(
     };
 
     if (!CompactionStateLoadStatus.Finished) {
+        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
+            BlobIndexOpState.Complete();
+        }
+
         replyError(
             ctx,
             *ev,
