@@ -41,6 +41,8 @@ NBS_CLIENT_METHODS = [
     "execute_action",
     "kick_endpoint",
     "cms_action",
+    "update_disk_registry_config",
+    "describe_disk_registry_config",
 ]
 
 

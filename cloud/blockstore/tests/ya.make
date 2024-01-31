@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     cms
+    external_endpoint
     fio
     functional
     fuzzing

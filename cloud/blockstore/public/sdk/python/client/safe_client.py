@@ -2,6 +2,8 @@ from concurrent import futures
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
+from google.protobuf.json_format import ParseDict
+
 from .error import _handle_errors
 
 
@@ -901,3 +903,69 @@ class _SafeClient(object):
             trace_id,
             request_timeout)
         return response
+
+    @_handle_errors
+    def update_disk_registry_config_async(
+            self,
+            config,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = ParseDict(config, protos.TUpdateDiskRegistryConfigRequest())
+
+        return self.__impl.update_disk_registry_config_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def update_disk_registry_config(
+            self,
+            config,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = ParseDict(config, protos.TUpdateDiskRegistryConfigRequest())
+
+        return self.__impl.update_disk_registry_config(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def describe_disk_registry_config_async(
+            self,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        return self.__impl.describe_disk_registry_config_async(
+            protos.TDescribeDiskRegistryConfigRequest(),
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
+    def describe_disk_registry_config(
+            self,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        return self.__impl.describe_disk_registry_config(
+            protos.TDescribeDiskRegistryConfigRequest(),
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)

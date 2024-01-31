@@ -2,6 +2,7 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/common/device_path.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 
@@ -485,7 +486,10 @@ private:
                 break;
             }
 
-            // TODO: limiter
+            ReportExternalEndpointUnexpectedExit(TStringBuilder()
+                << "External endpoint for a disk " << Stats.DiskId.Quote()
+                << " and a client " << Stats.ClientId.Quote()
+                << " unexpectedly stopped: " << FormatError(error));
 
             auto process = RestartProcess();
             if (!process) {
