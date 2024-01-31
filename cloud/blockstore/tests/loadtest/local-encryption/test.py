@@ -131,6 +131,9 @@ def __run_test(test_case):
             client_config=client,
             env_processes=[env.nbs],
         )
+
+        raise RuntimeError("Imitation of failure, expecting to find dmesg in logs")
+
     finally:
         env.tear_down()
 

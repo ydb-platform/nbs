@@ -15,6 +15,7 @@ import yatest.common as yatest_common
 
 import logging
 import os
+import subprocess
 
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,21 @@ class LocalLoadTest:
         for d in self.__devices:
             d.handle.close()
             os.unlink(d.path)
+
+        
+        # It may be beneficial to save dmesg output for debugging purposes.
+        try:
+            dmesg_output = open("dmesg.txt", "w")
+            subprocess.run(
+                ["sudo", "dmesg", "-T"],
+                stdout=dmesg_output,
+                stderr=dmesg_output,
+                timeout=10
+            )
+        except Exception as dmesg_error:
+            logging.info(f"Failed to save dmesg output: {dmesg_error}")
+            pass
+
 
     @property
     def endpoint(self):
