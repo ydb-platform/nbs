@@ -124,7 +124,6 @@ public:
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
-    TVector<TString> GetVhostServerExtArgs() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

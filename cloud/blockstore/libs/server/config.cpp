@@ -88,7 +88,6 @@ constexpr TDuration Seconds(int s)
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
     xxx(EndpointStorageDir,          TString,               {}                )\
     xxx(VhostServerPath,             TString,               {}                )\
-    xxx(VhostServerExtArgs,          TVector<TString>,      {}                )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

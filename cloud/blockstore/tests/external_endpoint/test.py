@@ -1,6 +1,7 @@
 import os
 import pytest
 import requests
+import stat
 import tempfile
 import time
 
@@ -87,22 +88,41 @@ def start_ydb_cluster():
     ydb_cluster.stop()
 
 
-@pytest.fixture(name='vhost_server_port')
-def setup_fake_vhost_server_port():
-    return PortManager().get_port()
+@pytest.fixture(name='fake_vhost_server')
+def setup_fake_vhost_server_script():
+
+    class Script:
+
+        def __init__(self, port, path):
+            self.port = port
+            self.path = path
+
+    port = PortManager().get_port()
+    binary_path = yatest_common.binary_path(
+        "cloud/blockstore/tools/testing/fake-vhost-server/fake-vhost-server")
+
+    with tempfile.NamedTemporaryFile(mode='w') as script:
+        script.write("\n".join([
+            "#!/bin/bash",
+            f"exec {binary_path} --port {port} $@"
+        ]))
+
+        os.chmod(script.name, os.stat(script.name).st_mode | stat.S_IXUSR)
+
+        script.file.close()
+
+        yield Script(port, script.name)
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb, vhost_server_port):
+def start_nbs_daemon(ydb, fake_vhost_server):
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
     server = cfg.files["server"].ServerConfig
     server.VhostEnabled = True
-    server.VhostServerPath = yatest_common.binary_path(
-        "cloud/blockstore/tools/testing/fake-vhost-server/fake-vhost-server")
-    server.VhostServerExtArgs.extend(["--port", str(vhost_server_port)])
+    server.VhostServerPath = fake_vhost_server.path
 
     daemon = start_nbs(cfg)
 
@@ -148,7 +168,7 @@ def setup_env(nbs, disk_agent, data_path):
         assert r.Result.Code == 0, r
 
 
-def test_external_endpoint(nbs, vhost_server_port):
+def test_external_endpoint(nbs, fake_vhost_server):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
@@ -161,7 +181,7 @@ def test_external_endpoint(nbs, vhost_server_port):
             storage_media_kind=STORAGE_MEDIA_SSD_LOCAL,
             storage_pool_name="1Mb")
 
-    vhost_server_url = f"http://localhost:{vhost_server_port}"
+    vhost_server_url = f"http://localhost:{fake_vhost_server.port}"
 
     @retry(max_times=10, exception=requests.ConnectionError)
     def wait_for_vhost_server():

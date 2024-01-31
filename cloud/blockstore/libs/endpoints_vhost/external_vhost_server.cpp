@@ -947,24 +947,15 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     TString binaryPath,
-    TVector<TString> extArgs,
     TString localAgentId,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [
-        logging,
-        serverStats,
-        executor,
-        binaryPath = std::move(binaryPath),
-        extArgs = std::move(extArgs)
-    ] (
+    auto defaultFactory = [=] (
         const TString& clientId,
         const TString& diskId,
         TVector<TString> args,
         TVector<TString> cgroups)
     {
-        args.insert(args.begin(), extArgs.begin(), extArgs.end());
-
         return std::make_shared<TEndpoint>(
             clientId,
             logging,
