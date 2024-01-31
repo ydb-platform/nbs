@@ -225,7 +225,7 @@ public:
 
 struct TOptions
 {
-    TString UnixSocketPath = "./testSocket";
+    TString UnixSocketPath = CreateGuidAsString() + ".sock";
     TString ClientId = "testClientId";
     TString DiskId = "testDiskId";
     ui32 UnixSocketBacklog = 16;
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
     Y_UNIT_TEST(ShouldHandleStartStopEndpoint)
     {
         auto logging = CreateLoggingService("console");
-        TFsPath unixSocket("./testSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto clientAcceptor = std::make_shared<TTestClientAcceptor>();
         auto listener = CreateSocketEndpointListener(logging, 16);
@@ -374,7 +374,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
     Y_UNIT_TEST(ShouldHandleClientDisconnection)
     {
         auto logging = CreateLoggingService("console");
-        TFsPath unixSocket("./testSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto clientAcceptor = std::make_shared<TTestClientAcceptor>();
         auto listener = CreateSocketEndpointListener(logging, 16);
@@ -415,7 +415,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TString diskId = "testDiskId";
         ui32 unixSocketBacklog = 16;
         auto blocksCount = 42;
-        TFsPath unixSocket("./testSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         TPortManager portManager;
         ui16 dataPort = portManager.GetPort(9001);
@@ -914,14 +914,14 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
     Y_UNIT_TEST(ShouldStartEndpointIfSocketAlreadyExists)
     {
-        TOptions options;
-        options.UnixSocketPath = "./TestUnixSocket";
-
-        TFsPath unixSocket(options.UnixSocketPath);
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
         unixSocket.Touch();
         Y_DEFER {
             unixSocket.DeleteIfExists();
         };
+
+        TOptions options;
+        options.UnixSocketPath = unixSocket.GetPath();
 
         auto bootstrap = CreateBootstrap(options);
         bootstrap.Start();

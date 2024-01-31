@@ -25,6 +25,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NBD {
@@ -588,7 +589,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldRemoveUnixSocketAfterStopEndpoint)
     {
-        TFsPath unixSocket("./TestUnixSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
         TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
 
         auto storage = std::make_shared<TTestStorage>();
@@ -627,7 +628,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto serverCode1 = E_FAIL;
         auto serverCode2 = E_ARGUMENT;
 
-        TFsPath unixSocket("./TestUnixSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
         TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
 
         auto storage1 = std::make_shared<TTestStorage>();
@@ -712,7 +713,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldStartEndpointIfSocketAlreadyExists)
     {
-        TFsPath unixSocket("./TestUnixSocket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
         unixSocket.Touch();
         Y_DEFER {
             unixSocket.DeleteIfExists();
