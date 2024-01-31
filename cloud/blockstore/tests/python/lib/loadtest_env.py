@@ -140,13 +140,13 @@ class LocalLoadTest:
         
         # It may be beneficial to save dmesg output for debugging purposes.
         try:
-            dmesg_output = open("dmesg.txt", "w")
-            subprocess.run(
-                ["sudo", "dmesg", "-T"],
-                stdout=dmesg_output,
-                stderr=dmesg_output,
-                timeout=10
-            )
+            with open("dmesg.txt", "w") as dmesg_output:
+                subprocess.run(
+                    ["sudo", "dmesg", "-T"],
+                    stdout=dmesg_output,
+                    stderr=dmesg_output,
+                    timeout=10
+                )
         except Exception as dmesg_error:
             logging.info(f"Failed to save dmesg output: {dmesg_error}")
             pass
