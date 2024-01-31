@@ -19,9 +19,11 @@ git pull
 
 "${nbspath}/ya" gc cache
 
-logs_dir="/var/www/build/logs/run_$(date +%y_%m_%d__%H)" &&
+logs_root="/var/www/build/logs"
+logs_dir="${logs_root}/run_$(date +%y_%m_%d__%H)" &&
 rm -rf "$logs_dir" &&
 mkdir -p "$logs_dir"
+find  "${logs_root}" -maxdepth 1 -mtime +30 -type d -exec rm -rf {} \;
 
 lineArr=()
 while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST|Y_BENCHMARK|G_BENCHMARK|GO_X?TEST_SRCS)" "$nbspath/cloud"))
