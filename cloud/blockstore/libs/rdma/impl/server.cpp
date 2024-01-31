@@ -876,6 +876,7 @@ void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
 
     STORAGE_TRACE("WRITE " << TWorkRequestId(wr.wr_id));
     Verbs->PostSend(Connection->qp, &wr);
+    Counters->WriteResponseStarted();
 
     LWTRACK(
         WriteResponseDataStarted,
