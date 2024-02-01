@@ -196,6 +196,105 @@ Y_UNIT_TEST_SUITE(ConfigTest)
 
         UNIT_ASSERT_EQUAL(expectedConfigJson, actualConfigJson);
     }
+
+    Y_UNIT_TEST(ConfigParserGeneratesMissingRanges)
+    {
+        const TString incompleteConfig = R"(
+            {
+            "IoDepth":64,
+            "FileSize":299573968896,
+            "WriteRate":50,
+            "BlockSize":4096,
+            "FilePath":"/dev/disk/by-id/virtio-nvme-disk-0",
+            "Ranges":
+                [
+                    {"RequestBlockCount":1},
+                    {"RequestBlockCount":2},
+                    {"RequestBlockCount":3},
+                    {"RequestBlockCount":4},
+                    {"RequestBlockCount":5},
+                    {"RequestBlockCount":6},
+                    {"RequestBlockCount":7},
+                    {"RequestBlockCount":8},
+                    {"RequestBlockCount":9},
+                    {"RequestBlockCount":16},
+                    {"RequestBlockCount":32},
+                    {"RequestBlockCount":64},
+                    {"RequestBlockCount":128},
+                    {"RequestBlockCount":256},
+                    {"RequestBlockCount":512},
+                    {"RequestBlockCount":1024},
+                    {"RequestBlockCount":1},
+                    {"RequestBlockCount":2},
+                    {"RequestBlockCount":3},
+                    {"RequestBlockCount":4},
+                    {"RequestBlockCount":5},
+                    {"RequestBlockCount":6},
+                    {"RequestBlockCount":7},
+                    {"RequestBlockCount":8},
+                    {"RequestBlockCount":9},
+                    {"RequestBlockCount":16},
+                    {"RequestBlockCount":32},
+                    {"RequestBlockCount":64},
+                    {"RequestBlockCount":128},
+                    {"RequestBlockCount":256},
+                    {"RequestBlockCount":512},
+                    {"RequestBlockCount":1024}
+                ]
+            }
+        )";
+
+        auto filename = MakeTempName();
+        {
+            TFileOutput output(filename);
+            output.Write(incompleteConfig);
+        }
+
+        // Test config generation is not deterministic, so we need to set random seed
+        SetRandomSeed(42);
+
+        auto configHolder = CreateTestConfig(filename);
+        auto& config = configHolder->GetConfig();
+
+        UNIT_ASSERT_EQUAL(config.GetRangeBlockCount(), 299573968896 / 4096 / 64);
+        UNIT_ASSERT_EQUAL(config.GetRanges().size(), 64);
+
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetNumberToWrite(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetStep(), 5869);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetRequestBlockCount(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetWriteParts(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetLastBlockIdx(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetStartOffset(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetRequestCount(), 1142784);
+        UNIT_ASSERT_EQUAL(config.GetRanges(0).GetStartBlockIdx(), 0);
+
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetNumberToWrite(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetStep(), 16459);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetRequestBlockCount(), 16);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetWriteParts(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetLastBlockIdx(), 9);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetStartOffset(), 10285056);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetRequestCount(), 71424);
+        UNIT_ASSERT_EQUAL(config.GetRanges(9).GetStartBlockIdx(), 9);
+
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetNumberToWrite(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetStep(), 997);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetRequestBlockCount(), 128);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetWriteParts(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetLastBlockIdx(), 28);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetStartOffset(), 31997952);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetRequestCount(), 8928);
+        UNIT_ASSERT_EQUAL(config.GetRanges(28).GetStartBlockIdx(), 28);
+
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetNumberToWrite(), 0);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetStep(), 981127);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetRequestBlockCount(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetWriteParts(), 1);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetLastBlockIdx(), 63);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetStartOffset(), 71995392);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetRequestCount(), 1142784);
+        UNIT_ASSERT_EQUAL(config.GetRanges(63).GetStartBlockIdx(), 63);
+    }
 }
 
 }   // namespace NCloud::NBlockStore
