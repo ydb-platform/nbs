@@ -27,6 +27,8 @@ runs:
     - name: Generate summary
       if: always()
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         if [ -f "${ARTIFACTS_DIR}/junit.xml" ]; then
           if [ -f "${ARTIFACTS_DIR}/junit_rerun.xml" ]; then
