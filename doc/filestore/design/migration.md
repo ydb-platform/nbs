@@ -1,6 +1,6 @@
 # How session management works during qemu migrations
 
-## Problem 
+## Problem
 
 Compute should be able to migrate qemu instances accross cloud transparently for the user. These online qemu migrations require simultaneous access from source (old qemu instance) and target (new qemu intance). So we need a way to support multiple opened endpoints per one client instance and protocol for switching write access from one to another.
 
@@ -47,28 +47,28 @@ Major steps during migration:
 
 ## Components changes
 
-### Endpoint manager 
-[code](https://a.yandex-team.ru/arcadia/cloud/filestore/libs/endpoint/service.cpp?rev=r10031498#L91-94)
-    
+### Endpoint manager
+[code](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/endpoint/service.cpp#L101)
+
     Manages existing opened endpoints by socket path:
     - should explicitly create and track sessions;
     - should compare start endpoint request against currently opened and promote session when neccessary;
 
-### Endpoint 
-[code](https://a.yandex-team.ru/arcadia/cloud/filestore/libs/endpoint_vhost/listener.cpp?rev=r10031498#L89)
-    
-    Connects filesystem, driver and session: 
+### Endpoint
+[code](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/endpoint_vhost/listener.cpp#L87)
+
+    Connects filesystem, driver and session:
     - should use existing session for starting endpoint;
 
-### Storage Service 
-[code](https://a.yandex-team.ru/arcadia/cloud/filestore/libs/storage/service/service_actor.h?rev=r9891913#L26-36)
-    
+### Storage Service
+[code](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/service/service_actor.h#L32)
+
     Terminates public session api and switches to actor/pipe world. Keeps actor & pipe per each opened session:
     - should use seqno to distinguish different sessions with the same id;
     - should accordingly distinguish create/destroy sessions for sessions with the same id;
 
-### Tablet  
-[code](https://a.yandex-team.ru/arcadia/cloud/filestore/libs/storage/tablet/tablet_actor.h?rev=r10397234#L41)
+### Tablet
+[code](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/storage/tablet/tablet_actor.h#L46)
 
     Persists session state, owners and keep tracks of its owners:
     - should be able to keep track of multiple session owners and their access state;
@@ -76,8 +76,8 @@ Major steps during migration:
     - should properly handle create/destroy session requests according to owner access rights;
     - should check validity for session seqno for the requests;
 
-### Client 
-[code](https://a.yandex-team.ru/arcadia/cloud/filestore/libs/client/session.h?rev=r9129952#L54)
+### Client
+[code](https://github.com/ydb-platform/nbs/blob/main/cloud/filestore/libs/client/session.h#L61)
 
     Manages session for the client:
     - should be able to promote session RW access rights;
