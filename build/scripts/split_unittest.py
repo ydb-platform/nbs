@@ -1,4 +1,5 @@
 import argparse
+import os
 import tempfile
 import shlex
 import subprocess
@@ -70,10 +71,12 @@ def main():
     else:
         cmd = args.command
 
-    rc = subprocess.call(cmd)
-    if rc:
-        print("Some tests failed. To reproduce run: {}".format(shlex.join(cmd)))
-    return rc
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.environ["TMPDIR"] = tmpdir
+        rc = subprocess.call(cmd, cwd=tmpdir)
+        if rc:
+            print("Some tests failed. To reproduce run: {}".format(shlex.join(cmd)))
+        return rc
 
 
 if __name__ == "__main__":
