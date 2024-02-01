@@ -672,9 +672,12 @@ void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
 
 void TEndpointManager::OnVolumeConnectionEstablished(const TString& diskId)
 {
-    Executor->ExecuteSimple([this, diskId] () {
-        return TrySwitchEndpoint(diskId);
-    });
+    Y_UNUSED(diskId);
+
+    // TODO: NBS-312 safely call TrySwitchEndpoint
+    // Executor->ExecuteSimple([this, diskId] () {
+    //     return TrySwitchEndpoint(diskId);
+    // });
 }
 
 }   // namespace
