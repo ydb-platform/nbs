@@ -130,26 +130,26 @@ class LocalLoadTest:
         wait_for_nbs_server(self.nbs.nbs_port)
 
     def tear_down(self):
-        self.nbs.stop()
-        self.kikimr_cluster.stop()
-
-        for d in self.__devices:
-            d.handle.close()
-            os.unlink(d.path)
-
-        
-        # It may be beneficial to save dmesg output for debugging purposes.
         try:
-            with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
-                subprocess.run(
-                    ["sudo", "dmesg", "-T"],
-                    stdout=dmesg_output,
-                    stderr=dmesg_output,
-                    timeout=10
-                )
-        except Exception as dmesg_error:
-            logging.info(f"Failed to save dmesg output: {dmesg_error}")
-            pass
+            self.nbs.stop()
+            self.kikimr_cluster.stop()
+
+            for d in self.__devices:
+                d.handle.close()
+                os.unlink(d.path)
+        finally:
+            # It may be beneficial to save dmesg output for debugging purposes.
+            try:
+                with open(yatest_common.output_path() + "/dmesg.txt", "w") as dmesg_output:
+                    subprocess.run(
+                        ["sudo", "dmesg", "-T"],
+                        stdout=dmesg_output,
+                        stderr=dmesg_output,
+                        timeout=10
+                    )
+            except Exception as dmesg_error:
+                logging.info(f"Failed to save dmesg output: {dmesg_error}")
+                pass
 
 
     @property
