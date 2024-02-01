@@ -197,9 +197,14 @@ runs:
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}'
           find "$TESTS_DATA_DIR" -type f -print0 | xargs -0 -n 10 file -i  | grep "application/x-executable" | awk -F: '{print $1}' | xargs rm
           echo "::endgroup::"
+          echo "::group::remove-images-from-tests-data-dir"
+          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image
+          find "$TESTS_DATA_DIR" -name generated_raw_image -o -name generated_vmdk_image -o -name invalid_qcow2_image -o -name qcow2_fuzzing_image -delete
+          echo "::endgroup::"
           echo "::group::s3-sync"
           if [ "$SYNC_TO_S3" = "true" ];
           then
+            du -h "$TESTS_DATA_DIR/"
             sudo -E -H -u github s3cmd sync --follow-symlinks --acl-private --no-progress --stats --no-check-md5 "$TESTS_DATA_DIR/" "$S3_BUCKET_PATH/test_data/"
           fi
           echo "::endgroup::"
