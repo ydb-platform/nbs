@@ -1,6 +1,7 @@
 import yatest.common as common
 from yatest.common import process
 
+
 def test_remote():
     binary_path = common.binary_path(
         "cloud/disk_manager/test/remote/cmd/cmd")
