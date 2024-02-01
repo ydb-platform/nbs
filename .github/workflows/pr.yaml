@@ -7,6 +7,7 @@ on:
       - 'ydb/docs/**'
       - '.github/**'
       - 'example/**'
+      - 'doc/**'
     types:
       - 'opened'
       - 'synchronize'
