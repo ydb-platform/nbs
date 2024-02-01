@@ -146,6 +146,8 @@ class SshClient:
     def download_file(self, local_path: str, remote_path: str) -> None:
         command_line = [
             'scp',
+            '-o', 'ServerAliveInterval=60',
+            '-o', 'StrictHostKeyChecking no',
             *self._key_path_cmd_argument,
             f'{self._scp_authorization_string}:{remote_path}',
             local_path,
@@ -213,6 +215,8 @@ class SshClient:
     def upload_file(self, local_path: str, remote_path: str) -> None:
         command_line = [
             'scp',
+            '-o', 'ServerAliveInterval=60',
+            '-o', 'StrictHostKeyChecking no',
             *self._key_path_cmd_argument,
             local_path,
             f'{self._scp_authorization_string}:{remote_path}',
@@ -225,7 +229,7 @@ class SshClient:
     def _create_ssh_commandline(self, command_line: str) -> list[str]:
         return [
             'ssh',
-            '-o',  'ServerAliveInterval=60',
+            '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
             *self._key_path_cmd_argument,
             '-T',  # Disable pseudo-terminal allocation.

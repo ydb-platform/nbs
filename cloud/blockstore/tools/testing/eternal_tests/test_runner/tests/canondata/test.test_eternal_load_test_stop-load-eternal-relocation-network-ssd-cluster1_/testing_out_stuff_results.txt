@@ -1,3 +1,3 @@
 Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
-Execute command systemctl stop eternalload_vdb.serviceSSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
+Execute command nohup sh -c "systemctl stop eternalload_vdb.service" &>/dev/null &SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"

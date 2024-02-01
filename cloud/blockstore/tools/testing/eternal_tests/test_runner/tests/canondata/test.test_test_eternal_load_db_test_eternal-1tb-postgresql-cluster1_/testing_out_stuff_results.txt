@@ -2,4 +2,4 @@ Command=ycp --format json --profile cluster1 compute instance list --folder-id f
 Input=
 SSH 1:1:1:1:1:1:1:1: pkill pgbench
 SSH 1:1:1:1:1:1:1:1: pgrep pgbench
-Execute command pgbench -U postgres -p 5432 pgbench -P 30 -T 999999999 --debug -j 32 -c 32 >> /tmp/report.txt 2>&1
+Execute command nohup sh -c "pgbench -U postgres -p 5432 pgbench -P 30 -T 999999999 --debug -j 32 -c 32 >> /tmp/report.txt 2>&1" &>/dev/null &
