@@ -1,6 +1,5 @@
-import library.python.testing.yatest_common.yatest.common as common
-import library.python.testing.yatest_common.yatest.common.process as process
-
+import yatest.common as common
+from yatest.common import process
 
 def test_remote():
     binary_path = common.binary_path(
