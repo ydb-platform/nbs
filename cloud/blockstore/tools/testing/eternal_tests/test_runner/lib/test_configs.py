@@ -29,6 +29,7 @@ class DiskCreateConfig(ITestCreateConfig):
     placement_group_name: str
     image_name: str
     initial_size: int
+    block_count: int
 
     def __init__(
             self,
@@ -40,7 +41,12 @@ class DiskCreateConfig(ITestCreateConfig):
             placement_group_name=None,
             placement_group_partition_count=None,
             image_name=None,
-            initial_size=None):
+            initial_size=None,
+            block_count=None):
+
+        self.block_count = block_count
+        if block_count is None:
+            self.block_count = size * 1024**3 // bs
 
         self.size = size
         self.bs = bs
@@ -233,6 +239,10 @@ _DISK_CONFIGS = {
     'eternal-279gb-ssd-local-different-size-requests':
         DiskCreateConfig(size=279, bs=4096, type='local'),
 
+    'eternal-367gb-ssd-local-v3': DiskCreateConfig(size=0, block_count=769652736, bs=512, type='local'),
+    'eternal-734gb-ssd-local-different-size-requests-v3':
+        DiskCreateConfig(size=0, block_count=769652736*2, bs=512, type='local'),
+
     'eternal-320gb-encrypted': DiskCreateConfig(320, 4096, 'network-ssd', encrypted=True),
     'eternal-1023gb-nonrepl-encrypted':
         DiskCreateConfig(
@@ -304,6 +314,9 @@ _LOAD_CONFIGS = {
 
     'eternal-186gb-ssd-local': LoadConfig(False, False, 128, 50, 186, 4096),
     'eternal-279gb-ssd-local-different-size-requests': LoadConfig(True, False, 64, 50, 279, 4096),
+
+    'eternal-367gb-ssd-local-v3': LoadConfig(False, False, 128, 50, 186, 4096),
+    'eternal-734gb-ssd-local-different-size-requests-v3': LoadConfig(True, False, 64, 50, 279, 4096),
 
     'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),
