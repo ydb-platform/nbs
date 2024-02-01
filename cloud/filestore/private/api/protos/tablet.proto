@@ -125,6 +125,11 @@ message TStorageStats
 
     // compaction map range stats
     repeated TCompactionRangeStats CompactionRangeStats = 3000;
+
+    // background operation states
+    uint32 FlushState = 4001;
+    uint32 BlobIndexOpState = 4002;
+    uint32 CollectGarbageState = 4003;
 }
 
 message TGetStorageStatsRequest

@@ -41,6 +41,10 @@ void TIndexTabletActor::HandleCleanup(
     };
 
     if (!CompactionStateLoadStatus.Finished) {
+        if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
+            BlobIndexOpState.Complete();
+        }
+
         replyError(MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
         return;
     }
