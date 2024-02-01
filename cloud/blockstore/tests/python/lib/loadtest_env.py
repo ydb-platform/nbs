@@ -151,7 +151,6 @@ class LocalLoadTest:
                 logging.info(f"Failed to save dmesg output: {dmesg_error}")
                 pass
 
-
     @property
     def endpoint(self):
         return 'localhost:' + str(self.nbs.nbs_port)
