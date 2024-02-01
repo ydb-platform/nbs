@@ -72,7 +72,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
             NProto::TEncryptionSpec spec;
             spec.SetMode(NProto::ENCRYPTION_AES_XTS);
             auto& keyPath = *spec.MutableKeyPath();
-            keyPath.SetKeyringId(keyringOrError.GetResult());
+            keyPath.SetKeyringId(FromString<ui32>(keyringOrError.GetResult()));
 
             auto keyProvider = CreateDefaultEncryptionKeyProvider();
             auto keyOrError = keyProvider->GetKey(spec, {}).ExtractValue();
@@ -111,7 +111,7 @@ Y_UNIT_TEST_SUITE(TKeyringEncryptorTest)
         NProto::TEncryptionSpec spec;
         spec.SetMode(NProto::ENCRYPTION_AES_XTS);
         auto& keyPath = *spec.MutableKeyPath();
-        keyPath.SetKeyringId(keyringOrError.GetResult());
+        keyPath.SetKeyringId(FromString<ui32>(keyringOrError.GetResult()));
 
         auto keyProvider = CreateDefaultEncryptionKeyProvider();
 
