@@ -23,6 +23,7 @@ DEPENDS(
 
 DATA(
     arcadia/cloud/disk_manager/test/remote/cmd/cmd
+    arcadia/cloud/nbs_internal/disk_manager/test/remote/configs/hw-nbs-stable-lab
 )
 
 TIMEOUT(14400)
