@@ -108,6 +108,9 @@ void TConfigHolder::GenerateMissingFields()
     }
 
     for (ui16 i = 0; i < Config.GetIoDepth(); ++i) {
+        if (i >= Config.GetRanges().size()) {
+            Config.MutableRanges()->Add();
+        }
         auto& range = *Config.MutableRanges(i);
         if (!range.HasRequestBlockCount()) {
             range.SetRequestBlockCount(1);
