@@ -2632,7 +2632,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TVector<ui32> compactionRanges;
         TVector<ui32> cleanupRanges;
         env.GetRuntime().SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvCompactionRequest: {
@@ -2649,7 +2649,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         tablet.ForcedRangeOperation(
@@ -2688,7 +2688,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         ui32 cleanupCount = 0;
         env.GetRuntime().SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvCleanupRequest: {
@@ -2697,7 +2697,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
