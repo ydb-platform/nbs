@@ -222,7 +222,7 @@ private:
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueForcedCompactionIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
 
     void NotifySessionEvent(
@@ -294,7 +294,7 @@ private:
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
-    void HandleHttpInfo_Compaction(
+    void HandleHttpInfo_ForceOperation(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);
