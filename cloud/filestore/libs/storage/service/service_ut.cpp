@@ -1484,6 +1484,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
 
+        auto& runtime = env.GetRuntime();
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
             switch (event->GetTypeRewrite()) {
                 case TEvIndexTablet::EvCreateSessionRequest: {
