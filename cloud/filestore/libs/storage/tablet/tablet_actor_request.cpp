@@ -112,6 +112,7 @@ template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(         
 // FILESTORE_IMPL_VALIDATE
 
 FILESTORE_SERVICE(FILESTORE_GENERATE_IMPL, TEvService)
+FILESTORE_GENERATE_IMPL(DescribeData, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL
 
