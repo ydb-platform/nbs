@@ -3,16 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-<<<<<<< HEAD
-#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
-#include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
-#include <cloud/blockstore/libs/storage/core/unimplemented.h>
-
-#include <ydb/core/base/appdata.h>
-=======
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
->>>>>>> 024c54e6b8 (NBS-4827 extract TNonreplicatedPartitionMigrationCommonActor (#194))
 
 namespace NCloud::NBlockStore::NStorage {
 

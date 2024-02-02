@@ -2,29 +2,8 @@
 
 #include "public.h"
 
-<<<<<<< HEAD
-#include "config.h"
-#include "part_nonrepl_events_private.h"
-#include "part_nonrepl_migration_state.h"
-
-#include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/blockstore/libs/rdma/iface/public.h>
-#include <cloud/blockstore/libs/storage/api/disk_registry.h>
-#include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/volume.h>
-#include <cloud/blockstore/libs/storage/core/disk_counters.h>
-#include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
-#include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
-
-#include <library/cpp/actors/core/actor_bootstrapped.h>
-#include <library/cpp/actors/core/events.h>
-#include <library/cpp/actors/core/hfunc.h>
-#include <library/cpp/actors/core/mon.h>
-=======
 #include <cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
->>>>>>> 024c54e6b8 (NBS-4827 extract TNonreplicatedPartitionMigrationCommonActor (#194))
 
 namespace NCloud::NBlockStore::NStorage {
 
