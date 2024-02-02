@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NServer {
+namespace NCloud::NStorage::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,4 +26,4 @@ public:
     size_t Wait(void** events, size_t len);
 };
 
-}   // namespace NCloud::NBlockStore::NServer
+}   // namespace NCloud::NStorage::NServer
