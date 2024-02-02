@@ -90,6 +90,14 @@ on:
         type: boolean
         default: false
         description: "Update build cache in test stage"
+      link_threads:
+        type: string
+        default: "24"
+        description: "--link-threads in ya make"
+      test_threads:
+        type: string
+        default: "12"
+        description: "--test-threads in ya test"
 
 
 jobs:
@@ -115,7 +123,7 @@ jobs:
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
           cores: 60
-          memory: 120GB
+          memory: 240GB
           core-fraction: 100
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
@@ -171,8 +179,8 @@ jobs:
       run_tests: ${{ inputs.run_tests }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
-      link_threads: 24
-      test_threads: 12
+      link_threads: ${{ inputs.link_threads || '24' }}
+      test_threads: ${{ inputs.test_threads || '12' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
