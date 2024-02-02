@@ -2562,7 +2562,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(ranges[2], 1);
     }
 
-    TABLET_TEST(ShouldEnqueuePendingForcedRangeOperation)
+    TABLET_TEST(ShouldEnqueuePendingForcedCompaction)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");

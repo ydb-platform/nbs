@@ -263,14 +263,13 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s ForcedRangeOperation request for %lu ranges",
         LogTag.c_str(),
         msg->Ranges.size());
 
-    auto replyError = [&](const NProto::TError& error)
+    auto replyError = [&] (
+        const NProto::TError& error)
     {
         if (ev->Sender == ctx.SelfID) {
             return;
