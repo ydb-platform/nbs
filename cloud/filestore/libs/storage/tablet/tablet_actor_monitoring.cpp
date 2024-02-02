@@ -950,7 +950,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         }
 
         if (IsForcedRangeOperationRunning()) {
-            DumpCompactionInfo(out, *GeTForcedRangeOperationState());
+            DumpCompactionInfo(out, *GetForcedRangeOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());

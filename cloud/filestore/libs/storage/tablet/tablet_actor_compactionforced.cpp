@@ -306,7 +306,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GeTForcedRangeOperationState(),
+                GetForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 
@@ -315,7 +315,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GeTForcedRangeOperationState(),
+                GetForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 

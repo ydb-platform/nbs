@@ -904,7 +904,7 @@ public:
     void StartForcedRangeOperation(TVector<ui32> ranges);
     void CompleteForcedRangeOperation();
 
-    const TForcedRangeOperationStatePtr& GeTForcedRangeOperationState() const
+    const TForcedRangeOperationStatePtr& GetForcedRangeOperationState() const
     {
         return ForcedRangeOperationState;
     }
