@@ -218,7 +218,8 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
     out << "<p><a href='' data-toggle='modal' data-target='#force-compaction'>Force Full Compaction</a></p>"
         << "<form method='POST' name='ForceCompaction' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='action' value='compactAll'/>"
+        << "<input type='hidden' name='action' value='forceOperationAll'/>"
+        << "<input type='hidden' name='mode' value='compaction'/>"
         << "<input class='btn btn-primary' type='button' value='Compact ALL ranges'"
         << " data-toggle='modal' data-target='#force-compaction'/>"
         << "</form>";
@@ -229,6 +230,24 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         "Force compaction",
         "Are you sure you want to force compaction for ALL ranges?",
         "forceCompactionAll();");
+
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-cleanup'>Force Full Cleanup</a></p>"
+        << "<form method='POST' name='ForceCleanup' style='display:none'>"
+        << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
+        << "<input type='hidden' name='action' value='forceOperationAll'/>"
+        << "<input type='hidden' name='mode' value='cleanup'/>"
+        << "<input class='btn btn-primary' type='button' value='Cleanup ALL "
+           "ranges'"
+        << " data-toggle='modal' data-target='#force-cleanup'/>"
+        << "</form>";
+
+    BuildConfirmActionDialog(
+        out,
+        "force-cleanup",
+        "Force cleanup",
+        "Are you sure you want to force cleanup for ALL ranges?",
+        "forceCleanupAll();");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -298,7 +317,7 @@ void DumpOperationState(
 
 void DumpCompactionInfo(
     IOutputStream& out,
-    const TIndexTabletState::TForcedCompactionState& state)
+    const TIndexTabletState::TForcedRangeOperationState& state)
 {
     DumpProgress(out, state.Current.load(), state.RangesToCompact.size());
 }
@@ -672,6 +691,14 @@ void GenerateActionsJS(IOutputStream& out)
         }
         </script>
     )___";
+
+    out << R"___(
+        <script type='text/javascript'>
+        function forceCleanupAll() {
+            document.forms['ForceCleanup'].submit();
+        }
+        </script>
+    )___";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -822,7 +849,8 @@ void TIndexTabletActor::HandleHttpInfo(
     using THttpHandlers = THashMap<TString, THttpHandler>;
 
     static const THttpHandlers postActions = {{
-        {"compactAll",      &TIndexTabletActor::HandleHttpInfo_Compaction },
+        {"forceOperationAll",
+         &TIndexTabletActor::HandleHttpInfo_ForceOperation},
     }};
 
     static const THttpHandlers getActions {{
@@ -915,14 +943,14 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
 
         TAG(TH3) {
-            if (!IsForcedCompactionRunning()) {
+            if (!IsForcedRangeOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
             out << "CompactionQueue";
         }
 
-        if (IsForcedCompactionRunning()) {
-            DumpCompactionInfo(out, *GetForcedCompactionState());
+        if (IsForcedRangeOperationRunning()) {
+            DumpCompactionInfo(out, *GetForcedRangeOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
@@ -970,12 +998,12 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str())));
 }
 
-void TIndexTabletActor::HandleHttpInfo_Compaction(
+void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TActorContext& ctx,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (IsForcedCompactionRunning()) {
+    if (IsForcedRangeOperationRunning()) {
         SendHttpResponse(
             ctx,
             TabletID(),
@@ -1008,8 +1036,13 @@ void TIndexTabletActor::HandleHttpInfo_Compaction(
         ranges = GetNonEmptyCompactionRanges();
     }
 
-    EnqueueForcedCompaction(std::move(ranges));
-    EnqueueForcedCompactionIfNeeded(ctx);
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode =
+        params.Get("mode") == "cleanup"
+            ? TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup
+            : TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
+
+    EnqueueForcedRangeOperation(std::move(ranges), mode);
+    EnqueueForcedRangeOperationIfNeeded(ctx);
 
     SendHttpResponse(
         ctx,

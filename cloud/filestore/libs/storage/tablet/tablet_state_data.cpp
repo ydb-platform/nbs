@@ -1058,32 +1058,36 @@ void TIndexTabletState::LoadCompactionMap(
     }
 }
 
-void TIndexTabletState::EnqueueForcedCompaction(TVector<ui32> ranges)
+void TIndexTabletState::EnqueueForcedRangeOperation(
+    TVector<ui32> ranges,
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
 {
-    PendingForcedCompactions.emplace_back(std::move(ranges));
+    PendingForcedRangeOperations.emplace_back(std::move(ranges), mode);
 }
 
-TVector<ui32> TIndexTabletState::DequeueForcedCompaction()
+TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
+    DequeueForcedRangeOperation()
 {
-    if (PendingForcedCompactions.empty()) {
+    if (PendingForcedRangeOperations.empty()) {
         return {};
     }
 
-    auto ranges = std::move(PendingForcedCompactions.back());
-    PendingForcedCompactions.pop_back();
+    auto ranges = std::move(PendingForcedRangeOperations.back());
+    PendingForcedRangeOperations.pop_back();
 
     return ranges;
 }
 
-void TIndexTabletState::StartForcedCompaction(TVector<ui32> ranges)
+void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
 {
-    TABLET_VERIFY(!ForcedCompactionState);
-    ForcedCompactionState = std::make_shared<TForcedCompactionState>(std::move(ranges));
+    TABLET_VERIFY(!ForcedRangeOperationState);
+    ForcedRangeOperationState =
+        std::make_shared<TForcedRangeOperationState>(std::move(ranges));
 }
 
-void TIndexTabletState::CompleteForcedCompaction()
+void TIndexTabletState::CompleteForcedRangeOperation()
 {
-    ForcedCompactionState.reset();
+    ForcedRangeOperationState.reset();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

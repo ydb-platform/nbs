@@ -28,7 +28,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DumpCompactionRange,                    __VA_ARGS__)                   \
     xxx(Flush,                                  __VA_ARGS__)                   \
     xxx(FlushBytes,                             __VA_ARGS__)                   \
-    xxx(ForcedCompaction,                       __VA_ARGS__)                   \
+    xxx(ForcedRangeOperation,                   __VA_ARGS__)                   \
     xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
@@ -372,23 +372,33 @@ struct TEvIndexTabletPrivate
     };
 
     //
-    // ForcedCompaction
+    // ForcedRangeOperation
     //
 
-    struct TForcedCompactionRequest
+    enum EForcedRangeOperationMode
+    {
+        Compaction = 0,
+        Cleanup = 1,
+    };
+
+    struct TForcedRangeOperationRequest
     {
         TVector<ui32> Ranges;
+        EForcedRangeOperationMode Mode;
 
-        TForcedCompactionRequest(TVector<ui32> ranges)
+        TForcedRangeOperationRequest(
+            TVector<ui32> ranges,
+            EForcedRangeOperationMode mode)
             : Ranges(std::move(ranges))
+            , Mode(mode)
         {}
     };
 
-    struct TForcedCompactionResponse
+    struct TForcedRangeOperationResponse
     {
     };
 
-    using TForcedCompactionCompleted = TEmpty;
+    using TForcedRangeOperationCompleted = TEmpty;
 
     //
     // DumpCompactionRange
