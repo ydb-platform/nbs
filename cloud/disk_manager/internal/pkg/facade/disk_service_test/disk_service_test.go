@@ -20,6 +20,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const testsDiskSize = 4096 * 4096
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestDiskServiceKek(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -34,7 +38,7 @@ func TestDiskServiceKek(t *testing.T) {
 		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
 			SrcEmpty: &empty.Empty{},
 		},
-		Size: 4096,
+		Size: testsDiskSize,
 		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
@@ -51,7 +55,7 @@ func TestDiskServiceKek(t *testing.T) {
 	_, _, err = testcommon.FillDisk(
 		nbsClient,
 		diskID,
-		4096,
+		testsDiskSize,
 	)
 	require.NoError(t, err)
 
@@ -73,10 +77,10 @@ func TestDiskServiceKek(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, created)
 
-	srcCrc32, err := nbsClient.CalculateCrc32(diskID, 4096)
+	srcCrc32, err := nbsClient.CalculateCrc32(diskID, testsDiskSize)
 	require.NoError(t, err)
 
-	dstCrc32, err := nbsClient.CalculateCrc32("proxyOverlayDiskFor"+diskID, 4096)
+	dstCrc32, err := nbsClient.CalculateCrc32("proxyOverlayDiskFor"+diskID, testsDiskSize)
 	require.NoError(t, err)
 
 	require.Equal(t, srcCrc32, dstCrc32)
