@@ -1476,21 +1476,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
     {
-        NProto::TStorageConfig config;
-        config.SetIdleSessionTimeout(5'000); // 5s
-        TTestEnv env({}, config);
+        TTestEnv env;
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
-
-        auto& runtime = env.GetRuntime();
-
-        // enabling scheduling for all actors
-        runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId) {
-                Y_UNUSED(parentId);
-                runtime.EnableScheduleForActor(actorId);
-            });
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1000);
