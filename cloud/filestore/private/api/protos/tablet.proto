@@ -6,6 +6,8 @@ import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/filestore/config/storage.proto";
 
+import "contrib/ydb/core/protos/base.proto";
+
 package NCloud.NFileStore.NProtoPrivate;
 
 option go_package = "a.yandex-team.ru/cloud/filestore/private/api/protos";
@@ -214,7 +216,7 @@ message TGetFileSystemConfigResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// GetStorageConfig fields request/response.
+// GetStorageConfigFields request/response.
 
 message TGetStorageConfigFieldsRequest
 {
@@ -238,7 +240,7 @@ message TGetStorageConfigFieldsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Change StorageConfig request/response
+// ChangeStorageConfig request/response
 
 message TChangeStorageConfigRequest
 {
@@ -262,4 +264,73 @@ message TChangeStorageConfigResponse
 
     // Result Storage config.
     NProto.TStorageConfig StorageConfig = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeData request/response.
+
+message TDescribeDataRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for read.
+    uint64 Offset = 5;
+
+    // Number of bytes to read.
+    uint64 Length = 6;
+}
+
+// Represents actual data - for the data that is not stored in data channels as
+// blobs yet.
+message TFreshDataRange
+{
+    // This offset is relative to the beginning of the inode.
+    uint64 Offset = 1;
+    // Data bytes.
+    bytes Content = 2;
+}
+
+// Represents a range of consecutive bytes inside some blob.
+message TRangeInBlob
+{
+    // This offset is relative to the beginning of the inode.
+    uint64 Offset = 1;
+    // This offset is relative to the beginning of the blob. Measured in bytes.
+    uint32 BlobOffset = 2;
+    uint32 Length = 3;
+}
+
+// Represents the ranges that need to be read from a single blob.
+message TBlobPiece
+{
+    // Blob id.
+    NKikimrProto.TLogoBlobID BlobId = 1;
+
+    // Group id.
+    uint32 BSGroupId = 2;
+
+    // Data ranges.
+    repeated TRangeInBlob Ranges = 3;
+}
+
+message TDescribeDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    repeated TFreshDataRange FreshDataRanges = 2;
+    repeated TBlobPiece BlobPieces = 3;
+
+    // Optional response headers.
+    NProto.TResponseHeaders Headers = 1000;
 }

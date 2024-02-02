@@ -1123,6 +1123,7 @@ struct TTxIndexTablet
         const TByteRange OriginByteRange;
         const TByteRange AlignedByteRange;
         /*const*/ IBlockBufferPtr Buffer;
+        const bool DescribeOnly;
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1133,18 +1134,21 @@ struct TTxIndexTablet
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
 
+        template <typename TReadRequest>
         TReadData(
                 TRequestInfoPtr requestInfo,
-                const NProto::TReadDataRequest& request,
+                const TReadRequest& request,
                 TByteRange originByteRange,
                 TByteRange alignedByteRange,
-                IBlockBufferPtr buffer)
+                IBlockBufferPtr buffer,
+                bool describeOnly)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , OriginByteRange(originByteRange)
             , AlignedByteRange(alignedByteRange)
             , Buffer(std::move(buffer))
+            , DescribeOnly(describeOnly)
             , Blocks(AlignedByteRange.BlockCount())
             , Bytes(AlignedByteRange.BlockCount())
         {
