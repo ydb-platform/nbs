@@ -202,7 +202,7 @@ using NCloud::NStorage::NServer::IClientStoragePtr;
 class TSessionStorage;
 
 IClientStoragePtr CreateEndpointClientStorage(
-    const std::shared_ptr<TSessionStorage>& sesstionStorage,
+    const std::shared_ptr<TSessionStorage>& sessionStorage,
     IBlockStorePtr service);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -360,11 +360,11 @@ public:
 };
 
 IClientStoragePtr CreateEndpointClientStorage(
-    const std::shared_ptr<TSessionStorage>& sesstionStorage,
+    const std::shared_ptr<TSessionStorage>& sessionStorage,
     IBlockStorePtr service)
 {
     return std::make_shared<TClientStorage>(
-        sesstionStorage,
+        sessionStorage,
         std::move(service));
 }
 

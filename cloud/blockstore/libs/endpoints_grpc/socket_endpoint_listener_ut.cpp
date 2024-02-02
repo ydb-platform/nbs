@@ -51,8 +51,7 @@ private:
     TSet<SOCKET> Sessions;
 
 public:
-    IClientStoragePtr CreateClientStorage(
-            IBlockStorePtr service) override
+    IClientStoragePtr CreateClientStorage(IBlockStorePtr service) override
     {
         Y_UNUSED(service);
         return shared_from_this();

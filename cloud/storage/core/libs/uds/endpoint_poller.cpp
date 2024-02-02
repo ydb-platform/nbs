@@ -355,7 +355,7 @@ NProto::TError TEndpointPoller::StartListenEndpoint(
     ui32 backlog,
     bool multiClient,
     NProto::ERequestSource source,
-    IClientStoragePtr clientStorage )
+    IClientStoragePtr clientStorage)
 {
     return Impl->StartListenEndpoint(
         unixSocketPath,
