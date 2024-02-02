@@ -1473,6 +1473,44 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         service.DestroySession(headers);
     }
+
+    Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvCreateSessionRequest: {
+                    const auto* msg =
+                        event->Get<TEvIndexTablet::TEvCreateSessionRequest>();
+                    UNIT_ASSERT_VALUES_UNEQUAL("", GetOriginFqdn(msg->Record));
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        THeaders headers = {"test", "client", "", 0};
+        service.CreateSession(headers);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
