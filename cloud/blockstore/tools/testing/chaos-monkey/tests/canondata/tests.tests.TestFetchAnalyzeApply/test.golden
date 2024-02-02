@@ -1,3 +1,4 @@
+Requesting DiskInfo...
 DiskInfo:
 {
     "DiskId": "cga7mpius6uopt9beskc",
@@ -311,6 +312,7 @@ DiskInfo:
     ],
     "BrokenDevices": null
 }
+Detecting targets to curse...
 Targets to curse:
 [
     {
@@ -326,8 +328,13 @@ Targets to curse:
         "Reason": "OneDeviceForAllFine"
     }
 ]
+Detecting targets to heal...
 Targets to heal:
 null
 apply: received request: {"DisableAgent":{"AgentId":"sas09-ct7-28.cloud.yandex.net","DeviceUUIDs":["09bcd3a3e8162681b3d4601d76ff99ed","0b15e95e28499e8b0365f7e0bcce5f21","13d18eafb47ba22a7260c220ef309b02","21e5a4f685008cb4aebc6cfbdca01c07","332f7e30773a4f011a167fe43d6a89e7"]},"ChangeDeviceState":null,"Message":"chaos-monkey: disabling target DiskId=cga7mpius6uopt9beskc DeviceUUID=09bcd3a3e8162681b3d4601d76ff99ed DeviceUUID=0b15e95e28499e8b0365f7e0bcce5f21 DeviceUUID=13d18eafb47ba22a7260c220ef309b02 DeviceUUID=21e5a4f685008cb4aebc6cfbdca01c07 DeviceUUID=332f7e30773a4f011a167fe43d6a89e7 AgentID=sas09-ct7-28.cloud.yandex.net"}
-wait for replication start: Disk cga7mpius6uopt9beskc done
-wait for replication finish: Disk cga7mpius6uopt9beskc done
+Replication started: Disk cga7mpius6uopt9beskc done
+Waiting for cga7mpius6uopt9beskc disk replication to finish, remaining fresh devices: 4, total devices: 0
+Waiting for cga7mpius6uopt9beskc disk replication to finish, remaining fresh devices: 3, total devices: 0
+Waiting for cga7mpius6uopt9beskc disk replication to finish, remaining fresh devices: 2, total devices: 0
+Waiting for cga7mpius6uopt9beskc disk replication to finish, remaining fresh devices: 1, total devices: 0
+Replication finished: Disk cga7mpius6uopt9beskc done
