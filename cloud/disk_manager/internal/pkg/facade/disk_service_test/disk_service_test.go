@@ -12,12 +12,77 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func TestDiskServiceKek(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone-a",
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+
+	_, _, err = testcommon.FillDisk(
+		nbsClient,
+		diskID,
+		4096,
+	)
+	require.NoError(t, err)
+
+	err = nbsClient.CreateCheckpoint(
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpoint",
+		},
+	)
+	require.NoError(t, err)
+
+	created, err := nbsClient.CreateProxyOverlayDisk(
+		ctx,
+		"proxyOverlayDiskFor"+diskID,
+		diskID, // baseDiskID
+		"checkpoint",
+	)
+	require.NoError(t, err)
+	require.True(t, created)
+
+	srcCrc32, err := nbsClient.CalculateCrc32(diskID, 4096)
+	require.NoError(t, err)
+
+	dstCrc32, err := nbsClient.CalculateCrc32("proxyOverlayDiskFor"+diskID, 4096)
+	require.NoError(t, err)
+
+	require.Equal(t, srcCrc32, dstCrc32)
+
+	testcommon.CheckConsistency(t, ctx)
+}
 
 func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	ctx := testcommon.NewContext()

@@ -3632,6 +3632,45 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksRequestForMultipartitionVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            7 * 1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            3,  // partition count
+            2  // blocksPerStripe
+        );
+        
+        volume.WaitReady();
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        const auto range = TBlockRange64::WithLength(0, 1);
+        {
+            auto request = volume.CreateDescribeBlocksRequest(
+                range,
+                clientInfo.GetClientId()
+            );
+
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleGetUsedBlocksRequest)
     {
         auto runtime = PrepareTestActorRuntime();
