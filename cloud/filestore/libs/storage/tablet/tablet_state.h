@@ -860,14 +860,14 @@ public:
     //
 
 public:
-    struct TForcedCompactionState
+    struct TForcedRangeOperationState
     {
         const TVector<ui32> RangesToCompact;
 
         TInstant StartTime = TInstant::Now();
         std::atomic<ui32> Current = 0;
 
-        TForcedCompactionState(TVector<ui32> ranges)
+        TForcedRangeOperationState(TVector<ui32> ranges)
             : RangesToCompact(std::move(ranges))
         {}
 
@@ -882,35 +882,36 @@ public:
         }
     };
 
-    using TForcedCompactionStatePtr = std::shared_ptr<TForcedCompactionState>;
+    using TForcedRangeOperationStatePtr =
+        std::shared_ptr<TForcedRangeOperationState>;
 
 private:
-    struct TPendingForcedCompaction
+    struct TPendingForcedRangeOperation
     {
         TVector<ui32> Ranges;
-        TEvIndexTabletPrivate::EForcedCompactionMode Mode;
+        TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
     };
 
-    TVector<TPendingForcedCompaction> PendingForcedCompactions;
-    TForcedCompactionStatePtr ForcedCompactionState;
+    TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
+    TForcedRangeOperationStatePtr ForcedRangeOperationState;
 
 public:
-    void EnqueueForcedCompaction(
+    void EnqueueForcedRangeOperation(
         TVector<ui32> ranges,
-        TEvIndexTabletPrivate::EForcedCompactionMode mode);
-    TPendingForcedCompaction DequeueForcedCompaction();
+        TEvIndexTabletPrivate::EForcedRangeOperationMode mode);
+    TPendingForcedRangeOperation DequeueForcedRangeOperation();
 
-    void StartForcedCompaction(TVector<ui32> ranges);
-    void CompleteForcedCompaction();
+    void StartForcedRangeOperation(TVector<ui32> ranges);
+    void CompleteForcedRangeOperation();
 
-    const TForcedCompactionStatePtr& GetForcedCompactionState() const
+    const TForcedRangeOperationStatePtr& GeTForcedRangeOperationState() const
     {
-        return ForcedCompactionState;
+        return ForcedRangeOperationState;
     }
 
-    bool IsForcedCompactionRunning() const
+    bool IsForcedRangeOperationRunning() const
     {
-        return (bool)ForcedCompactionState;
+        return (bool)ForcedRangeOperationState;
     }
 
     //

@@ -317,7 +317,7 @@ void DumpOperationState(
 
 void DumpCompactionInfo(
     IOutputStream& out,
-    const TIndexTabletState::TForcedCompactionState& state)
+    const TIndexTabletState::TForcedRangeOperationState& state)
 {
     DumpProgress(out, state.Current.load(), state.RangesToCompact.size());
 }
@@ -943,14 +943,14 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
 
         TAG(TH3) {
-            if (!IsForcedCompactionRunning()) {
+            if (!IsForcedRangeOperationRunning()) {
                 BuildMenuButton(out, "compact-all");
             }
             out << "CompactionQueue";
         }
 
-        if (IsForcedCompactionRunning()) {
-            DumpCompactionInfo(out, *GetForcedCompactionState());
+        if (IsForcedRangeOperationRunning()) {
+            DumpCompactionInfo(out, *GeTForcedRangeOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
@@ -1003,7 +1003,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    if (IsForcedCompactionRunning()) {
+    if (IsForcedRangeOperationRunning()) {
         SendHttpResponse(
             ctx,
             TabletID(),
@@ -1036,13 +1036,13 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         ranges = GetNonEmptyCompactionRanges();
     }
 
-    TEvIndexTabletPrivate::EForcedCompactionMode mode =
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode =
         params.Get("mode") == "cleanup"
-            ? TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup
-            : TEvIndexTabletPrivate::EForcedCompactionMode::Compaction;
+            ? TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup
+            : TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
 
-    EnqueueForcedCompaction(std::move(ranges), mode);
-    EnqueueForcedCompactionIfNeeded(ctx);
+    EnqueueForcedRangeOperation(std::move(ranges), mode);
+    EnqueueForcedRangeOperationIfNeeded(ctx);
 
     SendHttpResponse(
         ctx,

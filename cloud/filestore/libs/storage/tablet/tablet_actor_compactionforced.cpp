@@ -42,7 +42,7 @@ private:
     const TString LogTag;
     const TDuration RetryTimeout;
 
-    const TIndexTabletState::TForcedCompactionStatePtr State;
+    const TIndexTabletState::TForcedRangeOperationStatePtr State;
     const TRequestInfoPtr RequestInfo;
 
 public:
@@ -50,7 +50,7 @@ public:
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedCompactionStatePtr state,
+        TIndexTabletState::TForcedRangeOperationStatePtr state,
         TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -60,7 +60,7 @@ private:
 
     void SendCompactionRequest(const TActorContext& ctx);
 
-    void HandleCompactionResponse(
+    void HandleRangeOperationResponse(
         const TResponseType::TPtr& ev,
         const TActorContext& ctx);
 
@@ -85,7 +85,7 @@ TForcedOperationActor<TResponseType, TRequestConstructor>::
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedCompactionStatePtr state,
+        TIndexTabletState::TForcedRangeOperationStatePtr state,
         TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
@@ -105,7 +105,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
     FILESTORE_TRACK(
         RequestReceived_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedCompaction");
+        "ForcedRangeOperation");
 
     SendCompactionRequest(ctx);
 }
@@ -127,7 +127,7 @@ STFUNC(
         HFunc(TEvents::TEvWakeup, HandleWakeUp);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TResponseType, HandleCompactionResponse);
+        HFunc(TResponseType, HandleRangeOperationResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -137,7 +137,7 @@ STFUNC(
 
 template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    HandleCompactionResponse(
+    HandleRangeOperationResponse(
         const TResponseType::TPtr& ev,
         const TActorContext& ctx)
 {
@@ -184,19 +184,19 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
     {
         // notify tablet
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedCompactionCompleted>(error);
+            TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     FILESTORE_TRACK(
         ResponseSent_TabletWorker,
         RequestInfo->CallContext,
-        "ForcedCompaction");
+        "ForcedRangeOperation");
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedCompactionResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -208,10 +208,10 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
 struct TCompactionRequestConstructor
 {
     std::unique_ptr<TEvIndexTabletPrivate::TEvCompactionRequest> operator()(
-        const ui32 range) const
+        const ui32 rangeId) const
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
-            range,
+            rangeId,
             true);
     }
 };
@@ -238,26 +238,27 @@ using TForcedCleanupActor = TForcedOperationActor<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueForcedCompactionIfNeeded(const TActorContext& ctx)
+void TIndexTabletActor::EnqueueForcedRangeOperationIfNeeded(
+    const TActorContext& ctx)
 {
-    if (IsForcedCompactionRunning()) {
+    if (IsForcedRangeOperationRunning()) {
         return;
     }
 
-    auto pendingRequest = DequeueForcedCompaction();
+    auto pendingRequest = DequeueForcedRangeOperation();
     if (pendingRequest.Ranges.empty()) {
         return;
     }
 
     auto request =
-        std::make_unique<TEvIndexTabletPrivate::TEvForcedCompactionRequest>(
+        std::make_unique<TEvIndexTabletPrivate::TEvForcedRangeOperationRequest>(
             std::move(pendingRequest.Ranges),
             pendingRequest.Mode);
     ctx.Send(ctx.SelfID, request.release());
 }
 
-void TIndexTabletActor::HandleForcedCompaction(
-    const TEvIndexTabletPrivate::TEvForcedCompactionRequest::TPtr& ev,
+void TIndexTabletActor::HandleForcedRangeOperation(
+    const TEvIndexTabletPrivate::TEvForcedRangeOperationRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -265,7 +266,7 @@ void TIndexTabletActor::HandleForcedCompaction(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s ForcedCompaction request for %lu ranges",
+        "%s ForcedRangeOperation request for %lu ranges",
         LogTag.c_str(),
         msg->Ranges.size());
 
@@ -276,7 +277,7 @@ void TIndexTabletActor::HandleForcedCompaction(
         }
 
         auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedCompactionResponse>(error);
+            TEvIndexTabletPrivate::TEvForcedRangeOperationResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -285,35 +286,37 @@ void TIndexTabletActor::HandleForcedCompaction(
         return;
     }
 
-    auto requestInfo =
-        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
 
     // will loose original request info in case of enqueueing external request
-    if (IsForcedCompactionRunning()) {
-        EnqueueForcedCompaction(std::move(msg->Ranges), msg->Mode);
+    if (IsForcedRangeOperationRunning()) {
+        EnqueueForcedRangeOperation(std::move(msg->Ranges), msg->Mode);
         return;
     }
 
-    StartForcedCompaction(std::move(msg->Ranges));
+    StartForcedRangeOperation(std::move(msg->Ranges));
 
     std::unique_ptr<IActor> actor;
 
     switch (msg->Mode) {
-        case TEvIndexTabletPrivate::EForcedCompactionMode::Compaction:
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction:
             actor = std::make_unique<TForcedCompactionActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GetForcedCompactionState(),
+                GeTForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 
-        case TEvIndexTabletPrivate::EForcedCompactionMode::Cleanup:
+        case TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup:
             actor = std::make_unique<TForcedCleanupActor>(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GetForcedCompactionState(),
+                GeTForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 
@@ -325,21 +328,21 @@ void TIndexTabletActor::HandleForcedCompaction(
     WorkerActors.insert(actorId);
 }
 
-void TIndexTabletActor::HandleForcedCompactionCompleted(
-    const TEvIndexTabletPrivate::TEvForcedCompactionCompleted::TPtr& ev,
+void TIndexTabletActor::HandleForcedRangeOperationCompleted(
+    const TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s ForcedCompaction completed (%s)",
+        "%s ForcedRangeOperation completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    TABLET_VERIFY(IsForcedCompactionRunning());
+    TABLET_VERIFY(IsForcedRangeOperationRunning());
     WorkerActors.erase(ev->Sender);
 
-    CompleteForcedCompaction();
-    EnqueueForcedCompactionIfNeeded(ctx);
+    CompleteForcedRangeOperation();
+    EnqueueForcedRangeOperationIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
