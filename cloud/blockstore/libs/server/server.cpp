@@ -1,8 +1,7 @@
 #include "server.h"
 
-#include "client_acceptor.h"
 #include "config.h"
-#include "endpoint_poller.h"
+#include "client_storage_factory.h"
 
 #include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 
@@ -25,6 +24,8 @@
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/uds/client_storage.h>
+#include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
 #include <contrib/ydb/library/actors/prof/tag.h>
 
@@ -193,8 +194,22 @@ BLOCKSTORE_GRPC_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using NCloud::NStorage::NServer::IClientStorage;
+using NCloud::NStorage::NServer::IClientStoragePtr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TSessionStorage;
+
+IClientStoragePtr CreateEndpointClientStorage(
+    const std::shared_ptr<TSessionStorage>& sessionStorage,
+    IBlockStorePtr service);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TSessionStorage final
-    : public IClientAcceptor
+    : public IClientStorageFactory
+    , public std::enable_shared_from_this<TSessionStorage>
 {
     struct TClientInfo
     {
@@ -214,10 +229,10 @@ public:
         : AppCtx(appCtx)
     {}
 
-    void Accept(
+    void AddClient(
         const TSocketHolder& socket,
         IBlockStorePtr sessionService,
-        NProto::ERequestSource source) override
+        NProto::ERequestSource source)
     {
         if (AtomicGet(AppCtx.ShouldStop)) {
             return;
@@ -245,7 +260,7 @@ public:
         grpc::AddInsecureChannelFromFd(AppCtx.Server.get(), dupSocket.Release());
     }
 
-    void Remove(const TSocketHolder& socket) override
+    void RemoveClient(const TSocketHolder& socket)
     {
         if (AtomicGet(AppCtx.ShouldStop)) {
             return;
@@ -269,6 +284,13 @@ public:
             }
         }
         return nullptr;
+    }
+
+    IClientStoragePtr CreateClientStorage(IBlockStorePtr service)
+    {
+        return CreateEndpointClientStorage(
+            shared_from_this(),
+            std::move(service));
     }
 
 private:
@@ -307,6 +329,44 @@ private:
         return ClientInfos.end();
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TClientStorage final
+    : public IClientStorage
+{
+    std::shared_ptr<TSessionStorage> Storage;
+    IBlockStorePtr Service;
+
+public:
+    TClientStorage(
+            std::shared_ptr<TSessionStorage> storage,
+            IBlockStorePtr service)
+        : Storage(std::move(storage))
+        , Service(std::move(service))
+    {}
+
+    void AddClient(
+        const TSocketHolder& clientSocket,
+        NCloud::NProto::ERequestSource source) override
+    {
+        Storage->AddClient(clientSocket, Service, source);
+    }
+
+    void RemoveClient(const TSocketHolder& clientSocket) override
+    {
+        Storage->RemoveClient(clientSocket);
+    }
+};
+
+IClientStoragePtr CreateEndpointClientStorage(
+    const std::shared_ptr<TSessionStorage>& sessionStorage,
+    IBlockStorePtr service)
+{
+    return std::make_shared<TClientStorage>(
+        sessionStorage,
+        std::move(service));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -861,7 +921,7 @@ private:
 
     TVector<std::unique_ptr<TExecutor>> Executors;
 
-    std::unique_ptr<TEndpointPoller> EndpointPoller;
+    std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
 
 public:
     TServer(
@@ -876,7 +936,7 @@ public:
     void Start() override;
     void Stop() override;
 
-    IClientAcceptorPtr GetClientAcceptor() override;
+    IClientStorageFactoryPtr GetClientStorageFactory() override;
 
     size_t CollectRequests(
         const TIncompleteRequestsCollector& collector) override;
@@ -1078,7 +1138,7 @@ void TServer::StartListenUnixSocket(
 {
     STORAGE_INFO("Listen on (control) " << unixSocketPath.Quote());
 
-    EndpointPoller = std::make_unique<TEndpointPoller>(SessionStorage);
+    EndpointPoller = std::make_unique<NStorage::NServer::TEndpointPoller>();
     EndpointPoller->Start();
 
     auto error = EndpointPoller->StartListenEndpoint(
@@ -1086,7 +1146,7 @@ void TServer::StartListenUnixSocket(
         backlog,
         true,   // multiClient
         NProto::SOURCE_FD_CONTROL_CHANNEL,
-        UdsService);
+        SessionStorage->CreateClientStorage(UdsService));
 
     if (HasError(error)) {
         ReportEndpointStartingError();
@@ -1144,7 +1204,7 @@ void TServer::Stop()
     Executors.clear();
 }
 
-IClientAcceptorPtr TServer::GetClientAcceptor()
+IClientStorageFactoryPtr TServer::GetClientStorageFactory()
 {
     return SessionStorage;
 }

@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
-#include <cloud/blockstore/libs/server/client_acceptor.h>
+#include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
@@ -913,7 +913,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TBootstrap bootstrap(CreateTestService(mountedVolumes));
 
         auto grpcListener = CreateSocketEndpointListener(bootstrap.Logging, 16);
-        grpcListener->SetClientAcceptor(CreateClientAcceptorStub());
+        grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
 
         auto manager = CreateEndpointManager(
             bootstrap,

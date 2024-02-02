@@ -12,7 +12,7 @@
 #include <sys/epoll.h>
 #endif
 
-namespace NCloud::NBlockStore::NServer {
+namespace NCloud::NStorage::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -163,4 +163,4 @@ size_t TSocketPoller::Wait(void** events, size_t len)
     return Impl->Wait(events, len);
 }
 
-}   // namespace NCloud::NBlockStore::NServer
+}   // namespace NCloud::NStorage::NServer
