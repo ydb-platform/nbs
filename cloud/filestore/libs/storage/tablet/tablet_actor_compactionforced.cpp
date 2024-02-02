@@ -58,7 +58,7 @@ public:
 private:
     STFUNC(StateWork);
 
-    void SendCompactionRequest(const TActorContext& ctx);
+    void SendRangeOperationRequest(const TActorContext& ctx);
 
     void HandleRangeOperationResponse(
         const TResponseType::TPtr& ev,
@@ -107,12 +107,12 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(
         RequestInfo->CallContext,
         "ForcedRangeOperation");
 
-    SendCompactionRequest(ctx);
+    SendRangeOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::
-    SendCompactionRequest(const TActorContext& ctx)
+    SendRangeOperationRequest(const TActorContext& ctx)
 {
     auto request = TRequestConstructor()(State->GetCurrentRange());
 
@@ -156,7 +156,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
         return ReplyAndDie(ctx, {});
     }
 
-    SendCompactionRequest(ctx);
+    SendRangeOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
@@ -164,7 +164,7 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
     HandleWakeUp(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    SendCompactionRequest(ctx);
+    SendRangeOperationRequest(ctx);
 }
 
 template <typename TResponseType, typename TRequestConstructor>
