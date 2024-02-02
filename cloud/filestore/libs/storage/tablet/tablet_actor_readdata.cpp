@@ -390,7 +390,8 @@ STFUNC(TReadDataActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateRequest(const NProto::TReadDataRequest& request, ui32 blockSize)
+template <typename TReadRequest>
+NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
 {
     const TByteRange range(
         request.GetOffset(),
@@ -447,7 +448,8 @@ void TIndexTabletActor::HandleReadData(
         msg->Record,
         byteRange,
         alignedByteRange,
-        std::move(blockBuffer));
+        std::move(blockBuffer),
+        false /* describeOnly */);
 }
 
 void TIndexTabletActor::HandleReadDataCompleted(
@@ -459,6 +461,45 @@ void TIndexTabletActor::HandleReadDataCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     ReleaseCollectBarrier(msg->CommitId);
     WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleDescribeData(
+    const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
+        return ValidateRequest(request, GetBlockSize());
+    };
+
+    if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {
+        return;
+    }
+
+    auto* msg = ev->Get();
+    const TByteRange byteRange(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        GetBlockSize()
+    );
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TByteRange alignedByteRange = byteRange.AlignedSuperRange();
+    auto blockBuffer = CreateBlockBuffer(alignedByteRange);
+
+    ExecuteTx<TReadData>(
+        ctx,
+        std::move(requestInfo),
+        msg->Record,
+        byteRange,
+        alignedByteRange,
+        std::move(blockBuffer),
+        true /* describeOnly */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -584,19 +625,54 @@ void TIndexTabletActor::CompleteTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
-    if (FAILED(args.Error.GetCode())) {
-        auto response = std::make_unique<TEvService::TEvReadDataResponse>(args.Error);
-        CompleteResponse<TEvService::TReadDataMethod>(
+    if (args.DescribeOnly && !HasError(args.Error)) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
+        auto& record = response->Record;
+
+        // TODO: fill record.{BlobPieces,FreshDataRanges}
+        Y_UNUSED(record);
+
+        CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        return;
+    }
+
+    if (HasError(args.Error)) {
+        if (args.DescribeOnly) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>(args.Error);
+            CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+                response->Record,
+                args.RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        } else {
+            auto response =
+                std::make_unique<TEvService::TEvReadDataResponse>(args.Error);
+            CompleteResponse<TEvService::TReadDataMethod>(
+                response->Record,
+                args.RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        }
+
         return;
     }
 
     if (!ShouldReadBlobs(args.Blocks)) {
-        ApplyBytes(LogTag, args.AlignedByteRange, std::move(args.Bytes), *args.Buffer);
+        ApplyBytes(
+            LogTag,
+            args.AlignedByteRange,
+            std::move(args.Bytes),
+            *args.Buffer);
 
         auto response = std::make_unique<TEvService::TEvReadDataResponse>();
         CopyFileData(
