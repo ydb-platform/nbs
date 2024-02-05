@@ -89,8 +89,10 @@ func (l *journaldLogger) structuredLogWithCaller(
 	fields ...log.Field,
 ) {
 
+	msg = level.String() + " => " + msg
+
 	if len(l.name) > 0 {
-		msg = l.name + " => " + msg
+		msg = l.name + " " + msg
 	}
 
 	if fileName, lineNumber, function, ok := captureStacktrace(l.callerSkip + callerSkipOffset); ok {
