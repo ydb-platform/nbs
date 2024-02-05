@@ -182,46 +182,26 @@ private:
         StoppingSockets.erase(socketPath);
     }
 
-    NProto::TError AddEndpointToStorage(
-        const NProto::TStartEndpointRequest& request)
+    NProto::TError StoreEndpointIfNeeded(const NProto::TEndpointConfig& config)
     {
+        if (!config.GetPersistent()) {
+            return {};
+        }
+
+        NProto::TStartEndpointRequest request;
+        *request.MutableEndpoint() = config;
+
         auto [data, error] = SerializeEndpoint(request);
         if (HasError(error)) {
             return error;
         }
 
-        error = Storage->AddEndpoint(data).GetError();
+        error = Storage->AddEndpoint(config.GetSocketPath(), data);
         if (HasError(error)) {
             return error;
         }
 
         return {};
-    }
-
-    NProto::TError RemoveEndpointFromStorage(
-        const NProto::TStopEndpointRequest& request)
-    {
-        const auto& socketPath = request.GetSocketPath();
-
-        auto [ids, error] = Storage->GetEndpointIds();
-        if (HasError(error)) {
-            return error;
-        }
-
-        for (auto id: ids) {
-            auto [data, error] = Storage->GetEndpoint(id);
-            if (HasError(error)) {
-                continue;
-            }
-
-            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(data);
-            if (req && req->GetEndpoint().GetSocketPath() == socketPath) {
-                return Storage->RemoveEndpoint(id);
-            }
-        }
-
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "Couldn't find endpoint " << socketPath);
     }
 };
 
@@ -277,6 +257,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
                     if (!HasError(error)) {
                         endpoint->Config.SetReadOnly(readOnly);
                         endpoint->Config.SetMountSeqNumber(mountSeqNumber);
+                        StoreEndpointIfNeeded(endpoint->Config);
                     }
                     response.MutableError()->CopyFrom(future.GetValue());
                     return response;
@@ -305,10 +286,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 
     const auto& response = future.GetValue();
     if (SUCCEEDED(response.GetError().GetCode())) {
-        if (config.GetPersistent()) {
-            AddEndpointToStorage(request);
-        }
-
+        StoreEndpointIfNeeded(config);
         Endpoints.emplace(socketPath, TEndpointInfo { endpoint, config });
     }
 
@@ -355,7 +333,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
     if (SUCCEEDED(response.GetError().GetCode())) {
         auto config = it->second.Config;
         if (config.GetPersistent()) {
-            RemoveEndpointFromStorage(request);
+            Storage->RemoveEndpoint(request.GetSocketPath());
         }
     }
 
@@ -381,7 +359,9 @@ NProto::TKickEndpointResponse TEndpointManager::DoKickEndpoint(
 {
     STORAGE_TRACE("KickEndpoint " << DumpMessage(request));
 
-    auto requestOrError = Storage->GetEndpoint(request.GetKeyringId());
+    auto requestOrError = Storage->GetEndpoint(
+        ToString(request.GetKeyringId()));
+
     if (HasError(requestOrError)) {
         return TErrorResponse(requestOrError.GetError());
     }

@@ -12,6 +12,7 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/folder/path.h>
+#include <util/generic/guid.h>
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -815,7 +816,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldIdentifyFdControlChannelSource)
     {
-        TFsPath unixSocket("./test_socket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -866,7 +867,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 serverPort = portManager.GetPort(9001);
         ui16 clientPort = portManager.GetPort(9002);
-        TFsPath unixSocket("./test_socket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
@@ -1087,7 +1088,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager portManager;
         ui16 serverPort = portManager.GetPort(9001);
         ui16 clientPort = portManager.GetPort(9002);
-        TFsPath unixSocket("./test_socket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =

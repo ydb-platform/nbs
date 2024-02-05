@@ -1,5 +1,7 @@
 #include "endpoints_test.h"
 
+#include <library/cpp/string_utils/base64/base64.h>
+
 #include <util/datetime/base.h>
 #include <util/folder/path.h>
 #include <util/generic/hash.h>
@@ -38,7 +40,7 @@ public:
     NProto::TError Init() override;
     NProto::TError Remove() override;
 
-    TResultOrError<ui32> AddEndpoint(
+    TResultOrError<TString> AddEndpoint(
         const TString& key,
         const TString& data) override;
 
@@ -144,7 +146,7 @@ NProto::TError TKeyringMutableEndpointStorage::Remove()
     return {};
 }
 
-TResultOrError<ui32> TKeyringMutableEndpointStorage::AddEndpoint(
+TResultOrError<TString> TKeyringMutableEndpointStorage::AddEndpoint(
     const TString& key,
     const TString& data)
 {
@@ -161,7 +163,7 @@ TResultOrError<ui32> TKeyringMutableEndpointStorage::AddEndpoint(
     }
 
     userKey.SetPerm(perm);
-    return userKey.GetId();
+    return ToString(userKey.GetId());
 }
 
 NProto::TError TKeyringMutableEndpointStorage::RemoveEndpoint(
@@ -197,9 +199,6 @@ class TFileMutableEndpointStorage final
 {
 private:
     const TFsPath DirPath;
-    ui32 LastKeyringId = 0;
-
-    THashMap<TString, ui32> KeyMap;
 
 public:
     TFileMutableEndpointStorage(TString dirPath)
@@ -224,30 +223,19 @@ public:
         return {};
     }
 
-    TResultOrError<ui32> AddEndpoint(
+    TResultOrError<TString> AddEndpoint(
         const TString& key,
         const TString& data) override
     {
-        ++LastKeyringId;
-
-        KeyMap.emplace(key, LastKeyringId);
-
-        auto filepath = DirPath.Child(ToString(LastKeyringId));
+        auto filepath = DirPath.Child(Base64EncodeUrl(key));
         TFile file(filepath, EOpenModeFlag::CreateAlways);
         TFileOutput(file).Write(data);
-        return LastKeyringId;
+        return key;
     }
 
     NProto::TError RemoveEndpoint(const TString& key) override
     {
-        auto it = KeyMap.find(key);
-        if (it == KeyMap.end()) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to find keyring " << key.Quote() << " to unlink");
-        }
-
-        auto keyringId = it->second;
-        DirPath.Child(ToString(keyringId)).DeleteIfExists();
+        DirPath.Child(Base64EncodeUrl(key)).DeleteIfExists();
         return {};
     }
 };

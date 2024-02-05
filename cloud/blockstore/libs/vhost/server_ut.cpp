@@ -15,6 +15,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
+#include <util/generic/guid.h>
 #include <util/generic/scope.h>
 #include <util/thread/factory.h>
 #include <util/thread/lfqueue.h>
@@ -44,7 +45,7 @@ class TTestEnvironment
 private:
     const size_t ThreadsCount = 2;
 
-    const TFsPath SocketPath = TFsPath("./testSocketPath");
+    const TFsPath SocketPath = TFsPath(CreateGuidAsString() + ".sock");
     const ui32 VhostQueuesCount = 1;
     const ui32 BlockSize;
     const ui64 BlocksCount = 256;
@@ -244,7 +245,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         vhostServer->Start();
 
-        const TFsPath socket("./testSocketPath");
+        const TFsPath socket(CreateGuidAsString() + ".sock");
 
         {
             TStorageOptions options;
@@ -297,14 +298,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
         options.VhostQueuesCount = 1;
         options.UnalignedRequestsDisabled = false;
 
-        TString socketPath = "./testSocketPath";
-
         const size_t endpointCount = 8;
         TString sockets[endpointCount];
 
         for (size_t i = 0; i < endpointCount; ++i) {
             char ch = '0' + i;
-            sockets[i] = socketPath + ch;
+            sockets[i] = CreateGuidAsString() + ch + ".sock";
 
             auto future = vhostServer->StartEndpoint(
                 sockets[i],
@@ -452,7 +451,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         vhostServer->Start();
 
-        const TFsPath socket("./testSocketPath");
+        const TFsPath socket(CreateGuidAsString() + ".sock");
         socket.Touch();
         Y_DEFER {
             socket.DeleteIfExists();
@@ -494,7 +493,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         vhostServer->Start();
 
-        const TFsPath socket("./testSocketPath");
+        const TFsPath socket(CreateGuidAsString() + ".sock");
 
         {
             TStorageOptions options;
@@ -537,7 +536,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         vhostServer->Start();
 
-        const TFsPath socket("./testSocketPath");
+        const TFsPath socket(CreateGuidAsString() + ".sock");
 
         {
             TStorageOptions options;
@@ -561,7 +560,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldCancelRequestsInFlightWhenStopEndpointOrStopServer)
     {
-        TString unixSocketPath = "./testSocketPath";
+        TString unixSocketPath = CreateGuidAsString() + ".sock";
         const ui32 blockSize = 4096;
         const ui64 startIndex = 3;
         const ui64 blocksCount = 41;
@@ -853,7 +852,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             options.UnalignedRequestsDisabled = false;
 
             auto future = server->StartEndpoint(
-                "./testSocketPath",
+                CreateGuidAsString() + ".sock",
                 testStorage,
                 options);
             const auto& error = future.GetValue(TDuration::Seconds(5));
@@ -923,7 +922,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldNotBeRaceOnStopEndpoint)
     {
-        TString unixSocketPath = "./testSocketPath";
+        TString unixSocketPath = CreateGuidAsString() + ".sock";
         const ui32 blockSize = 4096;
         const ui64 startIndex = 3;
         const ui64 blocksCount = 2;
