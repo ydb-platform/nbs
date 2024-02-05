@@ -25,10 +25,8 @@ target_link_libraries(blockstore-libs-server PUBLIC
   contrib-libs-grpc
 )
 target_sources(blockstore-libs-server PRIVATE
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/client_acceptor.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/client_storage_factory.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/config.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/endpoint_poller.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/server.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/server_test.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/server/socket_poller.cpp
 )
