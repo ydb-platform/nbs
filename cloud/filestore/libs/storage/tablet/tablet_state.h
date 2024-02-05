@@ -891,6 +891,8 @@ private:
         TVector<ui32> Ranges;
         TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
 
+        TPendingForcedRangeOperation() = default;
+
         TPendingForcedRangeOperation(
             TVector<ui32> ranges,
             TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
