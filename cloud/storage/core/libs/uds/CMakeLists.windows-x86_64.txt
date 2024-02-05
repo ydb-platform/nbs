@@ -12,7 +12,7 @@ target_link_libraries(core-libs-uds PUBLIC
   contrib-libs-cxxsupp
   yutil
   core-libs-common
-  core-libs-protos
+  core-protos
   contrib-libs-grpc
 )
 target_sources(core-libs-uds PRIVATE
