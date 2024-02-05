@@ -61,7 +61,7 @@ private:
     void SendRangeOperationRequest(const TActorContext& ctx);
 
     void HandleRangeOperationResponse(
-        const TResponseType::TPtr& ev,
+        const typename TResponseType::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleWakeUp(
@@ -138,7 +138,7 @@ STFUNC(
 template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::
     HandleRangeOperationResponse(
-        const TResponseType::TPtr& ev,
+        const typename TResponseType::TPtr& ev,
         const TActorContext& ctx)
 {
     auto* msg = ev->Get();
