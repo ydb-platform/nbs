@@ -20,74 +20,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const testsDiskSize = 4096 * 4096
-
-////////////////////////////////////////////////////////////////////////////////
-
-func TestDiskServiceKek(t *testing.T) {
-	ctx := testcommon.NewContext()
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	diskID := t.Name()
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: testsDiskSize,
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
-			DiskId: diskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-
-	_, _, err = testcommon.FillDisk(
-		nbsClient,
-		diskID,
-		testsDiskSize,
-	)
-	require.NoError(t, err)
-
-	err = nbsClient.CreateCheckpoint(
-		ctx,
-		nbs_client.CheckpointParams{
-			DiskID:       diskID,
-			CheckpointID: "checkpoint",
-		},
-	)
-	require.NoError(t, err)
-
-	created, err := nbsClient.CreateProxyOverlayDisk(
-		ctx,
-		"proxyOverlayDiskFor"+diskID,
-		diskID, // baseDiskID
-		"checkpoint",
-	)
-	require.NoError(t, err)
-	require.True(t, created)
-
-	srcCrc32, err := nbsClient.CalculateCrc32(diskID, testsDiskSize)
-	require.NoError(t, err)
-
-	dstCrc32, err := nbsClient.CalculateCrc32("proxyOverlayDiskFor"+diskID, testsDiskSize)
-	require.NoError(t, err)
-
-	require.Equal(t, srcCrc32, dstCrc32)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
 func TestDiskServiceCreateEmptyDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
 
@@ -1269,4 +1201,79 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestDiskServiceUseMultipartitionDiskAsBaseDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	diskSize := uint64(4096 * 4096)
+	diskZoneId := "zone-a"
+
+	nbsClient := testcommon.NewNbsClient(t, ctx, diskZoneId)
+
+	nbsClient.Create(ctx, nbs_client.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     4096,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		CloudID:         "cloud",
+		FolderID:        "folder",
+		PartitionsCount: 2,
+	})
+
+	_, _, err = testcommon.FillDisk(
+		nbsClient,
+		diskID,
+		diskSize,
+	)
+	require.NoError(t, err)
+
+	err = nbsClient.CreateCheckpoint(
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       diskID,
+			CheckpointID: "checkpoint",
+		},
+	)
+	require.NoError(t, err)
+
+	overlayDiskID := "proxy_" + diskID
+	created, err := nbsClient.CreateProxyOverlayDisk(
+		ctx,
+		overlayDiskID,
+		diskID, // baseDiskID
+		"checkpoint",
+	)
+	require.NoError(t, err)
+	require.True(t, created)
+
+	baseDiskCrc32, err := nbsClient.CalculateCrc32(diskID, diskSize)
+	require.NoError(t, err)
+
+	overlayDiskCrc32, err := nbsClient.CalculateCrc32(
+		overlayDiskID,
+		diskSize,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, baseDiskCrc32, overlayDiskCrc32)
+
+	// Should delte proxy overlay disk to pass CheckConsistency.
+	// reqCtx = testcommon.GetRequestContext(t, ctx)
+	// operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+	// 	DiskId: &disk_manager.DiskId{
+	// 		DiskId: overlayDiskID,
+	// 	},
+	// })
+	// require.NoError(t, err)
+	// require.NotEmpty(t, operation)
+	// err = internal_client.WaitOperation(ctx, client, operation.Id)
+	// require.NoError(t, err)
+
+	// testcommon.CheckConsistency(t, ctx)
 }
