@@ -38,6 +38,7 @@ extern "C" {
 #define VHOST_USER_PROTOCOL_F_PAGEFAULT      8
 #define VHOST_USER_PROTOCOL_F_CONFIG         9
 #define VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD 12
+#define VHOST_USER_PROTOCOL_F_CONFIGURE_MEM_SLOTS 15
 
 /* Vhost user features (GET_FEATURES and SET_FEATURES commands). */
 #define VHOST_F_LOG_ALL                     26
@@ -101,6 +102,9 @@ enum {
     VHOST_USER_POSTCOPY_END = 30,
     VHOST_USER_GET_INFLIGHT_FD = 31,
     VHOST_USER_SET_INFLIGHT_FD = 32,
+    VHOST_USER_GET_MAX_MEM_SLOTS = 36,
+    VHOST_USER_ADD_MEM_REG = 37,
+    VHOST_USER_REM_MEM_REG = 38,
 };
 
 struct vhost_user_mem_region {
@@ -108,6 +112,11 @@ struct vhost_user_mem_region {
     uint64_t size;
     uint64_t user_addr;
     uint64_t mmap_offset;
+};
+
+struct vhost_user_mem_single_mem_desc {
+    uint64_t _padding;
+    struct vhost_user_mem_region region;
 };
 
 struct vhost_user_mem_desc {

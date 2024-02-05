@@ -52,6 +52,9 @@ static const char *const vhost_req_names[] = {
     VHOST_REQ(POSTCOPY_END),
     VHOST_REQ(GET_INFLIGHT_FD),
     VHOST_REQ(SET_INFLIGHT_FD),
+    VHOST_REQ(GET_MAX_MEM_SLOTS),
+    VHOST_REQ(ADD_MEM_REG),
+    VHOST_REQ(REM_MEM_REG),
 };
 #undef VHOST_REQ
 
@@ -105,6 +108,10 @@ static int vring_kick(void *opaque)
      */
     vhd_clear_eventfd(vring->kickfd);
 
+    if (!vring->vq.enabled) {
+        return 0;
+    }
+
     ret = vdev->type->dispatch_requests(vdev, vring);
     if (ret < 0) {
         /*
@@ -149,6 +156,8 @@ static int vring_update_shadow_vq_addrs(struct vhd_vring *vring,
 
 static void vring_sync_to_virtq(struct vhd_vring *vring)
 {
+    bool should_kick;
+
     vring->vq.flags = vring->shadow_vq.flags;
     vring->vq.desc = vring->shadow_vq.desc;
     vring->vq.used = vring->shadow_vq.used;
@@ -156,7 +165,20 @@ static void vring_sync_to_virtq(struct vhd_vring *vring)
     vring->vq.used_gpa_base = vring->shadow_vq.used_gpa_base;
     vring->vq.mm = vring->shadow_vq.mm;
     vring->vq.log = vring->shadow_vq.log;
+
+    /*
+     * Since QEMU sets kickfd before enabling the vring, it gets kicked while
+     * still in the disabled state. Kick manually after enabling here just
+     * in case.
+     */
+    should_kick = !vring->vq.enabled && vring->shadow_vq.enabled;
+    vring->vq.enabled = vring->shadow_vq.enabled;
+
     virtq_set_notify_fd(&vring->vq, vring->callfd);
+
+    if (should_kick) {
+        vhd_set_eventfd(vring->kickfd);
+    }
 }
 
 /*
@@ -523,7 +545,8 @@ static const uint64_t g_default_protocol_features =
     (1UL << VHOST_USER_PROTOCOL_F_LOG_SHMFD) |
     (1UL << VHOST_USER_PROTOCOL_F_REPLY_ACK) |
     (1UL << VHOST_USER_PROTOCOL_F_CONFIG) |
-    (1UL << VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD);
+    (1UL << VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD) |
+    (1UL << VHOST_USER_PROTOCOL_F_CONFIGURE_MEM_SLOTS);
 
 static inline bool has_feature(uint64_t features_qword, size_t feature_bit)
 {
@@ -763,22 +786,9 @@ static int vhost_set_features(struct vhd_vdev *vdev, const void *payload,
     uint16_t i;
     const uint64_t *features = payload;
     bool has_event_idx = has_feature(*features, VIRTIO_F_RING_EVENT_IDX);
+    bool has_vring_enable = has_feature(*features, VHOST_USER_F_PROTOCOL_FEATURES);
 
-    /*
-     * VHOST_USER_F_PROTOCOL_FEATURES normally doesn't need negotiation: it's just
-     * offered by the slave, and then the master may use
-     * VHOST_USER_[GS]ET_PROTOCOL_FEATURES to negotiate the vhost protocol features
-     * without interfering with the guest-visibile virtio features.
-     * There's one exception though: the master may use VHOST_USER_SET_VRING_ENABLE
-     * only when VHOST_USER_F_PROTOCOL_FEATURES itself is negotiated.  (Presumably
-     * that was a design fallout, it should have received its own within the
-     * protocol feature mask.)
-     * As we don't support VHOST_USER_SET_VRING_ENABLE, reject the master
-     * connections that try to negotiate VHOST_USER_F_PROTOCOL_FEATURES, even
-     * though offering it.
-     */
-    uint64_t supported_features =
-        vdev->supported_features & ~(1ull << VHOST_USER_F_PROTOCOL_FEATURES);
+    uint64_t supported_features = vdev->supported_features;
     uint64_t changed_features;
 
     if (num_fds || size < sizeof(*features)) {
@@ -797,6 +807,8 @@ static int vhost_set_features(struct vhd_vdev *vdev, const void *payload,
         vdev->negotiated_features = *features;
         for (i = 0; i < vdev->num_queues; i++) {
             vdev->vrings[i].vq.has_event_idx = has_event_idx;
+            vdev->vrings[i].shadow_vq.enabled = !has_vring_enable;
+            vdev->vrings[i].vq.enabled = vdev->vrings[i].shadow_vq.enabled;
         }
         return set_features_complete(vdev);
     }
@@ -905,6 +917,159 @@ static int vhost_set_mem_table(struct vhd_vdev *vdev, const void *payload,
 
 fail:
     vhd_memmap_unref(mm);
+    return ret;
+}
+
+static int vhost_add_mem_reg(struct vhd_vdev *vdev, const void *payload,
+                             size_t size, const int *fds, size_t num_fds)
+{
+    int ret;
+    const struct vhost_user_mem_single_mem_desc *desc = payload;
+    const struct vhost_user_mem_region *region = &desc->region;
+    struct vhd_memory_map *mm = vdev->memmap;
+    bool can_add_inplace = false;
+    uint16_t i;
+
+    if (size < sizeof(*desc)) {
+        VHD_OBJ_ERROR(vdev, "malformed message: size %zu expected %zu",
+                      size, sizeof(*desc));
+        return -EMSGSIZE;
+    }
+    if (num_fds != 1) {
+        VHD_OBJ_ERROR(vdev, "expected a region file descriptor");
+        return -EINVAL;
+    }
+
+    if (mm == NULL) {
+        mm = vhd_memmap_new(vdev->map_cb, vdev->unmap_cb);
+    } else {
+        can_add_inplace = vdev->num_vrings_in_flight == 0;
+
+        /*
+         * Slow path:
+         * The rings are already live, therefore we cannot touch their memory
+         * map here. All we can do is create a copy, modify it how we want,
+         * and then tell the rings to use it via a message to their event loop.
+         */
+        if (!can_add_inplace) {
+            mm = vhd_memmap_dup(mm);
+        }
+    }
+
+    ret = vhd_memmap_add_slot(mm, region->guest_addr, region->user_addr,
+                              region->size, fds[0], region->mmap_offset);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    for (i = 0; i < vdev->num_queues; i++) {
+        if (!vdev->vrings[i].started_in_ctl) {
+            continue;
+        }
+        ret = vring_update_shadow_vq_addrs(&vdev->vrings[i], mm);
+        if (ret < 0) {
+            goto fail;
+        }
+    }
+
+    /*
+     * Fast path:
+     * The rings are not yet started, but a valid memory map
+     * structure already exists. In this case we can just modify
+     * it in-place and return right away without creating a copy
+     * of it.
+     */
+    if (can_add_inplace) {
+        return vhost_ack(vdev, 0);
+    }
+
+    vdev->old_memmap = vdev->memmap;
+    vdev->memmap = mm;
+
+    if (!vdev->num_vrings_in_flight) {
+        return set_mem_table_complete(vdev);
+    }
+
+    vdev->handle_complete = set_mem_table_complete;
+    for (i = 0; i < vdev->num_queues; i++) {
+        vring_handle_msg(&vdev->vrings[i], vring_sync_to_virtq_bh);
+    }
+    return 0;
+
+fail:
+    if (!can_add_inplace) {
+        vhd_memmap_unref(mm);
+    }
+    return ret;
+}
+
+static int vhost_rem_mem_reg(struct vhd_vdev *vdev, const void *payload,
+                             size_t size, const int *fds, size_t num_fds)
+{
+    int ret;
+    const struct vhost_user_mem_single_mem_desc *desc = payload;
+    const struct vhost_user_mem_region *region = &desc->region;
+    struct vhd_memory_map *new_mm, *mm = vdev->memmap;
+    uint16_t i;
+
+    if (size < sizeof(*desc)) {
+        VHD_OBJ_ERROR(vdev, "malformed message: size %zu expected %zu",
+                      size, sizeof(*desc));
+        return -EMSGSIZE;
+    }
+
+    /*
+     * vhost-user spec:
+     * No file descriptors SHOULD be passed in the ancillary data.
+     * For compatibility with existing incorrect implementations, the back-end
+     * MAY accept messages with one file descriptor. If a file descriptor is
+     * passed, the back-end MUST close it without using it otherwise.
+     */
+    if (num_fds > 1) {
+        VHD_OBJ_ERROR(vdev, "malformed message num_fds=%zu", num_fds);
+        return -EINVAL;
+    }
+
+    if (mm == NULL) {
+        VHD_OBJ_ERROR(
+            vdev,
+            "cannot remove memory region, device doesn't have a memmap"
+        );
+        return -EINVAL;
+    }
+
+    new_mm = vhd_memmap_dup(mm);
+    ret = vhd_memmap_del_slot(new_mm, region->guest_addr, region->user_addr,
+                              region->size);
+    if (ret < 0) {
+        goto fail;
+    }
+
+    for (i = 0; i < vdev->num_queues; i++) {
+        if (!vdev->vrings[i].started_in_ctl) {
+            continue;
+        }
+        ret = vring_update_shadow_vq_addrs(&vdev->vrings[i], new_mm);
+        if (ret < 0) {
+            goto fail;
+        }
+    }
+
+    vdev->old_memmap = mm;
+    vdev->memmap = new_mm;
+
+    if (!vdev->num_vrings_in_flight) {
+        return set_mem_table_complete(vdev);
+    }
+
+    vdev->handle_complete = set_mem_table_complete;
+    for (i = 0; i < vdev->num_queues; i++) {
+        vring_handle_msg(&vdev->vrings[i], vring_sync_to_virtq_bh);
+    }
+    return 0;
+
+fail:
+    vhd_memmap_unref(new_mm);
     return ret;
 }
 
@@ -1505,6 +1670,59 @@ static int vhost_set_inflight_fd(struct vhd_vdev *vdev, const void *payload,
     return vhost_ack(vdev, 0);
 }
 
+static int vhost_get_max_mem_slots(struct vhd_vdev *vdev, const void *payload,
+                                   size_t size, const int *fds, size_t num_fds)
+{
+    if (num_fds) {
+        VHD_OBJ_ERROR(vdev, "malformed message num_fds=%zu", num_fds);
+        return -EINVAL;
+    }
+
+    return vhost_reply_u64(vdev, vhd_memmap_max_memslots());
+}
+
+static int vring_enable_complete(struct vhd_vdev *vdev)
+{
+    return vhost_ack(vdev, 0);
+}
+
+static int vhost_vring_enable(struct vhd_vdev *vdev, const void *payload,
+                              size_t size, const int *fds, size_t num_fds)
+{
+    const struct vhost_user_vring_state *vrstate = payload;
+    struct vhd_vring *vring;
+
+    if (num_fds || size < sizeof(*vrstate)) {
+        VHD_OBJ_ERROR(vdev, "malformed message size=%zu #fds=%zu", size,
+                      num_fds);
+        return -EINVAL;
+    }
+
+    vring = get_vring(vdev, vrstate->index);
+    if (!vring) {
+        return -EINVAL;
+    }
+
+    if (!has_feature(vdev->negotiated_features,
+                     VHOST_USER_F_PROTOCOL_FEATURES)) {
+        VHD_OBJ_ERROR(vring, "tried to SET_VRING_ENABLE without negotiating "
+                             "VHOST_USER_F_PROTOCOL_FEATURES");
+        return -EINVAL;
+    }
+
+    vring->shadow_vq.enabled = !vring->shadow_vq.enabled;
+    VHD_OBJ_INFO(vdev, "changing vring %" PRIu32 " state to %s", vrstate->index,
+                 vring->shadow_vq.enabled ? "enabled" : "disabled");
+
+    if (!vring->started_in_ctl) {
+        return vring_enable_complete(vdev);
+    }
+
+    vdev->handle_complete = vring_enable_complete;
+    vring_handle_msg(vring, vring_sync_to_virtq_bh);
+    return 0;
+}
+
 static int (*vhost_msg_handlers[])(struct vhd_vdev *vdev,
                                    const void *payload, size_t size,
                                    const int *fds, size_t num_fds) = {
@@ -1526,6 +1744,10 @@ static int (*vhost_msg_handlers[])(struct vhd_vdev *vdev,
     [VHOST_USER_SET_VRING_ADDR]         = vhost_set_vring_addr,
     [VHOST_USER_GET_INFLIGHT_FD]        = vhost_get_inflight_fd,
     [VHOST_USER_SET_INFLIGHT_FD]        = vhost_set_inflight_fd,
+    [VHOST_USER_GET_MAX_MEM_SLOTS]      = vhost_get_max_mem_slots,
+    [VHOST_USER_ADD_MEM_REG]            = vhost_add_mem_reg,
+    [VHOST_USER_REM_MEM_REG]            = vhost_rem_mem_reg,
+    [VHOST_USER_SET_VRING_ENABLE]       = vhost_vring_enable,
 };
 
 static int vhost_handle_msg(struct vhd_vdev *vdev, uint32_t req,
