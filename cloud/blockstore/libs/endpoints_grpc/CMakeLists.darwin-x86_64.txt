@@ -19,7 +19,7 @@ target_link_libraries(blockstore-libs-endpoints_grpc PUBLIC
   blockstore-libs-endpoints
   blockstore-libs-server
   blockstore-libs-service
-  storage-core-libs-uds
+  core-libs-uds
 )
 target_sources(blockstore-libs-endpoints_grpc PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.cpp
