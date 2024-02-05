@@ -4659,7 +4659,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, dev3.GetState());
 
             const auto dev4 = state.GetDevice("uuid-1.4");
-            UNIT_ASSERT_VALUES_EQUAL(9_GB / DefaultBlockSize, dev4.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(10_GB / DefaultBlockSize, dev4.GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(9_GB / DefaultBlockSize, dev4.GetUnadjustedBlockCount());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, dev4.GetState());
         }
@@ -7913,13 +7913,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ? NProto::DEVICE_STATE_ERROR
                 : NProto::DEVICE_STATE_ONLINE;
 
-            const auto expectedSize = i == 4
-                ? 94_GB
-                : 93_GB;
-
             UNIT_ASSERT_EQUAL_C(expectedState, device.GetState(), uuid);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                expectedSize / DefaultBlockSize,
+                93_GB / DefaultBlockSize,
                 device.GetBlocksCount(),
                 uuid);
         }

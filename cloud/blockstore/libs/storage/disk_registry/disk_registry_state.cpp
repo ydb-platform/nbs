@@ -800,7 +800,8 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
         return;
     }
 
-    const auto deviceSize = device.GetBlockSize() * device.GetBlocksCount();
+    const auto deviceSize =
+        device.GetBlockSize() * device.GetUnadjustedBlockCount();
 
     if (deviceSize < unit) {
         SetDeviceErrorState(device, timestamp, TStringBuilder()
