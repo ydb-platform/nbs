@@ -890,6 +890,11 @@ private:
     {
         TVector<ui32> Ranges;
         TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
+
+        TPendingForcedRangeOperation(
+            TVector<ui32> ranges,
+            TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
+            : Ranges(std::move(ranges)), Mode(mode) {}
     };
 
     TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
