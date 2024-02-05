@@ -25,27 +25,26 @@ jobs:
         folder_prefix: nebius-
         build_preset: "release"
         user: runner
-    - name: Create
+    - name: Create objects lifecycle main repo
       if: ${{ github.repository == 'ydb-platform/nbs'}}
       shell: bash
       run: |
         set -x
         echo "::group::set-up-objects-life-cycle"
-        python3 ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ -vv --apply
+        python3 .github/scripts/ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ -vv --apply
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
-    - name: Create
+    - name: Create objects lifecycle non-main repo
       if: ${{ github.repository != 'ydb-platform/nbs'}}
       shell: bash
       run: |
         set -x
         echo "::group::set-up-objects-life-cycle"
-        python3 ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d -vv --apply
+        python3 .github/scripts/ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d -vv --apply
         echo "::endgroup::"
-      env: 
+      env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
-
     - name: Create indices for repo
       shell: bash
       run: |
@@ -55,4 +54,3 @@ jobs:
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
-
