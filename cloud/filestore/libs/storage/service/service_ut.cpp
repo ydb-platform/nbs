@@ -1485,7 +1485,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1000);
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) mutable {
+        runtime.SetObserverFunc(
+            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) mutable {
             switch (event->GetTypeRewrite()) {
                 case TEvIndexTablet::EvCreateSessionRequest: {
                     const auto* msg =
@@ -1495,7 +1496,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         THeaders headers = {"test", "client", "", 0};
