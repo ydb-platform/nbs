@@ -12,8 +12,8 @@ target_link_libraries(core-libs-uds PUBLIC
   contrib-libs-cxxsupp
   yutil
   core-libs-common
-  core-protos
   contrib-libs-grpc
+  storage-core-protos
 )
 target_sources(core-libs-uds PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/uds/client_storage.cpp
