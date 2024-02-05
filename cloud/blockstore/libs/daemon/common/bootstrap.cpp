@@ -579,7 +579,8 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Server initialized");
 
-    GrpcEndpointListener->SetClientAcceptor(Server->GetClientAcceptor());
+    GrpcEndpointListener->SetClientStorageFactory(
+        Server->GetClientStorageFactory());
 
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,

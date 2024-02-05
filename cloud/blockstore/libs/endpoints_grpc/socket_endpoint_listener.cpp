@@ -3,13 +3,14 @@
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
-#include <cloud/blockstore/libs/server/endpoint_poller.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -210,7 +211,8 @@ class TSocketEndpointListener final
 private:
     const ui32 UnixSocketBacklog;
 
-    std::unique_ptr<TEndpointPoller> EndpointPoller;
+    std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
+    IClientStorageFactoryPtr ClientStorageFactory;
 
     TLog Log;
 
@@ -228,11 +230,11 @@ public:
         Stop();
     }
 
-    void SetClientAcceptor(IClientAcceptorPtr clientAcceptor) override
+    void SetClientStorageFactory(IClientStorageFactoryPtr factory) override
     {
         Y_ABORT_UNLESS(!EndpointPoller);
-        EndpointPoller = std::make_unique<TEndpointPoller>(
-            std::move(clientAcceptor));
+        ClientStorageFactory = std::move(factory);
+        EndpointPoller = std::make_unique<NStorage::NServer::TEndpointPoller>();
     }
 
     void Start() override
@@ -263,7 +265,8 @@ public:
             UnixSocketBacklog,
             false,  // multiClient
             NProto::SOURCE_FD_DATA_CHANNEL,
-            std::move(sessionService));
+            ClientStorageFactory->CreateClientStorage(
+                std::move(sessionService)));
 
         return MakeFuture(std::move(error));
     }
