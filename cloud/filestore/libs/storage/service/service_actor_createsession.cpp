@@ -14,6 +14,7 @@
 #include <util/generic/deque.h>
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
+#include <util/system/hostname.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -615,7 +616,7 @@ void TStorageServiceActor::HandleCreateSession(
     const auto& clientId = GetClientId(msg->Record);
     const auto& fileSystemId = msg->Record.GetFileSystemId();
     const auto& checkpointId = msg->Record.GetCheckpointId();
-    const auto& originFqdn = GetOriginFqdn(msg->Record);
+    auto originFqdn = GetOriginFqdn(msg->Record);
 
     ui64 cookie;
     TInFlightRequest* inflight;
@@ -692,6 +693,10 @@ void TStorageServiceActor::HandleCreateSession(
         sessionId = CreateGuidAsString();
     }
 
+    if (!originFqdn) {
+        originFqdn = GetFQDNHostName();
+    }
+
     auto requestInfo = CreateRequestInfo(
         SelfId(),
         cookie,
@@ -704,7 +709,7 @@ void TStorageServiceActor::HandleCreateSession(
         fileSystemId,
         sessionId,
         checkpointId,
-        originFqdn,
+        std::move(originFqdn),
         msg->Record.GetMountSeqNumber(),
         msg->Record.GetReadOnly(),
         msg->Record.GetRestoreClientSession(),
