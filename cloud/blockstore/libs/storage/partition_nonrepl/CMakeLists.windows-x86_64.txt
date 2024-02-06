@@ -34,6 +34,7 @@ target_sources(libs-storage-partition_nonrepl PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/copy_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/replica_info.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/resync_range.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_mirror.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_actor.cpp
@@ -69,10 +70,10 @@ target_sources(libs-storage-partition_nonrepl PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_rdma_actor_zeroblocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor_migration.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor_mirror.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor_readblocks.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor_readblocks_local.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_actor_stats.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_state.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor_migration.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor_mirror.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor_readblocks.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor_readblocks_local.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor_stats.cpp
 )
