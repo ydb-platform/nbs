@@ -184,6 +184,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     TTxIndexTablet::TLoadState& args)
 {
     if (args.StorageConfig.Defined()) {
+        StorageConfigOverride = *args.StorageConfig;
         Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
         LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
