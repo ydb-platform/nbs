@@ -22,7 +22,6 @@ blockstore-client UpdateDiskRegistryConfig --verbose error --input $BIN_DIR/nbs/
 if [ $? -ne 0 ]; then
     echo "Disk registry config is not updated. Do you apply in second time? " \
       "Consider update version value or add IgnoreVersion to $BIN_DIR/nbs/nbs-disk-registry.txt"
-    exit 1
 fi
 
 start_nbs_agent() {
