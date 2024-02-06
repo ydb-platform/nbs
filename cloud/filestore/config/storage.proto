@@ -42,7 +42,7 @@ message TStorageConfig
     // flushing.
     optional uint32 FlushThreshold = 10;
 
-    // Backpressure thresholds.
+    // Thresholds for background ops.
     optional uint32 CleanupThreshold = 11;
     optional uint32 CompactionThreshold = 12;
     optional uint32 CollectGarbageThreshold = 13;
