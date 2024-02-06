@@ -454,7 +454,8 @@ void TVolumeDatabase::WriteCheckpointRequest(
 void TVolumeDatabase::UpdateCheckpointRequest(
     ui64 requestId,
     bool completed,
-    TString shadowDiskId)
+    const TString& shadowDiskId,
+    ui32 shadowDiskState)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
@@ -463,7 +464,21 @@ void TVolumeDatabase::UpdateCheckpointRequest(
 
     Table<TTable>().Key(requestId).Update(
         NIceDb::TUpdate<TTable::State>(static_cast<ui32>(state)),
-        NIceDb::TUpdate<TTable::ShadowDiskId>(std::move(shadowDiskId)));
+        NIceDb::TUpdate<TTable::ShadowDiskId>(shadowDiskId),
+        NIceDb::TUpdate<TTable::ShadowDiskState>(shadowDiskState));
+}
+
+void TVolumeDatabase::UpdateShadowDiskState(
+    ui64 requestId,
+    ui64 processedBlockCount,
+    ui32 shadowDiskState)
+{
+    using TTable = TVolumeSchema::CheckpointRequests;
+
+    Table<TTable>().Key(requestId).Update(
+        NIceDb::TUpdate<TTable::ShadowDiskProcessedBlockCount>(
+            processedBlockCount),
+        NIceDb::TUpdate<TTable::ShadowDiskState>(shadowDiskState));
 }
 
 bool TVolumeDatabase::CollectCheckpointsToDelete(
@@ -525,10 +540,16 @@ bool TVolumeDatabase::ReadCheckpointRequests(
                 it.GetValue<TTable::RequestId>(),
                 it.GetValue<TTable::CheckpointId>(),
                 TInstant::MicroSeconds(it.GetValue<TTable::Timestamp>()),
-                static_cast<ECheckpointRequestType>(it.GetValue<TTable::ReqType>()),
-                static_cast<ECheckpointRequestState>(it.GetValue<TTable::State>()),
-                static_cast<ECheckpointType>(it.GetValue<TTable::CheckpointType>()),
-                it.GetValue<TTable::ShadowDiskId>());
+                static_cast<ECheckpointRequestType>(
+                    it.GetValue<TTable::ReqType>()),
+                static_cast<ECheckpointRequestState>(
+                    it.GetValue<TTable::State>()),
+                static_cast<ECheckpointType>(
+                    it.GetValue<TTable::CheckpointType>()),
+                it.GetValue<TTable::ShadowDiskId>(),
+                static_cast<EShadowDiskState>(
+                    it.GetValue<TTable::ShadowDiskState>()),
+                it.GetValue<TTable::ShadowDiskProcessedBlockCount>());
         }
 
         if (!it.Next()) {

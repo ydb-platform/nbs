@@ -111,7 +111,12 @@ public:
     void UpdateCheckpointRequest(
         ui64 requestId,
         bool completed,
-        TString shadowDiskId);
+        const TString& shadowDiskId,
+        ui32 shadowDiskState);
+    void UpdateShadowDiskState(
+        ui64 requestId,
+        ui64 processedBlockCount,
+        ui32 shadowDiskState);
     bool ReadCheckpointRequests(
         const THashMap<TString, TInstant>& deletedCheckpoints,
         TVector<TCheckpointRequest>& requests,

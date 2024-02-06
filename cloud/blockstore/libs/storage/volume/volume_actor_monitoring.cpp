@@ -32,8 +32,6 @@ IOutputStream& operator <<(
             return out << "<font color=green>data present</font>";
         case ECheckpointData::DataDeleted:
             return out << "<font color=red>data deleted</font>";
-        case ECheckpointData::DataPreparing:
-            return out << "<font color=blue>data preparing</font>";
         default:
             return out
                 << "(Unknown value "
@@ -44,18 +42,24 @@ IOutputStream& operator <<(
 
 IOutputStream& operator<<(
     IOutputStream& out,
-    const TActiveCheckpointsType& checkpointType)
+    const TActiveCheckpointInfo& checkpointInfo)
 {
-    switch (checkpointType.Type) {
+    switch (checkpointInfo.Type) {
         case ECheckpointType::Light: {
             out << "no data (is light)";
         } break;
         case ECheckpointType::Normal: {
-            out << "normal (" << checkpointType.Data << ")";
+            out << "normal (" << checkpointInfo.Data << ")";
         } break;
     }
-    if (checkpointType.ShadowDiskId) {
-        out << " disk:" << checkpointType.ShadowDiskId.Quote();
+    if (checkpointInfo.ShadowDiskId) {
+        out << "<br/>";
+        out << " shadow disk:" << checkpointInfo.ShadowDiskId.Quote();
+        out << " state: " << ToString(checkpointInfo.ShadowDiskState);
+        if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
+            out << " blocks: " << checkpointInfo.ProcessedBlockCount << "/"
+                << checkpointInfo.TotalBlockCount;
+        }
     }
     return out;
 }

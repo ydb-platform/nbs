@@ -40,8 +40,7 @@ const TCheckpointRequest& TCheckpointStore::CreateNew(
         timestamp,
         reqType,
         ECheckpointRequestState::Received,
-        type,
-        {}});
+        type});
 }
 
 void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
@@ -67,7 +66,8 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 void TCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
     bool success,
-    TString shadowDiskId)
+    TString shadowDiskId,
+    EShadowDiskState shadowDiskState)
 {
     Y_DEBUG_ABORT_UNLESS(CheckpointRequestInProgress == requestId);
     if (requestId == CheckpointRequestInProgress) {
@@ -77,10 +77,46 @@ void TCheckpointStore::SetCheckpointRequestFinished(
         checkpointRequest.State = success ? ECheckpointRequestState::Completed
                                           : ECheckpointRequestState::Rejected;
         checkpointRequest.ShadowDiskId = std::move(shadowDiskId);
+        checkpointRequest.ShadowDiskState = shadowDiskState;
         Apply(checkpointRequest);
     }
     CheckpointRequestInProgress = 0;
     CheckpointBeingCreated = false;
+}
+
+void TCheckpointStore::SetShadowDiskState(
+    const TString& checkpointId,
+    EShadowDiskState shadowDiskState,
+    ui64 processedBlockCount,
+    ui64 totalBlockCount)
+{
+    if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
+        checkpointData->ShadowDiskState = shadowDiskState;
+        checkpointData->ProcessedBlockCount = processedBlockCount;
+        checkpointData->TotalBlockCount = totalBlockCount;
+    }
+}
+
+void TCheckpointStore::ShadowActorCreated(const TString& checkpointId)
+{
+    if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
+        checkpointData->HasShadowActor = true;
+    }
+}
+
+void TCheckpointStore::ShadowActorDestroyed(const TString& checkpointId)
+{
+    if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
+        checkpointData->HasShadowActor = false;
+    }
+}
+
+bool TCheckpointStore::HasShadowActor(const TString& checkpointId) const
+{
+    if (const auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
+        return checkpointData->HasShadowActor;
+    }
+    return false;
 }
 
 bool TCheckpointStore::IsRequestInProgress() const
@@ -128,6 +164,13 @@ std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
 {
     const auto* ptr = ActiveCheckpoints.FindPtr(checkpointId);
     return ptr ? ptr->Type : std::optional<ECheckpointType>{};
+}
+
+std::optional<TActiveCheckpointInfo> TCheckpointStore::GetCheckpoint(
+    const TString& checkpointId) const
+{
+    const auto* ptr = ActiveCheckpoints.FindPtr(checkpointId);
+    return ptr ? *ptr : std::optional<TActiveCheckpointInfo>{};
 }
 
 TVector<TString> TCheckpointStore::GetLightCheckpoints() const
@@ -208,16 +251,20 @@ void TCheckpointStore::AddCheckpoint(
 {
     ECheckpointData checkpointData =
         checkpointRequest.Type == ECheckpointType::Normal && !forceDataDeleted
-            ? (checkpointRequest.ShadowDiskId ? ECheckpointData::DataPreparing
-                                              : ECheckpointData::DataPresent)
+            ? ECheckpointData::DataPresent
             : ECheckpointData::DataDeleted;
 
     ActiveCheckpoints.emplace(
         checkpointRequest.CheckpointId,
-        TActiveCheckpointsType{
-            checkpointRequest.Type,
-            checkpointData,
-            checkpointRequest.ShadowDiskId});
+        TActiveCheckpointInfo{
+            .RequestId = checkpointRequest.RequestId,
+            .CheckpointId = checkpointRequest.CheckpointId,
+            .Type = checkpointRequest.Type,
+            .Data = checkpointData,
+            .ShadowDiskId = checkpointRequest.ShadowDiskId,
+            .ShadowDiskState = checkpointRequest.ShadowDiskState,
+            .ProcessedBlockCount =
+                checkpointRequest.ShadowDiskProcessedBlockCount});
     CalcCheckpointsState();
 }
 
