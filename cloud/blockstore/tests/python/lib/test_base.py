@@ -444,7 +444,11 @@ def wait_for_secure_erase(mon_port, pool='default'):
         bytes = __get_free_bytes(sensors, pool)
         logging.info("Bytes: {}".format(bytes))
 
-        # logging.info("Dump: {}".format(json.dumps(sensors, indent=4)))
+        if not bytes:
+            logging.error(
+                "There is no free space in '%s'. Sensors: %s",
+                    pool,
+                    json.dumps(sensors, indent=4))
 
         assert bytes != 0
 
