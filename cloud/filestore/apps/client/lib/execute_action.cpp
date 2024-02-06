@@ -15,7 +15,7 @@ TString ReadFile(const TString& path)
 }
 
 class TExecuteActionCommand final
-    : public TFileStoreCommand
+    : public TFileStoreServiceCommand
 {
 private:
     TString Action;
@@ -51,10 +51,6 @@ public:
 
         auto& input = Input.Empty() ? Cin : inputBytes;
         auto inputJsonStr = input.ReadAll();
-        if (NJson::ValidateJson(inputJsonStr)) {
-            Cout << "Invalid input-json" << Endl;
-            return false;
-        }
 
         STORAGE_DEBUG("Reading ExecuteAction request");
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
@@ -71,7 +67,7 @@ public:
 
         if (HasError(result)) {
             Cout << FormatError(result.GetError()) << Endl;
-            return false;
+            return true;
         }
 
         Cout << result.GetOutput() << Endl;
