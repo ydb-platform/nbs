@@ -17,12 +17,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getProxyOverlayDiskID(diskID string, snapshotID string) string {
-	return fmt.Sprintf("proxy_%v_%v", diskID, snapshotID)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type createSnapshotFromDiskTask struct {
 	nbsFactory nbs_client.Factory
 	storage    storage.Storage
@@ -278,6 +272,14 @@ func (t *createSnapshotFromDiskTask) run(
 	)
 }
 
+func (t *createSnapshotFromDiskTask) getProxyOverlayDiskID(
+	diskID string,
+	snapshotID string,
+) string {
+
+	return fmt.Sprintf("proxy_%v_%v", diskID, snapshotID)
+}
+
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -289,7 +291,10 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	}
 
 	diskID := t.request.SrcDisk.DiskId
-	proxyOverlayDiskID := getProxyOverlayDiskID(diskID, t.request.DstSnapshotId)
+	proxyOverlayDiskID := t.getProxyOverlayDiskID(
+		diskID,
+		t.request.DstSnapshotId,
+	)
 
 	if t.state.ProxyOverlayDiskCreated != nil {
 		if *t.state.ProxyOverlayDiskCreated {
@@ -336,7 +341,7 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 		return err
 	}
 
-	proxyOverlayDiskID := getProxyOverlayDiskID(
+	proxyOverlayDiskID := t.getProxyOverlayDiskID(
 		t.request.SrcDisk.DiskId,
 		t.request.DstSnapshotId,
 	)

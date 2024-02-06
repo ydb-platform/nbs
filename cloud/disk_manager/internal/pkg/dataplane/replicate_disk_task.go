@@ -119,6 +119,54 @@ func (t *replicateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *replicateDiskTask) getProxyOverlayDiskID(
+	diskID string,
+	checkpointID string,
+) string {
+
+	return fmt.Sprintf("proxy_%v_%v", diskID, checkpointID)
+}
+
+func (t *replicateDiskTask) createProxyOverlayDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs_client.Client,
+	currentCheckpointID string,
+) (string, error) {
+
+	diskID := t.request.SrcDisk.DiskId
+	proxyOverlayDiskID := t.getProxyOverlayDiskID(diskID, currentCheckpointID)
+
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID, // baseDiskID
+		currentCheckpointID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if created {
+		return proxyOverlayDiskID, nil
+	}
+
+	return "", nil
+}
+
+func (t *replicateDiskTask) deleteProxyOverlayDisk(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	client nbs_client.Client,
+	proxyOverlayDiskID string,
+) error {
+
+	if len(proxyOverlayDiskID) == 0 {
+		return nil
+	}
+	return client.Delete(ctx, proxyOverlayDiskID)
+}
+
 func (t *replicateDiskTask) saveProgress(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -200,6 +248,16 @@ func (t *replicateDiskTask) replicate(
 		return err
 	}
 
+	proxyOverlayDiskID, err := t.createProxyOverlayDisk(
+		ctx,
+		execCtx,
+		client,
+		nextCheckpointID,
+	)
+	if err != nil {
+		return err
+	}
+
 	diskParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
 	if err != nil {
 		return err
@@ -209,7 +267,7 @@ func (t *replicateDiskTask) replicate(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		t.request.SrcDisk.DiskId, // proxyDiskID
+		proxyOverlayDiskID,
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,
@@ -270,6 +328,16 @@ func (t *replicateDiskTask) replicate(
 	}
 
 	err = t.checkReplicationProgress(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
+	t.deleteProxyOverlayDisk(
+		ctx,
+		execCtx,
+		client,
+		proxyOverlayDiskID,
+	)
 	if err != nil {
 		return err
 	}
