@@ -629,19 +629,19 @@ func (c *client) CreateProxyOverlayDisk(
 		},
 	)
 	if err != nil {
-		return false, wrapError(err)
+		return false, err
 	}
 
-	ctx = c.withTimeoutHeader(ctx)
-	err = c.nbs.CreateCheckpoint(
-		ctx,
-		diskID,
-		baseDiskCheckpointID,
-		CheckpointTypeNormal.toProto(),
-	)
-	if err != nil {
-		return false, wrapError(err)
-	}
+	// ctx = c.withTimeoutHeader(ctx)
+	// err = c.nbs.CreateCheckpoint(
+	// 	ctx,
+	// 	diskID,
+	// 	baseDiskCheckpointID,
+	// 	CheckpointTypeNormal.toProto(),
+	// )
+	// if err != nil {
+	// 	return false, err
+	// }
 
 	return true, nil
 }
