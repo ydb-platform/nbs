@@ -29,7 +29,7 @@ void TIndexTabletActor::ExecuteTx_ChangeStorageConfig(
 {
     TIndexTabletDatabase db(tx.DB);
     if (args.StorageConfigFromDB.Defined()) {
-        auto config = args.StorageConfigFromDB.Get();
+        auto* config = args.StorageConfigFromDB.Get();
         config->MergeFrom(args.StorageConfigNew);
         db.WriteStorageConfig(*config);
         args.ResultStorageConfig = std::move(*config);

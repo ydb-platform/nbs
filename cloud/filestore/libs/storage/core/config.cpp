@@ -224,8 +224,7 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TStorageConfig::Merge(
-    const NProto::TStorageConfig& storageConfig)
+void TStorageConfig::Merge(const NProto::TStorageConfig& storageConfig)
 {
     ProtoConfig.MergeFrom(storageConfig);
 }
@@ -233,8 +232,8 @@ void TStorageConfig::Merge(
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     const TString& name) const
 {
-    auto descriptor =
-        ProtoConfig.GetDescriptor()->FindFieldByName(name);
+    const auto* descriptor =
+        NProto::TStorageConfig::GetDescriptor()->FindFieldByName(name);
     using TStatus = TValueByName::ENameStatus;
 
     if (descriptor == nullptr) {

@@ -45,7 +45,7 @@ public:
 
     TStorageConfig(const TStorageConfig&) = default;
 
-    void Merge(const NProto::TStorageConfig& storageServiceConfig);
+    void Merge(const NProto::TStorageConfig& storageConfig);
 
     TValueByName GetValueByName(const TString& name) const;
 
