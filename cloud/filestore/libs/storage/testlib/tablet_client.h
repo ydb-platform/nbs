@@ -535,6 +535,16 @@ public:
         return request;
     }
 
+    auto CreateDescribeDataRequest(ui64 handle, ui64 offset, ui32 len)
+    {
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvDescribeDataRequest>();
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(len);
+        return request;
+    }
+
     auto CreateAcquireLockRequest(
         ui64 handle,
         ui64 owner,

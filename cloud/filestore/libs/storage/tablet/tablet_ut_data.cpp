@@ -9,6 +9,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <contrib/ydb/core/base/logoblob.h>
+
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -21,18 +23,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     using namespace NCloud::NStorage;
 
-#define TABLET_TEST(name)                                                      \
+#define TABLET_TEST_IMPL(name, largeBS)                                        \
     void TestImpl##name(TFileSystemConfig tabletConfig);                       \
     Y_UNIT_TEST(name)                                                          \
     {                                                                          \
         TestImpl##name(TFileSystemConfig{.BlockSize = 4_KB});                  \
     }                                                                          \
-    Y_UNIT_TEST(name##128K)                                                    \
+    Y_UNIT_TEST(name##largeBS)                                                 \
     {                                                                          \
-        TestImpl##name(TFileSystemConfig{.BlockSize = 128_KB});                \
+        TestImpl##name(TFileSystemConfig{.BlockSize = largeBS});               \
     }                                                                          \
     void TestImpl##name(TFileSystemConfig tabletConfig)                        \
+// TABLET_TEST_IMPL
+
+#define TABLET_TEST(name)                                                      \
+    TABLET_TEST_IMPL(name, 128_KB)                                             \
 // TABLET_TEST
+
+#define TABLET_TEST_16K(name)                                                  \
+    TABLET_TEST_IMPL(name, 16_KB)                                              \
+// TABLET_TEST_16K
 
     TABLET_TEST(ShouldStoreFreshBytes)
     {
@@ -3172,6 +3182,169 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST_16K(ShouldDescribeData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        // blobs
+        tablet.WriteData(handle, 2 * block, 512_KB, '0');
+        // fresh bytes
+        tablet.WriteData(handle, 2_KB, 1_KB, '1');
+        tablet.WriteData(handle, 255_KB, 2_KB, '2');
+        // fresh blocks
+        tablet.WriteData(handle, block, 4 * block, '3');
+        tablet.WriteData(handle, 192_KB, 3 * block, '4');
+        tablet.WriteData(handle, 193_KB, 1_KB, '5');
+        // more blobs
+        tablet.WriteData(handle, 3 * block, 128_KB, '6');
+
+        auto response = tablet.DescribeData(handle, 0, 256_KB);
+        const auto& freshRanges = response->Record.GetFreshDataRanges();
+        UNIT_ASSERT_VALUES_EQUAL(4, freshRanges.size());
+
+        TString expected;
+        expected.ReserveAndResize(1_KB);
+        memset(expected.begin(), '1', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(2_KB, freshRanges[0].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[0].GetContent());
+
+        expected.ReserveAndResize(2 * block);
+        memset(expected.begin(), '3', 2 * block);
+
+        UNIT_ASSERT_VALUES_EQUAL(block, freshRanges[1].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[1].GetContent());
+
+        expected.ReserveAndResize(3 * block);
+        memset(expected.begin(), '4', 3 * block);
+        memset(expected.begin() + 1_KB, '5', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(192_KB, freshRanges[2].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[2].GetContent());
+
+        expected.ReserveAndResize(1_KB);
+        memset(expected.begin(), '2', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(255_KB, freshRanges[3].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[3].GetContent());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        /*
+        for (const auto& p: blobPieces) {
+            Cerr << NKikimr::LogoBlobIDFromLogoBlobID(p.GetBlobId())
+                << " " << p.GetBSGroupId() << Endl;
+
+            for (const auto& r: p.GetRanges()) {
+                Cerr << r.GetOffset()
+                    << " " << r.GetBlobOffset()
+                    << " " << r.GetLength() << Endl;
+            }
+        }
+        */
+        UNIT_ASSERT_VALUES_EQUAL(2, blobPieces.size());
+
+        const auto blobId0 =
+            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
+        UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
+        UNIT_ASSERT_VALUES_EQUAL(3, blobId0.Step());
+        UNIT_ASSERT_VALUES_EQUAL(3, blobId0.Channel());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId0.Cookie());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId0.PartId());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobPieces[0].GetBSGroupId());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobPieces[0].RangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * block + 128_KB,
+            blobPieces[0].GetRanges(0).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1 + 128_KB / block,
+            blobPieces[0].GetRanges(0).GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            192_KB - 128_KB - 3 * block,
+            blobPieces[0].GetRanges(0).GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * block + 192_KB,
+            blobPieces[0].GetRanges(1).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1 + 192_KB / block,
+            blobPieces[0].GetRanges(1).GetBlobOffset());
+        // blob ranges and fresh byte ranges may intersect - the client should
+        // prioritize fresh byte ranges
+        // so ideally the length should be 255_KB - 3 * block - 192_KB, but
+        // returning 256_KB instead of 255_KB is also valid
+        UNIT_ASSERT_VALUES_EQUAL(
+            256_KB - 3 * block - 192_KB,
+            blobPieces[0].GetRanges(1).GetLength());
+
+        const auto blobId1 =
+            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[1].GetBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId1.TabletID());
+        UNIT_ASSERT_VALUES_EQUAL(2, blobId1.Generation());
+        UNIT_ASSERT_VALUES_EQUAL(10, blobId1.Step());
+        // 4_KB block leads to 4 blobs, 16_KB block leads to 2 blobs => this
+        // blob becomes blob #4 => we start from channel #3, write our 1st blob
+        // to it, next blob goes to channel #4, then #5 and the 4th blob goes
+        // to the channel #6
+        UNIT_ASSERT_VALUES_EQUAL(block == 4_KB ? 6 : 4, blobId1.Channel());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId1.Cookie());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId1.PartId());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobPieces[1].GetBSGroupId());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobPieces[1].RangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * block,
+            blobPieces[1].GetRanges(0).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            blobPieces[1].GetRanges(0).GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB,
+            blobPieces[1].GetRanges(0).GetLength());
+
+        // TODO: properly test BSGroupId
+    }
+
+    TABLET_TEST(ShouldHandleErrorDuringDescribeData)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const ui64 invalidHandle = 111;
+        tablet.SendDescribeDataRequest(invalidHandle, 0, 256_KB);
+        auto response = tablet.RecvDescribeDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            ErrorInvalidHandle(invalidHandle).GetCode(),
+            response->GetStatus(),
+            response->GetErrorReason());
     }
 
 #undef TABLET_TEST
