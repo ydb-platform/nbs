@@ -89,7 +89,7 @@ func (l *journaldLogger) structuredLogWithCaller(
 	fields ...log.Field,
 ) {
 
-	msg = level.String() + " => " + msg
+	msg = strings.ToUpper(level.String()) + " => " + msg
 
 	if len(l.name) > 0 {
 		msg = l.name + " " + msg
