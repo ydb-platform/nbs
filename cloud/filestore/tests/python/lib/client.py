@@ -9,8 +9,6 @@ from cloud.filestore.tests.python.lib.common import daemon_log_files, wait_for
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
 
-import cloud.filestore.public.sdk.python.protos as protos
-
 logger = logging.getLogger(__name__)
 
 KEYRING_FILE_NAME = "vhost-endpoint-keyring-name.txt"
@@ -84,7 +82,7 @@ class NfsCliClient:
         names = common.execute(cmd).stdout.decode().splitlines()
         return sorted(names)
 
-    def start_endpoint(self, fs, socket, mount_seqno, readonly):
+    def start_endpoint(self, fs, socket, mount_seqno, readonly, persistent=False):
         cmd = [
             self.__binary_path, "startendpoint",
             "--filesystem", fs,
@@ -94,6 +92,9 @@ class NfsCliClient:
 
         if readonly:
             cmd.append("--mount-readonly")
+
+        if persistent:
+            cmd.append("--persistent")
 
         logger.info("starting endpoint: " + " ".join(cmd))
         return common.execute(cmd)
@@ -173,24 +174,8 @@ def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_sto
         socket_prefix + "." + _uid)
     socket = os.path.abspath(socket)
 
-    if endpoint_storage_dir is not None:
-        # create endpoint and put it into endpoint storage
-        start_endpoint = protos.TStartEndpointRequest(
-            Endpoint=protos.TEndpointConfig(
-                FileSystemId=filesystem,
-                SocketPath=socket,
-                MountSeqNumber=mount_seqno,
-                ReadOnly=readonly
-            )
-        )
-
-        keyring_id = 42
-        with open(endpoint_storage_dir + "/" + str(keyring_id), 'wb') as f:
-            f.write(start_endpoint.SerializeToString())
-
-        client.kick_endpoint(keyring_id)
-    else:
-        client.start_endpoint(filesystem, socket, mount_seqno, readonly)
+    persistent = (endpoint_storage_dir is not None)
+    client.start_endpoint(filesystem, socket, mount_seqno, readonly, persistent=persistent)
 
     return socket
 

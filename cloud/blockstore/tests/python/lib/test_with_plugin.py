@@ -10,7 +10,6 @@ from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig, TLogConfig
 from cloud.blockstore.config.plugin_pb2 import TPluginConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.public.api.protos.endpoints_pb2 import TStartEndpointRequest
 from cloud.blockstore.public.sdk.python import protos
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count
@@ -81,6 +80,8 @@ def run_plugin_test(
     client_id = "client_id"
 
     if endpoint is not None:
+        os.mkdir(endpoint_storage_dir)
+
         socket = endpoint_folder + "/" + endpoint
         result = call([
             client_binary_path, "startendpoint",
@@ -90,17 +91,9 @@ def run_plugin_test(
             "--client-id", client_id,
             "--host", "localhost",
             "--port", str(env.nbs_port),
+            "--persistent",
         ], stderr=stderr_file)
         assert result == 0
-
-        os.mkdir(endpoint_storage_dir)
-        with open(endpoint_storage_dir + "/0", "wb") as f:
-            request = TStartEndpointRequest()
-            request.UnixSocketPath = socket
-            request.DiskId = disk_id
-            request.ClientId = client_id
-            request.IpcType = __convert_to_proto(server_ipc_type)
-            f.write(request.SerializeToString())
 
     client_config_path = os.path.join(common.output_path(), "client.txt")
 
