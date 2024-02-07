@@ -961,7 +961,6 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), out);
 
         TAG(TH3) { out << "Blob index stats"; }
-        ;
 
         const auto storageThrottlingEnabled = Config->GetThrottlingEnabled();
 
@@ -970,8 +969,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpPerformanceProfile(storageThrottlingEnabled, fsPerfProfile, out);
 
         const auto& usedPerfProfile = GetPerformanceProfile();
-        if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile))
-        {
+        if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile)) {
             TAG(TH3) { out << "Used performance profile"; }
             DumpPerformanceProfile(
                 storageThrottlingEnabled,
@@ -982,6 +980,12 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         TAG(TH3) { out << "Throttler state"; }
         DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), out);
+
+        if (StorageConfigOverride.ByteSize()) {
+            TAG(TH3) { out << "StorageConfig overrides"; }
+            TStorageConfig config(StorageConfigOverride);
+            config.DumpOverridesHtml(out);
+        }
 
         TAG(TH3)
         {

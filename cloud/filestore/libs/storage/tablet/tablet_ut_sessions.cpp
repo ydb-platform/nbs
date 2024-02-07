@@ -802,6 +802,34 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
         }
     }
+
+    void DoTestShouldReturnFeaturesInCreateSessionResponse(
+        const NProto::TStorageConfig& config,
+        const NProto::TFileStoreFeatures& expected)
+    {
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        auto response = tablet.CreateSession("client", "session");
+        const auto& features = response->Record.GetFileStore().GetFeatures();
+        UNIT_ASSERT_VALUES_EQUAL(features.DebugString(), expected.DebugString());
+    }
+
+    Y_UNIT_TEST(ShouldReturnFeaturesInCreateSessionResponse)
+    {
+        NProto::TStorageConfig config;
+        NProto::TFileStoreFeatures features;
+        DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
+
+        config.SetTwoStageReadEnabled(true);
+        features.SetTwoStageReadEnabled(true);
+        DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

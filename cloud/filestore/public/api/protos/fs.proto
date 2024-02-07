@@ -11,6 +11,11 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 ////////////////////////////////////////////////////////////////////////////////
 // FileStore information
 
+message TFileStoreFeatures
+{
+    bool TwoStageReadEnabled = 1;
+}
+
 message TFileStore
 {
     string FileSystemId = 1;
@@ -29,6 +34,9 @@ message TFileStore
 
     // Performance profile, used for throttling.
     TFileStorePerformanceProfile PerformanceProfile = 10;
+
+    // The list of features that are enabled for this fs.
+    TFileStoreFeatures Features = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

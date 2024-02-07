@@ -174,8 +174,11 @@ public:
     TString GetFolderId() const;
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
+    bool GetTwoStageReadEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
+    void DumpOverridesHtml(IOutputStream& out) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
