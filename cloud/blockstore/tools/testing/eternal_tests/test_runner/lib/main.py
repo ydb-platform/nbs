@@ -366,7 +366,8 @@ class EternalTestHelper:
         placement_group_name = self.test_config.ycp_config.placement_group_name
 
         if self.test_config.is_local():
-            local_disk_size = self.test_config.disk_tests[0].disk_config.size * 1024**3
+            disk_config = self.test_config.disk_tests[0].disk_config
+            local_disk_size = disk_config.block_count * disk_config.bs
             placement_group_name = getattr(self.args, 'placement_group_name', None)
 
         with self.ycp.create_instance(
