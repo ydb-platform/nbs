@@ -244,12 +244,63 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 	)
 }
 
+func readyToRunTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
+
+		persistence.WithPrimaryKeyColumn("id"),
+	)
+}
+
+func readyToCancelTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
+
+		persistence.WithPrimaryKeyColumn("id"),
+	)
+}
+
 func readyToExecuteStructTypeString() string {
 	return `Struct<
 		id: Utf8,
 		generation_id: Uint64,
 		task_type: Utf8,
-		zone_id: Utf8>`
+		zone_id: Utf8,
+		group_id: Utf8>`
+}
+
+func runningTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
+
+		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithPrimaryKeyColumn("id"),
+	)
+}
+
+func cancellingTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
+
+		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithPrimaryKeyColumn("id"),
+	)
 }
 
 func executingStructTypeString() string {
@@ -258,7 +309,27 @@ func executingStructTypeString() string {
 		generation_id: Uint64,
 		modified_at: Timestamp,
 		task_type: Utf8,
-		zone_id: Utf8>`
+		zone_id: Utf8,
+		group_id: Utf8>`
+}
+
+func endedTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("ended_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithPrimaryKeyColumn("ended_at", "id"),
+	)
+}
+
+func schedulesTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("scheduled_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("tasks_inflight", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithPrimaryKeyColumn("task_type"),
+	)
 }
 
 func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err error) {
@@ -405,13 +476,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"ready_to_run",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("id"),
-		),
+		readyToRunTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -423,13 +488,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"ready_to_cancel",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("id"),
-		),
+		readyToCancelTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -441,14 +500,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"running",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
-			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("id"),
-		),
+		runningTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -460,14 +512,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"cancelling",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
-			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("id"),
-		),
+		cancellingTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -479,13 +524,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"ended",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("ended_at", persistence.Optional(persistence.TypeTimestamp)),
-			persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("idempotency_key", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("account_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithPrimaryKeyColumn("ended_at", "id"),
-		),
+		endedTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
@@ -497,12 +536,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"schedules",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("scheduled_at", persistence.Optional(persistence.TypeTimestamp)),
-			persistence.WithColumn("tasks_inflight", persistence.Optional(persistence.TypeUint64)),
-			persistence.WithPrimaryKeyColumn("task_type"),
-		),
+		schedulesTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
