@@ -196,4 +196,7 @@ message TStorageConfig
     // Max number of compaction ranges loaded per 1 compaction state load
     // iteration.
     optional uint32 LoadedCompactionRangesPerTx = 330;
+
+    // Enables DescribeData + ReadBlob instead of ReadData for reading.
+    optional bool TwoStageReadEnabled = 331;
 }

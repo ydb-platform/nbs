@@ -35,6 +35,7 @@
 #include <library/cpp/actors/core/log.h>
 #include <library/cpp/actors/core/mon.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 
 #include <atomic>
@@ -48,7 +49,7 @@ class TIndexTabletActor final
     , public TTabletBase<TIndexTabletActor>
     , public TIndexTabletState
 {
-    static constexpr size_t MaxBlobStorageBlobSize = 40 * 1024 * 1024;
+    static constexpr size_t MaxBlobStorageBlobSize = 40_MB;
 
     enum EState
     {
@@ -166,6 +167,9 @@ private:
         bool Finished = false;
     } CompactionStateLoadStatus;
 
+    // used on monpages
+    NProto::TStorageConfig StorageConfigOverride;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -174,7 +178,7 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry);
-    ~TIndexTabletActor();
+    ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
     using TCounters = TIndexTabletCounters;

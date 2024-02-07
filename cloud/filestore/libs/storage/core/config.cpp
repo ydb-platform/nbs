@@ -130,6 +130,8 @@ namespace {
     xxx(AuthorizationMode,                                                     \
             NCloud::NProto::EAuthorizationMode,                                \
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
+                                                                               \
+    xxx(TwoStageReadEnabled,             bool,      false                     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -209,6 +211,30 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
         TABLED() { out << #name; }                                             \
         TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
+// FILESTORE_DUMP_CONFIG
+
+    HTML(out) {
+        TABLE_CLASS("table table-condensed") {
+            TABLEBODY() {
+                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+            }
+        }
+    }
+
+#undef FILESTORE_DUMP_CONFIG
+}
+
+void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
+{
+#define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
+    const auto value = ProtoConfig.Get##name();                                \
+    if (!IsEmpty(value)) {                                                     \
+        TABLER() {                                                             \
+            TABLED() { out << #name; }                                         \
+            TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \
+        }                                                                      \
+    }                                                                          \
+}                                                                              \
 // FILESTORE_DUMP_CONFIG
 
     HTML(out) {
