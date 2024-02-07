@@ -764,6 +764,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args,
             record);
 
+        response->Record.SetTotalSize(args.Node->Attrs.GetSize());
+
         CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,

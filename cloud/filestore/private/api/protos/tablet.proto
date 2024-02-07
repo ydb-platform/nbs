@@ -330,6 +330,7 @@ message TDescribeDataResponse
 
     repeated TFreshDataRange FreshDataRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
+    uint64 TotalSize = 4;
 
     // File size.
     uint64 FileSize = 4;
