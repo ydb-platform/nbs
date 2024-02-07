@@ -448,27 +448,24 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
         return rows.Build();
     };
 
-    if (setupResult.ArchiveStatsTableName) {
-        // TODO: avoid explicitly making copies
-        // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        auto result = buildYdbRows();
-        dataForUpload.emplace_back(
-            setupResult.ArchiveStatsTableName,
-            result);
-    }
-
     if (setupResult.StatsTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        auto result = buildYdbRows();
-        dataForUpload.emplace_back(setupResult.StatsTableName, result);
+        dataForUpload.emplace_back(setupResult.StatsTableName, buildYdbRows());
     }
 
     if (setupResult.HistoryTableName) {
         // TODO: avoid explicitly making copies
         // of stats after https://github.com/ydb-platform/ydb/issues/1659
-        auto result = buildYdbRows();
-        dataForUpload.emplace_back(setupResult.HistoryTableName, result);
+        dataForUpload.emplace_back(setupResult.HistoryTableName, buildYdbRows());
+    }
+
+    if (setupResult.ArchiveStatsTableName) {
+        // TODO: avoid explicitly making copies
+        // of stats after https://github.com/ydb-platform/ydb/issues/1659
+        dataForUpload.emplace_back(
+            setupResult.ArchiveStatsTableName,
+            buildYdbRows());
     }
 
     if (setupResult.BlobLoadMetricsTableName) {
