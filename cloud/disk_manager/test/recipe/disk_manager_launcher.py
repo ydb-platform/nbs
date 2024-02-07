@@ -298,7 +298,9 @@ class DiskManagerServer(Daemon):
                  config_file,
                  working_dir,
                  disk_manager_binary_path,
-                 with_nemesis):
+                 with_nemesis,
+                 min_restart_period_sec: int = 5,
+                 max_restart_period_sec: int = 30):
         nemesis_binary_path = yatest_common.binary_path(
             "cloud/tasks/test/nemesis/nemesis"
         )
@@ -306,7 +308,14 @@ class DiskManagerServer(Daemon):
         if with_nemesis:
             internal_command = disk_manager_binary_path + " --config " + config_file
             command = [nemesis_binary_path]
-            command += ["--cmd", internal_command]
+            command += [
+                "--cmd",
+                internal_command,
+                "--min-restart-period-sec",
+                min_restart_period_sec,
+                "--max-restart-period-sec",
+                max_restart_period_sec,
+            ]
         else:
             command = [disk_manager_binary_path]
             command += ["--config", config_file]
@@ -337,6 +346,8 @@ class DiskManagerLauncher:
         cert_key_file=None,
         s3_port=None,
         s3_credentials_file=None,
+        min_restart_period_sec: int = 5,
+        max_restart_period_sec: int = 30,
     ):
         self.__idx = idx
 
@@ -425,7 +436,10 @@ class DiskManagerLauncher:
             config_file,
             working_dir,
             disk_manager_binary_path,
-            with_nemesis)
+            with_nemesis,
+            min_restart_period_sec=min_restart_period_sec,
+            max_restart_period_sec=max_restart_period_sec,
+        )
 
     def start(self):
         self.__daemon.start()

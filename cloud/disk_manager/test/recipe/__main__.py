@@ -26,6 +26,22 @@ def parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("--certs-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--nemesis", action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--min-restart-period-sec",
+        action='store',
+        type=int,
+        default=5,
+        required=False,
+        dest='min_restart_period_sec'
+    )
+    parser.add_argument(
+        "--max-restart-period-sec",
+        action='store',
+        type=int,
+        default=30,
+        required=False,
+        dest='max_restart_period_sec'
+    )
     parser.add_argument("--ydb-only", action=argparse.BooleanOptionalAction)
     parser.add_argument("--encryption", action=argparse.BooleanOptionalAction)
     parser.add_argument("--multiple-nbs", action=argparse.BooleanOptionalAction)
@@ -187,6 +203,8 @@ def start(argv):
             access_service_port=os.getenv('DISK_MANAGER_RECIPE_ACCESS_SERVICE_PORT'),
             cert_file=cert_file,
             cert_key_file=cert_key_file,
+            min_restart_period_sec=args.min_restart_period_sec,
+            max_restart_period_sec=args.max_restart_period_sec,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -207,7 +225,9 @@ def start(argv):
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             s3_port=s3.port,
-            s3_credentials_file=s3_credentials_file
+            s3_credentials_file=s3_credentials_file,
+            min_restart_period_sec=args.min_restart_period_sec,
+            max_restart_period_sec=args.max_restart_period_sec,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
