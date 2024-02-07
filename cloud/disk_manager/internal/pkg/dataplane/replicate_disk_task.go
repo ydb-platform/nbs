@@ -91,7 +91,7 @@ func (t *replicateDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	return t.deleteProxyOverlayDisk(ctx, execCtx)
 }
 
 func (t *replicateDiskTask) GetMetadata(
@@ -157,10 +157,14 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 func (t *replicateDiskTask) deleteProxyOverlayDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
-	client nbs_client.Client,
-	proxyOverlayDiskID string,
 ) error {
 
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return err
+	}
+
+	proxyOverlayDiskID := t.state.ProxyOverlayDiskId
 	if len(proxyOverlayDiskID) == 0 {
 		return nil
 	}
@@ -257,6 +261,7 @@ func (t *replicateDiskTask) replicate(
 	if err != nil {
 		return err
 	}
+	t.state.ProxyOverlayDiskId = proxyOverlayDiskID
 
 	diskParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
 	if err != nil {
@@ -267,7 +272,7 @@ func (t *replicateDiskTask) replicate(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		proxyOverlayDiskID,
+		t.state.ProxyOverlayDiskId,
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,
@@ -332,11 +337,9 @@ func (t *replicateDiskTask) replicate(
 		return err
 	}
 
-	t.deleteProxyOverlayDisk(
+	err = t.deleteProxyOverlayDisk(
 		ctx,
 		execCtx,
-		client,
-		proxyOverlayDiskID,
 	)
 	if err != nil {
 		return err
