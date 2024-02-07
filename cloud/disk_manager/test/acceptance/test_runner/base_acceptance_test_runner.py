@@ -171,23 +171,39 @@ class BaseAcceptanceTestRunner(ABC):
             ycp_requests_template_path=self._args.ycp_requests_template_path,
         )
 
-    def _shall_delete_snapshot(
-        self,
-        snapshot: Ycp.Snapshot,
-        snapshot_ttl_days: int,
-    ) -> bool:
+    def _shall_delete_snapshot(self, snapshot: Ycp.Snapshot) -> bool:
         if not snapshot.name.startswith("acceptance-test-snapshot"):
             return False
-        older_than = datetime.now() - timedelta(days=snapshot_ttl_days)
+        older_than = datetime.now() - timedelta(days=self._resource_ttl_days)
         if snapshot.created_at > older_than:
             return False
         return True
 
-    def _cleanup_snapshots(self, snapshot_ttl_days: int):
+    def _cleanup_snapshots(self):
         for snapshot in self._ycp.list_snapshots():
-            if not self._shall_delete_snapshot(snapshot, snapshot_ttl_days):
+            if not self._shall_delete_snapshot(snapshot):
                 continue
             self._ycp.delete_snapshot(snapshot)
+
+    def _should_delete_instance(self, instance: Ycp.Instance):
+        if instance.name == self._instance_policy._name:
+            return False
+        if not instance.name.startswith(
+                f'acceptance-test-{self._args.test_type}'
+        ):
+            return False
+        should_be_older_than = datetime.now() - timedelta(
+            days=self._resource_ttl_days,
+        )
+        if instance.created_at > should_be_older_than:
+            return False
+        return True
+
+    def _cleanup_previous_vms(self):
+        for instance in self._ycp.list_instances():
+            if not self._should_delete_instance(instance):
+                continue
+            self._ycp.delete_instance(instance)
 
     def _initialize_run(self,
                         profiler: common.Profiler,
@@ -212,8 +228,8 @@ class BaseAcceptanceTestRunner(ABC):
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
         if self._resource_ttl_days is not None:
-            self._cleanup_snapshots(self._resource_ttl_days)
-
+            self._cleanup_snapshots()
+            self._cleanup_previous_vms()
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
         # Execute acceptance test on test disk
