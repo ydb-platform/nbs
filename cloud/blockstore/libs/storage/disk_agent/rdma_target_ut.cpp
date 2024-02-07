@@ -275,7 +275,9 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         }
 
         // Secure erase device.
-        env.RdmaTarget->DeviceSecureErased(env.Device_1);
+        env.RdmaTarget->DeviceSecureEraseFinish(
+            env.Device_1,
+            MakeError(S_OK));
 
         {   // Try write with id=99 again. This one should be executed
             // successfully.
@@ -290,6 +292,70 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
                 response.GetError().GetMessage());
         }
     }
+
+    Y_UNIT_TEST(ShouldRejectIoDuringSecureErase)
+    {
+        TRdmaTestEnvironment env(8_MB, 2);
+
+        const auto blockRange = TBlockRange64::WithLength(0, 1024);
+
+        auto res = env.RdmaTarget->DeviceSecureEraseStart(env.Device_1);
+
+        {
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            auto response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+        env.RdmaTarget->DeviceSecureEraseFinish(
+            env.Device_1,
+            MakeError(S_OK));
+
+        {
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+            auto response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+        }
+
+    }
+
+    Y_UNIT_TEST(ShouldRejectSecureEraseDuringIo)
+    {
+        TRdmaTestEnvironment env(4_MB, 2);
+
+        const auto blockRange = TBlockRange64::WithLength(0, 1024);
+
+        // Set handbrake and begin first write request.
+        auto writeHandbrake = NThreading::NewPromise<void>();
+        env.Storage->SetHandbrake(writeHandbrake.GetFuture());
+        auto writeFuture = env.Run(env.MakeWriteRequest(blockRange, 'A', 100));
+
+        // Request on handbrake. Check it not completed yet.
+        writeFuture.Wait(TDuration::MilliSeconds(1000));
+        UNIT_ASSERT_VALUES_EQUAL(false, writeFuture.HasValue());
+
+        auto error = env.RdmaTarget->DeviceSecureEraseStart(env.Device_1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+
+        writeHandbrake.SetValue();
+        auto writeResponse = writeFuture.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            writeResponse.GetError().GetCode(),
+            writeResponse.GetError().GetMessage());
+
+        error = env.RdmaTarget->DeviceSecureEraseStart(env.Device_1);
+        UNIT_ASSERT_C(!HasError(error), error);
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
