@@ -22,10 +22,16 @@ from contrib.ydb.tests.library.harness.kikimr_config import \
 
 from subprocess import call, check_output
 
+from datetime import date
+
 STORAGE_POOL = [
     dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
     dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
 ]
+
+StatsTableName = "cloud-local-perfstats"
+HistoryTablePrefix = "cloud-local-perfstats"
+ArchiveStatsTableName = "cloud-local-archive-perfstats"
 
 
 def kikimr_start():
@@ -61,8 +67,9 @@ def nbs_server_start(kikimr_cluster, configurator):
     # in current realization StatsTableName and HistoryTablePrefix are necessary
     ydbstat = TYdbStatsConfig()
     ydbstat.BlobLoadMetricsTableName = "cloud-local-metrics"
-    ydbstat.StatsTableName = "cloud-local-perfstats"
-    ydbstat.HistoryTablePrefix = "cloud-local-perfstats"
+    ydbstat.StatsTableName = StatsTableName
+    ydbstat.HistoryTablePrefix = HistoryTablePrefix
+    ydbstat.ArchiveStatsTableName = ArchiveStatsTableName
     ydbstat.DatabaseName = "/Root"
     ydbstat.ServerAddress = "localhost:" + str(kikimr_port)
     ydbstat.HistoryTableLifetimeDays = 2
@@ -115,6 +122,26 @@ def get_load_data(kikimr_port):
         write_data_iops += parsed_load_data[index][5]
 
     return read_data_size, read_data_iops, write_data_size, write_data_iops
+
+
+def check_ydb_volume_metrics(kikimr_port):
+    ydb_binary_path = common.binary_path("contrib/ydb/apps/ydb/ydb")
+
+    dailyTable = "{}-{}".format(HistoryTablePrefix, date.today())
+
+    for table in [StatsTableName, ArchiveStatsTableName, dailyTable]:
+        json_string = check_output([
+            ydb_binary_path,
+            "--endpoint", "grpc://localhost:" + str(kikimr_port),
+            "--database", "/Root",
+            "yql",
+            "--format", "json-unicode-array",
+            "--script", "SELECT * FROM `/Root/{}`;".format(table),
+        ])
+
+        json_data = json.loads(json_string)
+        assert len(json_data) != 0
+        assert json_data[0]["DiskId"] == "vol0"
 
 
 def test_metrics():
@@ -191,6 +218,8 @@ def test_metrics():
 
     read_data_size, read_data_iops, \
         write_data_size, write_data_iops = get_load_data(kikimr_port)
+
+    check_ydb_volume_metrics(kikimr_port)
 
     nbs.stop()
 

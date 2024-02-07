@@ -163,6 +163,9 @@ def on_test_case_result_impl(
     output_element,
     by_all_time,
 ):
+    if output_element.get("error"):
+        return
+
     try:
         test_case_report, read_iops, write_iops, read_bw, write_bw = \
             build_test_case_report(test_case_result)
