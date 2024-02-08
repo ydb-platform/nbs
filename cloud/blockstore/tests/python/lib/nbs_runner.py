@@ -593,7 +593,7 @@ ModifyScheme {
                     "--storage-file",
                     os.path.join(self.config_path(), "storage-%s.txt" % i)
                 ]
-            commands.append(command_copy)
+                commands.append(command_copy)
 
         logger.info(commands)
         return commands
