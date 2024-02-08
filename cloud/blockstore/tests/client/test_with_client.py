@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 import tempfile
@@ -7,15 +8,30 @@ import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.public.api.protos.placement_pb2 import TListPlacementGroupsResponse, \
-    TDescribePlacementGroupResponse, TDescribePlacementGroupRequest, EPlacementStrategy
-from cloud.blockstore.public.api.protos.volume_pb2 import TDescribeVolumeRequest, \
-    TDescribeVolumeResponse, TListVolumesResponse
+from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.api.protos.placement_pb2 import (
+    TListPlacementGroupsResponse,
+    TDescribePlacementGroupResponse,
+    TDescribePlacementGroupRequest,
+    EPlacementStrategy,
+)
+from cloud.blockstore.public.api.protos.volume_pb2 import (
+    TDescribeVolumeRequest,
+    TDescribeVolumeResponse,
+    TListVolumesResponse,
+)
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.nonreplicated_setup import enable_writable_state, \
-    setup_disk_registry_config_simple
-from cloud.blockstore.tests.python.lib.test_base import thread_count, get_nbs_counters, \
-    get_sensor_by_name
+from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
+    enable_writable_state,
+    setup_disk_registry_config_simple,
+)
+from cloud.blockstore.tests.python.lib.test_base import thread_count, get_nbs_counters, get_sensor_by_name
+from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from contrib.ydb.core.protos import console_config_pb2 as console
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.core.protos.config_pb2 import TStaticNameserviceConfig
+from contrib.ydb.tests.library.common.yatest_common import PortManager
+from contrib.ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
 
 from google.protobuf import text_format
 
@@ -91,6 +107,11 @@ def file_parse(file_path, proto_type):
     return text_format.Parse(file_content, proto_type)
 
 
+def file_parse_as_json(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+
 def list_placement_groups(env, run):
     clear_file(env.results_file)
     run("listplacementgroups",
@@ -138,7 +159,57 @@ def clear_file(file):
     file.truncate()
 
 
-def setup(with_nrd=False, nrd_device_count=1, rack=''):
+def update_cms_config(client, config):
+    req = msgbus.TConsoleRequest()
+    action = req.ConfigureRequest.Actions.add()
+    action.AddConfigItem.ConfigItem.Kind = 3
+
+    action.AddConfigItem.ConfigItem.Config.NameserviceConfig.CopyFrom(config)
+    action.AddConfigItem.ConfigItem.MergeStrategy = console.TConfigItem.OVERWRITE
+
+    response = client.invoke(req, 'ConsoleRequest')
+    assert response.Status.Code == StatusIds.SUCCESS
+
+
+def get_static_nodes(env, run):
+    clear_file(env.results_file)
+    run("ExecuteAction",
+        "--action", "GetNameserverNodes",
+        "--input-bytes", "",
+        "--verbose")
+    nodes = file_parse_as_json(env.results_path)
+
+    static_nodes = list(
+        filter(lambda node: node.get("IsStatic") is True, nodes["Nodes"]))
+    for node in static_nodes:
+        assert "Port" in node, "node = {}".format(node)
+        node["Port"] = "<static_node_port>"
+    return static_nodes
+
+
+def send_two_node_nameservice_config(env):
+    nameservice_config = TStaticNameserviceConfig()
+    nameservice_config.Node.add(
+        NodeId=1,
+        Port=env.configurator.port_allocator.get_node_port_allocator(
+            env.configurator.all_node_ids()[0]).ic_port,
+        Host="localhost",
+        InterconnectHost="localhost",
+        WalleLocation=TNodeLocation(Body=1, DataCenter="1", Rack="1")
+    )
+    pm = PortManager()
+    second_node_port = pm.get_port()
+    nameservice_config.Node.add(
+        NodeId=2,
+        Port=second_node_port,
+        Host="localhost",
+        InterconnectHost="localhost",
+        WalleLocation=TNodeLocation(Body=2, DataCenter="2", Rack="2")
+    )
+    update_cms_config(env.kikimr_cluster.client, nameservice_config)
+
+
+def setup(with_nrd=False, nrd_device_count=1, rack='', storage_config_patches=None):
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(TServerConfig())
     server.ServerConfig.ThreadsCount = thread_count()
@@ -148,6 +219,7 @@ def setup(with_nrd=False, nrd_device_count=1, rack=''):
     env = LocalLoadTest(
         "",
         server_app_config=server,
+        storage_config_patches=storage_config_patches,
         use_in_memory_pdisks=True,
         with_nrd=with_nrd,
         nrd_device_count=nrd_device_count,
@@ -190,6 +262,13 @@ def setup(with_nrd=False, nrd_device_count=1, rack=''):
             time.sleep(1)
 
     return env, run
+
+
+def tear_down(env):
+    if env is None:
+        return
+    env.results_file.close()
+    env.tear_down()
 
 
 def random_writes(run, block_count=BLOCKS_COUNT):
@@ -237,7 +316,7 @@ def test_successive_remounts_and_writes():
         "--blocks-count", "32")
 
     ret = common.canonical_file(env.results_path, local=True)
-    env.tear_down()
+    tear_down(env)
     return ret
 
 
@@ -262,7 +341,7 @@ def test_read_all_with_io_depth():
         "--output", "readblocks-1")
 
     assert files_equal("readblocks-0", "readblocks-1")
-    env.tear_down()
+    tear_down(env)
 
 
 def test_read_with_io_depth():
@@ -288,7 +367,7 @@ def test_read_with_io_depth():
         "--output", "readblocks-1")
 
     assert files_equal("readblocks-0", "readblocks-1")
-    env.tear_down()
+    tear_down(env)
 
 
 def do_test_restore(run, disk_id, backup_disk_id, block_count, start_index, orig_data):
@@ -388,7 +467,7 @@ def test_backup():
         0,
         "readblocks-0")
 
-    env.tear_down()
+    tear_down(env)
 
 
 def test_backup_and_restore_nrd():
@@ -430,7 +509,7 @@ def test_backup_and_restore_nrd():
         0,
         "readblocks-0")
 
-    env.tear_down()
+    tear_down(env)
 
 
 def test_destroy_volume():
@@ -466,7 +545,7 @@ def test_destroy_volume():
     run("listvolumes")
 
     ret = common.canonical_file(env.results_path, local=True)
-    env.tear_down()
+    tear_down(env)
     return ret
 
 
@@ -502,7 +581,7 @@ def test_createplacementgroup():
     assert response.Group.PlacementStrategy == EPlacementStrategy.PLACEMENT_STRATEGY_PARTITION
     assert response.Group.PlacementPartitionCount == 4
 
-    env.tear_down()
+    tear_down(env)
 
 
 def test_createvolume_in_partition_placementgroup():
@@ -570,7 +649,7 @@ def test_createvolume_in_partition_placementgroup():
     volume_info = describe_volume(env, run, 'vol4')
     assert volume_info.Volume.PlacementPartitionIndex == 1
 
-    env.tear_down()
+    tear_down(env)
 
 
 def test_alterplacementgroupmembership_in_partition_placementgroup():
@@ -687,7 +766,7 @@ def test_alterplacementgroupmembership_in_partition_placementgroup():
     assert volume_info.Volume.PlacementGroupId == ''
     assert volume_info.Volume.PlacementPartitionIndex == 0
 
-    env.tear_down()
+    tear_down(env)
 
 
 def test_create_destroy_placementgroup():
@@ -707,3 +786,49 @@ def test_create_destroy_placementgroup():
 
     run("destroyplacementgroup",
         "--group-id", "group-0")
+
+
+def test_disabled_configs_dispatcher():
+    storage = TStorageServiceConfig()
+    storage.ConfigsDispatcherServiceEnabled = False
+    env, run = setup(storage_config_patches=[storage])
+
+    static_nodes = get_static_nodes(env, run)
+    assert len(static_nodes) == 1
+
+    send_two_node_nameservice_config(env)
+
+    updated_static_nodes = get_static_nodes(env, run)
+    assert updated_static_nodes == static_nodes
+
+    with open(env.results_path, "w") as results:
+        results.write(json.dumps(static_nodes) + "\n")
+        results.write(json.dumps(updated_static_nodes) + "\n")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
+
+
+def test_enabled_configs_dispatcher():
+    storage = TStorageServiceConfig()
+    storage.ConfigsDispatcherServiceEnabled = True
+    env, run = setup(storage_config_patches=[storage])
+
+    static_nodes = get_static_nodes(env, run)
+    assert len(static_nodes) == 1
+
+    send_two_node_nameservice_config(env)
+
+    updated_static_nodes = get_static_nodes(env, run)
+    assert len(updated_static_nodes) == 2
+    assert updated_static_nodes[0]["NodeId"] == 1
+    assert updated_static_nodes[1]["NodeId"] == 2
+
+    with open(env.results_path, "w") as results:
+        results.write(json.dumps(static_nodes) + "\n")
+        results.write(json.dumps(updated_static_nodes) + "\n")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret

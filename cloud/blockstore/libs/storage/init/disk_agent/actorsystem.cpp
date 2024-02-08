@@ -161,6 +161,8 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableNodeIdentifier = 1;
+    servicesMask.EnableConfigsDispatcher =
+        daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled();
 
     TActorSystemArgs args{
         .ModuleFactories = daArgs.ModuleFactories,

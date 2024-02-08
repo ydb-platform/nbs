@@ -522,6 +522,8 @@ public:
 
     ui64 GetDiskPrefixLengthWithBlockChecksumsInBlobs() const;
     bool GetCheckBlockChecksumsInBlobsUponRead() const;
+
+    bool GetConfigsDispatcherServiceEnabled() const;
 };
 
 ui64 GetAllocationUnit(

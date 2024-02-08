@@ -7,6 +7,7 @@ SRCS(
     balancer.proto
     blob.proto
     checkpoints.proto
+    configs.proto
     disk.proto
     tablet.proto
     volume.proto

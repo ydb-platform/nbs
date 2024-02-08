@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NPrivateProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TNodeInfo
+{
+    uint32 NodeId = 1;
+    string Address = 2;
+    string Host = 3;
+    string ResolveHost = 4;
+    string Location = 5;
+    uint32 Port = 6;
+    bool IsStatic = 7;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// GetNameserverNodes request/response.
+
+message TGetNameserverNodesRequest
+{
+}
+
+message TGetNameserverNodesResponse
+{
+    repeated TNodeInfo Nodes = 1;
+}
