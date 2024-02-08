@@ -244,7 +244,7 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func readyToRunTableDescription() persistence.CreateTableDescription {
+func readyToExecuteTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
@@ -255,15 +255,12 @@ func readyToRunTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func readyToCancelTableDescription() persistence.CreateTableDescription {
-	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+func readyToRunTableDescription() persistence.CreateTableDescription {
+	return readyToExecuteTableDescription()
+}
 
-		persistence.WithPrimaryKeyColumn("id"),
-	)
+func readyToCancelTableDescription() persistence.CreateTableDescription {
+	return readyToExecuteTableDescription()
 }
 
 func readyToExecuteStructTypeString() string {
@@ -274,7 +271,7 @@ func readyToExecuteStructTypeString() string {
 		zone_id: Utf8>`
 }
 
-func runningTableDescription() persistence.CreateTableDescription {
+func executingTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
@@ -286,16 +283,12 @@ func runningTableDescription() persistence.CreateTableDescription {
 	)
 }
 
-func cancellingTableDescription() persistence.CreateTableDescription {
-	return persistence.NewCreateTableDescription(
-		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+func runningTableDescription() persistence.CreateTableDescription {
+	return executingTableDescription()
+}
 
-		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithPrimaryKeyColumn("id"),
-	)
+func cancellingTableDescription() persistence.CreateTableDescription {
+	return executingTableDescription()
 }
 
 func executingStructTypeString() string {
