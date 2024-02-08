@@ -1197,6 +1197,8 @@ private:
     NProto::TError CheckDestructiveConfigurationChange(
         const NProto::TDeviceConfig& device,
         const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
+
+    void ResetMigrationStartTsIfNeeded(TDiskState& disk);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
