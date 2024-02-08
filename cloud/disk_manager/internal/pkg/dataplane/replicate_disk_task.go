@@ -119,14 +119,6 @@ func (t *replicateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *replicateDiskTask) getProxyOverlayDiskID(
-	diskID string,
-	checkpointID string,
-) string {
-
-	return fmt.Sprintf("proxy_%v_%v", diskID, checkpointID)
-}
-
 func (t *replicateDiskTask) createProxyOverlayDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -135,12 +127,15 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 ) (string, error) {
 
 	diskID := t.request.SrcDisk.DiskId
-	proxyOverlayDiskID := t.getProxyOverlayDiskID(diskID, currentCheckpointID)
+	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
+		diskID,
+		currentCheckpointID,
+	)
 
 	created, err := client.CreateProxyOverlayDisk(
 		ctx,
 		proxyOverlayDiskID,
-		diskID, // baseDiskID
+		diskID,
 		currentCheckpointID,
 	)
 	if err != nil {
@@ -170,6 +165,8 @@ func (t *replicateDiskTask) deleteProxyOverlayDisk(
 	}
 	return client.Delete(ctx, proxyOverlayDiskID)
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 func (t *replicateDiskTask) saveProgress(
 	ctx context.Context,

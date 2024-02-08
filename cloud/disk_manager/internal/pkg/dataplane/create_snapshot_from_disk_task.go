@@ -2,7 +2,6 @@ package dataplane
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -272,14 +271,6 @@ func (t *createSnapshotFromDiskTask) run(
 	)
 }
 
-func (t *createSnapshotFromDiskTask) getProxyOverlayDiskID(
-	diskID string,
-	snapshotID string,
-) string {
-
-	return fmt.Sprintf("proxy_%v_%v", diskID, snapshotID)
-}
-
 func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -291,7 +282,7 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	}
 
 	diskID := t.request.SrcDisk.DiskId
-	proxyOverlayDiskID := t.getProxyOverlayDiskID(
+	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
 		diskID,
 		t.request.DstSnapshotId,
 	)
@@ -341,7 +332,7 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 		return err
 	}
 
-	proxyOverlayDiskID := t.getProxyOverlayDiskID(
+	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
 		t.request.SrcDisk.DiskId,
 		t.request.DstSnapshotId,
 	)
