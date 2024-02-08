@@ -127,6 +127,7 @@ namespace {
                                                                                \
     xxx(TenantHiveTabletId,                        ui64,       0              )\
     xxx(FolderId,                                  TString,    {}             )\
+    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(AuthorizationMode,                                                     \
             NCloud::NProto::EAuthorizationMode,                                \
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
