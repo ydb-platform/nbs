@@ -3139,6 +3139,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
     diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
     diskInfo.History = disk.History;
+    diskInfo.MigrationStartTs = disk.MigrationStartTs;
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -5519,6 +5520,8 @@ void TDiskRegistryState::CancelDeviceMigration(
     disk.MigrationTarget2Source.erase(targetId);
     disk.MigrationSource2Target.erase(it);
 
+    ResetMigrationStartTsIfNeeded(disk);
+
     // searching in all pools - in theory pool name might change between
     // the start/cancel/finish events
     for (auto& x: SourceDeviceMigrationsInProgress) {
@@ -5532,10 +5535,6 @@ void TDiskRegistryState::CancelDeviceMigration(
         .SeqNo = seqNo
     });
 
-    if (disk.MigrationSource2Target.empty()) {
-        disk.MigrationStartTs = {};
-    }
-
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
     historyItem.SetMessage(TStringBuilder() << "cancelled migration: "
@@ -5545,6 +5544,13 @@ void TDiskRegistryState::CancelDeviceMigration(
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 
     UpdatePlacementGroup(db, diskId, disk, "CancelDeviceMigration");
+}
+
+void TDiskRegistryState::ResetMigrationStartTsIfNeeded(TDiskState& disk)
+{
+    if (disk.MigrationSource2Target.empty()) {
+        disk.MigrationStartTs = {};
+    }
 }
 
 NProto::TError TDiskRegistryState::FinishDeviceMigration(
@@ -5577,6 +5583,9 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     } else {
         disk.MigrationTarget2Source.erase(it);
         disk.MigrationSource2Target.erase(sourceId);
+
+        ResetMigrationStartTsIfNeeded(disk);
+
         // searching in all pools - in theory pool name might change between
         // the start/cancel/finish events
         for (auto& x: SourceDeviceMigrationsInProgress) {
