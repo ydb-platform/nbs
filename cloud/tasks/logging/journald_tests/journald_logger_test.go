@@ -164,12 +164,12 @@ func TestJournaldLogInfo(t *testing.T) {
 	logger := logging.NewJournaldLogger(logging.InfoLevel)
 	ctx := logging.SetLogger(newContext("idempID", "reqID", "opID"), logger)
 
-	logging.Trace(ctx, "Trace did not happen")
-	logging.Debug(ctx, "Debug did not happen")
-	logging.Info(ctx, "Info happened")
-	logging.Warn(ctx, "Warn happened")
-	logging.Error(ctx, "Error happened")
-	logging.Fatal(ctx, "Fatal happened")
+	logging.Trace(ctx, "did not happen")
+	logging.Debug(ctx, "did not happen")
+	logging.Info(ctx, "happened")
+	logging.Warn(ctx, "happened")
+	logging.Error(ctx, "happened")
+	logging.Fatal(ctx, "happened")
 
 	data, err := runJournalctl()
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestJournaldLogInfo(t *testing.T) {
 		t,
 		[]journaldEntry{
 			{
-				message:          fmt.Sprintf("%s:%d Info happened", caller, lineNo-11),
+				message:          fmt.Sprintf("%s:%d INFO happened", caller, lineNo-11),
 				priority:         journal.PriInfo,
 				idempotencyKey:   "idempID",
 				requestID:        "reqID",
@@ -198,7 +198,7 @@ func TestJournaldLogInfo(t *testing.T) {
 				codeFunc:         frame.Function,
 			},
 			{
-				message:          fmt.Sprintf("%s:%d Warn happened", caller, lineNo-10),
+				message:          fmt.Sprintf("%s:%d WARN happened", caller, lineNo-10),
 				priority:         journal.PriWarning,
 				idempotencyKey:   "idempID",
 				requestID:        "reqID",
@@ -209,7 +209,7 @@ func TestJournaldLogInfo(t *testing.T) {
 				codeFunc:         frame.Function,
 			},
 			{
-				message:          fmt.Sprintf("%s:%d Error happened", caller, lineNo-9),
+				message:          fmt.Sprintf("%s:%d ERROR happened", caller, lineNo-9),
 				priority:         journal.PriErr,
 				idempotencyKey:   "idempID",
 				requestID:        "reqID",
@@ -220,7 +220,7 @@ func TestJournaldLogInfo(t *testing.T) {
 				codeFunc:         frame.Function,
 			},
 			{
-				message:          fmt.Sprintf("%s:%d Fatal happened", caller, lineNo-8),
+				message:          fmt.Sprintf("%s:%d FATAL happened", caller, lineNo-8),
 				priority:         journal.PriCrit,
 				idempotencyKey:   "idempID",
 				requestID:        "reqID",
