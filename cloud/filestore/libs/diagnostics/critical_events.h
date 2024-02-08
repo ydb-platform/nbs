@@ -13,6 +13,7 @@ namespace NCloud::NFileStore{
     xxx(TabletBSFailure)                                                       \
     xxx(TabletCommitIdOverflow)                                                \
     xxx(VfsQueueRunningError)                                                  \
+    xxx(EndpointStartingError)                                                 \
 // FILESTORE_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

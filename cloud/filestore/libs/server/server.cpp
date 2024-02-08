@@ -3,6 +3,7 @@
 #include "config.h"
 #include "probes.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -23,6 +24,8 @@
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/uds/client_storage.h>
+#include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
 #include <contrib/ydb/library/actors/prof/tag.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
@@ -176,35 +179,17 @@ const NCloud::TRequestSourceKinds RequestSourceKinds = {
     { "SECURE_CONTROL_CHANNEL",   NProto::SOURCE_SECURE_CONTROL_CHANNEL },
 };
 
-void ValidateRequest(
-    const grpc::ServerContext& context,
-    NProto::THeaders& headers)
+////////////////////////////////////////////////////////////////////////////////
+
+bool TryParseSourceFd(const TStringBuf& peer, ui32& fd)
 {
-    auto authContext = context.auth_context();
-    Y_ABORT_UNLESS(authContext);
-
-    auto source = GetRequestSource(
-        *authContext,
-        RequestSourceKinds);
-
-    if (source.Empty()) {
-        *source = NProto::SOURCE_FD_DATA_CHANNEL;
+    static const TString PeerFdPrefix = "fd:";
+    if (!peer.StartsWith(PeerFdPrefix)) {
+        return false;
     }
 
-    if (headers.HasInternal()) {
-        ythrow TServiceError(E_ARGUMENT)
-            << "internal field should not be set by client";
-    }
-
-    auto& internal = *headers.MutableInternal();
-
-    internal.Clear();
-    internal.SetRequestSource(*source);
-
-    // we will only get token from secure control channel
-    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
-        internal.SetAuthToken(GetAuthToken(context.client_metadata()));
-    }
+    auto peerFd = peer.SubString(PeerFdPrefix.length(), peer.length());
+    return TryFromString(peerFd, fd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -240,25 +225,290 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TSessionStorage;
+
 struct TAppContext
 {
     TLog Log;
     TAtomic ShouldStop = 0;
     IRequestStatsPtr Stats;
     IProfileLogPtr ProfileLog;
+    std::unique_ptr<grpc::Server> Server;
 };
 
 struct TFileStoreContext : TAppContext
 {
+    using TService = IFileStoreService;
+    using TServicePtr = IFileStoreServicePtr;
+
     NProto::TFileStoreService::AsyncService Service;
-    IFileStoreServicePtr ServiceImpl;
+    TServicePtr ServiceImpl;
+
+    void ValidateRequest(
+        const grpc::ServerContext& context,
+        NProto::THeaders& headers)
+    {
+        auto authContext = context.auth_context();
+        Y_ABORT_UNLESS(authContext);
+
+        auto source = GetRequestSource(
+            *authContext,
+            RequestSourceKinds);
+
+        if (!source) {
+            source = NProto::SOURCE_SECURE_CONTROL_CHANNEL;
+        }
+
+        if (headers.HasInternal()) {
+            ythrow TServiceError(E_ARGUMENT)
+                << "internal field should not be set by client";
+        }
+
+        auto& internal = *headers.MutableInternal();
+
+        internal.Clear();
+        internal.SetRequestSource(*source);
+
+        // we will only get token from secure control channel
+        if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+            internal.SetAuthToken(GetAuthToken(context.client_metadata()));
+        }
+    }
 };
 
 struct TEndpointManagerContext : TAppContext
 {
+    using TService = IEndpointManager;
+    using TServicePtr = IEndpointManagerPtr;
+
     NProto::TEndpointManagerService::AsyncService Service;
-    IEndpointManagerPtr ServiceImpl;
+    TServicePtr ServiceImpl;
+    std::shared_ptr<TSessionStorage> SessionStorage;
+
+    TEndpointManagerContext()
+        : SessionStorage(std::make_shared<TSessionStorage>(*this))
+    {}
+
+    void ValidateRequest(
+        const grpc::ServerContext& context,
+        NProto::THeaders& headers);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+using NCloud::NStorage::NServer::IClientStorage;
+using NCloud::NStorage::NServer::IClientStoragePtr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TSessionStorage final
+    : public std::enable_shared_from_this<TSessionStorage>
+{
+public:
+    using TServicePtr = IEndpointManagerPtr;
+
+private:
+    struct TClientInfo
+    {
+        ui32 Fd = 0;
+        TServicePtr Service;
+        NProto::ERequestSource Source = NProto::SOURCE_FD_DATA_CHANNEL;
+    };
+
+private:
+    TAppContext& AppCtx;
+
+    TMutex Lock;
+    THashMap<ui32, TClientInfo> ClientInfos;
+
+public:
+    TSessionStorage(TAppContext& appCtx)
+        : AppCtx(appCtx)
+    {}
+
+    void AddClient(
+        const TSocketHolder& socket,
+        TServicePtr sessionService,
+        NProto::ERequestSource source)
+    {
+        if (AtomicGet(AppCtx.ShouldStop)) {
+            return;
+        }
+
+        TSocketHolder dupSocket;
+
+        with_lock (Lock) {
+            auto it = FindClient(socket);
+            Y_ABORT_UNLESS(it == ClientInfos.end());
+
+            dupSocket = SafeCreateDuplicate(socket);
+
+            auto client = TClientInfo {
+                (ui32)socket,
+                std::move(sessionService),
+                source
+            };
+            auto res = ClientInfos.emplace((ui32)dupSocket, std::move(client));
+            Y_ABORT_UNLESS(res.second);
+        }
+
+        TLog& Log = AppCtx.Log;
+        STORAGE_DEBUG(
+            "Accept client. Unix socket fd = " <<
+            static_cast<ui32>(dupSocket));
+        grpc::AddInsecureChannelFromFd(AppCtx.Server.get(), dupSocket.Release());
+    }
+
+    void RemoveClient(const TSocketHolder& socket)
+    {
+        if (AtomicGet(AppCtx.ShouldStop)) {
+            return;
+        }
+
+        with_lock (Lock) {
+            auto it = FindClient(socket);
+            Y_ABORT_UNLESS(it != ClientInfos.end());
+            ClientInfos.erase(it);
+        }
+    }
+
+    TServicePtr GetSessionService(ui32 fd, NProto::ERequestSource& source)
+    {
+        with_lock (Lock) {
+            auto it = ClientInfos.find(fd);
+            if (it != ClientInfos.end()) {
+                const auto& clientInfo = it->second;
+                source = clientInfo.Source;
+                return clientInfo.Service;
+            }
+        }
+        return nullptr;
+    }
+
+    IClientStoragePtr CreateClientStorage(TServicePtr service);
+
+private:
+    static TSocketHolder CreateDuplicate(const TSocketHolder& socket)
+    {
+        auto fileHandle = TFileHandle(socket);
+        auto duplicateFd = fileHandle.Duplicate();
+        fileHandle.Release();
+        return TSocketHolder(duplicateFd);
+    }
+
+    // need for avoid race, see NBS-3325
+    TSocketHolder SafeCreateDuplicate(const TSocketHolder& socket)
+    {
+        TList<TSocketHolder> holders;
+
+        while (true) {
+            TSocketHolder holder = CreateDuplicate(socket);
+            if (ClientInfos.find(holder) == ClientInfos.end()) {
+                return holder;
+            }
+
+            holders.push_back(std::move(holder));
+        }
+    }
+
+    THashMap<ui32, TClientInfo>::iterator FindClient(const TSocketHolder& socket)
+    {
+        ui32 fd = socket;
+        for (auto it = ClientInfos.begin(); it != ClientInfos.end(); ++it) {
+            const auto& clientInfo = it->second;
+            if (clientInfo.Fd == fd) {
+                return it;
+            }
+        }
+        return ClientInfos.end();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TClientStorage final
+    : public IClientStorage
+{
+    std::shared_ptr<TSessionStorage> Storage;
+    IEndpointManagerPtr Service;
+
+public:
+    TClientStorage(
+            std::shared_ptr<TSessionStorage> storage,
+            IEndpointManagerPtr service)
+        : Storage(std::move(storage))
+        , Service(std::move(service))
+    {}
+
+    void AddClient(
+        const TSocketHolder& clientSocket,
+        NCloud::NProto::ERequestSource source) override
+    {
+        Storage->AddClient(clientSocket, Service, source);
+    }
+
+    void RemoveClient(const TSocketHolder& clientSocket) override
+    {
+        Storage->RemoveClient(clientSocket);
+    }
+};
+
+IClientStoragePtr TSessionStorage::CreateClientStorage(
+    TServicePtr service)
+{
+    return std::make_shared<TClientStorage>(
+        this->shared_from_this(),
+        std::move(service));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TEndpointManagerContext::ValidateRequest(
+    const grpc::ServerContext& context,
+    NProto::THeaders& headers)
+{
+    auto authContext = context.auth_context();
+    Y_ABORT_UNLESS(authContext);
+
+    auto source = GetRequestSource(
+        *authContext,
+        RequestSourceKinds);
+
+    if (!source) {
+        ui32 fd = 0;
+        auto peer = context.peer();
+        bool result = TryParseSourceFd(peer, fd);
+
+        if (!result) {
+            ythrow TServiceError(E_FAIL)
+                << "failed to parse request source fd: " << peer;
+        }
+
+        auto src = NProto::SOURCE_SECURE_CONTROL_CHANNEL;
+        auto sessionService = SessionStorage->GetSessionService(fd, src);
+        if (sessionService == nullptr) {
+            ythrow TServiceError(E_GRPC_UNAVAILABLE)
+                << "endpoint has been stopped (fd = " << fd << ").";
+        }
+
+        source = src;
+    }
+
+    if (headers.HasInternal()) {
+        ythrow TServiceError(E_ARGUMENT)
+            << "internal field should not be set by client";
+    }
+
+    auto& internal = *headers.MutableInternal();
+
+    internal.Clear();
+    internal.SetRequestSource(*source);
+
+    // we will only get token from secure control channel
+    if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
+        internal.SetAuthToken(GetAuthToken(context.client_metadata()));
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -473,7 +723,7 @@ private:
         Started = true;
 
         try {
-            ValidateRequest(
+            AppCtx.ValidateRequest(
                 *Context,
                 *Request->MutableHeaders());
 
@@ -803,7 +1053,7 @@ private:
         // TODO report stats
 
         try {
-            ValidateRequest(
+            AppCtx.ValidateRequest(
                 *Context,
                 *Request->MutableHeaders());
 
@@ -926,6 +1176,8 @@ private:
     TAdaptiveLock ExecutorsLock;
     TVector<std::unique_ptr<TExecutor>> Executors;
 
+    std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
+
 public:
     template <typename T>
     TServer(
@@ -1015,16 +1267,26 @@ public:
                 auto executor = std::make_unique<TExecutor>(
                     TStringBuilder() << "SRV" << i,
                     builder.AddCompletionQueue(),
-                    AppCtx.Log);
+                    Log);
                 executor->Start();
                 Executors.push_back(std::move(executor));
             }
         }
 
-        Server = builder.BuildAndStart();
-        if (!Server) {
+        AppCtx.Server = builder.BuildAndStart();
+        if (!AppCtx.Server) {
             ythrow TServiceError(E_FAIL)
                 << "could not start gRPC server";
+        }
+
+        // UDS endpoints are allowed at nfs-vhost only
+        if constexpr (std::is_same<TAppContext, TEndpointManagerContext>::value)
+        {
+            auto unixSocketPath = Config->GetUnixSocketPath();
+            if (unixSocketPath) {
+                ui32 backlog = Config->GetUnixSocketBacklog();
+                StartListenUnixSocket(unixSocketPath, backlog);
+            }
         }
 
         with_lock (ExecutorsLock) {
@@ -1046,11 +1308,17 @@ public:
 
         STORAGE_INFO("Shutting down");
 
+        // UDS endpoints are allowed at nfs-vhost only
+        if constexpr (std::is_same<TAppContext, TEndpointManagerContext>::value)
+        {
+            StopListenUnixSocket();
+        }
+
         AppCtx.Stats->Reset();
 
         auto deadline = Config->GetShutdownTimeout().ToDeadLine();
-        if (Server) {
-            Server->Shutdown(deadline);
+        if (AppCtx.Server) {
+            AppCtx.Server->Shutdown(deadline);
         }
 
         for (;;) {
@@ -1122,6 +1390,37 @@ private:
         }
 
         return sslOptions;
+    }
+
+    void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog)
+    {
+        auto& Log = AppCtx.Log;
+
+        STORAGE_INFO("Listen on (control) " << unixSocketPath.Quote());
+
+        EndpointPoller = std::make_unique<NStorage::NServer::TEndpointPoller>();
+        EndpointPoller->Start();
+
+        auto error = EndpointPoller->StartListenEndpoint(
+            unixSocketPath,
+            backlog,
+            true,   // multiClient
+            NProto::SOURCE_FD_CONTROL_CHANNEL,
+            AppCtx.SessionStorage->CreateClientStorage(AppCtx.ServiceImpl));
+
+        if (HasError(error)) {
+            ReportEndpointStartingError();
+            STORAGE_ERROR("Failed to start (control) endpoint: " << FormatError(error));
+            StopListenUnixSocket();
+        }
+    }
+
+    void StopListenUnixSocket()
+    {
+        if (EndpointPoller) {
+            EndpointPoller->Stop();
+            EndpointPoller.reset();
+        }
     }
 };
 
