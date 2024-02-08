@@ -436,27 +436,36 @@ TFuture<NProto::TError> TYdbStatsUploader::DoUploadStats(
 
     TVector<TUploadData> dataForUpload;
 
-    TValueBuilder rows;
-    rows.BeginList();
-    for (const auto& stat: stats) {
-        rows.AddListItem(stat.GetYdbValues());
-    }
-    rows.EndList();
+    auto buildYdbRows = [&] () {
+        TValueBuilder rows;
 
-    auto result = rows.Build();
+        rows.BeginList();
+        for (const auto& stat: stats) {
+            rows.AddListItem(stat.GetYdbValues());
+        }
+        rows.EndList();
+
+        return rows.Build();
+    };
 
     if (setupResult.StatsTableName) {
-        dataForUpload.emplace_back(setupResult.StatsTableName, result);
+        // TODO: avoid explicitly making copies
+        // of stats after https://github.com/ydb-platform/ydb/issues/1659
+        dataForUpload.emplace_back(setupResult.StatsTableName, buildYdbRows());
     }
 
     if (setupResult.HistoryTableName) {
-        dataForUpload.emplace_back(setupResult.HistoryTableName, result);
+        // TODO: avoid explicitly making copies
+        // of stats after https://github.com/ydb-platform/ydb/issues/1659
+        dataForUpload.emplace_back(setupResult.HistoryTableName, buildYdbRows());
     }
 
     if (setupResult.ArchiveStatsTableName) {
+        // TODO: avoid explicitly making copies
+        // of stats after https://github.com/ydb-platform/ydb/issues/1659
         dataForUpload.emplace_back(
             setupResult.ArchiveStatsTableName,
-            std::move(result));
+            buildYdbRows());
     }
 
     if (setupResult.BlobLoadMetricsTableName) {
