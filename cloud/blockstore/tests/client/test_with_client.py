@@ -108,10 +108,8 @@ def file_parse(file_path, proto_type):
 
 
 def file_parse_as_json(file_path):
-    file_content = ''
     with open(file_path, 'r') as file:
-        file_content = file.read()
-    return json.loads(file_content)
+        return json.load(file)
 
 
 def list_placement_groups(env, run):
