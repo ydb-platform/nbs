@@ -908,4 +908,7 @@ message TStorageServiceConfig
     // IMPORTANT: Compaction verifies block checksums for the blocks affected by
     // it regardless of this flag!
     optional bool CheckBlockChecksumsInBlobsUponRead = 346;
+
+    // Enables runtime config update tool.
+    optional bool ConfigsDispatcherServiceEnabled = 347;
 }
