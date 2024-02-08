@@ -690,21 +690,6 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createTime,
-		CreatedBy:      "some_user",
-		ModifiedAt:     freshTime,
-		GenerationID:   generationID,
-		Status:         TaskStatusReadyToRun,
-		State:          []byte{},
-		Dependencies:   NewStringSet(),
-		GroupID:        "some_group",
-	})
-	require.NoError(t, err)
-
 	expectedTaskInfos := []TaskInfo{
 		TaskInfo{
 			ID:           taskIDReadyToRun,
@@ -928,21 +913,6 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 		Status:         TaskStatusReadyToCancel,
 		State:          []byte{},
 		Dependencies:   NewStringSet(taskIDFinished, taskIDReadyToRun, taskIDReadyToCancel),
-	})
-	require.NoError(t, err)
-
-	_, err = storage.CreateTask(ctx, TaskState{
-		IdempotencyKey: getIdempotencyKeyForTest(t),
-		TaskType:       "task1",
-		Description:    "Some task",
-		CreatedAt:      createTime,
-		CreatedBy:      "some_user",
-		ModifiedAt:     stallTime,
-		GenerationID:   generationID,
-		Status:         TaskStatusReadyToCancel,
-		State:          []byte{},
-		Dependencies:   NewStringSet(),
-		GroupID:        "some_group",
 	})
 	require.NoError(t, err)
 

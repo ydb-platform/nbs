@@ -196,7 +196,6 @@ func (s *storageYDB) updateReadyToExecute(
 			persistence.StructFieldValue("generation_id", persistence.Uint64Value(t.newState.GenerationID)),
 			persistence.StructFieldValue("task_type", persistence.UTF8Value(t.newState.TaskType)),
 			persistence.StructFieldValue("zone_id", persistence.UTF8Value(t.newState.ZoneID)),
-			persistence.StructFieldValue("group_id", persistence.UTF8Value(t.newState.GroupID)),
 		))
 	}
 
@@ -279,7 +278,6 @@ func (s *storageYDB) updateExecuting(
 			persistence.StructFieldValue("modified_at", persistence.TimestampValue(t.newState.ModifiedAt)),
 			persistence.StructFieldValue("task_type", persistence.UTF8Value(t.newState.TaskType)),
 			persistence.StructFieldValue("zone_id", persistence.UTF8Value(t.newState.ZoneID)),
-			persistence.StructFieldValue("group_id", persistence.UTF8Value(t.newState.GroupID)),
 		))
 	}
 
@@ -879,8 +877,7 @@ func (s *storageYDB) listTasks(
 		from %v
 		where
 			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
-			(Len(zone_id) == 0 or zone_id in $zone_ids) and
-			Len(group_id) == 0
+			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
@@ -919,8 +916,7 @@ func (s *storageYDB) listTasksStallingWhileExecuting(
 		where
 			(modified_at < $stalling_time) and
 			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
-			(Len(zone_id) == 0 or zone_id in $zone_ids) and 
-			Len(group_id) == 0
+			(Len(zone_id) == 0 or zone_id in $zone_ids)
 		limit $limit
 	`, s.tablesPath, tableName),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),

@@ -214,7 +214,6 @@ type TaskState struct {
 	EstimatedTime       time.Time
 	PanicCount          uint64
 	Events              []int64
-	GroupID             string
 
 	// Internal part of the state. Fully managed by DB and can't be overwritten
 	// by client.

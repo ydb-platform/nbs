@@ -250,7 +250,6 @@ func readyToRunTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -262,7 +261,6 @@ func readyToCancelTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -273,8 +271,7 @@ func readyToExecuteStructTypeString() string {
 		id: Utf8,
 		generation_id: Uint64,
 		task_type: Utf8,
-		zone_id: Utf8,
-		group_id: Utf8>`
+		zone_id: Utf8>`
 }
 
 func runningTableDescription() persistence.CreateTableDescription {
@@ -283,7 +280,6 @@ func runningTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithPrimaryKeyColumn("id"),
@@ -296,7 +292,6 @@ func cancellingTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("group_id", persistence.Optional(persistence.TypeUTF8)),
 
 		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithPrimaryKeyColumn("id"),
@@ -309,8 +304,7 @@ func executingStructTypeString() string {
 		generation_id: Uint64,
 		modified_at: Timestamp,
 		task_type: Utf8,
-		zone_id: Utf8,
-		group_id: Utf8>`
+		zone_id: Utf8>`
 }
 
 func endedTableDescription() persistence.CreateTableDescription {
