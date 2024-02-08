@@ -187,7 +187,12 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         default=False,
         help='do not delete instance and disk, if fail')
-
+    test_arguments_group.add_argument(
+        '--resource-ttl-days',
+        type=int,
+        default=None,
+        help='Time to love for snapshots created for tests',
+    )
     args = parser.parse_args()
 
     if args.profile_name is None:

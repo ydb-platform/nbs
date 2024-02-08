@@ -9,7 +9,7 @@ import socket
 import subprocess
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Type
 
@@ -132,6 +132,7 @@ class BaseAcceptanceTestRunner(ABC):
         self._cluster = get_cluster_test_config(args.cluster,
                                                 args.zone_id,
                                                 args.cluster_config_path)
+        self._resource_ttl_days = args.resource_ttl_days
         self._iodepth = self._args.instance_cores * 4
         self._results_processor = None
         if self._args.results_path is not None:
@@ -170,6 +171,24 @@ class BaseAcceptanceTestRunner(ABC):
             ycp_requests_template_path=self._args.ycp_requests_template_path,
         )
 
+    def _shall_delete_snapshot(
+        self,
+        snapshot: Ycp.Snapshot,
+        snapshot_ttl_days: int,
+    ) -> bool:
+        if not snapshot.name.startswith("acceptance-test-snapshot"):
+            return False
+        older_than = datetime.now() - timedelta(days=snapshot_ttl_days)
+        if snapshot.created_at > older_than:
+            return False
+        return True
+
+    def _cleanup_snapshots(self, snapshot_ttl_days: int):
+        for snapshot in self._ycp.list_snapshots():
+            if not self._shall_delete_snapshot(snapshot, snapshot_ttl_days):
+                continue
+            self._ycp.delete_snapshot(snapshot)
+
     def _initialize_run(self,
                         profiler: common.Profiler,
                         instance_name: str,
@@ -192,6 +211,9 @@ class BaseAcceptanceTestRunner(ABC):
             auto_delete=not self._args.debug,
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
+        if self._resource_ttl_days is not None:
+            self._cleanup_snapshots(self._resource_ttl_days)
+
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
         # Execute acceptance test on test disk
