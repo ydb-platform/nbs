@@ -11,10 +11,9 @@ DEPENDS(
     cloud/disk_manager/test/mocks/kms
     cloud/disk_manager/test/mocks/metadata
     cloud/disk_manager/test/recipe
+    cloud/storage/core/tools/testing/ydb/bin
     cloud/tasks/test/nemesis
-
     contrib/python/moto/bin
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
