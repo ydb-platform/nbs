@@ -1323,15 +1323,6 @@ public:
         Endpoints.Add(std::move(endpoint));
     }
 
-    void Delete(TClientEndpoint* endpoint)
-    {
-        endpoint->Poller = nullptr;
-
-        Endpoints.Delete([=](auto other) {
-            return endpoint == other.get();
-        });
-    }
-
     void Attach(TClientEndpoint* endpoint)
     {
         if (Config->WaitMode == EWaitMode::Poll) {
