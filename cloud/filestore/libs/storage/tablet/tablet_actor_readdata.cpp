@@ -606,6 +606,8 @@ void TIndexTabletActor::HandleDescribeData(
         msg->CallContext);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
+    // TODO: implement a block buffer with lazy block allocation and use it
+    // here
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
 
     ExecuteTx<TReadData>(
