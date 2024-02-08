@@ -199,4 +199,7 @@ message TStorageConfig
 
     // Enables DescribeData + ReadBlob instead of ReadData for reading.
     optional bool TwoStageReadEnabled = 331;
+
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 332;
 }

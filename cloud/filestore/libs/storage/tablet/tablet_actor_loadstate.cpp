@@ -414,14 +414,7 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
     s.LoadQueue.pop_front();
     s.LoadChunkInProgress = false;
 
-    if (s.LoadQueue) {
-        // We still have more loading to do - sending the next load request
-        ctx.Send(
-            SelfId(),
-            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
-                s.LoadQueue.front())
-        );
-    }
+    LoadNextCompactionMapChunkIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

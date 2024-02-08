@@ -3064,6 +3064,75 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldDeduplicateOutOfOrderCompactionMapChunkLoads)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        TVector<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> requests;
+        TAutoPtr<IEventHandle> loadChunk;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    using TEv =
+                        TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest;
+                    requests.push_back(*event->Get<TEv>());
+
+                    if (requests.size() == 1) {
+                        loadChunk = event.Release();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        for (ui32 i = 0; i < 10; ++i) {
+            tablet.SendWriteDataRequest(handle, 0, block, 'a');
+            {
+                auto response = tablet.RecvWriteDataResponse();
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            }
+        }
+
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        tablet.SendWriteDataRequest(handle, 0, block, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, requests.size());
+    }
+
     TABLET_TEST(BackgroundOperationsShouldNotGetStuckForeverDuringCompactionMapLoading)
     {
         const auto block = tabletConfig.BlockSize;
