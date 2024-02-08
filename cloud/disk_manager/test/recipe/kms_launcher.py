@@ -14,7 +14,8 @@ class KmsServer(Daemon):
         command += ["--port", str(port)]
         super(KmsServer, self).__init__(
             commands=[command],
-            cwd=working_dir)
+            cwd=working_dir,
+            service_name=SERVICE_NAME)
 
 
 class KmsLauncher:

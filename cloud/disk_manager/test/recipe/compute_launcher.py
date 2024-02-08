@@ -14,7 +14,8 @@ class ComputeServer(Daemon):
         command += ["--port", str(port)]
         super(ComputeServer, self).__init__(
             commands=[command],
-            cwd=working_dir)
+            cwd=working_dir,
+            service_name=SERVICE_NAME)
 
 
 class ComputeLauncher:
