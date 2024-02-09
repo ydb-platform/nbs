@@ -44,10 +44,14 @@
         .directory-icon:before {
             content: '📁'; /* Folder icon */
         }
-        .date, .size {
+        .date, .size, .expiry_date {
             float: right;
             margin-left: 20px;
             color: #999;
+        }
+
+        .expired {
+            color: #FF6666;
         }
 
         #timestamp {
@@ -58,20 +62,40 @@
 </head>
 <body>
     <h1>Directory listing for {{ directory }}</h1>
-    <ul>
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>File Name</th>
+                <th>Expiry Date</th>
+                <th>Date</th>
+                <th>Size</th>
+            </tr>
+        </thead>
+        <tbody>
         {% for entry in entries %}
-            <li>
-                <span class="{{ 'directory-icon' if entry.type == 'directory' else 'file-icon' }}"></span>
-                <a href="{{ entry.url }}">{{ entry.name }}</a>
+            <tr>
+                <th><span class="{{ 'directory-icon' if entry.type == 'directory' else 'file-icon' }}"></span></th>
+                <th><a href="{{ entry.url }}">{{ entry.name }}</a></th>
+                <th>
+                {% if entry.expiry_date %}
+                    <span class="expiry_date {% if entry.is_expired %}expired{% endif %}" >{{ entry.expiry_date }}</span>
+                {% endif %}
+                </th>
+                <th>
                 {% if entry.date %}
                     <span class="date">{{ entry.date }}</span>
                 {% endif %}
+                </th>
+                <th>
                 {% if entry.size %}
                     <span class="size">{{ entry.size }}</span>
                 {% endif %}
-            </li>
+                </th>
+            </tr>
         {% endfor %}
-    </ul>
+        </tbody>
+    </table>
     <p id="timestamp">Generated on: {{ timestamp }}</p>
 
 </body>
