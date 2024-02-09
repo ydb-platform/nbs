@@ -3282,19 +3282,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         }
 
-        ui64 offset = block * (BlockGroupSize * 2 - 1);
-        ui64 length = BlockGroupSize;
+        ui64 offset = block * BlockGroupSize * 2 + 1;
+        ui64 length = block * BlockGroupSize / 2;
 
         auto response = tablet.DescribeData(handle, offset, length);
         for (const auto& range: response->Record.GetFreshDataRanges()) {
             UNIT_ASSERT_LE(offset, range.GetOffset());
-            UNIT_ASSERT_LT(range.GetOffset() + range.GetContent().size(), offset + length);
+            UNIT_ASSERT_LE(
+                range.GetOffset() + range.GetContent().size(),
+                offset + length);
         }
 
         for (const auto& blob: response->Record.GetBlobPieces()) {
             for (const auto& range: blob.GetRanges()) {
                 UNIT_ASSERT_LE(offset, range.GetOffset());
-                UNIT_ASSERT_LT(range.GetOffset() + range.GetLength(), offset + length);
+                UNIT_ASSERT_LE(
+                    range.GetOffset() + range.GetLength(),
+                    offset + length);
             }
         }
     }
