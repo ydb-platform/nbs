@@ -98,7 +98,7 @@ void TStorageServiceActor::RenderSessions(IOutputStream& out)
                         DumpFsLink(
                             out,
                             session.TabletId,
-                            session.FileSystemId
+                            session.FileStore.GetFileSystemId()
                         );
                     }
                     TABLED() { out << session.SessionId; }

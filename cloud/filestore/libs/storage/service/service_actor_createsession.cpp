@@ -792,21 +792,26 @@ void TStorageServiceActor::HandleSessionCreated(
                 msg->FileStore.GetFileSystemId(),
                 msg->ClientId);
 
+            const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+                msg->FileStore.GetStorageMediaKind());
+
             session = State->CreateSession(
                 msg->ClientId,
-                msg->FileStore.GetFileSystemId(),
+                msg->FileStore,
                 msg->SessionId,
                 msg->SessionState,
                 msg->SessionSeqNo,
                 msg->ReadOnly,
-                static_cast<NProto::EStorageMediaKind>(msg->FileStore.GetStorageMediaKind()),
+                mediaKind,
                 std::move(stats),
                 actorId,
                 msg->TabletId);
 
             Y_ABORT_UNLESS(session);
         } else {
-            session->UpdateSessionState(msg->SessionState);
+            session->UpdateSessionState(
+                msg->SessionState,
+                msg->FileStore);
             session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
             session->SessionActor = actorId;
         }
