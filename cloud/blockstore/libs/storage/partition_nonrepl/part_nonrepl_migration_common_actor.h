@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -95,7 +96,7 @@ private:
     TPartitionDiskCountersPtr DstCounters;
 
     // PoisonPill
-    TRequestInfoPtr Poisoner;
+    TPoisonPillHelper PoisonPillHelper;
 
     // Usage statistics
     ui64 NetworkBytes = 0;
@@ -131,15 +132,12 @@ public:
     TBlockRange64 GetNextProcessingRange() const;
 
 private:
-    void KillActors(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
     void ScheduleMigrateNextRange(const NActors::TActorContext& ctx);
     void MigrateNextRange(const NActors::TActorContext& ctx);
     void ContinueMigrationIfNeeded(const NActors::TActorContext& ctx);
-
-    void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -171,10 +169,6 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePoisonTaken(
-        const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
