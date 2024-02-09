@@ -52,6 +52,14 @@ func (t *replicateDiskTask) Run(
 ) error {
 
 	for {
+		err := t.deleteProxyOverlayDiskIfNeeded(
+			ctx,
+			execCtx,
+		)
+		if err != nil {
+			return err
+		}
+
 		if t.state.FinalIteration == 0 {
 			if execCtx.HasEvent(
 				ctx,
@@ -68,7 +76,7 @@ func (t *replicateDiskTask) Run(
 			return nil
 		}
 
-		err := t.updateCheckpoints(ctx, execCtx, t.request.UseLightCheckpoint)
+		err = t.updateCheckpoints(ctx, execCtx, t.request.UseLightCheckpoint)
 		if err != nil {
 			return err
 		}
@@ -91,7 +99,7 @@ func (t *replicateDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.deleteProxyOverlayDisk(ctx, execCtx)
+	return t.deleteProxyOverlayDiskIfNeeded(ctx, execCtx)
 }
 
 func (t *replicateDiskTask) GetMetadata(
@@ -149,7 +157,7 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 	return "", nil
 }
 
-func (t *replicateDiskTask) deleteProxyOverlayDisk(
+func (t *replicateDiskTask) deleteProxyOverlayDiskIfNeeded(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -159,7 +167,13 @@ func (t *replicateDiskTask) deleteProxyOverlayDisk(
 		return err
 	}
 
-	proxyOverlayDiskID := t.state.ProxyOverlayDiskId
+	_, currentCheckpointID, _ := t.getCheckpointIDs(execCtx)
+	diskID := t.request.SrcDisk.DiskId
+	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
+		diskID,
+		currentCheckpointID,
+	)
+
 	if len(proxyOverlayDiskID) == 0 {
 		return nil
 	}
@@ -258,7 +272,6 @@ func (t *replicateDiskTask) replicate(
 	if err != nil {
 		return err
 	}
-	t.state.ProxyOverlayDiskId = proxyOverlayDiskID
 
 	diskParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
 	if err != nil {
@@ -269,7 +282,7 @@ func (t *replicateDiskTask) replicate(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		t.state.ProxyOverlayDiskId,
+		proxyOverlayDiskID,
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,
@@ -330,14 +343,6 @@ func (t *replicateDiskTask) replicate(
 	}
 
 	err = t.checkReplicationProgress(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
-	err = t.deleteProxyOverlayDisk(
-		ctx,
-		execCtx,
-	)
 	if err != nil {
 		return err
 	}

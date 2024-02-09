@@ -39,8 +39,6 @@ message ReplicateDiskTaskState {
     // Store SecondsRemaining each UselessReplicationIterationsBeforeAbort.
     // If SecondsRemaining degrades, abort replication.
     int64 MeasuredSecondsRemaining = 9;
-
-    string ProxyOverlayDiskId = 10;
 }
 
 message ReplicateDiskTaskMetadata {
