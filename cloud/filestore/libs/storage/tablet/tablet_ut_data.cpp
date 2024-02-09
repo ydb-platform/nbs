@@ -3253,6 +3253,52 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(DescribeDataShouldReturnOnlyRelevantBytesAndRanges)
+    {
+        const auto block = tabletConfig.BlockSize;
+        const auto totalBlocks  = 4_MB / block;
+        const ui32 totalIterations = 10;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        for (ui32 iter = 0; iter < totalIterations; ++iter) {
+            for (ui32 i = 0; i < totalBlocks; i += BlockGroupSize) {
+                Cerr << "iter=" << iter << " i=" << i << Endl;
+                tablet.WriteData(handle, i * block, block * BlockGroupSize, 'a' + i % 26);
+            }
+        }
+
+        ui64 offset = block * (BlockGroupSize * 2 - 1);
+        ui64 length = BlockGroupSize;
+
+        auto response = tablet.DescribeData(handle, offset, length);
+        for (const auto& range: response->Record.GetFreshDataRanges()) {
+            UNIT_ASSERT_LE(offset, range.GetOffset());
+            UNIT_ASSERT_LT(range.GetOffset() + range.GetContent().size(), offset + length);
+        }
+
+        for (const auto& blob: response->Record.GetBlobPieces()) {
+            for (const auto& range: blob.GetRanges()) {
+                UNIT_ASSERT_LE(offset, range.GetOffset());
+                UNIT_ASSERT_LT(range.GetOffset() + range.GetLength(), offset + length);
+            }
+        }
+    }
+
     TABLET_TEST_16K(ShouldDescribeData)
     {
         const auto block = tabletConfig.BlockSize;
