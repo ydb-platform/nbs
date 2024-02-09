@@ -115,8 +115,21 @@ def upload_index_html(client, bucket, prefix, html_content):
 def process_directory(bucket, prefix):
     client = boto3.client("s3")
     dirs, files = list_files(client, bucket, prefix)
-    html_content = generate_index_html(bucket, files, dirs, prefix)
-    upload_index_html(client, bucket, prefix, html_content)
+     # Filter out the 'index.html' file if present
+    files_without_index = [file for file in files if not file['Key'].endswith('index.html')]
+
+    if not dirs and not files_without_index:
+        # The directory is empty (or only contains 'index.html'), so delete 'index.html' if it exists
+        try:
+            client.delete_object(Bucket=bucket, Key=os.path.join(prefix, 'index.html'))
+            logging.info(f"Removed 'index.html' from empty directory: {prefix}")
+        except client.exceptions.NoSuchKey:
+            # 'index.html' does not exist, no action needed
+            pass
+    else:
+        # The directory is not empty, generate/update 'index.html'
+        html_content = generate_index_html(bucket, files, dirs, prefix)
+        upload_index_html(client, bucket, prefix, html_content)
     return [d["Prefix"] for d in dirs]
 
 

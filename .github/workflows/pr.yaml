@@ -94,13 +94,74 @@ jobs:
               // organization member
               console.log(e);
             }
+  create-build-and-test-target-var:
+    needs:
+      - check-running-allowed
+    if: needs.check-running-allowed.outputs.result == 'true'
+    outputs:
+      build_target: ${{ steps.set-build-and-test-targets.outputs.build_target }}
+      test_target: ${{ steps.set-build-and-test-targets.outputs.test_target }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set build and test targets
+        id: set-build-and-test-targets
+
+        shell: bash
+        run: |
+          # Initialize variables
+          build_target_components=""
+          test_target_components=""
+          true_count=0
+          false_count=0
+
+          # Function to add components
+          add_components() {
+              if [ "$1" = "true" ]; then
+                  build_target_components="${build_target_components}$2,"
+                  test_target_components="${test_target_components}$3,"
+                  true_count=$((true_count + 1))
+              else
+                  false_count=$((false_count + 1))
+              fi
+          }
+
+          # Add components based on conditions
+          add_components "$contains_blockstore" "cloud/blockstore/apps/" "cloud/blockstore/"
+          add_components "$contains_filestore" "cloud/filestore/apps/" "cloud/filestore/"
+          add_components "$contains_disk_manager" "cloud/disk_manager/" "cloud/disk_manager/"
+          add_components "$contains_tasks" "cloud/tasks/" "cloud/tasks/"
+
+          # Remove trailing commas
+          build_target_components=${build_target_components%,}
+          test_target_components=${test_target_components%,}
+
+          # Determine build_target and test_target based on conditions
+          if [ "$true_count" -eq 4 ] || [ "$false_count" -eq 4 ]; then
+              build_target="cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/"
+              test_target="cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/"
+          else
+              build_target=$build_target_components
+              test_target=$test_target_components
+          fi
+
+          # Output to GitHub environment file
+          echo "build_target=\"$build_target\"" >> $GITHUB_OUTPUT
+          echo "test_target=\"$test_target\"" >> $GITHUB_OUTPUT
+        env:
+          contains_blockstore: ${{ contains(github.event.pull_request.labels.*.name, 'blockstore') && 'true' || 'false' }}
+          contains_filestore: ${{ contains(github.event.pull_request.labels.*.name, 'filestore') && 'true' || 'false' }}
+          contains_disk_manager: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
+          contains_tasks: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
   build_and_test:
     needs:
       - check-running-allowed
+      - create-build-and-test-target-var
     if: needs.check-running-allowed.outputs.result == 'true'
     name: Build and test
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
       build_preset: "relwithdebinfo"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
       test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
