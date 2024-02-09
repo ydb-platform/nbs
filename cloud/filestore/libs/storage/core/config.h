@@ -45,7 +45,7 @@ public:
 
     TStorageConfig(const TStorageConfig&) = default;
 
-    void Merge(const NProto::TStorageConfig& storageServiceConfig);
+    void Merge(const NProto::TStorageConfig& storageConfig);
 
     TValueByName GetValueByName(const TString& name) const;
 
@@ -174,8 +174,12 @@ public:
     TString GetFolderId() const;
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
+    bool GetTwoStageReadEnabled() const;
+    ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
+    void DumpOverridesHtml(IOutputStream& out) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

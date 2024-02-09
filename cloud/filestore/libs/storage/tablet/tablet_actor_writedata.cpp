@@ -244,6 +244,8 @@ void TIndexTabletActor::HandleWriteData(
     };
 
     if (!CompactionStateLoadStatus.Finished) {
+        const ui32 limitInQueue =
+            Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
         auto& s = CompactionStateLoadStatus;
 
         bool reject = false;
@@ -259,8 +261,29 @@ void TIndexTabletActor::HandleWriteData(
             if (rangeId > s.MaxLoadedInOrderRangeId
                     && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
             {
-                s.LoadQueue.push_back({rangeId, 1, true});
                 reject = true;
+
+                bool shouldEnqueue = true;
+                ui32 oooRequestsInQueue = 0;
+                for (const auto& req: s.LoadQueue) {
+                    if (!req.OutOfOrder) {
+                        continue;
+                    }
+
+                    if (req.FirstRangeId == rangeId) {
+                        shouldEnqueue = false;
+                        break;
+                    }
+
+                    if (++oooRequestsInQueue == limitInQueue) {
+                        shouldEnqueue = false;
+                        break;
+                    }
+                }
+
+                if (shouldEnqueue) {
+                    s.LoadQueue.push_back({rangeId, 1, true});
+                }
             }
         }
 

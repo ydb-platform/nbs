@@ -58,6 +58,16 @@ void CopyFileData(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ApplyBytes(const TBlockBytes& bytes, TStringBuf blockData)
+{
+    for (const auto& interval: bytes.Intervals) {
+        memcpy(
+            const_cast<char*>(blockData.Data()) + interval.OffsetInBlock,
+            interval.Data.data(),
+            interval.Data.size());
+    }
+}
+
 void ApplyBytes(
     const TString& LogTag,
     const TByteRange& byteRange,
@@ -66,13 +76,119 @@ void ApplyBytes(
 {
     TABLET_VERIFY(byteRange.IsAligned());
     for (ui32 i = 0; i < byteRange.AlignedBlockCount(); ++i) {
-        auto target = buffer.GetBlock(i);
-        for (auto& interval: bytes[i].Intervals) {
-            memcpy(
-                const_cast<char*>(target.Data()) + interval.OffsetInBlock,
-                interval.Data.data(),
-                interval.Data.size()
-            );
+        ApplyBytes(bytes[i], buffer.GetBlock(i));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void FillDescribeDataResponse(
+    const TTabletStorageInfo& info,
+    const ui64 tabletId,
+    const ui32 blockSize,
+    TTxIndexTablet::TReadData& args,
+    NProtoPrivate::TDescribeDataResponse& record)
+{
+    using TBlocks = TVector<TBlockDataRef>;
+    // using TMap to make responses more stable and, thus, easier to test
+    TMap<TPartialBlobId, TBlocks> blobBlocks;
+    NProtoPrivate::TFreshDataRange freshRange;
+    for (ui32 i = 0; i < args.Blocks.size(); ++i) {
+        const auto& block = args.Blocks[i];
+        const auto& bytes = args.Bytes[i];
+        const ui64 curOffset = static_cast<ui64>(block.BlockIndex) * blockSize;
+
+        if (!block.BlobId && block.MinCommitId) {
+            // it's a fresh block
+            if (freshRange.GetContent()) {
+                ui64 endOffset =
+                    freshRange.GetOffset() + freshRange.GetContent().size();
+                if (endOffset < curOffset) {
+                    *record.AddFreshDataRanges() = std::move(freshRange);
+                    freshRange.Clear();
+                }
+            }
+
+            if (!freshRange.GetContent()) {
+                freshRange.SetOffset(curOffset);
+            }
+
+            // applying fresh byte ranges that intersect with our current
+            // block
+            auto target = args.Buffer->GetBlock(i);
+            ApplyBytes(bytes, target);
+            freshRange.MutableContent()->append(target);
+
+            continue;
+        }
+
+        if (freshRange.GetContent()) {
+            // adding our current fresh range to the response
+            *record.AddFreshDataRanges() = std::move(freshRange);
+            freshRange.Clear();
+        }
+
+        if (block.BlobId) {
+            // it's a block that should be read from a blob
+            blobBlocks[block.BlobId].push_back(block);
+        }
+
+        // adding all fresh byte ranges that intersect with our current
+        // block to the response
+        for (auto& interval: bytes.Intervals) {
+            auto& byteRange = *record.AddFreshDataRanges();
+            byteRange.SetOffset(curOffset + interval.OffsetInBlock);
+            byteRange.SetContent(std::move(interval.Data));
+        }
+    }
+
+    if (freshRange.GetContent()) {
+        *record.AddFreshDataRanges() = std::move(freshRange);
+        freshRange.Clear();
+    }
+
+    for (const auto& x: blobBlocks) {
+        auto& piece = *record.AddBlobPieces();
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(tabletId, x.first),
+            piece.MutableBlobId());
+
+        piece.SetBSGroupId(info.GroupFor(
+            x.first.Channel(),
+            x.first.Generation()));
+
+        // joining adjacent ranges from this blob
+        NProtoPrivate::TRangeInBlob rangeInBlob;
+        ui32 prevBlobOffset = 0;
+        for (const auto& b: x.second) {
+            const auto curOffset =
+                static_cast<ui64>(b.BlockIndex) * blockSize;
+            if (rangeInBlob.GetLength()) {
+                const ui64 endOffset =
+                    rangeInBlob.GetOffset() + rangeInBlob.GetLength();
+
+                // if either Offsets are not adjacent or BlobOffsets are
+                // not adjacent, we should start a new range
+                if (endOffset < curOffset
+                        || prevBlobOffset + 1 != b.BlobOffset)
+                {
+                    *piece.AddRanges() = std::move(rangeInBlob);
+                    rangeInBlob.Clear();
+                }
+            }
+
+            if (!rangeInBlob.GetLength()) {
+                rangeInBlob.SetOffset(curOffset);
+                rangeInBlob.SetBlobOffset(b.BlobOffset);
+            }
+
+            rangeInBlob.SetLength(rangeInBlob.GetLength() + blockSize);
+            prevBlobOffset = b.BlobOffset;
+        }
+
+        if (rangeInBlob.GetLength()) {
+            *piece.AddRanges() = std::move(rangeInBlob);
+            rangeInBlob.Clear();
         }
     }
 }
@@ -390,7 +506,8 @@ STFUNC(TReadDataActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateRequest(const NProto::TReadDataRequest& request, ui32 blockSize)
+template <typename TReadRequest>
+NProto::TError ValidateRequest(const TReadRequest& request, ui32 blockSize)
 {
     const TByteRange range(
         request.GetOffset(),
@@ -447,7 +564,8 @@ void TIndexTabletActor::HandleReadData(
         msg->Record,
         byteRange,
         alignedByteRange,
-        std::move(blockBuffer));
+        std::move(blockBuffer),
+        false /* describeOnly */);
 }
 
 void TIndexTabletActor::HandleReadDataCompleted(
@@ -459,6 +577,47 @@ void TIndexTabletActor::HandleReadDataCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     ReleaseCollectBarrier(msg->CommitId);
     WorkerActors.erase(ev->Sender);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleDescribeData(
+    const TEvIndexTablet::TEvDescribeDataRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
+        return ValidateRequest(request, GetBlockSize());
+    };
+
+    if (!AcceptRequest<TEvIndexTablet::TDescribeDataMethod>(ev, ctx, validator)) {
+        return;
+    }
+
+    auto* msg = ev->Get();
+    const TByteRange byteRange(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        GetBlockSize()
+    );
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TByteRange alignedByteRange = byteRange.AlignedSuperRange();
+    // TODO: implement a block buffer with lazy block allocation and use it
+    // here
+    auto blockBuffer = CreateBlockBuffer(alignedByteRange);
+
+    ExecuteTx<TReadData>(
+        ctx,
+        std::move(requestInfo),
+        msg->Record,
+        byteRange,
+        alignedByteRange,
+        std::move(blockBuffer),
+        true /* describeOnly */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -573,6 +732,10 @@ void TIndexTabletActor::ExecuteTx_ReadData(
                 blocksCount);
         });
 
+    // calling FindFreshBytes after FindFreshBlocks and FindMixedBlocks is
+    // important since we compare bytes.MinCommitId with the corresponding
+    // blocks' MinCommitIds and keep only those fresh byte ranges whose
+    // MinCommitIds are newer than block MinCommitIds
     FindFreshBytes(
         visitor,
         args.NodeId,
@@ -584,19 +747,57 @@ void TIndexTabletActor::CompleteTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
-    if (FAILED(args.Error.GetCode())) {
-        auto response = std::make_unique<TEvService::TEvReadDataResponse>(args.Error);
-        CompleteResponse<TEvService::TReadDataMethod>(
+    if (args.DescribeOnly && !HasError(args.Error)) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
+        auto& record = response->Record;
+        FillDescribeDataResponse(
+            *Info(),
+            TabletID(),
+            GetBlockSize(),
+            args,
+            record);
+
+        CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        return;
+    }
+
+    if (HasError(args.Error)) {
+        if (args.DescribeOnly) {
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>(args.Error);
+            CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+                response->Record,
+                args.RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        } else {
+            auto response =
+                std::make_unique<TEvService::TEvReadDataResponse>(args.Error);
+            CompleteResponse<TEvService::TReadDataMethod>(
+                response->Record,
+                args.RequestInfo->CallContext,
+                ctx);
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        }
+
         return;
     }
 
     if (!ShouldReadBlobs(args.Blocks)) {
-        ApplyBytes(LogTag, args.AlignedByteRange, std::move(args.Bytes), *args.Buffer);
+        ApplyBytes(
+            LogTag,
+            args.AlignedByteRange,
+            std::move(args.Bytes),
+            *args.Buffer);
 
         auto response = std::make_unique<TEvService::TEvReadDataResponse>();
         CopyFileData(

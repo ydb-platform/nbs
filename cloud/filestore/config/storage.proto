@@ -42,7 +42,7 @@ message TStorageConfig
     // flushing.
     optional uint32 FlushThreshold = 10;
 
-    // Backpressure thresholds.
+    // Thresholds for background ops.
     optional uint32 CleanupThreshold = 11;
     optional uint32 CompactionThreshold = 12;
     optional uint32 CollectGarbageThreshold = 13;
@@ -196,4 +196,13 @@ message TStorageConfig
     // Max number of compaction ranges loaded per 1 compaction state load
     // iteration.
     optional uint32 LoadedCompactionRangesPerTx = 330;
+
+    // Enables DescribeData + ReadBlob instead of ReadData for reading.
+    optional bool TwoStageReadEnabled = 331;
+
+    // Enables runtime config update tool.
+    optional bool ConfigsDispatcherServiceEnabled = 332;
+
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 333;
 }
