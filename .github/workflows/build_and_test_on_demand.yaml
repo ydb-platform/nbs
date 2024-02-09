@@ -90,6 +90,14 @@ on:
         type: boolean
         default: false
         description: "Update build cache in test stage"
+      link_threads:
+        type: string
+        default: "24"
+        description: "--link-threads in ya make"
+      test_threads:
+        type: string
+        default: "12"
+        description: "--test-threads in ya test"
 
 
 jobs:
@@ -115,7 +123,7 @@ jobs:
           disk-type: network-ssd-nonreplicated
           platform-id: standard-v2
           cores: 60
-          memory: 120GB
+          memory: 240GB
           core-fraction: 100
           zone-id: eu-north1-c
           subnet-id: f8uh0ml4rhb45nde9p75
@@ -171,26 +179,35 @@ jobs:
       run_tests: ${{ inputs.run_tests }}
       test_size: ${{ inputs.test_size }}
       test_type: ${{ inputs.test_type }}
-      link_threads: 24
-      test_threads: 12
+      link_threads: ${{ inputs.link_threads || '24' }}
+      test_threads: ${{ inputs.test_threads || '12' }}
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
     secrets: inherit
 
-  release-runner:
-    name: Release self-hosted runner ${{ needs.provide-runner.outputs.instance-id }}
+  sleep-if-needed:
+    name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed
+    if: ${{ !cancelled() }}
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
     runs-on: ubuntu-latest
-    if: always()
     steps:
-      - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}s if build failed
+      - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
         if: ${{ needs.build-and-test.outputs.sleep_after_tests && needs.build-and-test.outputs.sleep_after_tests != '0'  }}
         run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
+  release-runner:
+    name: Release self-hosted runner ${{ needs.provide-runner.outputs.instance-id }}
+    needs:
+      - provide-runner  # required to get output from the start-runner job
+      - build-and-test  # required to wait when the main job is done
+      - sleep-if-needed # required to wait until all debug is done
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
       - name: Stop YC runner
         uses: librarian/yc-github-runner@0.0.15
         if: always()

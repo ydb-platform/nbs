@@ -173,6 +173,7 @@ def transform(
     log_url_prefix,
     log_out_dir,
     log_trunc_size,
+    output,
 ):
     tree = ET.parse(fp)
     root = tree.getroot()
@@ -225,8 +226,11 @@ def transform(
     if save_inplace:
         tree.write(fp.name)
     else:
-        ET.indent(root)
-        print(ET.tostring(root, encoding="unicode"))
+        if output:
+            tree.write(output)
+        else:
+            ET.indent(root)
+            print(ET.tostring(root, encoding="unicode"))
 
 
 def main():
@@ -237,6 +241,15 @@ def main():
         dest="save_inplace",
         default=False,
         help="modify input file in-place",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        dest="output",
+        default=False,
+        help="""set output path. If -i specified this parameter will be ignored.
+                If -i not specified and this parameter also not specified
+                everything will be dumped to stdout""",
     )
     parser.add_argument("-m", help="muted test list")
     parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")
@@ -268,6 +281,7 @@ def main():
         args.log_url_prefix,
         args.log_out_dir,
         args.log_trunc_size,
+        args.output,
     )
 
 

@@ -103,5 +103,6 @@ jobs:
       build_preset: "relwithdebinfo"
       run_tests: true
       run_build: true
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
 
