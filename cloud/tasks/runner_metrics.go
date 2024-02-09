@@ -73,15 +73,13 @@ type taskMetrics struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerMetricsImpl struct {
-	registry                     metrics.Registry
-	otherErrorsCounter           metrics.Counter
-	wrongGenerationErrorsCounter metrics.Counter
-	hangingTaskTimeout           time.Duration
-	exceptHangingTaskTypes       []string
-	taskMetrics                  *taskMetrics
-	taskMetricsMutex             sync.Mutex
-	onExecutionStopped           func()
-	logger                       logging.Logger
+	registry               metrics.Registry
+	hangingTaskTimeout     time.Duration
+	exceptHangingTaskTypes []string
+	taskMetrics            *taskMetrics
+	taskMetricsMutex       sync.Mutex
+	onExecutionStopped     func()
+	logger                 logging.Logger
 }
 
 func (m *runnerMetricsImpl) OnExecutionStarted(state tasks_storage.TaskState) {
@@ -189,12 +187,7 @@ func (m *runnerMetricsImpl) OnError(err error) {
 	if errors.Is(err, errors.NewWrongGenerationError()) {
 		if m.taskMetrics != nil {
 			m.taskMetrics.wrongGenerationErrorsCounter.Inc()
-		} else {
-			m.wrongGenerationErrorsCounter.Inc()
 		}
-	} else {
-		// Other errors.
-		m.otherErrorsCounter.Inc()
 	}
 }
 
@@ -255,12 +248,10 @@ func newRunnerMetrics(
 ) *runnerMetricsImpl {
 
 	return &runnerMetricsImpl{
-		registry:                     registry,
-		otherErrorsCounter:           registry.Counter("errors/other"),
-		wrongGenerationErrorsCounter: registry.Counter("errors/wrongGeneration"),
-		hangingTaskTimeout:           hangingTaskTimeout,
-		exceptHangingTaskTypes:       exceptHangingTaskTypes,
-		onExecutionStopped:           func() {},
-		logger:                       logging.GetLogger(ctx),
+		registry:               registry,
+		hangingTaskTimeout:     hangingTaskTimeout,
+		exceptHangingTaskTypes: exceptHangingTaskTypes,
+		onExecutionStopped:     func() {},
+		logger:                 logging.GetLogger(ctx),
 	}
 }
