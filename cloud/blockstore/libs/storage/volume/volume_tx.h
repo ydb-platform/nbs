@@ -457,14 +457,14 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 RequestId;
-        const ui32 ShadowDiskState;
+        const EShadowDiskState ShadowDiskState;
         const ui64 ProcessedBlockCount;
         const ui64 TotalBlockCount;
 
         TUpdateShadowDiskState(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
-                ui32 shadowDiskState,
+                EShadowDiskState shadowDiskState,
                 ui64 processedBlockCount,
                 ui64 totalBlockCount)
             : RequestInfo(std::move(requestInfo))

@@ -435,7 +435,7 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
 
     UpdateCheckpointRequest(
         ctx,
-        true,                               // Competed
+        true,                               // Completed
         msg->Record.GetCheckpointDiskId()   // ShadowDiskId
     );
 }
@@ -1239,7 +1239,7 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
         args.RequestId,
         args.Completed,
         args.ShadowDiskId,
-        static_cast<ui32>(args.ShadowDiskState));
+        args.ShadowDiskState);
 }
 
 void TVolumeActor::CompleteUpdateCheckpointRequest(
@@ -1312,10 +1312,8 @@ void TVolumeActor::ExecuteUpdateShadowDiskState(
     Y_UNUSED(ctx);
 
     Y_DEBUG_ABORT_UNLESS(
-        args.ShadowDiskState >=
-            static_cast<ui32>(EShadowDiskState::None) &&
-        args.ShadowDiskState <=
-            static_cast<ui32>(EShadowDiskState::Error));
+        args.ShadowDiskState >= EShadowDiskState::None &&
+        args.ShadowDiskState <= EShadowDiskState::Error);
 
     TVolumeDatabase db(tx.DB);
     db.UpdateShadowDiskState(
@@ -1392,7 +1390,7 @@ void TVolumeActor::HandleUpdateShadowDiskState(
     EShadowDiskState newShadowDiskState = EShadowDiskState::None;
 
     switch (msg->Reason) {
-        case EReason::FillAdvanced: {
+        case EReason::FillProgressUpdate: {
             if (currentShadowDiskState == EShadowDiskState::Ready) {
                 reply(EShadowDiskState::Ready);
                 return;
@@ -1412,7 +1410,7 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         ctx,
         std::move(requestInfo),
         checkpointInfo->RequestId,
-        static_cast<ui32>(newShadowDiskState),
+        newShadowDiskState,
         msg->ProcessedBlockCount,
         msg->TotalBlockCount);
 }

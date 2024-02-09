@@ -222,14 +222,14 @@ struct TEvVolumePrivate
     {
         enum class EReason
         {
-            FillAdvanced,
+            FillProgressUpdate,
             FillCompleted,
             FillError,
         };
         TString CheckpointId;
-        EReason Reason;
-        ui64 ProcessedBlockCount;
-        ui64 TotalBlockCount;
+        EReason Reason = EReason::FillError;
+        ui64 ProcessedBlockCount = 0 ;
+        ui64 TotalBlockCount = 0;
     };
 
     struct TUpdateShadowDiskStateResponse

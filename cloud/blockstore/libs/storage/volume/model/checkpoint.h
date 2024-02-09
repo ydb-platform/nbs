@@ -62,8 +62,23 @@ struct TCheckpointRequest
     ECheckpointType Type;
 
     TString ShadowDiskId;
-    EShadowDiskState ShadowDiskState;
-    ui64 ShadowDiskProcessedBlockCount;
+    EShadowDiskState ShadowDiskState = EShadowDiskState::None;
+    ui64 ShadowDiskProcessedBlockCount = 0;
+
+    TCheckpointRequest(
+            ui64 requestId,
+            TString checkpointId,
+            TInstant timestamp,
+            ECheckpointRequestType reqType,
+            ECheckpointRequestState state,
+            ECheckpointType type)
+        : RequestId(requestId)
+        , CheckpointId(std::move(checkpointId))
+        , Timestamp(timestamp)
+        , ReqType(reqType)
+        , State(state)
+        , Type(type)
+    {}
 
     TCheckpointRequest(
             ui64 requestId,
@@ -72,9 +87,9 @@ struct TCheckpointRequest
             ECheckpointRequestType reqType,
             ECheckpointRequestState state,
             ECheckpointType type,
-            TString shadowDiskId = {},
-            EShadowDiskState shadowDiskState = EShadowDiskState::None,
-            ui64 shadowDiskProcessedBlockCount = 0)
+            TString shadowDiskId,
+            EShadowDiskState shadowDiskState,
+            ui64 shadowDiskProcessedBlockCount)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
@@ -89,7 +104,7 @@ struct TCheckpointRequest
 
 struct TActiveCheckpointInfo
 {
-    ui64 RequestId;
+    ui64 RequestId = 0;
     TString CheckpointId;
     ECheckpointType Type;
     ECheckpointData Data;
@@ -130,8 +145,8 @@ public:
     void SetCheckpointRequestFinished(
         ui64 requestId,
         bool success,
-        TString shadowDiskId = {},
-        EShadowDiskState shadowDiskState = EShadowDiskState::None);
+        TString shadowDiskId,
+        EShadowDiskState shadowDiskState);
 
     void SetShadowDiskState(
         const TString& checkpointId,

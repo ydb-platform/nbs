@@ -54,7 +54,7 @@ IOutputStream& operator<<(
     }
     if (checkpointInfo.ShadowDiskId) {
         out << "<br/>";
-        out << " shadow disk:" << checkpointInfo.ShadowDiskId.Quote();
+        out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
         out << " state: " << ToString(checkpointInfo.ShadowDiskState);
         if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
             out << " blocks: " << checkpointInfo.ProcessedBlockCount << "/"

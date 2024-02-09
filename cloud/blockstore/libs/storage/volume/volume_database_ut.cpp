@@ -280,12 +280,12 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 1,
                 true,
                 "shadow-disk-id",
-                static_cast<ui32>(EShadowDiskState::New));
+                EShadowDiskState::New);
             db.UpdateCheckpointRequest(
                 3,
                 false,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -365,7 +365,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                     1,
                     true,
                     "shadow-disk-id",
-                    static_cast<ui32>(EShadowDiskState::New));
+                    EShadowDiskState::New);
             });
 
         executor.ReadTx(
@@ -406,7 +406,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 db.UpdateShadowDiskState(
                     1,
                     512,
-                    static_cast<ui32>(EShadowDiskState::Preparing));
+                    EShadowDiskState::Preparing);
             });
 
         executor.ReadTx(
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 db.UpdateShadowDiskState(
                     1,
                     1024,
-                    static_cast<ui32>(EShadowDiskState::Ready));
+                    EShadowDiskState::Ready);
             });
 
         executor.ReadTx(
@@ -609,22 +609,22 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 1,
                 true,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
             db.UpdateCheckpointRequest(
                 2,
                 true,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
             db.UpdateCheckpointRequest(
                 3,
                 true,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
             db.UpdateCheckpointRequest(
                 4,
                 true,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -772,7 +772,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 5,
                 true,
                 "",
-                static_cast<ui32>(EShadowDiskState::None));
+                EShadowDiskState::None);
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {

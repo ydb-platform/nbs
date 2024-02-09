@@ -3164,7 +3164,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Set Checkpoint ready.
         volume.UpdateShadowDiskState(
             "c1",
-            EReason::FillAdvanced,
+            EReason::FillProgressUpdate,
             10,
             expectedBlockCount);
 
