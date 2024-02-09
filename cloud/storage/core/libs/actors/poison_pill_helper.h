@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "public.h"
@@ -20,7 +19,7 @@ private:
     struct TPoisoner
     {
         NActors::TActorId Sender;
-        ui64 Cookie;
+        ui64 Cookie = 0;
     };
 
     NActors::IActor* Owner;

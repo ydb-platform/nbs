@@ -5,20 +5,24 @@
 using namespace NActors;
 
 namespace NCloud {
-
 namespace {
 
-class TIActorHelper: public IActor
+////////////////////////////////////////////////////////////////////////////////
+
+// Helps to call protected methods of IActor.
+class IActorHelper: public IActor
 {
 public:
     static void CallDie(IActor* actor, const TActorContext& ctx)
     {
         Y_DEBUG_ABORT_UNLESS(actor);
-        static_cast<TIActorHelper*>(actor)->Die(ctx);
+        static_cast<IActorHelper*>(actor)->Die(ctx);
     }
 };
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 TPoisonPillHelper::TPoisonPillHelper(NActors::IActor* owner)
     : Owner(owner)
@@ -84,7 +88,7 @@ void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
         0,   // flags
         Poisoner->Cookie);
 
-    TIActorHelper::CallDie(Owner, ctx);
+    IActorHelper::CallDie(Owner, ctx);
 }
 
 }   // namespace NCloud
