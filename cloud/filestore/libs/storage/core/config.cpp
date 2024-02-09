@@ -133,6 +133,7 @@ namespace {
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \

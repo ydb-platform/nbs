@@ -202,4 +202,7 @@ message TStorageConfig
 
     // Enables runtime config update tool.
     optional bool ConfigsDispatcherServiceEnabled = 332;
+
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 333;
 }
