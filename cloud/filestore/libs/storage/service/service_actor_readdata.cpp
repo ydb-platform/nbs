@@ -7,8 +7,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/range.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
 
 #include <memory>
 
@@ -41,7 +41,8 @@ private:
     const TByteRange OriginByteRange;
     const TByteRange AlignedByteRange;
     IBlockBufferPtr BlockBuffer;
-    ui64 TotalSize;
+    NProtoPrivate::TDescribeDataResponse DescribeResponse;
+    ui32 RemainingBlobsToRead;
 
 public:
     TReadDataActor(
@@ -58,6 +59,12 @@ private:
 
     void HandleDescribeDataResponse(
         const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReadBlobIfNeeded(const TActorContext& ctx);
+
+    void HandleReadBlobResponse(
+        const TEvBlobStorage::TEvGetResult::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -85,7 +92,7 @@ TReadDataActor::TReadDataActor(
     , OriginByteRange(Offset, Length, BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
-    , TotalSize(0)
+    , RemainingBlobsToRead(0)
 {
     const auto& record = ev->Get()->Record;
 
@@ -120,6 +127,54 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ApplyFreshDataRange(
+    const TActorContext& ctx,
+    const NProtoPrivate::TFreshDataRange& sourceFreshData,
+    IBlockBufferPtr targetBuffer,
+    TByteRange alignedTargetByteRange,
+    ui32 BlockSize)
+{
+    Y_UNUSED(targetBuffer);
+    if (sourceFreshData.GetContent().empty()) {
+        return;
+    }
+    TByteRange sourceByteRange(
+        sourceFreshData.GetOffset(),
+        sourceFreshData.GetContent().size(),
+        BlockSize);
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "common byte range found: source: %s, target: %s",
+        sourceByteRange.Describe().c_str(),
+        alignedTargetByteRange.Describe().c_str());
+
+    char* targetData = const_cast<char*>(targetBuffer->GetContentRef().data());
+    auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
+
+    Y_ABORT_UNLESS(sourceByteRange == commonRange);
+    if (commonRange.Length == 0) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "common range is empty: source: %s, target: %s",
+            sourceByteRange.Describe().c_str(),
+            alignedTargetByteRange.Describe().c_str());
+        return;
+    }
+    targetData += commonRange.Offset - alignedTargetByteRange.Offset;
+
+    // NB: we assume that underlying target data is a continuous buffer
+    memcpy(
+        targetData,
+        sourceFreshData.GetContent().data() +
+            (commonRange.Offset - sourceByteRange.Offset),
+        commonRange.Length);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,34 +215,123 @@ void TReadDataActor::HandleDescribeDataResponse(
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "DescribeData succeeded %s",
-        msg->Record.DebugString().c_str());
+        "DescribeData succeeded %lu freshdata + %lu blobpieces",
+        msg->Record.FreshDataRangesSize(),
+        msg->Record.BlobPiecesSize());
 
-    TotalSize = msg->Record.GetTotalSize();
+    DescribeResponse.CopyFrom(msg->Record);
+    ReadBlobIfNeeded(ctx);
+}
 
-    // WIP: get remaining data from BS
-
-    for (const auto& freshDataRange: msg->Record.GetFreshDataRanges()) {
-        ui64 offset = freshDataRange.GetOffset();
-        const TString& content = freshDataRange.GetContent();
-
-        Y_ABORT_UNLESS(
-            content.size() + offset <= BlockBuffer->GetContentRef().size());
-
-        memcpy(
-            const_cast<char*>(BlockBuffer->GetContentRef().Data()) + offset,
-            content.data(),
-            content.size());
+void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
+{
+    RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
+    ui32 blobPieceId = 0;
+    for (auto blobPiece: DescribeResponse.GetBlobPieces()) {
+        NKikimr::TLogoBlobID blobId =
+            LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Processing blob piece: %s, size: %lu",
+            blobPiece.DebugString().c_str(),
+            blobId.BlobSize());
+        NKikimr::TActorId proxy =
+            MakeBlobStorageProxyID(blobPiece.GetBSGroupId());
+        using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
+        TArrayHolder<TEvGetQuery> queries(
+            new TEvGetQuery[blobPiece.RangesSize()]);
+        for (size_t i = 0; i < blobPiece.RangesSize(); ++i) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Adding query for blobId: %s, offset: %lu, length: %lu, "
+                "blobsize: %lu",
+                blobId.ToString().c_str(),
+                blobPiece.GetRanges(i).GetBlobOffset(),
+                blobPiece.GetRanges(i).GetLength(),
+                blobId.BlobSize());
+            queries[i].Set(
+                blobId,
+                blobPiece.GetRanges(i).GetBlobOffset(),
+                blobPiece.GetRanges(i).GetLength());
+        }
+        auto request = std::make_unique<TEvBlobStorage::TEvGet>(
+            queries,
+            blobPiece.RangesSize(),
+            TInstant::Max(),
+            NKikimrBlobStorage::FastRead);
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "processed fresh data range size: %lu, offset: %lu",
-            content.size(),
-            offset);
+            "Sending ReadBlob request, size: %lu, blobId: %s",
+            blobPiece.RangesSize(),
+            blobId.ToString().c_str());
+
+        SendToBSProxy(ctx, proxy, request.release(), blobPieceId++);
     }
 
-    ReplyAndDie(ctx);
+    if (RemainingBlobsToRead == 0) {
+        ReplyAndDie(ctx);
+    }
+}
+
+void TReadDataActor::HandleReadBlobResponse(
+    const TEvBlobStorage::TEvGetResult::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (msg->Status != NKikimrProto::OK) {
+        ReplyAndDie(ctx, MakeError(msg->Status, "blob read failed"));
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "ReadBlobResponse count: %lu, status: %lu, cookie: %lu",
+        msg->ResponseSz,
+        (ui64)(msg->Status),
+        ev->Cookie);
+
+    Y_ABORT_UNLESS(ev->Cookie < DescribeResponse.BlobPiecesSize());
+
+    for (size_t i = 0; i < msg->ResponseSz; ++i) {
+        Y_ABORT_UNLESS(i < DescribeResponse.GetBlobPieces(i).RangesSize());
+
+        const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
+        const auto& blobRange = blobPiece.GetRanges(i);
+        const auto& response = msg->Responses[i];
+        auto dataIter = response.Buffer.begin();
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "ReadBlobResponse: blobId: %s, offset: %lu, length: %lu, size: "
+            "%lu, target: "
+            "%s",
+            blobPiece.GetBlobId().DebugString().c_str(),
+            blobRange.GetBlobOffset(),
+            blobRange.GetLength(),
+            response.Buffer.size(),
+            AlignedByteRange.Describe().c_str());
+        Y_ABORT_UNLESS(blobRange.GetBlobOffset() >= AlignedByteRange.Offset);
+        Y_ABORT_UNLESS(
+            blobRange.GetBlobOffset() + blobRange.GetLength() <
+            AlignedByteRange.End());
+        char* targetData =
+            const_cast<char*>(BlockBuffer->GetContentRef().data()) +
+            (blobRange.GetBlobOffset() - AlignedByteRange.Offset);
+
+        Y_ABORT_UNLESS(blobRange.GetLength() == response.Buffer.size());
+        dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
+    }
+
+    --RemainingBlobsToRead;
+    if (RemainingBlobsToRead == 0) {
+        ReplyAndDie(ctx);
+    }
 }
 
 void TReadDataActor::HandlePoisonPill(
@@ -205,10 +349,32 @@ void TReadDataActor::ReplyAndDie(
     Y_UNUSED(ctx);
     auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
     if (SUCCEEDED(error.GetCode())) {
+        // we apply fresh data ranges to the buffer only after all blobs are
+        // read and applied
+        for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
+        {
+            ui64 offset = freshDataRange.GetOffset();
+            const TString& content = freshDataRange.GetContent();
+
+            ApplyFreshDataRange(
+                ctx,
+                freshDataRange,
+                BlockBuffer,
+                AlignedByteRange,
+                BlockSize);
+
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "processed fresh data range size: %lu, offset: %lu",
+                content.size(),
+                offset);
+        }
+
         CopyFileData(
             OriginByteRange,
             AlignedByteRange,
-            TotalSize,
+            DescribeResponse.GetTotalSize(),
             BlockBuffer->GetContent(),
             response->Record.MutableBuffer());
     }
@@ -225,6 +391,8 @@ STFUNC(TReadDataActor::StateWork)
             TEvIndexTablet::TEvDescribeDataResponse,
             HandleDescribeDataResponse);
 
+        HFunc(TEvBlobStorage::TEvGetResult, HandleReadBlobResponse);
+
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
             break;
@@ -239,6 +407,13 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (!StorageConfig->GetTwoStageReadEnabled()) {
+        // If two-stage read is disabled, forward the request to the tablet in
+        // the same way as all other requests.
+        ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
+        return;
+    }
+
     const auto* msg = ev->Get();
 
     LOG_DEBUG(
@@ -256,12 +431,8 @@ void TStorageServiceActor::HandleReadData(
     const auto* filestore =
         State->GetLocalFileStores().FindPtr(msg->Record.GetFileSystemId());
 
-    Y_VERIFY_S(
-        filestore,
-        "filestore" + msg->Record.GetFileSystemId() + "not found");
+    Y_ABORT_UNLESS(filestore);
     const auto& config = filestore->Config;
-
-    // TODO(debnatkh): If option disabled, forward request to index node
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
