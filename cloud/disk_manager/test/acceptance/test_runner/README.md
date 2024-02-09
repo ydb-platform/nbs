@@ -1,18 +1,18 @@
 # Acceptance test runner
 
-These acceptance tests are intended to perform acceptance testing of disk-manager 
+These acceptance tests are intended to perform acceptance testing of Disk Manager 
 and NBS as a part of the whole cloud. They are intended to run on a separate machine 
 with access to lab/production cluster and with internal tool `ycp` installed.
 These tests can't be launched locally.
 
 ## Terminology
 
-* `Disk` - either a non-replicated disk with mirroring capabilities (basically SSD cut into chunks and shared via RDMA) or kikimr blob storage based disks. Blob storage based disks can be overlay (reference other disks).
+* `Disk` - either a non-replicated disk with mirroring capabilities (basically SSD cut into chunks and shared via RDMA) or YDB blob storage based disks. Blob storage based disks can be overlay (reference other disks).
 * `Snapshot` - snapshot of the disk state, stored either in S3 or in YDB with an ability to provision disks from snapshots. Snapshots can be shallow copies of other snapshots.
 * `Image` - images are the same as snapshots with the following exceptions: 
   * Image can be created from the snapshot, snapshot can not be created from images.
   * Disk can be created from either disk or snapshot
-  * Images can be optimized for fast provisioning, this way a pool of overlay blob-storage based disks is created. Initial image is still stored in S3 or in YDB.
+  * Images can be optimized for fast provisioning, this way a pool of overlay YDB blob storage based disks is created. Initial image is still stored in S3 or in YDB.
 
 ## Test types
 * `acceptance`
