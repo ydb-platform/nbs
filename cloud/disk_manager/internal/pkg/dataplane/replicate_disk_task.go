@@ -52,7 +52,7 @@ func (t *replicateDiskTask) Run(
 ) error {
 
 	for {
-		err := t.deleteProxyOverlayDiskIfNeeded(
+		err := t.deleteProxyOverlayDisk(
 			ctx,
 			execCtx,
 		)
@@ -99,7 +99,7 @@ func (t *replicateDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.deleteProxyOverlayDiskIfNeeded(ctx, execCtx)
+	return t.deleteProxyOverlayDisk(ctx, execCtx)
 }
 
 func (t *replicateDiskTask) GetMetadata(
@@ -157,7 +157,7 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 	return "", nil
 }
 
-func (t *replicateDiskTask) deleteProxyOverlayDiskIfNeeded(
+func (t *replicateDiskTask) deleteProxyOverlayDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
