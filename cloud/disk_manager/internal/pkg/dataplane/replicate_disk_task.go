@@ -173,7 +173,6 @@ func (t *replicateDiskTask) deleteProxyOverlayDiskIfNeeded(
 		diskID,
 		currentCheckpointID,
 	)
-
 	return client.Delete(ctx, proxyOverlayDiskID)
 }
 
