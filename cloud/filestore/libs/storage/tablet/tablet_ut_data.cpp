@@ -9,7 +9,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/base/logoblob.h>
+#include <ydb/core/base/logoblob.h>
 
 #include <util/generic/size_literals.h>
 

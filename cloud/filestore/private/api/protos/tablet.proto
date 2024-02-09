@@ -6,7 +6,7 @@ import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/headers.proto";
 import "cloud/filestore/config/storage.proto";
 
-import "contrib/ydb/core/protos/base.proto";
+import "ydb/core/protos/base.proto";
 
 package NCloud.NFileStore.NProtoPrivate;
 

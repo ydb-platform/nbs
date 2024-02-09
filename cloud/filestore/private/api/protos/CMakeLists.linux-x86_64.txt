@@ -39,6 +39,7 @@ target_link_libraries(filestore-private-api-protos PUBLIC
   cloud-filestore-config
   filestore-public-api-protos
   storage-core-protos
+  ydb-core-protos
   contrib-libs-protobuf
 )
 target_proto_messages(filestore-private-api-protos PRIVATE
