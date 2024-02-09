@@ -399,6 +399,19 @@ void TIndexTabletState::AddSessionHistoryEntry(
     }
 }
 
+TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessions() const
+{
+    TVector<TMonSessionInfo> sessions;
+    for (const auto& p: Impl->SessionByClient) {
+        sessions.emplace_back();
+        auto& info = sessions.back();
+        info.ClientId = p.first;
+        info.ProtoInfo = *static_cast<NProto::TSession*>(p.second);
+        info.SubSessions = p.second->SubSessions.GetAllSubSessions();
+    }
+    return sessions;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Handles
 

@@ -133,6 +133,11 @@ TVector<NActors::TActorId> TSubSessions::GetSubSessions() const
     return ans;
 }
 
+TVector<TSubSession> TSubSessions::GetAllSubSessions() const
+{
+    return SubSessions;
+}
+
 bool TSubSessions::HasSeqNo(ui64 seqNo) const
 {
     auto subsession = FindIf(
