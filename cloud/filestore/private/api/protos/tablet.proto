@@ -294,7 +294,7 @@ message TDescribeDataRequest
 // blobs yet.
 message TFreshDataRange
 {
-    // This offset is relative to the beginning of the inode.
+    // This offset is relative to the beginning of the inode. Measured in bytes.
     uint64 Offset = 1;
     // Data bytes.
     bytes Content = 2;
@@ -303,7 +303,7 @@ message TFreshDataRange
 // Represents a range of consecutive bytes inside some blob.
 message TRangeInBlob
 {
-    // This offset is relative to the beginning of the inode.
+    // This offset is relative to the beginning of the inode. Measured in bytes.
     uint64 Offset = 1;
     // This offset is relative to the beginning of the blob. Measured in bytes.
     uint32 BlobOffset = 2;
@@ -330,6 +330,9 @@ message TDescribeDataResponse
 
     repeated TFreshDataRange FreshDataRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
+
+    // File size.
+    uint64 FileSize = 4;
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
