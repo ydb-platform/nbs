@@ -312,9 +312,9 @@ class DiskManagerServer(Daemon):
                 "--cmd",
                 internal_command,
                 "--min-restart-period-sec",
-                min_restart_period_sec,
+                str(min_restart_period_sec),
                 "--max-restart-period-sec",
-                max_restart_period_sec,
+                str(max_restart_period_sec),
             ]
         else:
             command = [disk_manager_binary_path]
