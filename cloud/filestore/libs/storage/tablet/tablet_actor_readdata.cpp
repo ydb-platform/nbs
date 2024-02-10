@@ -89,6 +89,12 @@ void FillDescribeDataResponse(
     TTxIndexTablet::TReadData& args,
     NProtoPrivate::TDescribeDataResponse& record)
 {
+    // metadata
+
+    record.SetFileSize(args.Node->Attrs.GetSize());
+
+    // data
+
     using TBlocks = TVector<TBlockDataRef>;
     // using TMap to make responses more stable and, thus, easier to test
     TMap<TPartialBlobId, TBlocks> blobBlocks;
@@ -179,7 +185,7 @@ void FillDescribeDataResponse(
 
             if (!rangeInBlob.GetLength()) {
                 rangeInBlob.SetOffset(curOffset);
-                rangeInBlob.SetBlobOffset(b.BlobOffset);
+                rangeInBlob.SetBlobOffset(b.BlobOffset * blockSize);
             }
 
             rangeInBlob.SetLength(rangeInBlob.GetLength() + blockSize);
