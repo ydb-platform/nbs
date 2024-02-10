@@ -33,13 +33,15 @@ public:
     void TakeOwnership(
         const NActors::TActorContext& ctx,
         NActors::TActorId actor);
-    void ReleaseOwnership(NActors::TActorId actor);
+    void ReleaseOwnership(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId actor);
 
-    virtual void HandlePoisonPill(
+    void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    virtual void HandlePoisonTaken(
+    void HandlePoisonTaken(
         const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 

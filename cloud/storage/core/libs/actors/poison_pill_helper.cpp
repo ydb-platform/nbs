@@ -43,9 +43,12 @@ void TPoisonPillHelper::TakeOwnership(
     }
 }
 
-void TPoisonPillHelper::ReleaseOwnership(NActors::TActorId actor)
+void TPoisonPillHelper::ReleaseOwnership(
+    const NActors::TActorContext& ctx,
+    NActors::TActorId actor)
 {
     OwnedActors.erase(actor);
+    ReplyAndDie(ctx);
 }
 
 void TPoisonPillHelper::HandlePoisonPill(
