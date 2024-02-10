@@ -59,7 +59,7 @@ TIncompleteRequest TInFlightRequest::ToIncompleteRequest(ui64 nowCycles) const
 
 TSessionInfo* TStorageServiceState::CreateSession(
     TString clientId,
-    TString fileSystemId,
+    NProto::TFileStore fileStore,
     TString sessionId,
     TString sessionState,
     ui64 seqNo,
@@ -74,7 +74,7 @@ TSessionInfo* TStorageServiceState::CreateSession(
     if (it == SessionById.end()) {
         auto session = std::make_unique<TSessionInfo>();
         session->ClientId = std::move(clientId);
-        session->FileSystemId = std::move(fileSystemId);
+        session->FileStore = std::move(fileStore);
         session->SessionId = std::move(sessionId);
         session->SessionState = std::move(sessionState);
         session->MediaKind = mediaKind,
