@@ -1,6 +1,6 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/facade)
 
-SET(RECIPE_ARGS --nemesis)
+SET_APPEND(RECIPE_ARGS --nemesis)
 SET_APPEND(RECIPE_ARGS --generate-vmdk-image)
 SET_APPEND(RECIPE_ARGS --encryption)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
