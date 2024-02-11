@@ -99,10 +99,10 @@ void FillDescribeDataResponse(
     // using TMap to make responses more stable and, thus, easier to test
     TMap<TPartialBlobId, TBlocks> blobBlocks;
     NProtoPrivate::TFreshDataRange freshRange;
-    for (ui32 i = 0; i < args.Blocks.size(); ++i) {
+    for (ui64 i = 0; i < args.Blocks.size(); ++i) {
         const auto& block = args.Blocks[i];
         const auto& bytes = args.Bytes[i];
-        const ui64 curOffset = static_cast<ui64>(block.BlockIndex) * blockSize;
+        const ui64 curOffset = args.AlignedByteRange.Offset + i * blockSize;
 
         if (!block.BlobId && block.MinCommitId) {
             // it's a fresh block

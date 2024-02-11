@@ -3483,6 +3483,57 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             blobPieces[0].GetRanges(1).GetLength());
     }
 
+    TABLET_TEST_16K(ShouldDescribePureFreshBytes)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        // we need to write at the end of the block since writing at the
+        // beginning will allow the tablet to write a whole fresh block
+        tablet.WriteData(handle, 128_KB + block - 1_KB, 1_KB, '1');
+        // ensuring that we have actually written fresh bytes, not blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 1_KB);
+        }
+
+        auto response = tablet.DescribeData(handle, 128_KB, 128_KB);
+        UNIT_ASSERT_VALUES_EQUAL(128_KB + block, response->Record.GetFileSize());
+
+        const auto& freshRanges = response->Record.GetFreshDataRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, freshRanges.size());
+
+        TString expected;
+        expected.ReserveAndResize(1_KB);
+        memset(expected.begin(), '1', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB + block - 1_KB,
+            freshRanges[0].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[0].GetContent());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        UNIT_ASSERT_VALUES_EQUAL(0, blobPieces.size());
+    }
+
     TABLET_TEST(ShouldHandleErrorDuringDescribeData)
     {
         TTestEnv env;
