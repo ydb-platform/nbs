@@ -30,6 +30,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(SavePartStats,                  __VA_ARGS__)                           \
     xxx(SaveCheckpointRequest,          __VA_ARGS__)                           \
     xxx(UpdateCheckpointRequest,        __VA_ARGS__)                           \
+    xxx(UpdateShadowDiskState,          __VA_ARGS__)                           \
     xxx(UpdateUsedBlocks,               __VA_ARGS__)                           \
     xxx(WriteThrottlerState,            __VA_ARGS__)                           \
     xxx(UpdateResyncState,              __VA_ARGS__)                           \
@@ -427,16 +428,19 @@ struct TTxVolume
         const ui64 RequestId;
         const bool Completed;
         const TString ShadowDiskId;
+        const EShadowDiskState ShadowDiskState;
 
         TUpdateCheckpointRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
-                TString shadowDiskId)
+                TString shadowDiskId,
+                EShadowDiskState shadowDiskState)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
             , ShadowDiskId(std::move(shadowDiskId))
+            , ShadowDiskState(shadowDiskState)
         {}
 
         void Clear()
@@ -445,6 +449,36 @@ struct TTxVolume
         }
     };
 
+    //
+    // UpdateShadowDiskRequest
+    //
+
+    struct TUpdateShadowDiskState
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 RequestId;
+        const EShadowDiskState ShadowDiskState;
+        const ui64 ProcessedBlockCount;
+        const ui64 TotalBlockCount;
+
+        TUpdateShadowDiskState(
+                TRequestInfoPtr requestInfo,
+                ui64 requestId,
+                EShadowDiskState shadowDiskState,
+                ui64 processedBlockCount,
+                ui64 totalBlockCount)
+            : RequestInfo(std::move(requestInfo))
+            , RequestId(requestId)
+            , ShadowDiskState(shadowDiskState)
+            , ProcessedBlockCount(processedBlockCount)
+            , TotalBlockCount(totalBlockCount)
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
     //
     // UpdateUsedBlocks
     //

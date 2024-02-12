@@ -854,12 +854,14 @@ bool TVolumeState::GetMuteIOErrors() const
 void TVolumeState::SetCheckpointRequestFinished(
     const TCheckpointRequest& request,
     bool success,
-    TString shadowDiskId)
+    TString shadowDiskId,
+    EShadowDiskState shadowDiskState)
 {
     GetCheckpointStore().SetCheckpointRequestFinished(
         request.RequestId,
         success,
-        std::move(shadowDiskId));
+        std::move(shadowDiskId),
+        shadowDiskState);
     if (GetCheckpointStore().GetLightCheckpoints().empty()) {
         StopCheckpointLight();
     }

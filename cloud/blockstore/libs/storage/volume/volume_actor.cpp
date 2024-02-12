@@ -848,6 +848,10 @@ STFUNC(TVolumeActor::StateInit)
             TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
             HandleRemoveExpiredVolumeParams);
 
+        HFunc(
+            TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
+            HandleUpdateShadowDiskState);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
         default:
@@ -935,6 +939,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
             HandleLongRunningBlobOperation);
 
+        HFunc(
+            TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
+            HandleUpdateShadowDiskState);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
@@ -967,6 +975,10 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         IgnoreFunc(TEvBootstrapper::TEvStatus);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
+
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
 
         default:
             if (!RejectRequests(ev)) {
