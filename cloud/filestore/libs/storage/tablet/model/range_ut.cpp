@@ -18,7 +18,7 @@ Y_UNIT_TEST_SUITE(TByteRangeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, byteRange0.AlignedBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(1, byteRange0.BlockCount());
         UNIT_ASSERT_VALUES_EQUAL(0, byteRange0.FirstBlock());
-        
+
         TByteRange byteRange1(1034, 10 + 4_KB, 4_KB);
         UNIT_ASSERT_VALUES_EQUAL(4_KB - 1034, byteRange1.UnalignedHeadLength());
         UNIT_ASSERT_VALUES_EQUAL(1044, byteRange1.UnalignedTailLength());
