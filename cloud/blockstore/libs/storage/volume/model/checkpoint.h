@@ -5,6 +5,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <contrib/ydb/library/actors/core/actorid.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
