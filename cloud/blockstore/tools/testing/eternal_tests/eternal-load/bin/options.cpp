@@ -72,7 +72,7 @@ void TOptions::Parse(int argc, char** argv)
         .StoreResult(&WriteParts)
         .DefaultValue(1);
 
-    opts.AddLongOption("alternating-phase", 
+    opts.AddLongOption("alternating-phase",
             "duration of a phase for tests in which write load is replaced by read load periodically")
         .OptionalArgument("STR")
         .StoreResult(&AlternatingPhase)

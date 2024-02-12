@@ -203,7 +203,7 @@ void TNonreplicatedPartitionMigrationActor::HandleMigrationStateUpdated(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    
+
     UpdatingMigrationState = false;
     if (MigrationFinished) {
         FinishMigration(ctx, false);
