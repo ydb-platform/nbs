@@ -3157,6 +3157,33 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             GetBlockContent(2));
 
+        // TODO(drbasic) check checkpoint state (not ready).
+
+        using EReason =
+            TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
+        // Set Checkpoint ready.
+        volume.UpdateShadowDiskState(
+            "c1",
+            EReason::FillProgressUpdate,
+            10,
+            expectedBlockCount);
+
+        // TODO(drbasic) check checkpoint state (not ready).
+
+        volume.UpdateShadowDiskState(
+            "c1",
+            EReason::FillCompleted,
+            expectedBlockCount,
+            expectedBlockCount);
+
+        // TODO(drbasic) check checkpoint state (ready).
+
+        // Writes to the disk are not blocked.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+
         // TODO(drbasic) read from checkpoint (success).
 
         // Delete checkpoint data.
