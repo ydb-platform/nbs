@@ -446,6 +446,8 @@ public:
         TIndexTabletDatabase& db,
         const TSessionHistoryEntry& entry, size_t maxEntryCount);
 
+    TVector<TMonSessionInfo> GetActiveSessions() const;
+
 private:
     TSession* CreateSession(
         const NProto::TSession& proto,
