@@ -52,9 +52,11 @@ func (t *replicateDiskTask) Run(
 ) error {
 
 	for {
+		_, currentCheckpointID, _ := t.getCheckpointIDs(execCtx)
 		err := t.deleteProxyOverlayDisk(
 			ctx,
 			execCtx,
+			currentCheckpointID,
 		)
 		if err != nil {
 			return err
@@ -99,7 +101,8 @@ func (t *replicateDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return t.deleteProxyOverlayDisk(ctx, execCtx)
+	_, _, nextCheckpointID := t.getCheckpointIDs(execCtx)
+	return t.deleteProxyOverlayDisk(ctx, execCtx, nextCheckpointID)
 }
 
 func (t *replicateDiskTask) GetMetadata(
@@ -160,6 +163,7 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 func (t *replicateDiskTask) deleteProxyOverlayDisk(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	checkpointID string,
 ) error {
 
 	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
@@ -167,11 +171,10 @@ func (t *replicateDiskTask) deleteProxyOverlayDisk(
 		return err
 	}
 
-	_, currentCheckpointID, _ := t.getCheckpointIDs(execCtx)
 	diskID := t.request.SrcDisk.DiskId
 	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
 		diskID,
-		currentCheckpointID,
+		checkpointID,
 	)
 	return client.Delete(ctx, proxyOverlayDiskID)
 }
