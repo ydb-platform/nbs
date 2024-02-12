@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
+#include <library/cpp/actors/core/actor.h>
+#include <library/cpp/actors/core/event.h>
 
 namespace NCloud {
 
