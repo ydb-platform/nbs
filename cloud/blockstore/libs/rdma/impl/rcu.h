@@ -38,7 +38,7 @@ public:
 
         with_lock (Lock) {
             for (const T& item: *List) {
-                if (predicate(item)) {
+                if (!predicate(item)) {
                     list->push_back(item);
                 }
             }
