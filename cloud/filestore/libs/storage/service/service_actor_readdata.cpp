@@ -136,7 +136,10 @@ void ApplyFreshDataRange(
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
     IBlockBufferPtr targetBuffer,
     TByteRange alignedTargetByteRange,
-    ui32 BlockSize)
+    ui32 blockSize,
+    ui64 offest,
+    ui64 length,
+    const NProtoPrivate::TDescribeDataResponse& describeResponse)
 {
     Y_UNUSED(targetBuffer);
     if (sourceFreshData.GetContent().empty()) {
@@ -145,14 +148,18 @@ void ApplyFreshDataRange(
     TByteRange sourceByteRange(
         sourceFreshData.GetOffset(),
         sourceFreshData.GetContent().size(),
-        BlockSize);
+        blockSize);
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
-        "common byte range found: source: %s, target: %s",
+        "common byte range found: source: %s, target: %s, original request: "
+        "[%lu, %lu), response: %s",
         sourceByteRange.Describe().c_str(),
-        alignedTargetByteRange.Describe().c_str());
+        alignedTargetByteRange.Describe().c_str(),
+        offest,
+        length,
+        describeResponse.DebugString().c_str());
 
     char* targetData = const_cast<char*>(targetBuffer->GetContentRef().data());
     auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
@@ -227,7 +234,7 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
 {
     RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
     ui32 blobPieceId = 0;
-    for (auto blobPiece: DescribeResponse.GetBlobPieces()) {
+    for (const auto& blobPiece: DescribeResponse.GetBlobPieces()) {
         NKikimr::TLogoBlobID blobId =
             LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
         LOG_DEBUG(
@@ -309,22 +316,24 @@ void TReadDataActor::HandleReadBlobResponse(
             ctx,
             TFileStoreComponents::SERVICE,
             "ReadBlobResponse: blobId: %s, offset: %lu, length: %lu, size: "
-            "%lu, target: "
-            "%s",
+            "%lu, target: %s",
             blobPiece.GetBlobId().DebugString().c_str(),
             blobRange.GetBlobOffset(),
             blobRange.GetLength(),
             response.Buffer.size(),
             AlignedByteRange.Describe().c_str());
-        Y_ABORT_UNLESS(blobRange.GetBlobOffset() >= AlignedByteRange.Offset);
-        Y_ABORT_UNLESS(
-            blobRange.GetBlobOffset() + blobRange.GetLength() <
-            AlignedByteRange.End());
+        Y_ABORT_UNLESS(blobRange.GetLength() == response.Buffer.size());
+        Y_ABORT_UNLESS(blobRange.GetOffset() >= AlignedByteRange.Offset);
+
+        const TByteRange sourceByteRange(
+            blobRange.GetOffset(),
+            blobRange.GetLength(),
+            BlockSize);
+
         char* targetData =
             const_cast<char*>(BlockBuffer->GetContentRef().data()) +
-            (blobRange.GetBlobOffset() - AlignedByteRange.Offset);
+            (blobRange.GetOffset() - AlignedByteRange.Offset);
 
-        Y_ABORT_UNLESS(blobRange.GetLength() == response.Buffer.size());
         dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
     }
 
@@ -361,7 +370,10 @@ void TReadDataActor::ReplyAndDie(
                 freshDataRange,
                 BlockBuffer,
                 AlignedByteRange,
-                BlockSize);
+                BlockSize,
+                Offset,
+                Length,
+                DescribeResponse);
 
             LOG_DEBUG(
                 ctx,
@@ -374,7 +386,7 @@ void TReadDataActor::ReplyAndDie(
         CopyFileData(
             OriginByteRange,
             AlignedByteRange,
-            DescribeResponse.GetTotalSize(),
+            DescribeResponse.GetFileSize(),
             BlockBuffer->GetContent(),
             response->Record.MutableBuffer());
     }
@@ -407,14 +419,26 @@ void TStorageServiceActor::HandleReadData(
     const TEvService::TEvReadDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!StorageConfig->GetTwoStageReadEnabled()) {
-        // If two-stage read is disabled, forward the request to the tablet in
-        // the same way as all other requests.
-        ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
-        return;
-    }
+    auto* msg = ev->Get();
 
-    const auto* msg = ev->Get();
+    const auto& clientId = GetClientId(msg->Record);
+    const auto& sessionId = GetSessionId(msg->Record);
+    const ui64 seqNo = GetSessionSeqNo(msg->Record);
+
+    auto* session = State->FindSession(sessionId, seqNo);
+    if (!session || session->ClientId != clientId || !session->SessionActor) {
+        auto response = std::make_unique<TEvService::TEvReadDataResponse>(
+            ErrorInvalidSession(clientId, sessionId, seqNo));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+    const NProto::TFileStore& filestore = session->FileStore;
+
+    // if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
+    //     // If two-stage read is disabled, forward the request to the tablet in
+    //     // the same way as all other requests.
+    //     ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
+    //     return;
+    // }
 
     LOG_DEBUG(
         ctx,
@@ -428,12 +452,6 @@ void TStorageServiceActor::HandleReadData(
         StatsRegistry->GetRequestStats(),
         ctx.Now());
 
-    const auto* filestore =
-        State->GetLocalFileStores().FindPtr(msg->Record.GetFileSystemId());
-
-    Y_ABORT_UNLESS(filestore);
-    const auto& config = filestore->Config;
-
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
@@ -441,7 +459,7 @@ void TStorageServiceActor::HandleReadData(
     auto actor = std::make_unique<TReadDataActor>(
         std::move(requestInfo),
         ev,
-        config.GetBlockSize());
+        filestore.GetBlockSize());
 
     NCloud::Register(ctx, std::move(actor));
 }

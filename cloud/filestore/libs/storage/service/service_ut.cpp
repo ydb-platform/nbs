@@ -652,6 +652,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(invalidSession);
     }
 
+    Y_UNIT_TEST(ShouldPerformWriteDataAndCreateHandle)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+
+        service.CreateFileStore(fs, 1000);
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TString smallData =
+            TString(100, 'x') + TString(200, 'y') + TString(300, 'z');
+        service.WriteData(headers, fs, nodeId, handle, 0, smallData);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, 600);
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), smallData);
+    }
+
     Y_UNIT_TEST(ShouldForwardRequests)
     {
         TTestEnv env;
