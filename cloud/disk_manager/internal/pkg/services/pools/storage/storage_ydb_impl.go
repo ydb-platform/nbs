@@ -1365,7 +1365,7 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		acquiredBaseDisk, err := s.getBaseDisk(
 			ctx,
 			tx,
-			acquiredSlot.targetBaseDiskID,
+			acquiredSlot.baseDiskID,
 		)
 		if err != nil {
 			return RebaseInfo{}, err
