@@ -71,6 +71,15 @@ using TDupCacheEntryMap = THashMap<ui64, TDupCacheEntry*>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMonSessionInfo
+{
+    TString ClientId;
+    NProto::TSession ProtoInfo;
+    TVector<TSubSession> SubSessions;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TSession
     : public TIntrusiveListItem<TSession>
     , public NProto::TSession

@@ -48,6 +48,7 @@ public:
     ui32 DeleteSubSession(ui64 sessionSeqNo);
 
     TVector<NActors::TActorId> GetSubSessions() const;
+    TVector<TSubSession> GetAllSubSessions() const;
 
     bool HasSeqNo(ui64 seqNo) const;
 
