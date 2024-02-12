@@ -171,7 +171,7 @@ class BaseAcceptanceTestRunner(ABC):
             ycp_requests_template_path=self._args.ycp_requests_template_path,
         )
 
-    def _shall_delete_snapshot(self, snapshot: Ycp.Snapshot) -> bool:
+    def _should_delete_snapshot(self, snapshot: Ycp.Snapshot) -> bool:
         if not snapshot.name.startswith("acceptance-test-snapshot"):
             return False
         older_than = datetime.now() - timedelta(days=self._resource_ttl_days)
@@ -181,7 +181,7 @@ class BaseAcceptanceTestRunner(ABC):
 
     def _cleanup_snapshots(self):
         for snapshot in self._ycp.list_snapshots():
-            if not self._shall_delete_snapshot(snapshot):
+            if not self._should_delete_snapshot(snapshot):
                 continue
             self._ycp.delete_snapshot(snapshot)
 
