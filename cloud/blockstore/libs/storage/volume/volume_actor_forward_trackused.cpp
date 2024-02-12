@@ -24,7 +24,8 @@ template <typename TMethod>
 bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const TActorContext& ctx,
     const typename TMethod::TRequest::TPtr& ev,
-    const TActorId& partActorId,
+    const TActorId& partitionActorId,
+    const ui64 partitionTabletId,
     const ui64 volumeRequestId)
 {
     const auto* msg = ev->Get();
@@ -52,8 +53,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 State->GetBlockSize(),
                 encryptedDiskRegistryBasedDisk || overlayDiskRegistryBasedDisk,
                 volumeRequestId,
-                partActorId,
-                TabletID(),
+                partitionActorId,
+                partitionTabletId,
                 SelfId());
 
             return true;
@@ -79,9 +80,10 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
                     std::move(msg->Record),
                     State->GetUsedBlocks(),
-                    SelfId(),
-                    partActorId,
-                    TabletID(),
+                    SelfId(),   // volumeActorId
+                    partitionActorId,
+                    TabletID(),   // volumeTabletId
+                    partitionTabletId,
                     State->GetBaseDiskId(),
                     State->GetBaseDiskCheckpointId(),
                     State->GetBlockSize(),
@@ -102,9 +104,10 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                     State->GetUsedBlocks(),
                     State->GetMaskUnusedBlocks(),
                     encryptedDiskRegistryBasedDisk,
-                    partActorId,
-                    TabletID(),
-                    SelfId());
+                    partitionActorId,
+                    TabletID(),   // volumeTabletId
+                    SelfId()      // volumeActorId
+                );
 
                 return true;
             }
@@ -150,7 +153,8 @@ template bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<       \
     ns::T##name##Method>(                                                      \
         const TActorContext& ctx,                                              \
         const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorId& partActorId,                                           \
+        const TActorId& partitionActorId,                                      \
+        const ui64 partitionTabletId,                                          \
         const ui64 volumeRequestId);                                           \
 // GENERATE_IMPL
 

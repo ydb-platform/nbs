@@ -65,9 +65,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
@@ -132,9 +133,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
@@ -186,9 +188,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
@@ -372,9 +375,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
@@ -427,9 +431,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
@@ -519,9 +524,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     MakeIntrusive<TCallContext>()),
                 request,
                 &usedBlocks,
-                NActors::TActorId(),
-                EdgeActor,
-                0,
+                NActors::TActorId(),  // volumeActorId
+                EdgeActor,            // partitionActorId
+                0,                    // volumeTabletId
+                0,                    // partitionTabletId
                 "BaseDiskId",
                 "BaseDiskCheckpointId",
                 blockSize,
