@@ -21,7 +21,7 @@ DATA(
 PEERDIR(
     cloud/blockstore/config
     cloud/blockstore/tests/python/lib
-
+    ydb/core/protos
     ydb/tests/library
 )
 

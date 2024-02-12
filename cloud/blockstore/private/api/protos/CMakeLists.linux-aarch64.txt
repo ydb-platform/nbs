@@ -92,6 +92,7 @@ target_proto_messages(private-api-protos PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/balancer.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/blob.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/checkpoints.proto
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/configs.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/disk.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/tablet.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/private/api/protos/volume.proto

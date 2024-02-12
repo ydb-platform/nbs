@@ -499,6 +499,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.IsDiskRegistrySpareNode));
     };
 
+    auto storageConfig = sArgs.StorageConfig;
     TBasicKikimrServicesMask servicesMask;
     servicesMask.DisableAll();
     servicesMask.EnableBasicServices = 1;
@@ -521,9 +522,10 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
+    servicesMask.EnableConfigsDispatcher =
+        storageConfig->GetConfigsDispatcherServiceEnabled();
 
     auto nodeId = sArgs.NodeId;
-    auto storageConfig = sArgs.StorageConfig;
     auto onStart = [=] (IActorSystem& actorSystem) {
         if (storageConfig->GetDisableLocalService()) {
             using namespace NNodeWhiteboard;

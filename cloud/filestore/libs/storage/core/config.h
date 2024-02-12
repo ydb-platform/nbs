@@ -177,6 +177,8 @@ public:
     bool GetTwoStageReadEnabled() const;
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
 
+    bool GetConfigsDispatcherServiceEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
