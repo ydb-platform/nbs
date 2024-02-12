@@ -3089,6 +3089,88 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::MakeClosedInterval(10, 112),
             GetBlockContent(42));
     }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDisk)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        int allocateRequestCount = 0;
+        int deallocateRequestCount = 0;
+        auto countAllocateDeallocateDiskRequest =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAllocateCheckpointRequest)
+            {
+                ++allocateRequestCount;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDeallocateCheckpointRequest)
+            {
+                ++deallocateRequestCount;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        runtime->SetObserverFunc(countAllocateDeallocateDiskRequest);
+
+        const auto expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Write some data.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
+
+        // Writes to the disk are not blocked.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+
+        // TODO(drbasic) read from checkpoint (success).
+
+        // Delete checkpoint data.
+        volume.DeleteCheckpointData("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, deallocateRequestCount);
+
+        // TODO(drbasic) read from checkpoint (fail).
+
+        // Delete checkpoint.
+        volume.DeleteCheckpoint("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, deallocateRequestCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
