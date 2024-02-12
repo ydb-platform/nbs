@@ -352,11 +352,10 @@ def update_pr_comment(
     header = f"<!-- status pr={pr.number}, run={{}} -->"
     header_re = re.compile(header.format(r"(\d+)"))
 
-    comment = body = None
+    body = None
 
     for c in pr.get_issue_comments():
         if matches := header_re.match(c.body):
-            comment = c
             if int(matches[1]) == run_number:
                 body = [c.body, "", "---", ""]
 

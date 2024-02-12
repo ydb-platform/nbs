@@ -25,12 +25,23 @@ jobs:
         folder_prefix: nebius-
         build_preset: "release"
         user: runner
-    - name: Create indices for repo
+    - name: Create indices for main repo
+      if: ${{ github.repository == 'ydb-platform/nbs'}}
       shell: bash
       run: |
         set -x
         echo "::group::generate-listing"
-        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/
+        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --generate-indexes --remove-expired --apply
+        echo "::endgroup::"
+      env:
+        S3_BUCKET: ${{ vars.AWS_BUCKET }}
+    - name: Create indices for non-main repo
+      if: ${{ github.repository != 'ydb-platform/nbs'}}
+      shell: bash
+      run: |
+        set -x
+        echo "::group::generate-listing"
+        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d --generate-indexes --remove-expired --apply
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
