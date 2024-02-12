@@ -322,7 +322,13 @@ void TReadDataActor::HandleReadBlobResponse(
             blobRange.GetLength(),
             response.Buffer.size(),
             AlignedByteRange.Describe().c_str());
-        Y_ABORT_UNLESS(blobRange.GetLength() == response.Buffer.size());
+        Y_ABORT_UNLESS(
+            blobRange.GetLength() == response.Buffer.size(),
+            "Blob range length mismatch: all requested ranges: %s, response: "
+            "#%lu, size is %lu",
+            DescribeResponse.DebugString().c_str(),
+            i,
+            response.Buffer.size());
         Y_ABORT_UNLESS(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
         const TByteRange sourceByteRange(
@@ -433,12 +439,12 @@ void TStorageServiceActor::HandleReadData(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
-    // if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
-    //     // If two-stage read is disabled, forward the request to the tablet in
-    //     // the same way as all other requests.
-    //     ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
-    //     return;
-    // }
+    if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
+        // If two-stage read is disabled, forward the request to the tablet in
+        // the same way as all other requests.
+        ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
+        return;
+    }
 
     LOG_DEBUG(
         ctx,

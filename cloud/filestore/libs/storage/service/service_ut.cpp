@@ -681,7 +681,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TString(100, 'x') + TString(200, 'y') + TString(300, 'z');
         service.WriteData(headers, fs, nodeId, handle, 0, smallData);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, 600);
+            service.ReadData(headers, fs, nodeId, handle, 0, smallData.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), smallData);
     }
 
