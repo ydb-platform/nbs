@@ -8,20 +8,19 @@ namespace NCloud::NBlockStore::NStorage {
 ///////////////////////////////////////////////////////////////////////////////
 
 TMigrationTimeoutCalculator::TMigrationTimeoutCalculator(
-        TStorageConfigPtr config,
+        ui32 maxMigrationBandwidthMiBs,
+        ui32 expectedDiskAgentSize,
         TNonreplicatedPartitionConfigPtr partitionConfig)
-    : Config(std::move(config))
+    : MaxMigrationBandwidthMiBs(maxMigrationBandwidthMiBs)
+    , ExpectedDiskAgentSize(expectedDiskAgentSize)
     , PartitionConfig(std::move(partitionConfig))
 {}
 
 TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     TBlockRange64 nextProcessingRange) const
 {
-    const ui32 maxMigrationBandwidthMiBs = Config->GetMaxMigrationBandwidth();
-    const ui32 expectedDiskAgentSize = Config->GetExpectedDiskAgentSize();
-
     // migration range is 4_MB
-    const auto migrationFactorPerAgent = maxMigrationBandwidthMiBs / 4;
+    const auto migrationFactorPerAgent = MaxMigrationBandwidthMiBs / 4.0;
 
     if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
         return TDuration::Seconds(1) / migrationFactorPerAgent;
@@ -40,8 +39,8 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     }
 
     const auto factor =
-        Max(migrationFactorPerAgent * agentDeviceCount / expectedDiskAgentSize,
-            1U);
+        Max(migrationFactorPerAgent * agentDeviceCount / ExpectedDiskAgentSize,
+            1.0);
 
     return TDuration::Seconds(1) / factor;
 }

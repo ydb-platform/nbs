@@ -669,6 +669,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             0
         )
     );
+    runtime->EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
 
     runtime->AddLocalService(
         MakeDiskAgentServiceId(runtime->GetNodeId()),

@@ -11,13 +11,13 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
-
+#include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <util/string/builder.h>
 
 #include <ydb/core/base/tablet.h>
 #include <ydb/core/tablet/tablet_setup.h>
-
-#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -252,8 +252,53 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     }
 
     State->SetDiskRegistryBasedPartitionActor(
-        nonreplicatedActorId,
-        std::move(nonreplicatedConfig));
+        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        nonreplicatedConfig);
+}
+
+NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
+    const TActorContext& ctx,
+    NActors::TActorId nonreplicatedActorId,
+    std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
+{
+    for (const auto& [checkpointId, checkpointInfo]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.Data == ECheckpointData::DataDeleted ||
+            checkpointInfo.ShadowDiskId.Empty() ||
+            State->GetCheckpointStore().HasShadowActor(checkpointId))
+        {
+            continue;
+        }
+
+        nonreplicatedActorId = NCloud::Register<TShadowDiskActor>(
+            ctx,
+            Config,
+            GetRdmaClient(),
+            ProfileLog,
+            BlockDigestGenerator,
+            State->GetReadWriteAccessClientId(),
+            State->GetMountSeqNumber(),
+            Executor()->Generation(),
+            srcConfig,
+            SelfId(),
+            nonreplicatedActorId,
+            checkpointInfo);
+
+        State->GetCheckpointStore().ShadowActorCreated(checkpointId);
+    }
+    return nonreplicatedActorId;
+}
+
+void TVolumeActor::RestartDiskRegistryBasedPartition(const TActorContext& ctx)
+{
+    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+        return;
+    }
+
+    StopPartitions(ctx);
+    StartPartitionsForUse(ctx);
+    ResetServicePipes(ctx);
 }
 
 void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
@@ -294,6 +339,12 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
 {
     if (!State) {
         return;
+    }
+
+    for (const auto& [checkpointId, _]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        State->GetCheckpointStore().ShadowActorDestroyed(checkpointId);
     }
 
     for (auto& part : State->GetPartitions()) {

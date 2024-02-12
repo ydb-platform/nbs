@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -1331,12 +1332,26 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.Completed ? "completed" : "rejected",
         args.ShadowDiskId.Quote().c_str());
 
+    const bool needToDestroyShadowActor =
+        (request.ReqType == ECheckpointRequestType::Delete ||
+         request.ReqType == ECheckpointRequestType::DeleteData) &&
+         State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,
         args.ShadowDiskId,
         args.ShadowDiskState);
     CheckpointRequests.erase(request.RequestId);
+
+    const bool needToCreateShadowActor =
+        request.ReqType == ECheckpointRequestType::Create &&
+        !request.ShadowDiskId.Empty() &&
+        !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor || needToCreateShadowActor) {
+        RestartDiskRegistryBasedPartition(ctx);
+    }
 
     if (request.Type == ECheckpointType::Light) {
         const bool needReply =
