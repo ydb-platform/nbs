@@ -1524,7 +1524,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
                 Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
                 Device("dev-3", "uuid-1.3", "rack-1", 10_GB),
-                Device("dev-4", "uuid-1.4", "rack-1", 10_GB)
+                Device("dev-4", "uuid-1.4", "rack-1", 10_GB),
+                Device("dev-5", "uuid-1.5", "rack-1", 10_GB)
             })
         };
 
@@ -1638,12 +1639,37 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
-        diskRegistry.ChangeDeviceState(devices[2], NProto::DEVICE_STATE_ONLINE);
+        const TString targetId = [&] {
+            auto response = diskRegistry.AllocateDisk("vol1", 10_GB);
+            auto& msg = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, msg.MigrationsSize());
+
+            return msg.GetMigrations(0).GetTargetDevice().GetDeviceUUID();
+        }();
+        diskRegistry.FinishMigration("vol1", devices[2], targetId);
 
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT_VALUES_EQUAL(0, maxMigrationTime->Val());
+
+        runtime->AdvanceCurrentTime(8h);
+
+        // start a new migration for vol1
+
+        const auto migrationTs2 = runtime->GetCurrentTime();
+        diskRegistry.ChangeDeviceState(targetId, NProto::DEVICE_STATE_WARNING);
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+
+        {
+            const auto dt = runtime->GetCurrentTime() - migrationTs2;
+            runtime->DispatchEvents({}, 10ms);  // wait for update
+
+            const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
+
+            UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
+        }
     }
 }
 
