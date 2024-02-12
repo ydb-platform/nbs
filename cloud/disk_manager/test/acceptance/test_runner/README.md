@@ -34,7 +34,7 @@ This binary is used in most tests and performs the following 3 test suites per e
 2. `createImageFromURLTest`
    * For this test, `url-for-create-image-from-url-test` parameter is required and must be a valid and accessible from the host running the test S3 image url. Image shall be of the following formats: `QCOW2`, `raw`, `VMDK`.
    * Image is created from the S3 URL.
-   * Image is deleted afterwards. In case of the test failure image is not being cleaned up. Created image has the following format: `acceptance-test-image-{suffix}-{timestamp}`, where suffix is optional.
+   * Image is deleted afterward. In case of the test failure image is not being cleaned up. Created image has the following format: `acceptance-test-image-{suffix}-{timestamp}`, where suffix is optional.
 3. `cancelTest`
    * starts snapshot creation operation from the source disk in the background
    * deletes snapshots
