@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     helpers.cpp
+    poison_pill_helper.cpp
 )
 
 PEERDIR(
