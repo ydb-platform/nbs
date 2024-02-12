@@ -292,7 +292,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             EShadowDiskState::Preparing,
             512,
             1024);
-        
+
         checkpoint = store.GetCheckpoint(checkpointId);
 
         UNIT_ASSERT_VALUES_EQUAL(
