@@ -2,7 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/profile_log_events.h>
 
 namespace NCloud::NFileStore {

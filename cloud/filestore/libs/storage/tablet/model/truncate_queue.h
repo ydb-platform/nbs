@@ -1,7 +1,8 @@
 #pragma once
 
 #include "public.h"
-#include "range.h"
+
+#include <cloud/filestore/libs/storage/model/range.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>

@@ -16,8 +16,9 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
-#include <cloud/filestore/libs/storage/core/utils.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
+#include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 

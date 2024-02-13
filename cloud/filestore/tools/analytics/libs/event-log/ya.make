@@ -9,6 +9,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/diagnostics/events
     cloud/filestore/libs/service
+    cloud/filestore/libs/storage/model
     cloud/filestore/libs/storage/tablet
 
     cloud/storage/core/libs/common
