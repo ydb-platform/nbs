@@ -136,7 +136,7 @@ func (s *scheduler) ScheduleRegularTasks(
 
 			logging.Debug(ctx, "scheduling %v iteration", taskType)
 
-			createdAt := time.Now().UTC()
+			createdAt := time.Now()
 
 			requestID, err := uuid.NewV4()
 			if err != nil {
