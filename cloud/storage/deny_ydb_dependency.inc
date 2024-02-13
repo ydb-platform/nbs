@@ -9,7 +9,7 @@ CHECK_DEPENDENT_DIRS(
     EXCEPT contrib/ydb/public/lib/validation
 
     EXCEPT contrib/ydb/public/lib/protobuf # base for validation and config_proto_plugin
-    EXCEPT contrib/ydb/core/config/tools/protobuf_plugin/config_proto_plugin
+    EXCEPT contrib/ydb/core/config/tools/protobuf_plugin
 
     EXCEPT GLOB contrib/ydb/**/proto
     EXCEPT GLOB contrib/ydb/**/protos
