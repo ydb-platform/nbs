@@ -62,7 +62,11 @@ class YcpFindDiskPolicy(DiskPolicy):
         self._name_regex = name_regex
 
     def obtain(self) -> Ycp.Disk:
-        disks = self._ycp.list_disks()
+        disks = sorted(
+            self._ycp.list_disks(),
+            key=lambda: disk.created_at,
+            reverse=True,
+        )
         for disk in disks:
             if re.match(self._name_regex, disk.name) and disk.zone_id == self._zone_id:
                 return disk
