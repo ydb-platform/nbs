@@ -310,10 +310,8 @@ void TCompactionActor::InitBlockDigests()
         }
 
         if (rc.ZeroBlobId) {
-            ui32 skipped = 0;
             for (const auto blockIndex: xrange(rc.BlockRange)) {
                 if (rc.ZeroBlobSkipMask.Get(blockIndex - rc.BlockRange.Start)) {
-                    ++skipped;
                     continue;
                 }
 
