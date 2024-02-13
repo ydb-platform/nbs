@@ -708,7 +708,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         auto response = diskRegistry.RecvAcquireDiskResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL("not delivered", response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL("there are no online agents", response->GetErrorReason());
 
         RegisterAgents(*runtime, 1);
         WaitForAgents(*runtime, 1);

@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/kikimr/events.h>
 
+#include <util/string/join.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -33,6 +35,8 @@ private:
     NProto::TError AcquireError;
     int PendingRequests = 0;
 
+    THashSet<ui32> NodeIdsWithSucceededResponses;
+
 public:
     TAcquireDiskActor(
         const TActorId& owner,
@@ -57,10 +61,14 @@ private:
 
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
-    void OnAcquireResponse(const TActorContext& ctx, NProto::TError error);
+    void OnAcquireResponse(
+        const TActorContext& ctx,
+        ui32 nodeId,
+        NProto::TError error);
+
     void OnReleaseResponse(
         const TActorContext& ctx,
-        ui64 cookie,
+        ui32 nodeId,
         NProto::TError error);
 
     template <typename R>
@@ -146,6 +154,10 @@ void TAcquireDiskActor::FinishAcquireDisk(const TActorContext& ctx)
 {
     Become(&TThis::StateFinish);
 
+    if (NodeIdsWithSucceededResponses.empty() && !HasError(AcquireError)) {
+        AcquireError = MakeError(E_REJECTED, "there are no online agents");
+    }
+
     using TType = TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest;
     NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
 }
@@ -168,7 +180,6 @@ template <typename R>
 void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
 {
     auto it = Devices.begin();
-    ui32 cookie = 0;
     while (it != Devices.end()) {
         auto request = std::make_unique<R>();
         PrepareRequest(request->Record);
@@ -181,12 +192,18 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
 
         ++PendingRequests;
 
+        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "[%s] Send an acquire request to node #%d. Devices: %s",
+            ClientId.c_str(),
+            nodeId,
+            JoinSeq(", ", request->Record.GetDeviceUUIDs()).c_str());
+
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(nodeId),
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            cookie++,
+            nodeId,
             &ctx.SelfID   // forwardOnNondelivery
         );
 
@@ -233,6 +250,9 @@ void TAcquireDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
         response->Record.MutableDevices()->Reserve(Devices.size());
 
         for (auto& device: Devices) {
+            if (!NodeIdsWithSucceededResponses.contains(device.GetNodeId())) {
+                continue;
+            }
             ToLogicalBlocks(device, LogicalBlockSize);
             *response->Record.AddDevices() = std::move(device);
         }
@@ -259,18 +279,31 @@ void TAcquireDiskActor::HandlePoisonPill(
 
 void TAcquireDiskActor::OnAcquireResponse(
     const TActorContext& ctx,
+    ui32 nodeId,
     NProto::TError error)
 {
-    if (HasError(error)) {
+    if (HasError(error) && GetErrorKind(error) != EErrorKind::ErrorRetriable) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] AcquireDevices %s error: %s",
+            "[%s] AcquireDevices on the node #%d %s error: %s",
             ClientId.c_str(),
+            nodeId,
             LogTargets().c_str(),
             FormatError(error).c_str());
 
         CancelAcquireOperation(ctx, std::move(error));
         FinishAcquireDisk(ctx);
         return;
+    }
+
+    if (HasError(error)) {
+        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "[%s] AcquireDevices on the node #%d %s error: %s",
+            ClientId.c_str(),
+            nodeId,
+            LogTargets().c_str(),
+            FormatError(error).c_str());
+    } else {
+        NodeIdsWithSucceededResponses.insert(nodeId);
     }
 
     Y_ABORT_UNLESS(PendingRequests > 0);
@@ -282,16 +315,16 @@ void TAcquireDiskActor::OnAcquireResponse(
 
 void TAcquireDiskActor::OnReleaseResponse(
     const TActorContext& ctx,
-    ui64 cookie,
+    ui32 nodeId,
     NProto::TError error)
 {
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "[%s] ReleaseDevices %s error: %s, %llu",
+            "[%s] ReleaseDevices on the node #%d %s error: %s",
             ClientId.c_str(),
+            nodeId,
             LogTargets().c_str(),
-            FormatError(error).c_str(),
-            cookie);
+            FormatError(error).c_str());
     }
 
     Y_ABORT_UNLESS(PendingRequests > 0);
@@ -305,30 +338,34 @@ void TAcquireDiskActor::HandleAcquireDevicesResponse(
     const TEvDiskAgent::TEvAcquireDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnAcquireResponse(ctx, ev->Get()->GetError());
+    OnAcquireResponse(ctx, static_cast<ui32>(ev->Cookie), ev->Get()->GetError());
 }
 
 void TAcquireDiskActor::HandleReleaseDevicesResponse(
     const TEvDiskAgent::TEvReleaseDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnReleaseResponse(ctx, ev->Cookie, ev->Get()->GetError());
+    OnReleaseResponse(ctx, static_cast<ui32>(ev->Cookie), ev->Get()->GetError());
 }
 
 void TAcquireDiskActor::HandleAcquireDevicesUndelivery(
     const TEvDiskAgent::TEvAcquireDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    OnAcquireResponse(ctx, MakeError(E_REJECTED, "not delivered"));
+    OnAcquireResponse(
+        ctx,
+        static_cast<ui32>(ev->Cookie),
+        MakeError(E_REJECTED, "not delivered"));
 }
 
 void TAcquireDiskActor::HandleReleaseDevicesUndelivery(
     const TEvDiskAgent::TEvReleaseDevicesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnReleaseResponse(ctx, ev->Cookie, MakeError(E_REJECTED, "not delivered"));
+    OnReleaseResponse(
+        ctx,
+        static_cast<ui32>(ev->Cookie),
+        MakeError(E_REJECTED, "not delivered"));
 }
 
 void TAcquireDiskActor::HandleWakeup(
@@ -371,8 +408,6 @@ void TAcquireDiskActor::HandleStartAcquireDiskResponse(
     SortBy(Devices, [](auto& d) {
         return d.GetNodeId();
     });
-
-    // TODO: setup rate limits
 
     LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "[%s] Sending acquire devices requests for disk %s, targets %s",
