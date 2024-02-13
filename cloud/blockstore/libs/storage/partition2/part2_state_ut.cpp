@@ -1264,7 +1264,6 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
 
             ui32 firstChannelSelected = 0;
-            ui32 secondChannelSelected = 0;
             for (ui32 i = 0; i < 1000; ++i) {
                 auto blobId = state.GenerateBlobId(
                     kind,
@@ -1279,7 +1278,6 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
                         ui32(TPartitionSchema::FirstDataChannel + 1),
                         blobId.Channel()
                     );
-                    ++secondChannelSelected;
                 }
             }
 
