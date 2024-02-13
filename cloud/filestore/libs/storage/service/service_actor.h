@@ -11,7 +11,7 @@
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
-#include <cloud/filestore/libs/storage/core/utils.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 

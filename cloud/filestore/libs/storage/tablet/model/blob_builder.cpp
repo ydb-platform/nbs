@@ -1,6 +1,6 @@
 #include "blob_builder.h"
 
-#include "block_buffer.h"
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 
 namespace NCloud::NFileStore::NStorage {
 

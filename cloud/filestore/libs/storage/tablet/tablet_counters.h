@@ -6,6 +6,7 @@
 
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/tablet_counters.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 
 #include <contrib/ydb/core/tablet/tablet_counters_protobuf.h>
 

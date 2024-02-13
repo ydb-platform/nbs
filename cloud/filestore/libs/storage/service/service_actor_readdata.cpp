@@ -3,9 +3,8 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/tablet/model/block.h>
-#include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -42,7 +41,7 @@ private:
     const TByteRange AlignedByteRange;
     IBlockBufferPtr BlockBuffer;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
-    ui32 RemainingBlobsToRead;
+    ui32 RemainingBlobsToRead = 0;
 
 public:
     TReadDataActor(
@@ -79,9 +78,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-    TRequestInfoPtr requestInfo,
-    const TEvService::TEvReadDataRequest::TPtr& ev,
-    ui32 blockSize)
+        TRequestInfoPtr requestInfo,
+        const TEvService::TEvReadDataRequest::TPtr& ev,
+        ui32 blockSize)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(ev->Get()->Record.GetFileSystemId())
     , NodeId(ev->Get()->Record.GetNodeId())
@@ -92,7 +91,6 @@ TReadDataActor::TReadDataActor(
     , OriginByteRange(Offset, Length, BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
-    , RemainingBlobsToRead(0)
 {
     const auto& record = ev->Get()->Record;
 
@@ -131,17 +129,30 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString DescribeResponseDebugString(
+    NProtoPrivate::TDescribeDataResponse response)
+{
+    // we need to clear user data first
+    for (auto& freshRange: *response.MutableFreshDataRanges()) {
+        freshRange.SetContent(
+            Sprintf("Content size: %lu", freshRange.GetContent().Size()));
+    }
+
+    return response.DebugString();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    IBlockBufferPtr targetBuffer,
+    const IBlockBufferPtr& targetBuffer,
     TByteRange alignedTargetByteRange,
     ui32 blockSize,
-    ui64 offest,
+    ui64 offset,
     ui64 length,
     const NProtoPrivate::TDescribeDataResponse& describeResponse)
 {
-    Y_UNUSED(targetBuffer);
     if (sourceFreshData.GetContent().empty()) {
         return;
     }
@@ -157,9 +168,9 @@ void ApplyFreshDataRange(
         "[%lu, %lu), response: %s",
         sourceByteRange.Describe().c_str(),
         alignedTargetByteRange.Describe().c_str(),
-        offest,
+        offset,
         length,
-        describeResponse.DebugString().c_str());
+        DescribeResponseDebugString(describeResponse).c_str());
 
     char* targetData = const_cast<char*>(targetBuffer->GetContentRef().data());
     auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
@@ -291,7 +302,7 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyAndDie(ctx, MakeError(msg->Status, "blob read failed"));
+        ReplyAndDie(ctx, MakeError(msg->Status, msg->ErrorReason));
         return;
     }
 
@@ -311,6 +322,23 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
+        if (response.Status != NKikimrProto::OK) {
+            ReplyAndDie(ctx, MakeError(msg->Status, "read error"));
+            return;
+        }
+
+        const auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
+
+        if (response.Id != blobId ||
+            response.Buffer.empty() ||
+            response.Buffer.size() % BlockSize != 0)
+        {
+            ReplyAndDie(
+                ctx,
+                MakeError(msg->Status, "invalid response received"));
+            return;
+        }
+
         auto dataIter = response.Buffer.begin();
         LOG_DEBUG(
             ctx,
@@ -357,11 +385,11 @@ void TReadDataActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
+// TODO: fall back to ReadData instead of dying in the Describe + EvGet path
 void TReadDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    Y_UNUSED(ctx);
     auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
     if (SUCCEEDED(error.GetCode())) {
         // we apply fresh data ranges to the buffer only after all blobs are

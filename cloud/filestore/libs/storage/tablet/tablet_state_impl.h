@@ -5,6 +5,7 @@
 #include "tablet_schema.h"
 #include "tablet_state.h"
 
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
@@ -12,7 +13,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/fresh_bytes.h>
 #include <cloud/filestore/libs/storage/tablet/model/garbage_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
