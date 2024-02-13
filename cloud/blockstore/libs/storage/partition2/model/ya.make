@@ -1,6 +1,6 @@
 LIBRARY()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(alloc.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
