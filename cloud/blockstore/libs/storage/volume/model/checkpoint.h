@@ -37,10 +37,19 @@ enum class ECheckpointType
 // The logical state of the checkpoint data. It is not persistently saved.
 enum class ECheckpointData
 {
-    DataPresent,     // The checkpoint has data and it can be read
+    DataPresent,     // The checkpoint has data and it can be read (after the
+                     // shadow disk is prepared)
     DataDeleted,     // The checkpoint has no data
-    DataPreparing,   // The checkpoint has data, but it is not ready yet and
-                     // cannot be read
+};
+
+// State of the shadow disk. It is persistently saved.
+enum class EShadowDiskState
+{
+    None = 0,
+    New = 1,
+    Preparing = 2,
+    Ready = 3,
+    Error = 4,
 };
 
 struct TCheckpointRequest
@@ -51,7 +60,25 @@ struct TCheckpointRequest
     ECheckpointRequestType ReqType;
     ECheckpointRequestState State;
     ECheckpointType Type;
+
     TString ShadowDiskId;
+    EShadowDiskState ShadowDiskState = EShadowDiskState::None;
+    ui64 ShadowDiskProcessedBlockCount = 0;
+
+    TCheckpointRequest(
+            ui64 requestId,
+            TString checkpointId,
+            TInstant timestamp,
+            ECheckpointRequestType reqType,
+            ECheckpointRequestState state,
+            ECheckpointType type)
+        : RequestId(requestId)
+        , CheckpointId(std::move(checkpointId))
+        , Timestamp(timestamp)
+        , ReqType(reqType)
+        , State(state)
+        , Type(type)
+    {}
 
     TCheckpointRequest(
             ui64 requestId,
@@ -60,7 +87,9 @@ struct TCheckpointRequest
             ECheckpointRequestType reqType,
             ECheckpointRequestState state,
             ECheckpointType type,
-            TString shadowDiskId = TString() /* TODO(drbasic) remove */)
+            TString shadowDiskId,
+            EShadowDiskState shadowDiskState,
+            ui64 shadowDiskProcessedBlockCount)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
@@ -68,17 +97,25 @@ struct TCheckpointRequest
         , State(state)
         , Type(type)
         , ShadowDiskId(std::move(shadowDiskId))
+        , ShadowDiskState(shadowDiskState)
+        , ShadowDiskProcessedBlockCount(shadowDiskProcessedBlockCount)
     {}
 };
 
-struct TActiveCheckpointsType
+struct TActiveCheckpointInfo
 {
+    ui64 RequestId = 0;
+    TString CheckpointId;
     ECheckpointType Type;
     ECheckpointData Data;
     TString ShadowDiskId;
+    EShadowDiskState ShadowDiskState = EShadowDiskState::None;
+    ui64 ProcessedBlockCount = 0;
+    ui64 TotalBlockCount = 0;
+    bool HasShadowActor = false;
 };
 
-using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointsType>;
+using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointInfo>;
 
 class TCheckpointStore
 {
@@ -108,7 +145,17 @@ public:
     void SetCheckpointRequestFinished(
         ui64 requestId,
         bool success,
-        TString shadowDiskId);
+        TString shadowDiskId,
+        EShadowDiskState shadowDiskState);
+
+    void SetShadowDiskState(
+        const TString& checkpointId,
+        EShadowDiskState shadowDiskState,
+        ui64 processedBlockCount,
+        ui64 totalBlockCount);
+    void ShadowActorCreated(const TString& checkpointId);
+    void ShadowActorDestroyed(const TString& checkpointId);
+    [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;
 
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
@@ -118,6 +165,10 @@ public:
 
     [[nodiscard]] std::optional<ECheckpointType> GetCheckpointType(
         const TString& checkpointId) const;
+
+    [[nodiscard]] std::optional<TActiveCheckpointInfo> GetCheckpoint(
+        const TString& checkpointId) const;
+
     [[nodiscard]] TVector<TString> GetLightCheckpoints() const;
     [[nodiscard]] TVector<TString> GetCheckpointsWithData() const;
     [[nodiscard]] const TActiveCheckpointsMap& GetActiveCheckpoints() const;

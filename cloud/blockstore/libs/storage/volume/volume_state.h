@@ -540,7 +540,9 @@ public:
 
     void SetCheckpointRequestFinished(
         const TCheckpointRequest& request,
-        bool success);
+        bool success,
+        TString shadowDiskId,
+        EShadowDiskState shadowDiskState);
 
     //
     // UsedBlocks

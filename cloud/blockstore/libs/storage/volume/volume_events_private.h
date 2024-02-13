@@ -21,6 +21,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReadHistory,                        __VA_ARGS__)                       \
     xxx(UpdateDevices,                      __VA_ARGS__)                       \
     xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
+    xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
 // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -211,6 +212,47 @@ struct TEvVolumePrivate
 
     struct TRemoveExpiredVolumeParams
     {
+    };
+
+    //
+    //  UpdateShadowDiskStateRequest
+    //
+
+    struct TUpdateShadowDiskStateRequest
+    {
+        enum class EReason
+        {
+            FillProgressUpdate,
+            FillCompleted,
+            FillError,
+        };
+
+        TString CheckpointId;
+        EReason Reason = EReason::FillError;
+        ui64 ProcessedBlockCount = 0;
+        ui64 TotalBlockCount = 0;
+
+        TUpdateShadowDiskStateRequest(
+                TString checkpointId,
+                EReason reason,
+                ui64 processedBlockCount,
+                ui64 totalBlockCount)
+            : CheckpointId(std::move(checkpointId))
+            , Reason(reason)
+            , ProcessedBlockCount(processedBlockCount)
+            , TotalBlockCount(totalBlockCount)
+        {}
+    };
+
+    struct TUpdateShadowDiskStateResponse
+    {
+        EShadowDiskState NewState = EShadowDiskState::None;
+
+        TUpdateShadowDiskStateResponse() {}
+
+        TUpdateShadowDiskStateResponse(EShadowDiskState newState)
+            : NewState(newState)
+        {}
     };
 
     //

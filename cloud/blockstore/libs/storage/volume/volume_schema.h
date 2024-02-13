@@ -144,6 +144,16 @@ struct TVolumeSchema
         {
         };
 
+        struct ShadowDiskProcessedBlockCount
+            : public Column<8, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct ShadowDiskState
+            : public Column<9, NKikimr::NScheme::NTypeIds::Uint32>
+        {
+        };
+
         using TKey = TableKey<RequestId>;
         using TColumns = TableColumns<
             RequestId,
@@ -152,7 +162,9 @@ struct TVolumeSchema
             State,
             ReqType,
             CheckpointType,
-            ShadowDiskId>;
+            ShadowDiskId,
+            ShadowDiskProcessedBlockCount,
+            ShadowDiskState>;
     };
 
     struct NonReplPartStats

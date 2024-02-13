@@ -105,6 +105,8 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         ctx.Send(PendingRequests.front().Event.release());
         PendingRequests.pop_front();
     }
+
+    ProcessNextCheckpointRequest(ctx);
 }
 
 void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
@@ -597,7 +599,6 @@ void TVolumeActor::HandleWaitReadyResponse(
         if (state == TPartitionInfo::READY) {
             // All partitions ready, it's time to reply to requests
             OnStarted(ctx);
-            ProcessNextCheckpointRequest(ctx);
         }
     }
 }

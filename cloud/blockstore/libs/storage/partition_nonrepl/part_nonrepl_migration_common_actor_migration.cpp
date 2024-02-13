@@ -27,6 +27,9 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
     SrcActorId = srcActorId;
     DstActorId = dstActorId;
 
+    PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
+    PoisonPillHelper.TakeOwnership(ctx, DstActorId);
+
     if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
     } else {

@@ -25,13 +25,43 @@ namespace {
 
 IOutputStream& operator <<(
     IOutputStream& out,
-    const TActiveCheckpointsType& checkpointType)
+    ECheckpointData checkpointData)
 {
-    return out << (checkpointType.Type == ECheckpointType::Light
-        ? "no data (is light)"
-        : checkpointType.Data == ECheckpointData::DataPresent
-            ? "present"
-            : "deleted");
+    switch (checkpointData) {
+        case ECheckpointData::DataPresent:
+            return out << "<font color=green>data present</font>";
+        case ECheckpointData::DataDeleted:
+            return out << "<font color=red>data deleted</font>";
+        default:
+            return out
+                << "(Unknown value "
+                << static_cast<int>(checkpointData)
+                << ")";
+    }
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const TActiveCheckpointInfo& checkpointInfo)
+{
+    switch (checkpointInfo.Type) {
+        case ECheckpointType::Light: {
+            out << "no data (is light)";
+        } break;
+        case ECheckpointType::Normal: {
+            out << "normal (" << checkpointInfo.Data << ")";
+        } break;
+    }
+    if (checkpointInfo.ShadowDiskId) {
+        out << "<br/>";
+        out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
+        out << " state: " << ToString(checkpointInfo.ShadowDiskState);
+        if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
+            out << " blocks: " << checkpointInfo.ProcessedBlockCount << "/"
+                << checkpointInfo.TotalBlockCount;
+        }
+    }
+    return out;
 }
 
 IOutputStream& operator <<(
@@ -604,7 +634,7 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                 TABLEHEAD() {
                     TABLER() {
                         TABLEH() { out << "CheckpointId"; }
-                        TABLEH() { out << "DataType"; }
+                        TABLEH() { out << "Info"; }
                         TABLEH() { out << "Delete"; }
                     }
                 }
@@ -625,12 +655,17 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
         };
         DIV_CLASS("row") {
+            const bool isDiskRegistryMediaKind = IsDiskRegistryMediaKind(
+                State->GetConfig().GetStorageMediaKind());
             TAG(TH3) { out << "CheckpointRequests"; }
             TABLE_SORTABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
                     TABLER() {
                         TABLEH() { out << "RequestId"; }
                         TABLEH() { out << "CheckpointId"; }
+                        if (isDiskRegistryMediaKind) {
+                            TABLEH() { out << "ShadowDisk"; }
+                        }
                         TABLEH() { out << "Timestamp"; }
                         TABLEH() { out << "State"; }
                         TABLEH() { out << "Type"; }
@@ -642,6 +677,9 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                     TABLER() {
                         TABLED() { out << r.RequestId; }
                         TABLED() { out << r.CheckpointId; }
+                        if (isDiskRegistryMediaKind) {
+                            TABLED() { out << r.ShadowDiskId; }
+                        }
                         TABLED() { out << r.Timestamp; }
                         TABLED() { out << r.State; }
                         TABLED() { out << r.ReqType; }
@@ -1260,6 +1298,12 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
             SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
                 out << statusText;
             }
+
+            if (!CanExecuteWriteRequest()) {
+                SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
+                    out << "Writes blocked by checkpoint";
+                }
+            }
         }
     }
 }
@@ -1285,12 +1329,6 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 
             SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
                 out << statusText;
-            }
-
-            if (!CanExecuteWriteRequest()) {
-                SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
-                    out << "Writes blocked by checkpoint";
-                }
             }
         }
 
