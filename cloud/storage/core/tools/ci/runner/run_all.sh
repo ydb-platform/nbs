@@ -15,6 +15,7 @@ else
 fi
 
 cd $nbspath &&
+git reset --hard &&
 git pull
 
 "${nbspath}/ya" gc cache
