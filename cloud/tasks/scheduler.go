@@ -16,6 +16,7 @@ type TaskSchedule struct {
 
 	// Crontab params.
 	// Schedules task every day - only 'hour' and 'min' are supported.
+	// Hours and minutes are specified in UTC.
 	UseCrontab bool // If set, ScheduleInterval is ignored.
 	Hour       int  // (0 - 23)
 	Min        int  // (0 - 59)
