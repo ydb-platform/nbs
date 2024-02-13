@@ -1545,6 +1545,167 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, smallData.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), smallData);
     }
+
+    Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        NProto::TError error;
+        error.SetCode(E_REJECTED);
+        ui32 describeDataResponses = 0;
+        ui32 readDataResponses = 0;
+
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvDescribeDataResponse: {
+                    using TResponse = TEvIndexTablet::TEvDescribeDataResponse;
+                    auto* msg = event->template Get<TResponse>();
+                    msg->Record.MutableError()->CopyFrom(error);
+                    ++describeDataResponses;
+                    return false;
+                }
+
+                case TEvService::EvReadDataResponse: {
+                    ++readDataResponses;
+                    return false;
+                }
+            }
+
+            return false;
+        });
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageReadEnabled(),
+                true);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TString data(4_KB, 'A');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+        // 1 from tablet to tablet proxy, 1 from tablet proxy to read actor
+        UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
+        // 1 to service actor, 1 from read actor to tablet
+        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+    }
+
+    Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        ui32 evGets = 0;
+        ui32 describeDataResponses = 0;
+        ui32 readDataResponses = 0;
+
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvGetResult: {
+                    using TResponse = TEvBlobStorage::TEvGetResult;
+                    auto* msg = event->template Get<TResponse>();
+                    ui32 bytes = 0;
+                    for (size_t i = 0; i < msg->ResponseSz; ++i) {
+                        const auto& response = msg->Responses[i];
+                        bytes += response.Buffer.GetSize();
+                    }
+                    if (bytes == 256_KB) {
+                        if (evGets == 0) {
+                            msg->Status = NKikimrProto::ERROR;
+                        }
+                        ++evGets;
+                    }
+                    return false;
+                }
+
+                case TEvIndexTablet::EvDescribeDataResponse: {
+                    ++describeDataResponses;
+                    return false;
+                }
+
+                case TEvService::EvReadDataResponse: {
+                    ++readDataResponses;
+                    return false;
+                }
+            }
+
+            return false;
+        });
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageReadEnabled(),
+                true);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TString data(1_MB, 'A');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+        // 1 from tablet to tablet proxy, 1 from tablet proxy to read actor
+        UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
+        // 1 from read actor to bs proxy, 1 from tablet to bs proxy
+        UNIT_ASSERT_VALUES_EQUAL(8, evGets);
+        // 1 to service actor, 1 from read actor to tablet
+        UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

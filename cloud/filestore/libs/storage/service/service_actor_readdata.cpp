@@ -70,9 +70,14 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error = {});
+    void ReadData(const TActorContext& ctx);
+
+    void HandleReadDataResponse(
+        const TEvService::TEvReadDataResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(const TActorContext& ctx);
+    void HandleError(const TActorContext& ctx, NProto::TError);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,7 +231,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        ReplyAndDie(ctx, msg->GetError());
+        ReadData(ctx);
         return;
     }
 
@@ -240,6 +245,8 @@ void TReadDataActor::HandleDescribeDataResponse(
     DescribeResponse.CopyFrom(msg->Record);
     ReadBlobIfNeeded(ctx);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
 {
@@ -302,7 +309,15 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyAndDie(ctx, MakeError(msg->Status, msg->ErrorReason));
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "ReadBlob error: %s",
+            FormatError(MakeError(
+                MAKE_KIKIMR_ERROR(msg->Status),
+                msg->ErrorReason)).c_str());
+        ReadData(ctx);
+
         return;
     }
 
@@ -323,7 +338,15 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
-            ReplyAndDie(ctx, MakeError(msg->Status, "read error"));
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "ReadBlob error: %s",
+                FormatError(MakeError(
+                    MAKE_KIKIMR_ERROR(response.Status),
+                    "read error")).c_str());
+            ReadData(ctx);
+
             return;
         }
 
@@ -333,9 +356,15 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
         {
-            ReplyAndDie(
+            LOG_WARN(
                 ctx,
-                MakeError(msg->Status, "invalid response received"));
+                TFileStoreComponents::SERVICE,
+                "ReadBlob error: %s",
+                FormatError(MakeError(
+                    E_FAIL,
+                    "invalid response received")).c_str());
+            ReadData(ctx);
+
             return;
         }
 
@@ -377,56 +406,115 @@ void TReadDataActor::HandleReadBlobResponse(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TReadDataActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
-// TODO: fall back to ReadData instead of dying in the Describe + EvGet path
-void TReadDataActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
+////////////////////////////////////////////////////////////////////////////////
+
+void TReadDataActor::ReadData(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvReadDataResponse>(error);
-    if (SUCCEEDED(error.GetCode())) {
-        // we apply fresh data ranges to the buffer only after all blobs are
-        // read and applied
-        for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
-        {
-            ui64 offset = freshDataRange.GetOffset();
-            const TString& content = freshDataRange.GetContent();
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "Falling back to ReadData for %lu, %lu, %lu, %lu",
+        NodeId,
+        Handle,
+        Offset,
+        Length);
 
-            ApplyFreshDataRange(
-                ctx,
-                freshDataRange,
-                BlockBuffer,
-                AlignedByteRange,
-                BlockSize,
-                Offset,
-                Length,
-                DescribeResponse);
+    auto request = std::make_unique<TEvService::TEvReadDataRequest>();
 
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "processed fresh data range size: %lu, offset: %lu",
-                content.size(),
-                offset);
-        }
+    request->Record.MutableHeaders()->CopyFrom(Headers);
+    request->Record.SetFileSystemId(FileSystemId);
+    request->Record.SetNodeId(NodeId);
+    request->Record.SetHandle(Handle);
+    request->Record.SetOffset(Offset);
+    request->Record.SetLength(Length);
 
-        CopyFileData(
-            OriginByteRange,
-            AlignedByteRange,
-            DescribeResponse.GetFileSize(),
-            BlockBuffer->GetContent(),
-            response->Record.MutableBuffer());
+    // forward request through tablet proxy
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+void TReadDataActor::HandleReadDataResponse(
+    const TEvService::TEvReadDataResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (FAILED(msg->GetStatus())) {
+        HandleError(ctx, msg->GetError());
+        return;
     }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "ReadData succeeded %lu data",
+        msg->Record.GetBuffer().size());
+
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+    response->Record = std::move(msg->Record);
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
+{
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>();
+
+    // we apply fresh data ranges to the buffer only after all blobs are
+    // read and applied
+    for (const auto& freshDataRange: DescribeResponse.GetFreshDataRanges())
+    {
+        ui64 offset = freshDataRange.GetOffset();
+        const TString& content = freshDataRange.GetContent();
+
+        ApplyFreshDataRange(
+            ctx,
+            freshDataRange,
+            BlockBuffer,
+            AlignedByteRange,
+            BlockSize,
+            Offset,
+            Length,
+            DescribeResponse);
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "processed fresh data range size: %lu, offset: %lu",
+            content.size(),
+            offset);
+    }
+
+    CopyFileData(
+        OriginByteRange,
+        AlignedByteRange,
+        DescribeResponse.GetFileSize(),
+        BlockBuffer->GetContent(),
+        response->Record.MutableBuffer());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
+
+void TReadDataActor::HandleError(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    auto response = std::make_unique<TEvService::TEvReadDataResponse>(
+        std::move(error));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TReadDataActor::StateWork)
 {
@@ -436,6 +524,8 @@ STFUNC(TReadDataActor::StateWork)
         HFunc(
             TEvIndexTablet::TEvDescribeDataResponse,
             HandleDescribeDataResponse);
+
+        HFunc(TEvService::TEvReadDataResponse, HandleReadDataResponse);
 
         HFunc(TEvBlobStorage::TEvGetResult, HandleReadBlobResponse);
 
