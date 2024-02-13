@@ -23,6 +23,7 @@ SRCS(
     service_actor_monitoring_search.cpp
     service_actor_ping.cpp
     service_actor_pingsession.cpp
+    service_actor_readdata.cpp
     service_actor_statfs.cpp
     service_actor_update_stats.cpp
     service_state.cpp
@@ -33,6 +34,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/libs/storage/tablet
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

@@ -17,7 +17,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \
 // FILESTORE_SERVICE_REQUESTS
 
-#define FILESTORE_SERVICE_REQUESTS_FWD(xxx, ...)                               \
+#define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
     xxx(AddClusterNode,                     __VA_ARGS__)                       \
     xxx(RemoveClusterNode,                  __VA_ARGS__)                       \
     xxx(ListClusterNodes,                   __VA_ARGS__)                       \
@@ -55,9 +55,17 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
-    xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_SERVICE_REQUESTS_HANDLE
+
+#define FILESTORE_SERVICE_REQUESTS_NO_HANDLE(xxx, ...)                         \
+    xxx(ReadData,                           __VA_ARGS__)                       \
+// FILESTORE_SERVICE_REQUESTS_NO_HANDLE
+
+#define FILESTORE_SERVICE_REQUESTS_FWD(xxx, ...)                               \
+    FILESTORE_SERVICE_REQUESTS_NO_HANDLE(xxx,   __VA_ARGS__)                   \
+    FILESTORE_SERVICE_REQUESTS_HANDLE(xxx,      __VA_ARGS__)                   \
 // FILESTORE_SERVICE_REQUESTS_FWD
 
 ////////////////////////////////////////////////////////////////////////////////
