@@ -52,11 +52,11 @@ private:
 public:
     TDeviceConnection(
             ILoggingServicePtr logging,
-            const TNetworkAddress& connectAddress,
+            TNetworkAddress connectAddress,
             TString deviceName,
             TDuration timeout)
         : Logging(std::move(logging))
-        , ConnectAddress(connectAddress)
+        , ConnectAddress(std::move(connectAddress))
         , DeviceName(std::move(deviceName))
         , Timeout(timeout)
     {

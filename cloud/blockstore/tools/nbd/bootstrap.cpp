@@ -161,97 +161,20 @@ void TBootstrap::Init()
         Monitoring = CreateMonitoringServiceStub();
     }
 
-    if (Options->DeviceMode == EDeviceMode::Null) {
-        NProto::TNullServiceConfig config;
-        config.SetDiskBlockSize(Options->NullBlockSize);
-        config.SetDiskBlocksCount(Options->NullBlocksCount);
+    switch (Options->DeviceMode) {
+        case EDeviceMode::Null:
+            InitNullClient();
+            InitClientSession();
+            break;
 
-        ClientEndpoint = CreateNullService(config);
-    } else {
-        auto rootGroup = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        case EDeviceMode::Proxy:
+            InitControlClient();
+            InitClientSession();
+            break;
 
-        auto clientGroup = rootGroup->GetSubgroup("component", "client");
-
-        RequestStats = CreateClientRequestStats(clientGroup, Timer);
-
-        VolumeStats = CreateVolumeStats(
-            Monitoring,
-            {},
-            EVolumeStatsType::EClientStats,
-            Timer);
-
-        ClientStats = CreateClientStats(
-            ClientConfig,
-            Monitoring,
-            RequestStats,
-            VolumeStats,
-            ClientConfig->GetInstanceId());
-
-        auto [client, error] = CreateClient(
-            ClientConfig,
-            Timer,
-            Scheduler,
-            Logging,
-            Monitoring,
-            ClientStats);
-
-        Y_ABORT_UNLESS(!HasError(error));
-        Client = std::move(client);
-
-        StatsUpdater = CreateStatsUpdater(
-            Timer,
-            Scheduler,
-            CreateIncompleteRequestProcessor(
-                ClientStats,
-                {})  // TODO: fill incompleteRequestProviders (NBS-2167)
-        );
-
-        ClientEndpoint = Client->CreateEndpoint();
-
-        auto retryPolicy = CreateRetryPolicy(ClientConfig);
-
-        ClientEndpoint = CreateDurableClient(
-            ClientConfig,
-            std::move(ClientEndpoint),
-            std::move(retryPolicy),
-            Logging,
-            Timer,
-            Scheduler,
-            RequestStats,
-            VolumeStats);
-    }
-
-    if (Options->DeviceMode != EDeviceMode::Endpoint) {
-        TSessionConfig sessionConfig;
-        sessionConfig.DiskId = Options->DiskId;
-        sessionConfig.MountToken = Options->MountToken;
-        sessionConfig.AccessMode = Options->AccessMode;
-        sessionConfig.MountMode = Options->MountMode;
-        if (Options->ThrottlingDisabled) {
-            SetProtoFlag(
-                sessionConfig.MountFlags,
-                NProto::MF_THROTTLING_DISABLED);
-        }
-        sessionConfig.ClientVersionInfo = GetFullVersionString();
-
-        NProto::TEncryptionSpec encryptionSpec;
-        encryptionSpec.SetMode(Options->EncryptionMode);
-        if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
-            encryptionSpec.MutableKeyPath()->SetFilePath(
-                Options->EncryptionKeyPath);
-        }
-        sessionConfig.EncryptionSpec = encryptionSpec;
-
-        Session = CreateSession(
-            Timer,
-            Scheduler,
-            Logging,
-            RequestStats,
-            VolumeStats,
-            ClientEndpoint,
-            ClientConfig,
-            sessionConfig);
+        case EDeviceMode::Endpoint:
+            InitControlClient();
+            break;
     }
 }
 
@@ -356,67 +279,15 @@ void TBootstrap::Start()
 
     auto listenAddress = CreateListenAddress(*Options);
 
-    if (Options->DeviceMode == EDeviceMode::Endpoint) {
-        auto ctx = MakeIntrusive<TCallContext>();
-        auto request = std::make_shared<NProto::TStartEndpointRequest>();
-        request->SetUnixSocketPath(Options->ListenUnixSocketPath);
-        request->SetDiskId(Options->DiskId);
-        request->SetIpcType(NProto::IPC_NBD);
-        request->SetClientId(CreateGuidAsString());
-        request->SetVolumeAccessMode(Options->AccessMode);
-        request->SetVolumeMountMode(Options->MountMode);
-        ui32 mountFlags = 0;
-        if (Options->ThrottlingDisabled) {
-            SetProtoFlag(
-                mountFlags,
-                NProto::MF_THROTTLING_DISABLED);
-        }
-        request->SetMountFlags(mountFlags);
-        request->SetUnalignedRequestsDisabled(Options->UnalignedRequestsDisabled);
-        request->SetClientVersionInfo(GetFullVersionString());
+    switch (Options->DeviceMode) {
+        case EDeviceMode::Null:
+        case EDeviceMode::Proxy:
+            StartNbdServer(listenAddress);
+            break;
 
-        auto& encryptionSpec = *request->MutableEncryptionSpec();
-        encryptionSpec.SetMode(Options->EncryptionMode);
-        if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
-            encryptionSpec.MutableKeyPath()->SetFilePath(
-                Options->EncryptionKeyPath);
-        }
-
-        auto future = ClientEndpoint->StartEndpoint(
-            std::move(ctx),
-            std::move(request));
-        CheckError(future.GetValue(WaitTimeout));
-    } else {
-        auto mountResponse = Session->MountVolume().GetValue(WaitTimeout);
-        CheckError(mountResponse);
-
-        TStorageOptions options;
-
-        const auto& volume = mountResponse.GetVolume();
-        options.BlockSize = volume.GetBlockSize();
-        options.BlocksCount = volume.GetBlocksCount();
-        options.CheckpointId = Options->CheckpointId;
-
-        auto handlerFactory = CreateServerHandlerFactory(
-            CreateDefaultDeviceHandlerFactory(),
-            Logging,
-            Session,
-            CreateServerStatsStub(),
-            options);
-
-        TServerConfig serverConfig {
-            .ThreadsCount = 1,  // there will be just one endpoint
-            .MaxInFlightBytesPerThread = Options->MaxInFlightBytes,
-            .Affinity = {}
-        };
-
-        NbdServer = CreateServer(Logging, serverConfig);
-        NbdServer->Start();
-
-        auto future = NbdServer->StartEndpoint(
-            listenAddress,
-            std::move(handlerFactory));
-        CheckError(future.GetValue(WaitTimeout));
+        case EDeviceMode::Endpoint:
+            StartNbdEndpoint();
+            break;
     }
 
     if (Options->ConnectDevice) {
@@ -440,24 +311,20 @@ void TBootstrap::Stop()
         NbdDevice->Stop();
     }
 
-    if (Options->DeviceMode == EDeviceMode::Endpoint) {
-        auto ctx = MakeIntrusive<TCallContext>();
-        auto request = std::make_shared<NProto::TStopEndpointRequest>();
-        request->SetUnixSocketPath(Options->ListenUnixSocketPath);
+    switch (Options->DeviceMode) {
+        case EDeviceMode::Null:
+        case EDeviceMode::Proxy:
+            StopNbdServer();
+            break;
 
-        auto future = ClientEndpoint->StopEndpoint(
-            std::move(ctx),
-            std::move(request));
-        CheckError(future.GetValue(WaitTimeout));
-    }
-
-    if (NbdServer) {
-        NbdServer->Stop();
+        case EDeviceMode::Endpoint:
+            StopNbdEndpoint();
+            break;
     }
 
     if (Session) {
-        auto unmountResponse = Session->UnmountVolume().GetValue(WaitTimeout);
-        CheckError(unmountResponse);
+        auto response = Session->UnmountVolume().GetValue(WaitTimeout);
+        CheckError(response);
     }
 
     if (Scheduler) {
@@ -483,6 +350,190 @@ void TBootstrap::Stop()
     if (Logging) {
         Logging->Stop();
     }
+}
+
+void TBootstrap::InitNullClient()
+{
+    NProto::TNullServiceConfig config;
+    config.SetDiskBlockSize(Options->NullBlockSize);
+    config.SetDiskBlocksCount(Options->NullBlocksCount);
+
+    ClientEndpoint = CreateNullService(config);
+}
+
+void TBootstrap::InitControlClient()
+{
+    auto rootGroup = Monitoring->GetCounters()
+        ->GetSubgroup("counters", "blockstore");
+
+    auto clientGroup = rootGroup->GetSubgroup("component", "client");
+
+    RequestStats = CreateClientRequestStats(clientGroup, Timer);
+
+    VolumeStats = CreateVolumeStats(
+        Monitoring,
+        {},
+        EVolumeStatsType::EClientStats,
+        Timer);
+
+    ClientStats = CreateClientStats(
+        ClientConfig,
+        Monitoring,
+        RequestStats,
+        VolumeStats,
+        ClientConfig->GetInstanceId());
+
+    auto [client, error] = CreateClient(
+        ClientConfig,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        ClientStats);
+
+    Y_ABORT_UNLESS(!HasError(error));
+    Client = std::move(client);
+
+    StatsUpdater = CreateStatsUpdater(
+        Timer,
+        Scheduler,
+        CreateIncompleteRequestProcessor(
+            ClientStats,
+            {})  // TODO: fill incompleteRequestProviders (NBS-2167)
+    );
+
+    ClientEndpoint = Client->CreateEndpoint();
+
+    auto retryPolicy = CreateRetryPolicy(ClientConfig);
+
+    ClientEndpoint = CreateDurableClient(
+        ClientConfig,
+        std::move(ClientEndpoint),
+        std::move(retryPolicy),
+        Logging,
+        Timer,
+        Scheduler,
+        RequestStats,
+        VolumeStats);
+}
+
+void TBootstrap::InitClientSession()
+{
+    TSessionConfig sessionConfig;
+    sessionConfig.DiskId = Options->DiskId;
+    sessionConfig.MountToken = Options->MountToken;
+    sessionConfig.AccessMode = Options->AccessMode;
+    sessionConfig.MountMode = Options->MountMode;
+    if (Options->ThrottlingDisabled) {
+        SetProtoFlag(
+            sessionConfig.MountFlags,
+            NProto::MF_THROTTLING_DISABLED);
+    }
+    sessionConfig.ClientVersionInfo = GetFullVersionString();
+
+    NProto::TEncryptionSpec encryptionSpec;
+    encryptionSpec.SetMode(Options->EncryptionMode);
+    if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
+        encryptionSpec.MutableKeyPath()->SetFilePath(
+            Options->EncryptionKeyPath);
+    }
+    sessionConfig.EncryptionSpec = encryptionSpec;
+
+    Session = CreateSession(
+        Timer,
+        Scheduler,
+        Logging,
+        RequestStats,
+        VolumeStats,
+        ClientEndpoint,
+        ClientConfig,
+        sessionConfig);
+}
+
+void TBootstrap::StartNbdServer(TNetworkAddress listenAddress)
+{
+    auto mountResponse = Session->MountVolume().GetValue(WaitTimeout);
+    CheckError(mountResponse);
+
+    TStorageOptions options;
+
+    const auto& volume = mountResponse.GetVolume();
+    options.BlockSize = volume.GetBlockSize();
+    options.BlocksCount = volume.GetBlocksCount();
+    options.CheckpointId = Options->CheckpointId;
+
+    auto handlerFactory = CreateServerHandlerFactory(
+        CreateDefaultDeviceHandlerFactory(),
+        Logging,
+        Session,
+        CreateServerStatsStub(),
+        options);
+
+    TServerConfig serverConfig {
+        .ThreadsCount = 1,  // there will be just one endpoint
+        .MaxInFlightBytesPerThread = Options->MaxInFlightBytes,
+        .Affinity = {}
+    };
+
+    NbdServer = CreateServer(Logging, serverConfig);
+    NbdServer->Start();
+
+    auto future = NbdServer->StartEndpoint(
+        listenAddress,
+        std::move(handlerFactory));
+    CheckError(future.GetValue(WaitTimeout));
+}
+
+void TBootstrap::StopNbdServer()
+{
+    if (NbdServer) {
+        NbdServer->Stop();
+    }
+}
+
+void TBootstrap::StartNbdEndpoint()
+{
+    auto ctx = MakeIntrusive<TCallContext>();
+    auto request = std::make_shared<NProto::TStartEndpointRequest>();
+    request->SetUnixSocketPath(Options->ListenUnixSocketPath);
+    request->SetDiskId(Options->DiskId);
+    request->SetIpcType(NProto::IPC_NBD);
+    request->SetClientId(CreateGuidAsString());
+    request->SetVolumeAccessMode(Options->AccessMode);
+    request->SetVolumeMountMode(Options->MountMode);
+    ui32 mountFlags = 0;
+    if (Options->ThrottlingDisabled) {
+        SetProtoFlag(
+            mountFlags,
+            NProto::MF_THROTTLING_DISABLED);
+    }
+    request->SetMountFlags(mountFlags);
+    request->SetUnalignedRequestsDisabled(Options->UnalignedRequestsDisabled);
+    request->SetClientVersionInfo(GetFullVersionString());
+
+    auto& encryptionSpec = *request->MutableEncryptionSpec();
+    encryptionSpec.SetMode(Options->EncryptionMode);
+    if (Options->EncryptionMode != NProto::NO_ENCRYPTION) {
+        encryptionSpec.MutableKeyPath()->SetFilePath(
+            Options->EncryptionKeyPath);
+    }
+
+    auto future = ClientEndpoint->StartEndpoint(
+        std::move(ctx),
+        std::move(request));
+    CheckError(future.GetValue(WaitTimeout));
+}
+
+void TBootstrap::StopNbdEndpoint()
+{
+    auto ctx = MakeIntrusive<TCallContext>();
+    auto request = std::make_shared<NProto::TStopEndpointRequest>();
+    request->SetUnixSocketPath(Options->ListenUnixSocketPath);
+
+    auto future = ClientEndpoint->StopEndpoint(
+        std::move(ctx),
+        std::move(request));
+    CheckError(future.GetValue(WaitTimeout));
 }
 
 }   // namespace NCloud::NBlockStore::NBD
