@@ -146,6 +146,12 @@ struct TByteRange
     {
         return {blockIndex * blockSize, blockSize, blockSize};
     }
+
+    bool operator==(const TByteRange& other) const
+    {
+        return std::tie(Offset, Length, BlockSize) ==
+               std::tie(other.Offset, other.Length, other.BlockSize);
+    }
 };
 
 }   // namespace NCloud::NFileStore::NStorage
