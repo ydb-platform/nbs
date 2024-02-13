@@ -26,3 +26,5 @@ core/tools/testing/qemu/image/rootfs.img
 core/tools/testing/unstable-process/storage-unstable-process
 core/tools/testing/virtiofs_server/bin/cloud
 core/tools/testing/virtiofs_server/bin/virtiofs-server
+core/tools/testing/ydb/bin/cloud
+core/tools/testing/ydb/bin/ydbd
