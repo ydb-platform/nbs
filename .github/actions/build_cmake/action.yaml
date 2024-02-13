@@ -90,6 +90,14 @@ runs:
         }
         echo "::endgroup::"
 
+    - name: Create directory listing on s3
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::generate-listing"
+        python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
+        echo "::endgroup::"
+
     - name: show ccache stats
       if: always()
       shell: bash
