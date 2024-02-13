@@ -1613,9 +1613,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
-        // 1 from tablet to tablet proxy, 1 from tablet proxy to read actor
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
-        // 1 to service actor, 1 from read actor to tablet
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
     }
 
@@ -1699,11 +1697,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
-        // 1 from tablet to tablet proxy, 1 from tablet proxy to read actor
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
-        // 1 from read actor to bs proxy, 1 from tablet to bs proxy
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
-        // 1 to service actor, 1 from read actor to tablet
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
     }
 }
