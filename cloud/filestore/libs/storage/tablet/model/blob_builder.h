@@ -4,6 +4,8 @@
 
 #include "blob.h"
 
+#include <cloud/filestore/libs/storage/model/public.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <util/generic/bitops.h>
 
 namespace NCloud::NFileStore::NStorage {

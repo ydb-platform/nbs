@@ -9,7 +9,6 @@ SRCS(
     tablet.cpp
     tablet_counters.cpp
     tablet_schema.cpp
-    utils.cpp
 )
 
 PEERDIR(
