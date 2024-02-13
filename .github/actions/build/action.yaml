@@ -107,7 +107,7 @@ runs:
       shell: bash
       run: |
         echo "::group::generate-listing"
-        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH"
+        sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
         echo "::endgroup::"
 
     - name: show free space

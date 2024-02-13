@@ -81,7 +81,7 @@ runs:
       shell: bash
       run: |
         echo "::group::generate-listing"
-        python3 .github/scripts/index.py "$S3_BUCKET_PATH"
+        python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
         echo "::endgroup::"
 
     - name: show free space
