@@ -142,6 +142,12 @@ jobs:
         if: github.event.pull_request.head.sha != ''
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+      - name: Rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git fetch origin main
+          git rebase origin/main
       - name: Checkout
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
