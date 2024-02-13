@@ -3,7 +3,6 @@ UNITTEST_FOR(cloud/filestore/libs/storage/tablet/model)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
-    block_buffer_ut.cpp
     block_list_ut.cpp
     channels_ut.cpp
     compaction_map_ut.cpp
@@ -14,7 +13,6 @@ SRCS(
     mixed_blocks_ut.cpp
     operation_ut.cpp
     range_locks_ut.cpp
-    range_ut.cpp
     split_range_ut.cpp
     throttling_policy_ut.cpp
 )

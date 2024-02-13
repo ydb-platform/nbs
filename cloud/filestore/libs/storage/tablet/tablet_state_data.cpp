@@ -3,7 +3,7 @@
 #include "profile_log_events.h"
 #include "rebase_logic.h"
 
-#include <cloud/filestore/libs/storage/core/utils.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 

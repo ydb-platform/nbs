@@ -34,7 +34,6 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
-    cloud/filestore/libs/storage/tablet
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
