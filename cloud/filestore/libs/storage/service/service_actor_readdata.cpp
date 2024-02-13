@@ -42,6 +42,7 @@ private:
     IBlockBufferPtr BlockBuffer;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
+    bool ReadDataFallbackEnabled = false;
 
 public:
     TReadDataActor(
@@ -306,6 +307,12 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ReadDataFallbackEnabled) {
+        // we don't need this response anymore
+
+        return;
+    }
+
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
@@ -420,6 +427,8 @@ void TReadDataActor::HandlePoisonPill(
 
 void TReadDataActor::ReadData(const TActorContext& ctx)
 {
+    ReadDataFallbackEnabled = true;
+
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
