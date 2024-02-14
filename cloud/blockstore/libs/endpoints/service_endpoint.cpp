@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/keyring/endpoints.h>
 
@@ -305,11 +306,12 @@ TFuture<NProto::TStopEndpointResponse> TLockService::StopEndpointImpl(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRestoringService final
+class TEndpointService final
     : public TServiceWrapper<IEndpointService>
-    , public std::enable_shared_from_this<TRestoringService>
+    , public std::enable_shared_from_this<TEndpointService>
 {
 private:
+    const TExecutorPtr Executor;
     const NClient::IMetricClientPtr RestoringClient;
     const IEndpointStoragePtr EndpointStorage;
 
@@ -318,12 +320,14 @@ private:
     TAtomic Restored = 0;
 
 public:
-    TRestoringService(
+    TEndpointService(
             IBlockStorePtr service,
             ILoggingServicePtr logging,
+            TExecutorPtr executor,
             IEndpointStoragePtr endpointStorage,
             NClient::IMetricClientPtr restoringClient)
         : TServiceWrapper(std::move(service))
+        , Executor(std::move(executor))
         , RestoringClient(std::move(restoringClient))
         , EndpointStorage(std::move(endpointStorage))
     {
@@ -346,90 +350,24 @@ public:
         return RestoringClient->CollectRequests(collector);
     }
 
-    TFuture<NProto::TStartEndpointResponse> StartEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) override
-    {
-        auto req = *request;
-        auto future = TServiceWrapper::StartEndpoint(
-            std::move(ctx),
-            std::move(request));
+#define ENDPOINT_IMPLEMENT_METHOD(name, ...)                                   \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return Executor->Execute([                                             \
+            ctx = std::move(callContext),                                      \
+            req = std::move(request),                                          \
+            this] () mutable                                                   \
+        {                                                                      \
+            return Do##name(std::move(ctx), std::move(req));                   \
+        });                                                                    \
+    }                                                                          \
+// ENDPOINT_IMPLEMENT_METHOD
 
-        auto weakPtr = weak_from_this();
-        return future.Apply([weakPtr, req] (const auto& f) {
-            auto response = f.GetValue();
-            if (HasError(response)) {
-                return response;
-            }
+    BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_IMPLEMENT_METHOD)
 
-            if (auto ptr = weakPtr.lock()) {
-                if (req.GetPersistent()) {
-                    ptr->AddEndpointToStorage(req);
-                }
-            }
-            return response;
-        });
-    }
-
-    TFuture<NProto::TStopEndpointResponse> StopEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStopEndpointRequest> request) override
-    {
-        auto req = *request;
-        auto future = TServiceWrapper::StopEndpoint(
-            std::move(ctx),
-            std::move(request));
-
-        auto weakPtr = weak_from_this();
-        return future.Apply([weakPtr, req] (const auto& f) {
-            auto response = f.GetValue();
-            if (HasError(response)) {
-                return response;
-            }
-
-            if (auto ptr = weakPtr.lock()) {
-                ptr->EndpointStorage->RemoveEndpoint(req.GetUnixSocketPath());
-            }
-            return response;
-        });
-    }
-
-    TFuture<NProto::TListEndpointsResponse> ListEndpoints(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListEndpointsRequest> request) override
-    {
-        auto future = TServiceWrapper::ListEndpoints(
-            std::move(ctx),
-            std::move(request));
-
-        bool restored = AtomicGet(Restored);
-
-        return future.Apply([restored] (const auto& f) {
-            auto response = f.GetValue();
-            response.SetEndpointsWereRestored(restored);
-            return response;
-        });
-    }
-
-    TFuture<NProto::TKickEndpointResponse> KickEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TKickEndpointRequest> request) override
-    {
-        return KickEndpointImpl(
-            std::move(ctx),
-            std::move(request));
-    }
-
-    TFuture<NProto::TListKeyringsResponse> ListKeyrings(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListKeyringsRequest> request) override
-    {
-        Y_UNUSED(ctx);
-        Y_UNUSED(request);
-
-        auto response = ListKeyringsImpl();
-        return MakeFuture(std::move(response));
-    }
+#undef ENDPOINT_IMPLEMENT_METHOD
 
     TFuture<void> RestoreEndpoints() override
     {
@@ -443,7 +381,58 @@ public:
     }
 
 private:
-    TFuture<NProto::TKickEndpointResponse> KickEndpointImpl(
+    NProto::TStartEndpointResponse DoStartEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStartEndpointRequest> request)
+    {
+        auto req = *request;
+        auto future = TServiceWrapper::StartEndpoint(
+            std::move(ctx),
+            std::move(request));
+
+        auto response = Executor->WaitFor(future);
+        if (HasError(response)) {
+            return response;
+        }
+
+        if (req.GetPersistent()) {
+            AddEndpointToStorage(req);
+        }
+        return response;
+    }
+
+    NProto::TStopEndpointResponse DoStopEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TStopEndpointRequest> request)
+    {
+        auto req = *request;
+        auto future = TServiceWrapper::StopEndpoint(
+            std::move(ctx),
+            std::move(request));
+
+        auto response = Executor->WaitFor(future);
+        if (HasError(response)) {
+            return response;
+        }
+
+        EndpointStorage->RemoveEndpoint(req.GetUnixSocketPath());
+        return response;
+    }
+
+    NProto::TListEndpointsResponse DoListEndpoints(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TListEndpointsRequest> request)
+    {
+        auto future = TServiceWrapper::ListEndpoints(
+            std::move(ctx),
+            std::move(request));
+
+        auto response = Executor->WaitFor(future);
+        response.SetEndpointsWereRestored(AtomicGet(Restored));
+        return response;
+    }
+
+    NProto::TKickEndpointResponse DoKickEndpoint(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TKickEndpointRequest> request)
     {
@@ -451,38 +440,87 @@ private:
             ToString(request->GetKeyringId()));
 
         if (HasError(requestOrError)) {
-            return MakeFuture<NProto::TKickEndpointResponse>(
-                TErrorResponse(requestOrError.GetError()));
+            return TErrorResponse(requestOrError.GetError());
         }
 
         auto startRequest = DeserializeEndpoint<NProto::TStartEndpointRequest>(
             requestOrError.GetResult());
 
         if (!startRequest) {
-            NProto::TKickEndpointResponse response;
-            *response.MutableError() = MakeError(E_INVALID_STATE, TStringBuilder()
+            return TErrorResponse(E_INVALID_STATE, TStringBuilder()
                 << "Failed to deserialize endpoint with key "
                 << request->GetKeyringId());
-            return MakeFuture(std::move(response));
         }
 
         startRequest->MutableHeaders()->MergeFrom(request->GetHeaders());
 
         STORAGE_INFO("Kick StartEndpoint request: " << *startRequest);
-        auto future = StartEndpoint(
+        auto response = DoStartEndpoint(
             std::move(ctx),
             std::move(startRequest));
 
-        return future.Apply([] (const auto& f) {
-            const auto& startResponse = f.GetValue();
-
-            NProto::TKickEndpointResponse response;
-            response.MutableError()->CopyFrom(startResponse.GetError());
-            return response;
-        });
+        return TErrorResponse(response.GetError());
     }
 
-    NProto::TListKeyringsResponse ListKeyringsImpl();
+    NProto::TListKeyringsResponse DoListKeyrings(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TListKeyringsRequest> request)
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(request);
+
+        auto idsOrError = EndpointStorage->GetEndpointIds();
+        if (HasError(idsOrError)) {
+            return TErrorResponse(idsOrError.GetError());
+        }
+
+        NProto::TListKeyringsResponse response;
+        auto& endpoints = *response.MutableEndpoints();
+
+        const auto& storedIds = idsOrError.GetResult();
+        endpoints.Reserve(storedIds.size());
+
+        for (auto keyringId: storedIds) {
+            auto& endpoint = *endpoints.Add();
+            endpoint.SetKeyringId(keyringId);
+
+            auto requestOrError = EndpointStorage->GetEndpoint(keyringId);
+            if (HasError(requestOrError)) {
+                continue;
+            }
+
+            auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(
+                requestOrError.GetResult());
+
+            if (!request) {
+                continue;
+            }
+
+            endpoint.MutableRequest()->CopyFrom(*request);
+        }
+
+        return response;
+    }
+
+    NProto::TDescribeEndpointResponse DoDescribeEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TDescribeEndpointRequest> request)
+    {
+        auto future = TServiceWrapper::DescribeEndpoint(
+            std::move(ctx),
+            std::move(request));
+        return Executor->WaitFor(future);
+    }
+
+    NProto::TRefreshEndpointResponse DoRefreshEndpoint(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+    {
+        auto future = TServiceWrapper::RefreshEndpoint(
+            std::move(ctx),
+            std::move(request));
+        return Executor->WaitFor(future);
+    }
 
     TFuture<void> RestoreEndpointsImpl();
 
@@ -505,42 +543,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TListKeyringsResponse TRestoringService::ListKeyringsImpl()
-{
-    auto idsOrError = EndpointStorage->GetEndpointIds();
-    if (HasError(idsOrError)) {
-        return TErrorResponse(idsOrError.GetError());
-    }
-
-    NProto::TListKeyringsResponse response;
-    auto& endpoints = *response.MutableEndpoints();
-
-    const auto& storedIds = idsOrError.GetResult();
-    endpoints.Reserve(storedIds.size());
-
-    for (auto keyringId: storedIds) {
-        auto& endpoint = *endpoints.Add();
-        endpoint.SetKeyringId(keyringId);
-
-        auto requestOrError = EndpointStorage->GetEndpoint(keyringId);
-        if (HasError(requestOrError)) {
-            continue;
-        }
-
-        auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(
-            requestOrError.GetResult());
-
-        if (!request) {
-            continue;
-        }
-
-        endpoint.MutableRequest()->CopyFrom(*request);
-    }
-
-    return response;
-}
-
-TFuture<void> TRestoringService::RestoreEndpointsImpl()
+TFuture<void> TEndpointService::RestoreEndpointsImpl()
 {
     auto idsOrError = EndpointStorage->GetEndpointIds();
     if (HasError(idsOrError)) {
@@ -619,6 +622,7 @@ IEndpointServicePtr CreateMultipleEndpointService(
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
+    TExecutorPtr executor,
     IEndpointStoragePtr endpointStorage,
     IEndpointManagerPtr endpointManager,
     NProto::TClientConfig clientConfig)
@@ -661,9 +665,10 @@ IEndpointServicePtr CreateMultipleEndpointService(
         logging,
         std::move(serverStats));
 
-    return std::make_shared<TRestoringService>(
+    return std::make_shared<TEndpointService>(
         std::move(safeEndpointService),
         std::move(logging),
+        std::move(executor),
         std::move(endpointStorage),
         std::move(restoringClient));
 }
