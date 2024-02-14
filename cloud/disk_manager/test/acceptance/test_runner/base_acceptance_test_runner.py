@@ -118,9 +118,84 @@ class BaseTestBinaryExecutor:
         return disk_ids
 
 
+def cleanup_previous_acceptance_tests_results(
+        ycp: YcpWrapper,
+        test_type: str,
+        disk_size: int,
+        disk_blocksize: int,
+        entity_ttl: timedelta = timedelta(days=1),
+):
+    entity_accessors = {
+        'disk': (ycp.list_disks, ycp.delete_disk),
+        'snapshot': (ycp.list_snapshots, ycp.delete_snapshot),
+        'image': (ycp.list_images, ycp.delete_image),
+    }
+    disk_size = size_prettifier(disk_size * (1024 ** 3)).lower()
+    disk_blocksize = size_prettifier(disk_blocksize).lower()
+    _logger.info(
+        "Performing cleanup for %s disk size %s, disk block size %s",
+        disk_size,
+        disk_blocksize,
+    )
+    regexps = {
+        entity_type: [
+            re.compile(
+                fr'^acceptance-test-{entity_type}-'
+                fr'{test_type}-{disk_size}-{disk_blocksize}-[0-9]+$',
+            ),
+            re.compile(fr'^acceptance-test-{entity_type}-{test_type}-[0-9]+$')
+        ] for entity_type in entity_accessors
+    }
+    for entity_type, handlers in entity_accessors.items():
+        [lister, deleter] = handlers
+        for entity in lister:
+            should_be_older_than = datetime.now() - entity_ttl
+            if entity.created_at > should_be_older_than:
+                continue
+            for pattern in regexps[entity_type]:
+                if re.match(pattern, entity.name):
+                    _logger.info(
+                        "Deleting %s with name %s",
+                        entity_type, entity.name)
+                    try:
+                        deleter(entity)
+                    except Exception as e:
+                        _logger.error(
+                            "Error while deleting %s with name %s",
+                            entity_type,
+                            entity.name,
+                            exc_info=e,
+                        )
+                    break
+
+
+class BaseResourceCleaner:
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        self._ycp = ycp
+        self._test_type = args.test_type
+        self._instance_name_pattern = re.compile(
+            rf'^acceptance-test-{self._test_type}-[0-9]+$',
+        )
+
+    def cleanup(self):
+        instance_ttl = timedelta(days=1)
+        for instance in self._ycp.list_instances():
+            should_be_older_than = datetime.now() - instance_ttl
+            if instance.created_at > should_be_older_than:
+                continue
+            if not re.match(self._instance_name_pattern, instance.name):
+                continue
+            try:
+                _logger.info("Deleting instance %s", instance.name)
+                self._ycp.delete_instance(instance)
+            except Exception:
+                _logger.error("Error while deleting instance %s", instance.name)
+
+
 class BaseAcceptanceTestRunner(ABC):
 
     _test_binary_executor_type: Type[BaseTestBinaryExecutor]
+    _cleaner_type: Type[BaseResourceCleaner]
 
     @abstractmethod
     def run(self, profiler: common.Profiler):
@@ -135,6 +210,7 @@ class BaseAcceptanceTestRunner(ABC):
         self._resource_ttl_days = args.resource_ttl_days
         self._iodepth = self._args.instance_cores * 4
         self._results_processor = None
+        self._inplace_cleanup = self._args.inplace_cleanup
         if self._args.results_path is not None:
             self._results_processor = common.ResultsProcessorFsBase(
                 service='disk-manager',
@@ -171,72 +247,6 @@ class BaseAcceptanceTestRunner(ABC):
             ycp_requests_template_path=self._args.ycp_requests_template_path,
         )
 
-    def _should_delete_snapshot(self, snapshot: Ycp.Snapshot) -> bool:
-        if not snapshot.name.startswith("acceptance-test-snapshot"):
-            return False
-        older_than = datetime.now() - timedelta(days=self._resource_ttl_days)
-        if snapshot.created_at > older_than:
-            return False
-        return True
-
-    def _should_delete_instance(self, instance: Ycp.Instance):
-        if not instance.name.startswith(
-            f'acceptance-test-{self._args.test_type}'
-        ):
-            return False
-        should_be_older_than = datetime.now() - timedelta(
-            days=self._resource_ttl_days,
-        )
-        if instance.created_at > should_be_older_than:
-            return False
-        return True
-
-    def _should_delete_image(self, image: Ycp.Image):
-        if not image.name.startswith(
-            f'acceptance-test-image'
-        ):
-            return False
-        should_be_older_than = datetime.now() - timedelta(
-            days=self._resource_ttl_days,
-        )
-        if image.created_at > should_be_older_than:
-            return False
-        return True
-
-    def _should_delete_disk(self, disk: Ycp.Disk):
-        if not disk.name.startwith(f'acceptance-test-disk'):
-            return False
-        should_be_older_than = datetime.now() - timedelta(
-            days=self._resource_ttl_days,
-        )
-        if disk.created_at > should_be_older_than:
-            return False
-        return True
-
-    def _cleanup_snapshots(self):
-        for snapshot in self._ycp.list_snapshots():
-            if not self._should_delete_snapshot(snapshot):
-                continue
-            self._ycp.delete_snapshot(snapshot)
-
-    def _cleanup_previous_vms(self):
-        for instance in self._ycp.list_instances():
-            if not self._should_delete_instance(instance):
-                continue
-            self._ycp.delete_instance(instance)
-
-    def _cleanup_images(self):
-        for image in self._ycp.list_images():
-            if not self._should_delete_image(image):
-                continue
-            self._ycp.delete_image(image)
-
-    def _cleanup_disks(self):
-        for disk in self._ycp.list_disks():
-            if not self._should_delete_disk(disk):
-                continue
-            self._ycp.delete_disk(disk)
-
     def _initialize_run(self,
                         profiler: common.Profiler,
                         instance_name: str,
@@ -259,14 +269,17 @@ class BaseAcceptanceTestRunner(ABC):
             auto_delete=not self._args.debug,
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
-        if self._resource_ttl_days is not None:
-            self._cleanup_snapshots()
-            self._cleanup_previous_vms()
-            self._cleanup_images()
-            self._cleanup_disks()
+        if self._inplace_cleanup:
+            self._cleaner_type(self._ycp, self._args).cleanup()
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
         # Execute acceptance test on test disk
+        cleanup_previous_acceptance_tests_results(
+            self._ycp,
+            self._args.test_type,
+            disk.size,
+            disk.block_size,
+        )
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()
         self._test_binary_executor.run(disk.id, disk.size, disk.block_size)

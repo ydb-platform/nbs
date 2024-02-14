@@ -193,6 +193,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='Time to love for snapshots created for tests',
     )
+    test_arguments_group.add_argument(
+        '--inplace-cleanup',
+        dest='inplace_cleanup',
+        action='store_true',
+        default=False,
+        help='Clean up outdated resources in place'
+    )
     args = parser.parse_args()
 
     if args.profile_name is None:

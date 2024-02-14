@@ -1,9 +1,14 @@
+import argparse
 import logging
+import re
+
+from datetime import datetime, timedelta
 
 from cloud.blockstore.pylibs import common
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
-    BaseTestBinaryExecutor
+    BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     generate_test_cases,
     YcpNewDiskPolicy
@@ -23,6 +28,27 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
         self._acceptance_test_cmd.extend([
             '--url-for-create-image-from-url-test',
             f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
+
+
+class AcceptanceTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(AcceptanceTestCleaner, self).__init__(ycp, args)
+        self._instance_name_pattern = re.compile(
+            rf'^acceptance-test-{args.test_type}-'
+            rf'{args.test_suite}-[0-9]+$',
+        )
+        self._disk_ttl = timedelta(days=1)
+
+    def cleanup(self):
+        super().cleanup()
+        for disk in self._ycp.list_disks():
+            should_be_older_than = datetime.now() - self._disk_ttl
+            if disk.created_at > should_be_older_than:
+                continue
+            if not re.match(self._instance_name_pattern, disk.name):
+                continue
+            _logger.info("Deleting disk with name %s", disk.name)
+            self._ycp.delete_disk(disk)
 
 
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
