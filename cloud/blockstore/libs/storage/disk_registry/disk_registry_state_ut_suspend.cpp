@@ -320,6 +320,75 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             UNIT_ASSERT_C(!state.IsSuspendedDevice(d.GetDeviceUUID()), d);
         }
     }
+
+    Y_UNIT_TEST_F(ShouldNotResumeLocalDevicesOnCMSRequest, TFixture)
+    {
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithConfig(MakeConfig(0, {})
+                | WithPoolConfig(
+                    "local-ssd",
+                    NProto::DEVICE_POOL_KIND_LOCAL,
+                    DefaultDeviceSize))
+            .With([] {
+                NProto::TStorageServiceConfig config;
+                config.SetNonReplicatedDontSuspendDevices(false);
+                return CreateStorageConfig(config);
+            }())
+            .Build();
+
+        WriteTx([&] (auto db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            for (const auto& agent: Agents) {
+                auto error = state.RegisterAgent(
+                    db,
+                    agent,
+                    Now(),
+                    &affectedDisks,
+                    &disksToReallocate);
+                UNIT_ASSERT_SUCCESS(error);
+            }
+        });
+
+        for (const auto& agent: Agents) {
+            const auto* config = state.FindAgent(agent.GetAgentId());
+            UNIT_ASSERT_C(config, agent.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL_C(0, config->DevicesSize(), agent.GetAgentId());
+        }
+
+        // add devices to DR's config
+        WriteTx([&] (auto db) {
+            for (const auto& agent: Agents) {
+                for (const auto& d: agent.GetDevices()) {
+                    auto result = state.UpdateCmsDeviceState(
+                        db,
+                        agent.GetAgentId(),
+                        d.GetDeviceName(),
+                        NProto::DEVICE_STATE_ONLINE, Now(),
+                        false   // dryRun
+                    );
+                    UNIT_ASSERT_SUCCESS(result.Error);
+
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        0,
+                        result.DevicesThatNeedToBeCleaned.size(),
+                        d
+                    );
+                }
+            }
+        });
+
+        for (const auto& agent: Agents) {
+            for (const auto& d: agent.GetDevices()) {
+                if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+                    UNIT_ASSERT_C(
+                        state.IsSuspendedDevice(d.GetDeviceUUID()),
+                        d
+                    );
+                }
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

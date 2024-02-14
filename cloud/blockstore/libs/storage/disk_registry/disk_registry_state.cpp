@@ -5101,7 +5101,9 @@ auto TDiskRegistryState::AddNewDevices(
         if (device.GetDeviceName() == path) {
             devices.push_back(&device);
 
-            if (GetDevicePoolKind(device.GetPoolName()) == NProto::DEVICE_POOL_KIND_LOCAL) {
+            if (StorageConfig->GetNonReplicatedDontSuspendDevices() &&
+                GetDevicePoolKind(device.GetPoolName()) == NProto::DEVICE_POOL_KIND_LOCAL)
+            {
                 devicesThatNeedToBeCleaned.push_back(device.GetDeviceUUID());
             }
         }
@@ -5159,7 +5161,9 @@ auto TDiskRegistryState::AddNewDevices(
             << "AddNewDevices: " << JoinSeq(" ", affectedDisks));
     }
 
-    ResumeDevices(now, db, ids);
+    if (StorageConfig->GetNonReplicatedDontSuspendDevices()) {
+        ResumeDevices(now, db, ids);
+    }
 
     return {
         .Error = std::move(error),
@@ -5332,8 +5336,9 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 result.Timeout);
 
             if (!HasError(result.Error)
-                    && IsDirtyDevice(device->GetDeviceUUID())
-                    && device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
+                    && device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
+                    && StorageConfig->GetNonReplicatedDontSuspendDevices()
+                    && IsDirtyDevice(device->GetDeviceUUID()))
             {
                 result.DevicesThatNeedToBeCleaned.push_back(device->GetDeviceUUID());
             }
