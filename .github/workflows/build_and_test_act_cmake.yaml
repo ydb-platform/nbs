@@ -25,6 +25,7 @@ jobs:
     - name: Checkout PR
       uses: actions/checkout@v4
       with:
+        submodules: true
         ref: refs/heads/stable-23-3
 
     - name: Configure NCP
