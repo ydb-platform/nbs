@@ -86,6 +86,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct Sessions: TTableSchema<2>
@@ -98,6 +99,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<ClientId, SessionId, Proto>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct SessionHandles: TTableSchema<3>
@@ -110,6 +112,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<SessionId, Handle, Proto>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct SessionLocks: TTableSchema<4>
@@ -122,6 +125,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<SessionId, LockId, Proto>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct Nodes: TTableSchema<5>
@@ -139,6 +143,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct Nodes_Ver: TTableSchema<6>
@@ -158,6 +163,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NodeAttrs: TTableSchema<7>
@@ -179,6 +185,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NodeAttrs_Ver: TTableSchema<8>
@@ -202,6 +209,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NodeRefs: TTableSchema<9>
@@ -221,6 +229,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NodeRefs_Ver: TTableSchema<10>
@@ -242,6 +251,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct FreshBlocks: TTableSchema<11>
@@ -264,6 +274,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<FreshChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct MixedBlocks: TTableSchema<12>
@@ -289,6 +300,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct DeletionMarkers: TTableSchema<13>
@@ -310,6 +322,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NewBlobs: TTableSchema<14>
@@ -321,6 +334,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<BlobCommitId, BlobUniqueId>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct GarbageBlobs: TTableSchema<15>
@@ -332,6 +346,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<BlobCommitId, BlobUniqueId>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct Checkpoints: TTableSchema<16>
@@ -343,6 +358,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<CheckpointId, Proto>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct CheckpointNodes: TTableSchema<17>
@@ -354,6 +370,7 @@ struct TIndexTabletSchema
         using TColumns = TableColumns<CheckpointId, NodeId>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct CheckpointBlobs: TTableSchema<18>
@@ -378,6 +395,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct FreshBytes: TTableSchema<19>
@@ -399,6 +417,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<FreshChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct CompactionMap: TTableSchema<20>
@@ -416,6 +435,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct SessionDupCache: TTableSchema<21>
@@ -433,6 +453,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct TabletStorageInfo: TTableSchema<22>
@@ -448,6 +469,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct TruncateQueue: TTableSchema<23>
@@ -463,6 +485,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
 
@@ -479,6 +502,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     using TTables = SchemaTables<
