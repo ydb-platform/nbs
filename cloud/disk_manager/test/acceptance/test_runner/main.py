@@ -65,6 +65,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='url for s3 to store images',
     )
+    acceptance_test_type_parser.add_argument(
+        '--bucket-location',
+        type=str,
+        dest='bucket_location',
+        default=None,
+        help='s3 bucket location',
+    )
 
     # eternal test type stuff
     eternal_test_type_parser = subparsers.add_parser(
