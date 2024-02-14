@@ -193,6 +193,7 @@ struct vhd_vring {
         void *avail;
         struct vhd_memory_map *mm;
         struct vhd_memory_log *log;
+        bool enabled;
     } shadow_vq;
 
     /*
