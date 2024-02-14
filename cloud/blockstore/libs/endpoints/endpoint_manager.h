@@ -51,7 +51,7 @@ IEndpointManagerPtr CreateEndpointManager(
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     TString nbdSocketSuffix);
 
-bool IsSameStartEndpointRequests(
+bool AreSameStartEndpointRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right);
 
