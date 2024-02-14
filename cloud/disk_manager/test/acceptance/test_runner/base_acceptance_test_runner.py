@@ -16,6 +16,7 @@ from typing import List, Type
 from .lib import (
     check_ssh_connection,
     create_ycp,
+    size_prettifier,
     Error,
     YcpNewInstancePolicy,
     YcpFindDiskPolicy,
@@ -53,14 +54,12 @@ class BaseTestBinaryExecutor:
         ensure_path_exists(cached_ids_folder)
         self._output_disk_ids_file = cached_ids_folder / 'disks.txt'
         self._output_snapshot_ids_file = cached_ids_folder / 'snapshots.txt'
-
         self._acceptance_test_cmd = [
             f'{args.acceptance_test}',
             '--profile', f'{args.profile_name}',
             '--folder-id', f'{ycp._folder_desc.folder_id}',
             '--zone-id', f'{args.zone_id}',
             '--output-disk-ids', str(self._output_disk_ids_file),
-            '--suffix', f'{self._entity_suffix}',
         ]
         if ycp.ycp_config_path is not None:
             self._acceptance_test_cmd.extend(['--ycp-config-path', f'{ycp.ycp_config_path}'])
@@ -74,7 +73,17 @@ class BaseTestBinaryExecutor:
 
         self._s3_host = getattr(args, 's3_host', None)
 
-    def run(self, disk_id: str) -> None:
+    def run(self, disk_id: str, disk_size: int, disk_blocksize: int) -> None:
+        self._acceptance_test_cmd.extend(
+            [
+                '--suffix',
+                (
+                    f'{self._entity_suffix}-'
+                    f'{size_prettifier(disk_size * (1024 ** 3))}-'
+                    f'{size_prettifier(disk_blocksize)}'.lower()
+                ),
+            ]
+        )
         self._acceptance_test_cmd.extend(['--src-disk-ids', disk_id])
         with subprocess.Popen(self._acceptance_test_cmd,
                               stdout=subprocess.PIPE,
@@ -188,7 +197,7 @@ class BaseAcceptanceTestRunner(ABC):
         # Execute acceptance test on test disk
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()
-        self._test_binary_executor.run(disk.id)
+        self._test_binary_executor.run(disk.id, disk.size, disk.block_size)
         disk_ids = self._test_binary_executor.get_disk_ids()
 
         if self._args.conserve_snapshots:
