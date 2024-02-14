@@ -76,17 +76,17 @@ int main(int argc, const char** argv)
     for (ui32 rangeIdx: options.Ranges) {
         Cout << "Start validation of " << rangeIdx << " range" << Endl;
 
-        const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
+        const auto& config = configHolder->GetConfig().Ranges()[rangeIdx];
 
-        ui64 len = config.GetRequestCount();
-        ui64 startOffset = config.GetStartOffset();
-        ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
+        ui64 len = config.RequestCount();
+        ui64 startOffset = config.StartOffset();
+        ui64 requestSize = config.RequestBlockCount() * 4_KB;
 
         TVector<ui64> expected(len);
 
-        ui64 step = config.GetStep();
-        ui64 curBlockIdx = config.GetLastBlockIdx();
-        ui64 curNum = config.GetNumberToWrite();
+        ui64 step = config.Step();
+        ui64 curBlockIdx = config.LastBlockIdx();
+        ui64 curNum = config.NumberToWrite();
         ui64 cnt = 0;
         while (cnt < len && curNum != 0) {
             curBlockIdx = (curBlockIdx + len - step) % len;
