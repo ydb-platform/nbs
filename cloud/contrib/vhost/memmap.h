@@ -12,6 +12,9 @@ struct vhd_memory_map;
 
 struct vhd_memory_map *vhd_memmap_new(int (*map_cb)(void *, size_t),
                                       int (*unmap_cb)(void *, size_t));
+struct vhd_memory_map *vhd_memmap_dup(struct vhd_memory_map *mm);
+
+size_t vhd_memmap_max_memslots(void);
 
 int vhd_memmap_add_slot(struct vhd_memory_map *mm, uint64_t gpa, uint64_t uva,
                         size_t size, int fd, off_t offset);

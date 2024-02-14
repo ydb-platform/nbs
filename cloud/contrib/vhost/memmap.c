@@ -62,6 +62,11 @@ static void region_init_id(struct vhd_memory_region *reg, int fd)
  */
 #define VHD_RAM_SLOTS_MAX 32
 
+size_t vhd_memmap_max_memslots(void)
+{
+    return VHD_RAM_SLOTS_MAX;
+}
+
 struct vhd_memory_map {
     struct objref ref;
 
@@ -332,6 +337,24 @@ struct vhd_memory_map *vhd_memmap_new(int (*map_cb)(void *, size_t),
 
     objref_init(&mm->ref, memmap_release);
     return mm;
+}
+
+struct vhd_memory_map *vhd_memmap_dup(struct vhd_memory_map *mm)
+{
+    size_t i;
+    struct vhd_memory_map *new_mm = vhd_alloc(sizeof(*mm));
+
+    new_mm->callbacks = mm->callbacks;
+    new_mm->num = mm->num;
+    objref_init(&new_mm->ref, memmap_release);
+
+    for (i = 0; i < mm->num; i++) {
+        struct vhd_memory_region *reg = mm->regions[i];
+        region_ref(reg);
+        new_mm->regions[i] = reg;
+    }
+
+    return new_mm;
 }
 
 int vhd_memmap_add_slot(struct vhd_memory_map *mm, uint64_t gpa, uint64_t uva,

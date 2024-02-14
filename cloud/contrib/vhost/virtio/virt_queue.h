@@ -73,6 +73,12 @@ struct virtio_virtq {
      */
     int notify_fd;
 
+    /*
+     * Whether the processing of this virtq is enabled.
+     * Can be toggled after virtq is started.
+     */
+    bool enabled;
+
     /* inflight information */
     uint64_t req_cnt;
     struct inflight_split_region *inflight_region;
