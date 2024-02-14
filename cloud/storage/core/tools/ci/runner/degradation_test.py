@@ -32,7 +32,9 @@ OVERALL_PERIOD_DAYS = 14
 LAST_PERIOD_DAYS = 5
 
 # Use median as the aggregate function for the test case results.
-AGGREGATE_FUNCTION = lambda x: sorted(x)[len(x) // 2] if len(x) > 0 else 0
+def AGGREGATE_FUNCTION(x):
+    filtered = list(filter(lambda value: type(value) in [int, float], x))
+    return sorted(filtered)[len(filtered) // 2] if len(filtered) > 0 else 0
 
 
 T = tp.TypeVar("T")
@@ -44,15 +46,14 @@ def extract_metrics_values(
     date_getter: tp.Callable[[T], datetime.date],
     period_days: int,
 ) -> float:
-    return AGGREGATE_FUNCTION(
-        [
-            data_getter(x)
-            for x in history
-            if date_getter(x)
-            >= datetime.datetime.now().date()
-            - datetime.timedelta(days=period_days)
-        ]
-    )
+    data = [
+        data_getter(x)
+        for x in history
+        if date_getter(x)
+        >= datetime.datetime.now().date()
+        - datetime.timedelta(days=period_days)
+    ]
+    return AGGREGATE_FUNCTION(data)
 
 
 def generate_metrics_report(
@@ -107,6 +108,7 @@ def generate_reports_local(
     suite_kinds: tp.Sequence[str],
     reports: list[tp.Dict[str, tp.Any]],
     cluster: str,
+    filter_name: str | None = None,
 ) -> None:
     for suite_kind in suite_kinds:
         results_path = os.path.join(ROOT_DIR, "results", suite_kind, cluster)
@@ -120,6 +122,8 @@ def generate_reports_local(
         )
 
         for test_tag, history in by_all_time.items():
+            if filter_name is not None and filter_name in test_tag:
+                continue
             for getter, sensor_name in [
                 (lambda x: x.read_iops, "read_iops"),
                 (lambda x: x.write_iops, "write_iops"),
@@ -207,9 +211,9 @@ def generate_reports_monitoring(
     reports: list[tp.Dict[str, tp.Any]],
     sensors: list[tp.Dict[str, tp.Any]],
 ) -> None:
-    generated_reports = []
     for sensor in sensors:
         print(sensor)
+        generated_reports = []
 
         results = get_monitoring_results(
             query=sensor["query"],
@@ -232,12 +236,12 @@ def generate_reports_monitoring(
                 description=f"{sensor['url']} {sensor['query']}",
             )
             generated_reports.append(report)
-    for _, group in itertools.groupby(
-        sorted(generated_reports, key=lambda x: x["name"]),
-        key=lambda x: (x["improved"], x["degraded"])
-    ):
-        # Extracting only one outlying report from each group
-        reports.append(list(group)[0])
+        # Remove duplicate/irrelevant reports
+        for _, group in itertools.groupby(
+            sorted(generated_reports, key=lambda x: x["name"]),
+            key=lambda x: (x["improved"], x["degraded"])
+        ):
+            reports.append(list(group)[0])
 
 
 if __name__ == "__main__":
@@ -250,7 +254,7 @@ if __name__ == "__main__":
 
     reports = []
 
-    generate_reports_local(["fio", "nfs_fio"], reports, cluster)
+    generate_reports_local(["fio", "nfs_fio"], reports, cluster, "hdd")
     generate_reports_monitoring(profile, reports, sensors)
 
     reports.sort(key=lambda x: x.get("status", "ok"))
