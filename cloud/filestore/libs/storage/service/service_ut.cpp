@@ -1539,12 +1539,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        TString smallData =
-            TString(100, 'x') + TString(200, 'y') + TString(300, 'z');
-        service.WriteData(headers, fs, nodeId, handle, 0, smallData);
+        // fresh bytes
+        auto data = TString(100, 'x') + TString(200, 'y') + TString(300, 'z');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, smallData.size());
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), smallData);
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        // fresh blocks
+        data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        // blobs
+        data = TString(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        // mix
+        auto patch = TString(4_KB, 'c');
+        const ui32 patchOffset = 20_KB;
+        service.WriteData(headers, fs, nodeId, handle, patchOffset, patch);
+        readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        memcpy(data.begin() + patchOffset, patch.Data(), patch.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)

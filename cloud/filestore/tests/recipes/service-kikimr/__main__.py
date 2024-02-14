@@ -3,6 +3,7 @@ import logging
 import os
 
 import yatest.common as common
+import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
@@ -31,6 +32,7 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
+    parser.add_argument("--storage-config-patch", action="store", default=None)
     args = parser.parse_args(argv)
 
     kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
@@ -64,6 +66,11 @@ def start(argv):
     server_config = TServerAppConfig()
     server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     storage_config = TStorageConfig()
+    if args.storage_config_patch:
+        with open(common.source_path(args.storage_config_patch)) as p:
+            storage_config = text_format.Parse(
+                p.read(),
+                TStorageConfig())
     if access_service_port:
         server_config.ServerConfig.RootCertsFile = common.source_path("cloud/filestore/tests/certs/server.crt")
 
