@@ -423,7 +423,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
         WaitAll(futures).Wait();
 
         TSimpleStats prevStats;
-        auto stats = Server->GetStats(prevStats);
+        TSimpleStats stats;
+
+        for (int i = 0; i != 5; ++i) {
+            stats = Server->GetStats(prevStats);
+            if (stats.Completed == requestCount) {
+                break;
+            }
+            Sleep(TDuration::Seconds(1));
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Submitted);
         UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Completed);
