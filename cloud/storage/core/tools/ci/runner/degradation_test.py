@@ -6,6 +6,7 @@
 # test performance is obtained from the monitoring system.
 
 import datetime
+import itertools
 import json
 import os
 import subprocess
@@ -120,10 +121,10 @@ def generate_reports_local(
 
         for test_tag, history in by_all_time.items():
             for getter, sensor_name in [
-                (lambda x: x.read_iops, "read_iops"), 
-                (lambda x: x.write_iops, "write_iops"), 
-                (lambda x: x.read_bw, "read_bw"), 
-                (lambda x: x.write_bw, "write_bw") 
+                (lambda x: x.read_iops, "read_iops"),
+                (lambda x: x.write_iops, "write_iops"),
+                (lambda x: x.read_bw, "read_bw"),
+                (lambda x: x.write_bw, "write_bw")
             ]:
                 report = generate_metrics_report(
                     history.points,
@@ -206,6 +207,7 @@ def generate_reports_monitoring(
     reports: list[tp.Dict[str, tp.Any]],
     sensors: list[tp.Dict[str, tp.Any]],
 ) -> None:
+    generated_reports = []
     for sensor in sensors:
         print(sensor)
 
@@ -229,7 +231,13 @@ def generate_reports_monitoring(
                 date=today,
                 description=f"{sensor['url']} {sensor['query']}",
             )
-            reports.append(report)
+            generated_reports.append(report)
+    for _, group in itertools.groupby(
+        sorted(generated_reports, key=lambda x: x["name"]),
+        key=lambda x: (x["improved"], x["degraded"])
+    ):
+        # Extracting only one outlying report from each group
+        reports.append(list(group)[0])
 
 
 if __name__ == "__main__":
