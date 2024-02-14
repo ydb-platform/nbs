@@ -515,6 +515,7 @@ void TBootstrapBase::Init()
         RequestStats,
         VolumeStats,
         ServerStats,
+        Executor,
         std::move(endpointStorage),
         std::move(endpointManager),
         Configs->EndpointConfig->GetClientConfig());
