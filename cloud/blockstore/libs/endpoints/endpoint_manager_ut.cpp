@@ -390,8 +390,6 @@ IEndpointManagerPtr CreateEndpointManager(
         bootstrap.Executor,
         sessionManagerOptions);
 
-    auto eventProxy = CreateEndpointEventProxy();
-
     return NServer::CreateEndpointManager(
         bootstrap.Logging,
         serverStats,
@@ -1137,7 +1135,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         google::protobuf::util::MessageDifferencer comparator;
         UNIT_ASSERT(!comparator.Equals(request1, request2));
 
-        UNIT_ASSERT(IsSameStartEndpointRequests(request1, request2));
+        UNIT_ASSERT(AreSameStartEndpointRequests(request1, request2));
     }
 
     // NBS-3018, CLOUD-98154
