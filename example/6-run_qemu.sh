@@ -54,12 +54,12 @@ do
     esac
 done
 
-if [ -z "$diskid" ] then
+if [ -z "$diskid" ] ; then
     echo "Disk id shouldn't be empty"
     exit 1
 fi
 
-if [ -z "$socket" ] then
+if [ -z "$socket" ] ; then
     echo "Socket path shouldn't be empty"
     exit 1
 fi

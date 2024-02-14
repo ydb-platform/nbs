@@ -2,6 +2,7 @@
 
 DATA_DIR="data"
 YDBD="./ydbd"
+export LD_LIBRARY_PATH=$(dirname $(readlink ydbd))
 
 echo "DefineBox"
 $YDBD -s grpc://localhost:9001 admin bs config invoke --proto-file dynamic/DefineBox.txt

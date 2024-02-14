@@ -1,9 +1,10 @@
 # Setup for local debugging
 
 ## Build binaries from sources
-1. Build ydbd using the instructions from https://github.com/ydb-platform/ydb/blob/main/BUILD.md
-2. Build nbsd, blockstore-client, diskagentd, blockstore-nbd using the instructions from https://github.com/ydb-platform/nbs/blob/main/example/BUILD.md
-3. Copy all those tools to current directory
+1. Build nbsd, blockstore-client, diskagentd, blockstore-nbd
+```bash
+ya make cloud/blockstore/buildall -r
+```
 
 ## Prepare current directory
 ```bash
