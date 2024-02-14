@@ -15,12 +15,12 @@ These tests can't be launched locally.
   * Images can be optimized for fast provisioning, this way a pool of overlay YDB blob storage based disks is created. Initial image is still stored in S3 or in YDB.
 
 ## Test types
-* `acceptance`
-* `eternal`
-* `sync`
+* `acceptance` - checks if disks and images are successfully created from snapshots, disks and images. Also contains a test for disk from url creation. 
+* `eternal` - checks if disks, images and snapshots are successfully created from each other, but the initial disk is taken from the previous test. 
+* `sync` - creates a filesystem on the disk and synchronizes data before snapshot creation, checks if files created from images are the same.
 
 ## `acceptance-test` binary
-This binary is used in most tests and performs the following 3 test suites per each source disk:
+This binary is used in `acceptance` and `eternal` tests and performs the following 3 test suites per each source disk:
 1. `mainTest` 
    * creates a snapshot-1 from the source disk
    * creates a snapshot-2 from the same source disk
@@ -76,14 +76,6 @@ To run tests the entrypoint is `disk-manager-ci-acceptance-test-suite`, which in
 $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test <repo_root>/cloud/disk_manager/test/acceptance/acceptance-test --instance-cores 16 --instance-ram 16 --verbose acceptance --test-suite default --verify-test <repo_root>/cloud/blockstore/tools/testing/verify-test/verify-test
 ```
 
-### Leaked resources
-There is a possibility when the test runner can leave leaked resources inside the cloud. So if it is happened:
-1. Check and remove all leaks of `acceptance-test` with suffix `acceptance`.
-2. Look to the `disk-artifact` file and delete all disks from there (if there is no any `disk-artifact` file, try to manually find and delete disks, created by `acceptance-test` with the instruction from the first step).
-3. If you add `--conserve-snapshots` flag, than look to the `snapshot-artifact` file and delete all snapshots from there.
-4. Find instance inside the cluster with the name `acceptance-test-acceptance-<test-suite>-<timestamp>` and delete it manually.
-5. Find disk inside the cluster with the name `acceptance-test-acceptance-<test-suite>-<timestamp>` and delete it manually.
-
 ## `eternal` test type
 
 ### Description
@@ -108,15 +100,7 @@ There is a possibility when the test runner can leave leaked resources inside th
 $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test <repo_root>/cloud/disk_manager/test/acceptance/acceptance-test --instance-cores 16 --instance-ram 16 --verbose eternal --disk-size 1024 --cmp-util <repo_root>/cloud/disk_manager/test/acceptance/cmp/acceptance-cmp
 ```
 
-### Leaked resources
-There is a possibility when the test runner can leave leaked resources inside the cloud. So if it is happened:
-1. Check and remove all leaks of `acceptance-test` with suffix `eternal`
-2. Look to the `disk-artifact` file and delete all disks from there (if there is no any `disk-artifact` file, try to manually find and delete disks, created by `acceptance-test` with the instruction from the first step).
-3. If you add `--conserve-snapshots` flag, than look to the `snapshot-artifact` file and delete all snapshots from there.
-4. Find instance inside the cluster with the name `acceptance-test-eternal-<timestamp>` and delete it manually.
-5. Find disk inside the cluster with the name `acceptance-test-eternal-<disk_size>-<disk_blocksize>-<timestamp>` and delete it manually.
-
-## "sync" test type
+## `sync` test type
 
 ### Description
 1. Creates instance.
@@ -129,6 +113,7 @@ There is a possibility when the test runner can leave leaked resources inside th
 8. Creates a snapshot with name `sync-acceptance-test-snapshot-<timestamp>` from the disk with files.
 9. Creates a disk `acceptance-test-sync-<size>-<block-size>-<timestamp>-from-snapshot` from the snapshot
 10. Attaches the disk and compares files checksums
+
 **NOTE:** Source disk is not deleted after the test is finished. It must be deleted manually!
 
 ### Example
@@ -136,10 +121,36 @@ There is a possibility when the test runner can leave leaked resources inside th
 $ ./disk-manager-ci-acceptance-test-suite --cluster <cluster> --acceptance-test <repo_root>/cloud/disk_manager/test/acceptance/acceptance-test --instance-cores 16 --instance-ram 16 --verbose sync --disk-size 1024
 ```
 
-### Leaked resources
-There is a possibility when the test runner can leave leaked resources inside the cloud. So if it is happened:
-1. Check and remove all leaks of `acceptance-test` with suffix `sync`
-2. Look to the `disk-artifact` file and delete all disks from there (if there is no any `disk-artifact` file, try to manually find and delete disks, created by `acceptance-test` with the instruction from the first step).
-3. If you add `--conserve-snapshots` flag, than look to the `snapshot-artifact` file and delete all snapshots from there.
-4. Find instance inside the cluster with the name `acceptance-test-sync-<timestamp>` and delete it manually.
-5. Find disk inside the cluster with the name `acceptance-test-sync-<disk_size>-<disk_blocksize>-<timestamp>` and delete it manually.
+### Leaked resources and cleanup process:
+Here's the list of the resources and regular expressions matching those resources:
+* For `acceptance` tests: 
+  * For instances: `^acceptance-test-acceptance-(small|medium|big|enormous)-[0-9]+$`
+  * For disks:
+    - `^acceptance-test-acceptance-(small|medium|big|enormous)-[0-9]+$`
+    - `^acceptance-test-disk-acceptance-[0-9]+$` (These disks are created by previous tests versions)
+    - `^acceptance-test-disk-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+  * For images:
+    - `^acceptance-test-image-acceptance-[0-9]+$` (These images are created by previous tests versions)
+    - `^acceptance-test-image-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+  * For snapshots:
+    - `^acceptance-test-snapshot-acceptance-[0-9]+$` (These snapshots are created by previous tests versions)
+    - `^acceptance-test-snapshot-acceptance-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+* For `eternal` tests
+  * For instances: `^acceptance-test-eternal-[0-9]+$`
+  * For disks:
+    * `^acceptance-test-eternal-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+$` (This disk is a base disk)
+    * `^acceptance-test-disk-eternal-[0-9]+$` (These disks are created by previous tests versions)
+    * `^acceptance-test-disk-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+  * For images:
+    * `^acceptance-test-image-eternal-[0-9]+$` (These images are created by previous tests versions)
+    * `^acceptance-test-image-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+  * For snapshots:
+    * `^acceptance-test-snapshot-eternal-[0-9]+$` (These snapshots are created by previous tests versions)
+    * `^acceptance-test-snapshot-eternal-[0-9]+(tib|gib|mib|kib|b)-[0-9]+(tib|gib|mib|kib|b)-[0-9]+$`
+* For sync tests:
+  * For instances: `^acceptance-test-sync-[0-9]+$`
+  * For disks:
+    * `^acceptance-test-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+` (This disk is a base disk)
+    * `^acceptance-test-sync-[0-9]+(b|kib|mib|gib|tib)-[0-9]+(b|kib|mib|gib|tib)-[0-9]+-from-snapshot$`
+  * For snapshots: `^sync-acceptance-test-snapshot-.*$`
+Note that for the `sync` and `eternal` tests, at least on "base" disk should be kept present, because sync and eternal tests check incremental snapshots.
