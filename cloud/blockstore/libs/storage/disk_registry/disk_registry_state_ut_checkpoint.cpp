@@ -24,6 +24,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 AvailableBlockSizes[] =
+    {4096, 8192, 16384, 32768, 65536, 131072};
+
 TDiskRegistryState MakeDiskRegistryState()
 {
     auto agentConfig1 = AgentConfig(
@@ -62,7 +65,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
     using TCreateDiskFunc = std::function<
         void(TDiskRegistryState & state, TDiskRegistryDatabase db)>;
 
-    void DoShouldCreateCheckpointForMirrorDisk(TCreateDiskFunc createDisk)
+    void DoShouldCreateCheckpointForDiskRegistryBasedDisk(
+        TCreateDiskFunc createDisk)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -148,25 +152,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
 
     Y_UNIT_TEST(ShouldCreateCheckpointForDiskRegistryBasedDisk)
     {
-        DoShouldCreateCheckpointForMirrorDisk(
-            [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
-            {
-                TVector<TDeviceConfig> devices;
-                auto error = AllocateDisk(
-                    db,
-                    state,
-                    "disk-1",
-                    "",   // placementGroupId
-                    0,    // placementPartitionIndex
-                    30_GB,
-                    devices);
-                UNIT_ASSERT_SUCCESS(error);
-            });
+        for (ui32 blockSize: AvailableBlockSizes) {
+            DoShouldCreateCheckpointForDiskRegistryBasedDisk(
+                [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
+                {
+                    TVector<TDeviceConfig> devices;
+                    auto error = AllocateDisk(
+                        db,
+                        state,
+                        "disk-1",
+                        "",   // placementGroupId
+                        0,    // placementPartitionIndex
+                        30_GB,
+                        devices,
+                        TInstant::Seconds(100),
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                        TString(),   // poolName
+                        blockSize);
+                    UNIT_ASSERT_SUCCESS(error);
+                });
+        }
     }
 
-    Y_UNIT_TEST(ShouldCreateCheckpointForMirrorDisk)
+    Y_UNIT_TEST(ShouldCreateCheckpointForMirrorDisk8192)
     {
-        DoShouldCreateCheckpointForMirrorDisk(
+        for (ui32 blockSize: AvailableBlockSizes) {
+        DoShouldCreateCheckpointForDiskRegistryBasedDisk(
             [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
@@ -182,12 +193,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     devices,
                     replicas,
                     migrations,
-                    deviceReplacementIds);
+                    deviceReplacementIds,
+                    TInstant::Seconds(100),
+                    NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                    blockSize);
                 UNIT_ASSERT_SUCCESS(error);
             });
+        }
     }
 
-    Y_UNIT_TEST(ShouldNotCreatWhenNotEnoughFreeSpace)
+    Y_UNIT_TEST(ShouldNotCreateWhenNotEnoughFreeSpace)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -233,7 +248,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             });
     }
 
-    Y_UNIT_TEST(ShouldCreatMultipleCheckpoints)
+    Y_UNIT_TEST(ShouldCreateMultipleCheckpoints)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
