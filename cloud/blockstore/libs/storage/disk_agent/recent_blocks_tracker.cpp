@@ -158,6 +158,11 @@ bool TRecentBlocksTracker::CheckInflight(
         });
 }
 
+bool TRecentBlocksTracker::HasInflight() const
+{
+    return !InflightBlocks.empty();
+}
+
 void TRecentBlocksTracker::AddInflight(
     ui64 requestId,
     const TBlockRange64& range)

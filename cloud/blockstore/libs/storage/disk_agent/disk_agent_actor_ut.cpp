@@ -771,6 +771,97 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectSecureEraseWhenInflightIosPresent)
+    {
+        TTestBasicRuntime runtime;
+
+        const TVector<TString> uuids = {"MemoryDevice1"};
+
+        auto env = TTestEnvBuilder(runtime)
+                       .With(DiskAgentConfig(uuids))
+                       .With([] {
+                           NProto::TStorageServiceConfig config;
+                           config.SetRejectLateRequestsAtDiskAgentEnabled(true);
+                           return config;
+                       }())
+                       .Build();
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TString clientId = "client-1";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        // Steal TEvWriteOrZeroCompleted message.
+        std::vector<std::unique_ptr<IEventHandle>> stolenWriteCompletedRequests;
+        auto stealFirstDeviceRequest = [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgentPrivate::EvWriteOrZeroCompleted)
+            {
+                stolenWriteCompletedRequests.push_back(
+                    std::unique_ptr<IEventHandle>{event.Release()});
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldObserverFunc = runtime.SetObserverFunc(stealFirstDeviceRequest);
+
+        auto sendWriteRequest = [&](ui64 volumeRequestId,
+                                    ui64 blockStart,
+                                    ui32 blockCount) {
+            auto request =
+                std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksRequest>();
+            request->Record.MutableHeaders()->SetClientId(clientId);
+            request->Record.SetDeviceUUID(uuids[0]);
+            request->Record.SetStartIndex(blockStart);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetVolumeRequestId(volumeRequestId);
+
+            auto sgList = ResizeIOVector(
+                *request->Record.MutableBlocks(),
+                1,
+                blockCount * DefaultBlockSize);
+
+            for (auto& buffer : sgList) {
+                memset(const_cast<char*>(buffer.Data()), 'Y', buffer.Size());
+            }
+
+            diskAgent.SendRequest(MakeDiskAgentServiceId(), std::move(request));
+        };
+
+        // Send write request. It's message TWriteOrZeroCompleted will be stolen.
+        sendWriteRequest(100, 1024, 10);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!stolenWriteCompletedRequests.empty());
+
+        // N.B. We are delaying the internal TEvWriteOrZeroCompleted request.
+        // The response to the client was not delayed, so here we receive write and response.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            diskAgent.RecvWriteDeviceBlocksResponse()->GetStatus());
+
+        // secure erase will be rejected since we have inflight write
+        diskAgent.SendSecureEraseDeviceRequest(uuids[0]);
+        auto response = diskAgent.RecvSecureEraseDeviceResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            response->Record.GetError().GetCode());
+
+        auto counter = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentSecureEraseDuringIo",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 1);
+    }
+
     Y_UNIT_TEST(ShouldRejectMultideviceOverlappedRequests)
     {
         TTestBasicRuntime runtime;
@@ -2861,6 +2952,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             .With(spdk)
             .Build();
 
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
 
@@ -2894,6 +2988,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         };
 
         io(E_REJECTED);
+
+        auto counter = counters->GetCounter(
+            "AppCriticalEvents/DiskAgentIoDuringSecureErase",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
 
         spdk->SecureEraseResult.SetValue(NProto::TError());
         runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(10));
