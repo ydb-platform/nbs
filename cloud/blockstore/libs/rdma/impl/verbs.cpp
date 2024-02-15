@@ -133,22 +133,27 @@ struct TVerbs
     bool PollCompletionQueue(ibv_cq* cq, ICompletionHandler* handler) override
     {
         ibv_wc wc[MAX_COMPLETIONS_PER_POLL];
+        bool gotWorkCompletions = false;
 
-        int res = ibv_poll_cq(cq, MAX_COMPLETIONS_PER_POLL, wc);
-        if (res == 0) {
-            return false;   // didn't handle any requests
+        while (true) {
+            int res = ibv_poll_cq(cq, MAX_COMPLETIONS_PER_POLL, wc);
+            if (res == 0) {
+                break;
+            }
+
+            if (res < 0) {
+                errno = res;
+                RDMA_THROW_ERROR("ibv_poll_cq");
+            }
+
+            for (int i = 0; i < res; i++) {
+                handler->HandleCompletionEvent(&wc[i]);
+            }
+
+            gotWorkCompletions = true;
         }
 
-        if (res < 0) {
-            errno = res;
-            RDMA_THROW_ERROR("ibv_poll_cq");
-        }
-
-        for (int i = 0; i < res; i++) {
-            handler->HandleCompletionEvent(&wc[i]);
-        }
-
-        return true;
+        return gotWorkCompletions;
     }
 
     void PostSend(ibv_qp* qp, ibv_send_wr* wr) override
