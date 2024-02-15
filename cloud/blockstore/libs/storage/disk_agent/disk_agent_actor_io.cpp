@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -182,6 +183,7 @@ void TDiskAgentActor::PerformIO(
         clientId.c_str());
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
+        ReportDiskAgentIoDuringSecureErase();
         replyError(E_REJECTED, "Secure erase in progress");
         return;
     }
