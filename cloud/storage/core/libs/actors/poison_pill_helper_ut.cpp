@@ -87,9 +87,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TParentActor: public TActor<TParentActor>
+class TParentActor
+    : public TActor<TParentActor>
+    , IPoisonPillHelperOwner
 {
 private:
+    using TBase = TActor<TParentActor>;
     TPoisonPillHelper PoisonPillHelper;
     ui32 ChildCount;
 
@@ -99,6 +102,11 @@ public:
         , PoisonPillHelper(this)
         , ChildCount(childCount)
     {}
+
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        TBase::Die(ctx);
+    }
 
 private:
     void Main(TAutoPtr<IEventHandle>& ev)
