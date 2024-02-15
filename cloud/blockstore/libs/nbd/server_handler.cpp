@@ -642,23 +642,24 @@ void TServerHandler::ProcessReadRequest(
 
     auto responseData = DeviceHandler->AllocateBuffer(request.Length);
 
-    TGuardedSgList guardedSgList;
+    NProto::TError error;
     if (request.Length) {
-        guardedSgList = TGuardedSgList({
+        auto guardedSgList = TGuardedSgList({
             { responseData.get(), request.Length }
         });
+
+        auto future = DeviceHandler->Read(
+            requestCtx->CallContext,
+            request.From,
+            request.Length,
+            guardedSgList,
+            Options.CheckpointId);
+
+        const auto& response = ctx->WaitFor(future);
+        error = response.GetError();
+
+        guardedSgList.Close();
     }
-
-    auto future = DeviceHandler->Read(
-        requestCtx->CallContext,
-        request.From,
-        request.Length,
-        guardedSgList,
-        Options.CheckpointId);
-
-    const auto& response = ctx->WaitFor(future);
-
-    guardedSgList.Close();
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
@@ -668,7 +669,7 @@ void TServerHandler::ProcessReadRequest(
         << " length:" << request.Length);
 
     TBufferRequestWriter out;
-    if (!HasError(response)) {
+    if (!HasError(error)) {
         if (StructuredReply) {
             WriteStructuredReadData(
                 out,
@@ -680,7 +681,6 @@ void TServerHandler::ProcessReadRequest(
             WriteGenericReply(out, request.Handle);
         }
     } else {
-        const auto& error = response.GetError();
         WriteGenericError(
             out,
             request.Handle,
@@ -692,7 +692,7 @@ void TServerHandler::ProcessReadRequest(
 
     auto serverResponse = MakeIntrusive<TServerResponse>(
         std::move(requestCtx),
-        response.GetError(),
+        error,
         request.Length,
         std::move(out.Buffer()),
         std::move(responseData));
@@ -712,23 +712,24 @@ void TServerHandler::ProcessWriteRequest(
         << " offset:" << request.From
         << " length:" << request.Length);
 
-    TGuardedSgList guardedSgList;
+    NProto::TError error;
     if (request.Length) {
-        guardedSgList = TGuardedSgList({
+        auto guardedSgList = TGuardedSgList({
             { requestData.get(), request.Length }
         });
+
+        auto future = DeviceHandler->Write(
+            requestCtx->CallContext,
+            request.From,
+            request.Length,
+            guardedSgList);
+
+        const auto& response = ctx->WaitFor(future);
+        error = response.GetError();
+
+        guardedSgList.Close();
+        requestData.reset();
     }
-
-    auto future = DeviceHandler->Write(
-        requestCtx->CallContext,
-        request.From,
-        request.Length,
-        guardedSgList);
-
-    const auto& response = ctx->WaitFor(future);
-
-    guardedSgList.Close();
-    requestData.reset();
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
@@ -738,10 +739,9 @@ void TServerHandler::ProcessWriteRequest(
         << " length:" << request.Length);
 
     TBufferRequestWriter out;
-    if (!HasError(response)) {
+    if (!HasError(error)) {
         WriteGenericReply(out, request.Handle);
     } else {
-        const auto& error = response.GetError();
         WriteGenericError(
             out,
             request.Handle,
@@ -752,7 +752,7 @@ void TServerHandler::ProcessWriteRequest(
 
     auto serverResponse = MakeIntrusive<TServerResponse>(
         std::move(requestCtx),
-        response.GetError(),
+        error,
         request.Length,
         std::move(out.Buffer()));
 
@@ -770,12 +770,16 @@ void TServerHandler::ProcessZeroRequest(
         << " offset:" << request.From
         << " length:" << request.Length);
 
-    auto future = DeviceHandler->Zero(
-        requestCtx->CallContext,
-        request.From,
-        request.Length);
+    NProto::TError error;
+    if (request.Length) {
+        auto future = DeviceHandler->Zero(
+            requestCtx->CallContext,
+            request.From,
+            request.Length);
 
-    const auto& response = ctx->WaitFor(future);
+        const auto& response = ctx->WaitFor(future);
+        error = response.GetError();
+    }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
@@ -785,10 +789,9 @@ void TServerHandler::ProcessZeroRequest(
         << " length:" << request.Length);
 
     TBufferRequestWriter out;
-    if (!HasError(response)) {
+    if (!HasError(error)) {
         WriteGenericReply(out, request.Handle);
     } else {
-        const auto& error = response.GetError();
         WriteGenericError(
             out,
             request.Handle,
@@ -799,7 +802,7 @@ void TServerHandler::ProcessZeroRequest(
 
     auto serverResponse = MakeIntrusive<TServerResponse>(
         std::move(requestCtx),
-        response.GetError(),
+        error,
         request.Length,
         std::move(out.Buffer()));
 
