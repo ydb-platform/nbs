@@ -1,0 +1,81 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: nbs-csi-driver-node
+  namespace: nbs-csi-driver
+spec:
+  selector:
+    matchLabels:
+      app: "nbs-csi-driver"
+  template:
+    metadata:
+      labels:
+        app: "nbs-csi-driver"
+    spec:
+      hostNetwork: true
+      serviceAccountName: csi-nbs-node-sa
+      nodeSelector:
+        kubernetes.io/os: linux
+        # nebius.ai/nbs-csi-driver-node: "true"
+      containers:
+        - name: csi-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--v=5"
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/nbs.csi.nebius.ai/csi.sock"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+        - name: csi-nbs-driver
+          securityContext:
+            privileged: true
+          image: ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--endpoint=/csi/csi.sock"
+            - "--node-id=$(KUBE_NODE_NAME)"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - name: plugin-dir
+              mountPath: /csi
+            - name: nbs-dir
+              mountPath: /nbs-endpoints
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/nbs.csi.nebius.ai/
+            type: DirectoryOrCreate
+        - name: nbs-dir
+          hostPath:
+            path: /home/nbsd/endpoints/
+            type: DirectoryOrCreate
+      # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+      # See "special case". This will tolerate everything. Node component should
+      # be scheduled on all nodes.
+      tolerations:
+      - operator: Exists
