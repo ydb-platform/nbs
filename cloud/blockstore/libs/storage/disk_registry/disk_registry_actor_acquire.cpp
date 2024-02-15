@@ -250,11 +250,10 @@ void TAcquireDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
         response->Record.MutableDevices()->Reserve(Devices.size());
 
         for (auto& device: Devices) {
-            if (!NodeIdsWithSucceededResponses.contains(device.GetNodeId())) {
-                continue;
+            if (NodeIdsWithSucceededResponses.contains(device.GetNodeId())) {
+                ToLogicalBlocks(device, LogicalBlockSize);
+                *response->Record.AddDevices() = std::move(device);
             }
-            ToLogicalBlocks(device, LogicalBlockSize);
-            *response->Record.AddDevices() = std::move(device);
         }
     }
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
