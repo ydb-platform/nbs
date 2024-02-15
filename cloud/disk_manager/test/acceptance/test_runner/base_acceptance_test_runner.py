@@ -133,7 +133,6 @@ class BaseAcceptanceTestRunner(ABC):
         self._cluster = get_cluster_test_config(args.cluster,
                                                 args.zone_id,
                                                 args.cluster_config_path)
-        self._resource_ttl_days = args.resource_ttl_days
         self._iodepth = self._args.instance_cores * 4
         self._results_processor = None
         self._inplace_cleanup = self._args.inplace_cleanup

@@ -188,12 +188,6 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help='do not delete instance and disk, if fail')
     test_arguments_group.add_argument(
-        '--resource-ttl-days',
-        type=int,
-        default=None,
-        help='Time to love for snapshots created for tests',
-    )
-    test_arguments_group.add_argument(
         '--inplace-cleanup',
         dest='inplace_cleanup',
         action='store_true',
