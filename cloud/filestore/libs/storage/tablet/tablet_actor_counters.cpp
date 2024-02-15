@@ -161,6 +161,9 @@ void TIndexTabletActor::TMetrics::Register(
         AggregatableFsRegistry,
         {CreateLabel("request", "PatchBlob"), CreateLabel("histogram", "Time")});
 
+    REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
+
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
@@ -199,6 +202,23 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(AllocatedCompactionRangesCount, compactionStats.AllocatedRangesCount);
     Store(UsedCompactionRangesCount, compactionStats.UsedRangesCount);
+
+    if (compactionStats.TopRangesByCompactionScore.empty()) {
+        Store(MaxBlobsInRange, 0);
+    } else {
+        Store(
+            MaxBlobsInRange,
+            compactionStats.TopRangesByCompactionScore.front()
+                .Stats.BlobsCount);
+    }
+    if (compactionStats.TopRangesByCleanupScore.empty()) {
+        Store(MaxDeletionsInRange, 0);
+    } else {
+        Store(
+            MaxDeletionsInRange,
+            compactionStats.TopRangesByCleanupScore.front()
+                .Stats.DeletionsCount);
+    }
 
     BusyIdleCalc.OnUpdateStats();
 }
@@ -243,7 +263,7 @@ void TIndexTabletActor::RegisterStatCounters()
         fs,
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(0));
+        GetCompactionMapStats(1));
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -274,7 +294,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetFileSystem(),
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(0));
+        GetCompactionMapStats(1));
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);

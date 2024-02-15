@@ -121,6 +121,10 @@ private:
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
 
+        // Compaction/cleanup stats
+        std::atomic<i64> MaxBlobsInRange{0};
+        std::atomic<i64> MaxDeletionsInRange{0};
+
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
 
