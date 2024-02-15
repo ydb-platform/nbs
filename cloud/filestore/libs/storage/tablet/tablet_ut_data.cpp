@@ -3286,6 +3286,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 3 * block, 128_KB, '6');
 
         auto response = tablet.DescribeData(handle, 0, 256_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            512_KB + 2 * block,
+            response->Record.GetFileSize());
+
         const auto& freshRanges = response->Record.GetFreshDataRanges();
         UNIT_ASSERT_VALUES_EQUAL(4, freshRanges.size());
 
@@ -3345,7 +3349,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             3 * block + 128_KB,
             blobPieces[0].GetRanges(0).GetOffset());
         UNIT_ASSERT_VALUES_EQUAL(
-            1 + 128_KB / block,
+            block + 128_KB,
             blobPieces[0].GetRanges(0).GetBlobOffset());
         UNIT_ASSERT_VALUES_EQUAL(
             192_KB - 128_KB - 3 * block,
@@ -3354,7 +3358,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             3 * block + 192_KB,
             blobPieces[0].GetRanges(1).GetOffset());
         UNIT_ASSERT_VALUES_EQUAL(
-            1 + 192_KB / block,
+            block + 192_KB,
             blobPieces[0].GetRanges(1).GetBlobOffset());
         // blob ranges and fresh byte ranges may intersect - the client should
         // prioritize fresh byte ranges
@@ -3390,6 +3394,144 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             blobPieces[1].GetRanges(0).GetLength());
 
         // TODO: properly test BSGroupId
+    }
+
+    TABLET_TEST_16K(ShouldDescribeDataOnlyInTheRequestedRange)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        // blobs
+        tablet.WriteData(handle, 0, 128_KB, '0');               // outside
+        tablet.WriteData(handle, 128_KB, 128_KB, '1');          // inside
+        tablet.WriteData(handle, 256_KB, 128_KB, '2');          // outside
+        tablet.WriteData(handle, 384_KB, 128_KB, '3');          // outside
+        // fresh bytes
+        tablet.WriteData(handle, 0, 1_KB, '4');                 // outside
+        tablet.WriteData(handle, 128_KB, 1_KB, '5');            // inside
+        tablet.WriteData(handle, 256_KB, 1_KB, '6');            // outside
+        // fresh blocks
+        tablet.WriteData(handle, block, block, '7');            // outside
+        tablet.WriteData(handle, 128_KB + block, block, '8');   // inside
+        tablet.WriteData(handle, 256_KB + block, block, '9');   // outside
+
+        auto response = tablet.DescribeData(handle, 128_KB, 128_KB);
+        UNIT_ASSERT_VALUES_EQUAL(512_KB, response->Record.GetFileSize());
+
+        const auto& freshRanges = response->Record.GetFreshDataRanges();
+        UNIT_ASSERT_VALUES_EQUAL(2, freshRanges.size());
+
+        TString expected;
+        expected.ReserveAndResize(1_KB);
+        memset(expected.begin(), '5', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(128_KB, freshRanges[0].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[0].GetContent());
+
+        expected.ReserveAndResize(block);
+        memset(expected.begin(), '8', block);
+
+        UNIT_ASSERT_VALUES_EQUAL(128_KB + block, freshRanges[1].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[1].GetContent());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobPieces.size());
+
+        const auto blobId0 =
+            NKikimr::LogoBlobIDFromLogoBlobID(blobPieces[0].GetBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(tabletId, blobId0.TabletID());
+        UNIT_ASSERT_VALUES_EQUAL(2, blobId0.Generation());
+        UNIT_ASSERT_VALUES_EQUAL(5, blobId0.Step());
+        UNIT_ASSERT_VALUES_EQUAL(4, blobId0.Channel());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId0.Cookie());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobId0.PartId());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobPieces[0].GetBSGroupId());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, blobPieces[0].RangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB,
+            blobPieces[0].GetRanges(0).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            blobPieces[0].GetRanges(0).GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            block,
+            blobPieces[0].GetRanges(0).GetLength());
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB + 2 * block,
+            blobPieces[0].GetRanges(1).GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * block,
+            blobPieces[0].GetRanges(1).GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB - 2 * block,
+            blobPieces[0].GetRanges(1).GetLength());
+    }
+
+    TABLET_TEST_16K(ShouldDescribePureFreshBytes)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        // we need to write at the end of the block since writing at the
+        // beginning will allow the tablet to write a whole fresh block
+        tablet.WriteData(handle, 128_KB + block - 1_KB, 1_KB, '1');
+        // ensuring that we have actually written fresh bytes, not blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 1_KB);
+        }
+
+        auto response = tablet.DescribeData(handle, 128_KB, 128_KB);
+        UNIT_ASSERT_VALUES_EQUAL(128_KB + block, response->Record.GetFileSize());
+
+        const auto& freshRanges = response->Record.GetFreshDataRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, freshRanges.size());
+
+        TString expected;
+        expected.ReserveAndResize(1_KB);
+        memset(expected.begin(), '1', 1_KB);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            128_KB + block - 1_KB,
+            freshRanges[0].GetOffset());
+        UNIT_ASSERT_VALUES_EQUAL(expected, freshRanges[0].GetContent());
+
+        const auto& blobPieces = response->Record.GetBlobPieces();
+        UNIT_ASSERT_VALUES_EQUAL(0, blobPieces.size());
     }
 
     TABLET_TEST(ShouldHandleErrorDuringDescribeData)

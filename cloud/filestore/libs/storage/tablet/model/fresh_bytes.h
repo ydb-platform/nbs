@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include "block.h"
-#include "range.h"
 
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/storage/core/libs/common/byte_vector.h>
 
 #include <util/generic/map.h>

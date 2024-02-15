@@ -89,14 +89,20 @@ void FillDescribeDataResponse(
     TTxIndexTablet::TReadData& args,
     NProtoPrivate::TDescribeDataResponse& record)
 {
+    // metadata
+
+    record.SetFileSize(args.Node->Attrs.GetSize());
+
+    // data
+
     using TBlocks = TVector<TBlockDataRef>;
     // using TMap to make responses more stable and, thus, easier to test
     TMap<TPartialBlobId, TBlocks> blobBlocks;
     NProtoPrivate::TFreshDataRange freshRange;
-    for (ui32 i = 0; i < args.Blocks.size(); ++i) {
+    for (ui64 i = 0; i < args.Blocks.size(); ++i) {
         const auto& block = args.Blocks[i];
         const auto& bytes = args.Bytes[i];
-        const ui64 curOffset = static_cast<ui64>(block.BlockIndex) * blockSize;
+        const ui64 curOffset = args.AlignedByteRange.Offset + i * blockSize;
 
         if (!block.BlobId && block.MinCommitId) {
             // it's a fresh block
@@ -179,7 +185,7 @@ void FillDescribeDataResponse(
 
             if (!rangeInBlob.GetLength()) {
                 rangeInBlob.SetOffset(curOffset);
-                rangeInBlob.SetBlobOffset(b.BlobOffset);
+                rangeInBlob.SetBlobOffset(b.BlobOffset * blockSize);
             }
 
             rangeInBlob.SetLength(rangeInBlob.GetLength() + blockSize);

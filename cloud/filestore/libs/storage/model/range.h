@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 #include <util/system/align.h>
@@ -145,6 +143,12 @@ struct TByteRange
     static TByteRange BlockRange(ui64 blockIndex, ui32 blockSize)
     {
         return {blockIndex * blockSize, blockSize, blockSize};
+    }
+
+    bool operator==(const TByteRange& other) const
+    {
+        return std::tie(Offset, Length, BlockSize) ==
+               std::tie(other.Offset, other.Length, other.BlockSize);
     }
 };
 

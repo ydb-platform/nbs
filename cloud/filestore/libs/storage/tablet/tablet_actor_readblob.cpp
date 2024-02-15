@@ -181,7 +181,7 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    auto rangeIt = request.Ranges.begin();
+    const auto* rangeIt = request.Ranges.begin();
     TABLET_VERIFY(rangeIt != request.Ranges.end());
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {

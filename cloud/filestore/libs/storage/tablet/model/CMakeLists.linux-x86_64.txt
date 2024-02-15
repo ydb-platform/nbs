@@ -41,7 +41,6 @@ target_sources(storage-tablet-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/blob.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/blob_builder.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/block.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/block_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/block_list.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/block_list_decode.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/block_list_encode.cpp
@@ -55,7 +54,6 @@ target_sources(storage-tablet-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/group_by.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/mixed_blocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/operation.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range_locks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/split_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/throttler_logger.cpp

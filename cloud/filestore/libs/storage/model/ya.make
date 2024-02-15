@@ -7,7 +7,9 @@ GENERATE_ENUM_SERIALIZATION(
 )
 
 SRCS(
+    block_buffer.cpp
     channel_data_kind.cpp
+    utils.cpp
 )
 
 END()

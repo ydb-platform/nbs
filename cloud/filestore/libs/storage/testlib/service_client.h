@@ -228,6 +228,58 @@ public:
         return request;
     }
 
+    static auto CreateWriteDataRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        const TString& buffer)
+    {
+        auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetBuffer(buffer);
+        return request;
+    }
+
+    static auto CreateCreateHandleRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 nodeId,
+        const TString& name,
+        ui32 flags)
+    {
+        auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(name);
+        request->Record.SetFlags(flags);
+        return request;
+    }
+
+    static auto CreateReadDataRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui64 length)
+    {
+        auto request = std::make_unique<TEvService::TEvReadDataRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+        return request;
+    }
+
     auto CreateListNodesRequest(const THeaders& headers, ui64 nodeId)
     {
         auto request = std::make_unique<TEvService::TEvListNodesRequest>();

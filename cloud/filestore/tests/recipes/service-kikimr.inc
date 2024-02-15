@@ -11,10 +11,21 @@ IF (NFS_RESTART_INTERVAL)
     )
 ENDIF()
 
+SET(RECIPE_ARGS
+    --use-log-files
+    --in-memory-pdisks
+    --restart-interval $NFS_RESTART_INTERVAL
+)
+
+IF (NFS_STORAGE_CONFIG_PATCH)
+    SET_APPEND(RECIPE_ARGS --storage-config-patch $NFS_STORAGE_CONFIG_PATCH)
+ENDIF()
+
+IF (NOT OPENSOURCE)
+    SET_APPEND(RECIPE_ARGS --verbose)
+ENDIF()
+
 USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe
-        --use-log-files
-        --in-memory-pdisks
-        --restart-interval $NFS_RESTART_INTERVAL
-        --verbose
+    ${RECIPE_ARGS}
 )

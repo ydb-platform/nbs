@@ -10,9 +10,10 @@
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+#include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
-#include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 

@@ -5,6 +5,7 @@
 # ya.make files by maintainers. Any complex modifications which can't be ported back to the
 # original buildsystem will not be accepted.
 
+add_subdirectory(ut)
 
 get_built_tool_path(
   TOOL_enum_parser_bin
@@ -21,7 +22,10 @@ target_link_libraries(filestore-libs-storage-model PUBLIC
   tools-enum_parser-enum_serialization_runtime
 )
 target_sources(filestore-libs-storage-model PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/model/block_buffer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/model/channel_data_kind.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/model/range.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/model/utils.cpp
 )
 generate_enum_serilization(filestore-libs-storage-model
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/model/channel_data_kind.h

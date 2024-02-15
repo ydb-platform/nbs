@@ -6,9 +6,10 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
+#include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
 
 #include <ydb/core/base/blobstorage.h>
 
