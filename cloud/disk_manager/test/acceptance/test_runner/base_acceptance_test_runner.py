@@ -2,17 +2,26 @@ import argparse
 import calendar
 import contextlib
 import logging
-import uuid
-
 import re
 import socket
 import subprocess
-
+import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Type
 
+from cloud.blockstore.pylibs import common
+from cloud.blockstore.pylibs.clusters.test_config import get_cluster_test_config
+from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper
+from contrib.ydb.tests.library.harness.kikimr_runner import (
+    get_unique_path_for_current_test,
+    ensure_path_exists
+)
+from .cleanup import (
+    cleanup_previous_acceptance_tests_results,
+    BaseResourceCleaner,
+)
 from .lib import (
     check_ssh_connection,
     create_ycp,
@@ -22,16 +31,6 @@ from .lib import (
     YcpFindDiskPolicy,
     YcpNewDiskPolicy
 )
-
-from cloud.blockstore.pylibs import common
-from cloud.blockstore.pylibs.clusters.test_config import get_cluster_test_config
-from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper
-
-from contrib.ydb.tests.library.harness.kikimr_runner import (
-    get_unique_path_for_current_test,
-    ensure_path_exists
-)
-
 
 _logger = logging.getLogger(__file__)
 
@@ -118,84 +117,11 @@ class BaseTestBinaryExecutor:
         return disk_ids
 
 
-def cleanup_previous_acceptance_tests_results(
-        ycp: YcpWrapper,
-        test_type: str,
-        disk_size: int,
-        disk_blocksize: int,
-        entity_ttl: timedelta = timedelta(days=1),
-):
-    entity_accessors = {
-        'disk': (ycp.list_disks, ycp.delete_disk),
-        'snapshot': (ycp.list_snapshots, ycp.delete_snapshot),
-        'image': (ycp.list_images, ycp.delete_image),
-    }
-    disk_size = size_prettifier(disk_size * (1024 ** 3)).lower()
-    disk_blocksize = size_prettifier(disk_blocksize).lower()
-    _logger.info(
-        "Performing cleanup for %s disk size %s, disk block size %s",
-        disk_size,
-        disk_blocksize,
-    )
-    regexps = {
-        entity_type: [
-            re.compile(
-                fr'^acceptance-test-{entity_type}-'
-                fr'{test_type}-{disk_size}-{disk_blocksize}-[0-9]+$',
-            ),
-            re.compile(fr'^acceptance-test-{entity_type}-{test_type}-[0-9]+$')
-        ] for entity_type in entity_accessors
-    }
-    for entity_type, handlers in entity_accessors.items():
-        [lister, deleter] = handlers
-        for entity in lister:
-            should_be_older_than = datetime.now() - entity_ttl
-            if entity.created_at > should_be_older_than:
-                continue
-            for pattern in regexps[entity_type]:
-                if re.match(pattern, entity.name):
-                    _logger.info(
-                        "Deleting %s with name %s",
-                        entity_type, entity.name)
-                    try:
-                        deleter(entity)
-                    except Exception as e:
-                        _logger.error(
-                            "Error while deleting %s with name %s",
-                            entity_type,
-                            entity.name,
-                            exc_info=e,
-                        )
-                    break
-
-
-class BaseResourceCleaner:
-    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
-        self._ycp = ycp
-        self._test_type = args.test_type
-        self._instance_name_pattern = re.compile(
-            rf'^acceptance-test-{self._test_type}-[0-9]+$',
-        )
-
-    def cleanup(self):
-        instance_ttl = timedelta(days=1)
-        for instance in self._ycp.list_instances():
-            should_be_older_than = datetime.now() - instance_ttl
-            if instance.created_at > should_be_older_than:
-                continue
-            if not re.match(self._instance_name_pattern, instance.name):
-                continue
-            try:
-                _logger.info("Deleting instance %s", instance.name)
-                self._ycp.delete_instance(instance)
-            except Exception:
-                _logger.error("Error while deleting instance %s", instance.name)
-
-
 class BaseAcceptanceTestRunner(ABC):
 
     _test_binary_executor_type: Type[BaseTestBinaryExecutor]
     _cleaner_type: Type[BaseResourceCleaner]
+    _single_disk_test_ttl = timedelta(days=1)
 
     @abstractmethod
     def run(self, profiler: common.Profiler):
@@ -279,6 +205,7 @@ class BaseAcceptanceTestRunner(ABC):
             self._args.test_type,
             disk.size,
             disk.block_size,
+            self._single_disk_test_ttl,
         )
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()

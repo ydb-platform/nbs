@@ -2,11 +2,8 @@ import argparse
 import logging
 import re
 
-from datetime import datetime, timedelta
-
 from cloud.blockstore.pylibs import common
 from cloud.blockstore.pylibs.ycp import YcpWrapper
-
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
@@ -33,27 +30,20 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
 class AcceptanceTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(AcceptanceTestCleaner, self).__init__(ycp, args)
-        self._instance_name_pattern = re.compile(
+        _instance_name_pattern = re.compile(
             rf'^acceptance-test-{args.test_type}-'
             rf'{args.test_suite}-[0-9]+$',
         )
-        self._disk_ttl = timedelta(days=1)
-
-    def cleanup(self):
-        super().cleanup()
-        for disk in self._ycp.list_disks():
-            should_be_older_than = datetime.now() - self._disk_ttl
-            if disk.created_at > should_be_older_than:
-                continue
-            if not re.match(self._instance_name_pattern, disk.name):
-                continue
-            _logger.info("Deleting disk with name %s", disk.name)
-            self._ycp.delete_disk(disk)
+        self._patterns = {
+            'instance': [_instance_name_pattern],
+            'disk': [_instance_name_pattern],
+        }
 
 
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _test_binary_executor_type = AcceptanceTestBinaryExecutor
+    _resource_cleaner = AcceptanceTestCleaner
 
     @property
     def _remote_verify_test_path(self) -> str:
