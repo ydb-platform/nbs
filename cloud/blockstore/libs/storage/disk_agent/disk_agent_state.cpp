@@ -686,7 +686,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
     if (RdmaTarget) {
         auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
         if (HasError(error)) {
-            return MakeFuture(error);
+            return MakeFuture(std::move(error));
         }
     }
 
