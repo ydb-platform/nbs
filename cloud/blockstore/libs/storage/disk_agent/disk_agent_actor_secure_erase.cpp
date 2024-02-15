@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
@@ -29,6 +30,15 @@ void TDiskAgentActor::SecureErase(
         actorSystem->Send(
             new IEventHandle(replyTo, replyTo, response.release()));
     };
+
+    auto& recentBlocksTracker = GetRecentBlocksTracker(deviceId);
+    if (recentBlocksTracker.HasInflight()) {
+        ReportDiskAgentSecureEraseDuringIo();
+        reply(MakeError(E_REJECTED, TStringBuilder()
+                << "SecureErase with inflight ios present for device "
+                << deviceId));
+        return;
+    }
 
     try {
         auto result = State->SecureErase(deviceId, ctx.Now());
