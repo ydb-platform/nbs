@@ -6,8 +6,8 @@
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 
-#include <contrib/ydb/core/base/blobstorage.h>
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <ydb/core/base/blobstorage.h>
+#include <library/actors/core/actor_bootstrapped.h>
 
 #include <memory>
 
