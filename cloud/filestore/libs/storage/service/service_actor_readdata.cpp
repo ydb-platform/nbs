@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/storage/model/range.h>
 
 #include <ydb/core/base/blobstorage.h>
-#include <library/actors/core/actor_bootstrapped.h>
+#include <library/cpp/actors/core/actor_bootstrapped.h>
 
 #include <memory>
 
