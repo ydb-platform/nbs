@@ -261,10 +261,17 @@ def test_cleanup():
     ]
     to_delete_test_acceptance_default = [
         _Resource(
-            name='acceptance-test-acceptance-enormous-2412341243',
+            name='acceptance-test-acceptance-default-2412341243',
             resource_type='instance',
             created_at=_now - timedelta(days=14),
         )
+    ]
+    to_delete_go_test_eternal_common = [
+        _Resource(
+            name='acceptance-test-eternal-12931239',
+            resource_type='instance',
+            created_at=_now - timedelta(hours=31),
+        ),
     ]
     to_delete_test_eternal_1tib_4kib = [
         _Resource(
@@ -272,23 +279,15 @@ def test_cleanup():
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
-        _Resource(
-            name='acceptance-test-eternal-12931239',
-            resource_type='instance',
-            created_at=_now - timedelta(hours=31),
-        ),
+        *to_delete_go_test_eternal_common,
     ]
     to_delete_test_eternal_8gib_8kib = [
         _Resource(
-            name='acceptance-test-eternal-1tib-4kib-1703757663',
+            name='acceptance-test-eternal-8gib-8kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
-        _Resource(
-            name='acceptance-test-eternal-12931239',
-            resource_type='instance',
-            created_at=_now - timedelta(hours=27),
-        ),
+        *to_delete_go_test_eternal_common,
     ]
     to_delete_test_sync_8gib_4mib = [
         _Resource(

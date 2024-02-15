@@ -50,7 +50,7 @@ class SyncTestCleaner(BaseResourceCleaner):
 class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _cleaner_type = SyncTestCleaner
-    _single_disk_test_ttl = timedelta(days=5)
+    _single_disk_test_ttl = datetime.timedelta(days=5)
 
     def _get_test_suite(self):
         return (

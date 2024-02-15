@@ -109,14 +109,16 @@ class BaseResourceCleaner:
         }
 
     def cleanup(self):
+        accessors = {
+            **_get_entity_accessors(self._ycp),
+            'instance': (
+                self._ycp.list_instances,
+                self._ycp.delete_instance,
+            )
+        }
+        accessors.pop('image')
         _cleanup_stale_entities(
-            {
-                **_get_entity_accessors(self._ycp),
-                'instance': (
-                    self._ycp.list_instances,
-                    self._ycp.delete_instance,
-                )
-            }.pop('image'),
+            accessors,
             self._entity_ttls,
             self._patterns,
         )
