@@ -12,6 +12,7 @@
 #include <util/system/file.h>
 
 #include <array>
+#include <thread>
 
 namespace NVHost {
 
