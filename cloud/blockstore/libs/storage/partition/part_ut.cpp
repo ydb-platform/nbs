@@ -9583,11 +9583,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        partition.WriteBlocks(10, 0);
+        partition.CreateCheckpoint("checkpoint");
+
         partition.WriteBlocks(10, 1);
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
         }
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
@@ -9604,6 +9607,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(10))
+        );
+        // older commits are also available even when range overlaps with
+        // unconfirmed blobs
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(0),
+            GetBlockContent(partition.ReadBlocks(10, "checkpoint"))
         );
 
         dropAddConfirmedBlobs = false;
@@ -9669,7 +9678,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
 
-        // check that we are not affected by previous request
+        // check that we are not affected by previous write
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(11))
