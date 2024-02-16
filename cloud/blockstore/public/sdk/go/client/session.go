@@ -432,7 +432,7 @@ func (s *Session) processMountResponse(
 			ctx,
 			"Complete MountVolume for %s, client_id: %s",
 			diskId,
-			&s.mountHeaders.ClientId,
+			s.mountHeaders.ClientId,
 		)
 	}
 
