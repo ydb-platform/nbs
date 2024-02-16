@@ -16,6 +16,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/overloaded.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -172,7 +173,8 @@ private:
 
     using TRequestStateVariant = std::variant<
         TRequestState<TStartEndpointMethod>,
-        TRequestState<TStopEndpointMethod>
+        TRequestState<TStopEndpointMethod>,
+        TRequestState<TRefreshEndpointMethod>
     >;
     THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
@@ -279,6 +281,30 @@ private:
     {
         ProcessingSockets.erase(socketPath);
     }
+
+    TErrorResponse MakeBusySocketError(
+        const TString& socketPath,
+        const TRequestStateVariant& st)
+    {
+        auto processName = std::visit(TOverloaded{
+            [] (const TRequestState<TStartEndpointMethod>&) {
+                return "starting";
+            },
+            [] (const TRequestState<TStopEndpointMethod>&) {
+                return "stopping";
+            },
+            [] (const TRequestState<TRefreshEndpointMethod>&) {
+                return "refreshing";
+            },
+            [](const auto&) {
+                return "busy (undefined process)";
+            }
+        }, st);
+
+        return TErrorResponse(E_REJECTED, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " is " << processName << " now");
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -294,8 +320,7 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
         const auto& st = it->second;
         auto* state = std::get_if<TRequestState<TStartEndpointMethod>>(&st);
         if (!state) {
-            return TErrorResponse(E_REJECTED, TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " is stopping now");
+            return MakeBusySocketError(socketPath, st);
         }
 
         if (!AreSameStartEndpointRequests(*request, state->Request)) {
@@ -384,11 +409,9 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     }
 
     if (CompareRequests(newRequest, startedEndpoint)) {
-        return TErrorResponse(
-            S_ALREADY,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started");
+        return TErrorResponse(S_ALREADY, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " has already been started");
     }
 
     startedEndpoint.SetVolumeAccessMode(newRequest.GetVolumeAccessMode());
@@ -396,11 +419,9 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     startedEndpoint.SetMountSeqNumber(newRequest.GetMountSeqNumber());
 
     if (!CompareRequests(newRequest, startedEndpoint)) {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started with other args");
+        return TErrorResponse(E_INVALID_STATE, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " has already been started with other args");
     }
 
     auto future = SessionManager->AlterSession(
@@ -451,8 +472,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
         const auto& st = it->second;
         auto* state = std::get_if<TRequestState<TStopEndpointMethod>>(&st);
         if (!state) {
-            return TErrorResponse(E_REJECTED, TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " is starting now");
+            return MakeBusySocketError(socketPath, st);
         }
 
         return Executor->WaitFor(state->Result);
@@ -475,11 +495,9 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
 
     auto it = Requests.find(socketPath);
     if (it == Requests.end()) {
-        return TErrorResponse(
-            S_FALSE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " hasn't been started yet");
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " hasn't been started yet");
     }
 
     auto startRequest = std::move(it->second);
@@ -546,16 +564,39 @@ NProto::TRefreshEndpointResponse TEndpointManager::DoRefreshEndpoint(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TRefreshEndpointRequest> request)
 {
+    auto socketPath = request->GetUnixSocketPath();
+
+    auto it = ProcessingSockets.find(socketPath);
+    if (it != ProcessingSockets.end()) {
+        const auto& st = it->second;
+        auto* state = std::get_if<TRequestState<TRefreshEndpointMethod>>(&st);
+        if (!state) {
+            return MakeBusySocketError(socketPath, st);
+        }
+
+        return Executor->WaitFor(state->Result);
+    }
+
+    auto promise = AddProcessingSocket<TRefreshEndpointMethod>(*request);
+
+    auto response = RefreshEndpointImpl(std::move(ctx), std::move(request));
+    promise.SetValue(response);
+
+    RemoveProcessingSocket(socketPath);
+    return response;
+}
+
+NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TRefreshEndpointRequest> request)
+{
     const auto& socketPath = request->GetUnixSocketPath();
     const auto& headers = request->GetHeaders();
 
     auto it = Requests.find(socketPath);
     if (it == Requests.end()) {
-        return TErrorResponse(
-            S_FALSE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " not started");
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote() << " not started");
     }
 
     auto ipcType = it->second->GetIpcType();
@@ -606,19 +647,15 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     auto ipcType = request.GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     if (listenerIt == EndpointListeners.end()) {
-        return TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
+        return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
     }
     auto listener = listenerIt->second;
 
     if (request.GetUnixSocketPath().size() > UnixSocketPathLengthLimit) {
-        return TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "Length of socket path should not be more than "
-                << UnixSocketPathLengthLimit);
+        return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            << "Length of socket path should not be more than "
+            << UnixSocketPathLengthLimit);
     }
 
     auto future = listener->StartEndpoint(
