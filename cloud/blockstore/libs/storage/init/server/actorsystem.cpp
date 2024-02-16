@@ -520,7 +520,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
-    servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         storageConfig->GetConfigsDispatcherServiceEnabled();
