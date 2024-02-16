@@ -86,9 +86,14 @@ private:
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
 
-        std::atomic<i64> MixedBytesCount{0};
+        // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> MixedBytesCount{0};
+        std::atomic<i64> MixedBlobsCount{0};
+        std::atomic<i64> DeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
+        std::atomic<i64> GarbageBytesCount{0};
+        std::atomic<i64> FreshBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};

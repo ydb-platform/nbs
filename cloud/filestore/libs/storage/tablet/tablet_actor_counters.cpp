@@ -96,9 +96,13 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
 
-    REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(DeletionMarkersCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(GarbageQueueSize, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(GarbageBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -191,9 +195,13 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
-    Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
+    Store(MixedBlobsCount, stats.GetMixedBlobsCount());
+    Store(DeletionMarkersCount, stats.GetDeletionMarkersCount());
     Store(GarbageQueueSize, stats.GetGarbageQueueSize());
+    Store(GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
+    Store(FreshBlocksCount, stats.GetFreshBlocksCount());
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
