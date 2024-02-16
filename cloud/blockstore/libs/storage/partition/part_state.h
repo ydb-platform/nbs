@@ -1312,6 +1312,14 @@ public:
         return ConfirmedBlobs;
     }
 
+    bool OverlapsUnconfirmedBlobs(
+        ui64 commitId,
+        const TBlockRange32& blockRange) const;
+
+    bool OverlapsConfirmedBlobs(
+        ui64 commitId,
+        const TBlockRange32& blockRange) const;
+
     void InitUnconfirmedBlobs(TUnconfirmedBlobs blobs);
 
     void WriteUnconfirmedBlob(
