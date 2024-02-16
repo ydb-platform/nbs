@@ -600,6 +600,20 @@ ui64 TPartitionState::GetCollectCommitId() const
     return commitId;
 }
 
+bool TPartitionState::OverlapsUnconfirmedBlobs(
+    ui64 commitId,
+    const TBlockRange32& blockRange) const
+{
+    return Overlaps(UnconfirmedBlobs, commitId, blockRange);
+}
+
+bool TPartitionState::OverlapsConfirmedBlobs(
+    ui64 commitId,
+    const TBlockRange32& blockRange) const
+{
+    return Overlaps(ConfirmedBlobs, commitId, blockRange);
+}
+
 void TPartitionState::InitUnconfirmedBlobs(TUnconfirmedBlobs blobs)
 {
     UnconfirmedBlobs = std::move(blobs);
