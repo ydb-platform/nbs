@@ -31,7 +31,7 @@ void TDiskAgentActor::SecureErase(
             new IEventHandle(replyTo, replyTo, response.release()));
     };
 
-    auto& recentBlocksTracker = GetRecentBlocksTracker(deviceId);
+    const auto& recentBlocksTracker = GetRecentBlocksTracker(deviceId);
     if (recentBlocksTracker.HasInflight()) {
         ReportDiskAgentSecureEraseDuringIo();
         reply(MakeError(E_REJECTED, TStringBuilder()
