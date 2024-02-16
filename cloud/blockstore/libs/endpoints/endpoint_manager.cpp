@@ -151,7 +151,7 @@ bool CompareRequests(
 template <typename TMethod>
 struct TRequestState
 {
-    TMethod::TRequest Request;
+    typename TMethod::TRequest Request;
     TFuture<typename TMethod::TResponse> Result;
 };
 
@@ -263,7 +263,7 @@ private:
 
     template <typename TMethod>
     TPromise<typename TMethod::TResponse> AddProcessingSocket(
-        const TMethod::TRequest& request)
+        const typename TMethod::TRequest& request)
     {
         auto promise = NewPromise<typename TMethod::TResponse>();
 
