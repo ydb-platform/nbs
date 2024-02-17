@@ -498,6 +498,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         response->Record.MutableBuffer());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+    Die(ctx);
 }
 
 void TReadDataActor::HandleError(
@@ -507,6 +509,7 @@ void TReadDataActor::HandleError(
     auto response = std::make_unique<TEvService::TEvReadDataResponse>(
         std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
