@@ -269,7 +269,7 @@ private:
 
         auto [_, inserted] = ProcessingSockets.emplace(
             request.GetUnixSocketPath(),
-            TRequestState<TMethod>(request, promise.GetFuture()));
+            TRequestState<TMethod>{request, promise.GetFuture()});
         Y_ABORT_UNLESS(inserted);
 
         return promise;
