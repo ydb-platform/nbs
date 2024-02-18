@@ -979,6 +979,7 @@ struct TTxPartition
         };
 
         TVector<TBlockMark> Marks;
+        bool Interrupted = false;
 
         TDescribeBlocks(
                 TRequestInfoPtr requestInfo,
