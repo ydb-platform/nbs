@@ -601,10 +601,26 @@ ui64 TPartitionState::GetCollectCommitId() const
 }
 
 bool TPartitionState::OverlapsUnconfirmedBlobs(
+    ui64 lowCommitId,
+    ui64 highCommitId,
+    const TBlockRange32& blockRange) const
+{
+    return Overlaps(UnconfirmedBlobs, lowCommitId, highCommitId, blockRange);
+}
+
+bool TPartitionState::OverlapsUnconfirmedBlobs(
     ui64 commitId,
     const TBlockRange32& blockRange) const
 {
     return Overlaps(UnconfirmedBlobs, commitId, blockRange);
+}
+
+bool TPartitionState::OverlapsConfirmedBlobs(
+    ui64 lowCommitId,
+    ui64 highCommitId,
+    const TBlockRange32& blockRange) const
+{
+    return Overlaps(ConfirmedBlobs, lowCommitId, highCommitId, blockRange);
 }
 
 bool TPartitionState::OverlapsConfirmedBlobs(
