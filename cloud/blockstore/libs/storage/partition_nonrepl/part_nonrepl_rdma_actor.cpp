@@ -33,7 +33,7 @@ void HandleError(
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
-        NRdma::IClientPtr rdmaClient,
+        NRdma::IPtr rdmaSession,
         TActorId statActorId)
     : Config(std::move(config))
     , PartConfig(std::move(partConfig))

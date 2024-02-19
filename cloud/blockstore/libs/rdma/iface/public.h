@@ -33,6 +33,9 @@ using IClientEndpointPtr = std::shared_ptr<IClientEndpoint>;
 struct IClientHandler;
 using IClientHandlerPtr = std::shared_ptr<IClientHandler>;
 
+struct IClientEndpointHandler;
+using IClientEndpointHandlerPtr = std::shared_ptr<IClientEndpointHandler>;
+
 struct TClientConfig;
 using TClientConfigPtr = std::shared_ptr<TClientConfig>;
 

@@ -10,8 +10,6 @@
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <library/cpp/threading/future/future.h>
-
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
@@ -50,7 +48,7 @@ public:
 
 // TClientRequest encapsulates all information for executing the request:
 // input and output buffers, response handler, user context.
-// Do not create TClientRequest directly, use IClientHandler::AllocateRequest().
+// Do not create TClientRequest directly, use IRespoiseHandler::AllocateRequest().
 struct TClientRequest
 {
     IClientHandlerPtr Handler;
@@ -103,14 +101,32 @@ struct IClientEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Connection status of client endpoint
+enum EConnectionStatus
+{
+    DISCONNECTED,
+    CONNECTED,
+};
+
+// Used to notify user about endpoint status changes
+struct IClientEndpointHandler
+{
+    virtual ~IClientEndpointHandler = default;
+
+    UpdateStatus(EConnectionStatus status) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IClient
     : public IStartable
 {
     virtual ~IClient() = default;
 
-    virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
+    virtual IClientEndpointPtr StartEndpoint(
         TString host,
-        ui32 port) = 0;
+        ui32 port,
+        IClientEndpointHandlerPtr handler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

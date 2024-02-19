@@ -153,12 +153,20 @@ struct TEvVolume
     };
 
     //
-    // RdmaUnavailable
+    // UpdateRdmaSession
     //
 
-    struct TRdmaUnavailable
+    struct TUpdateRdmaStatus
     {
+        ;
+
+        TUpdateRdmaSession(bool up)
+            : Up(up)
+        {
+        }
     };
+
+    struct TRdmaSessionDown
 
     //
     // UpdateResyncState
