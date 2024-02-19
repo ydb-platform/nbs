@@ -188,8 +188,8 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help='do not delete instance and disk, if fail')
     test_arguments_group.add_argument(
-        '--inplace-cleanup',
-        dest='inplace_cleanup',
+        '--cleanup-before-tests',
+        dest='cleanup_before_tests',
         action='store_true',
         default=False,
         help='Clean up outdated resources in place'

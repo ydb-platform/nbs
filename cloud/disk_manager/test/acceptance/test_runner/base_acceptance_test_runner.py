@@ -135,7 +135,7 @@ class BaseAcceptanceTestRunner(ABC):
                                                 args.cluster_config_path)
         self._iodepth = self._args.instance_cores * 4
         self._results_processor = None
-        self._inplace_cleanup = self._args.inplace_cleanup
+        self._cleanup_before_tests = self._args.cleanup_before_tests
         if self._args.results_path is not None:
             self._results_processor = common.ResultsProcessorFsBase(
                 service='disk-manager',
@@ -194,7 +194,7 @@ class BaseAcceptanceTestRunner(ABC):
             auto_delete=not self._args.debug,
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
-        if self._inplace_cleanup:
+        if self._cleanup_before_tests:
             self._cleaner_type(self._ycp, self._args).cleanup()
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
