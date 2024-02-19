@@ -54,6 +54,7 @@ private:
 
     void StartAcquireDisk(const TActorContext& ctx);
     void FinishAcquireDisk(const TActorContext& ctx);
+    void FinishAcquireDisk(const TActorContext& ctx, NProto::TError error);
 
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
@@ -138,6 +139,14 @@ void TAcquireDiskActor::FinishAcquireDisk(const TActorContext& ctx)
 
     using TType = TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest;
     NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
+}
+
+void TAcquireDiskActor::FinishAcquireDisk(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    AcquireError = std::move(error);
+    FinishAcquireDisk(ctx);
 }
 
 void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
@@ -242,8 +251,6 @@ void TAcquireDiskActor::OnAcquireResponse(
             LogTargets().c_str(),
             FormatError(error).c_str());
 
-        AcquireError = std::move(error);
-
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
             LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
                 "[%s] Canceling acquire operation for disk %s, targets %s",
@@ -254,7 +261,7 @@ void TAcquireDiskActor::OnAcquireResponse(
             SendRequests<TEvDiskAgent::TEvReleaseDevicesRequest>(ctx);
         }
 
-        FinishAcquireDisk(ctx);
+        FinishAcquireDisk(ctx, std::move(error));
 
         return;
     }
@@ -296,9 +303,7 @@ void TAcquireDiskActor::HandleWakeup(
         PendingRequests);
     LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
 
-    AcquireError = MakeError(E_REJECTED, err);
-
-    FinishAcquireDisk(ctx);
+    FinishAcquireDisk(ctx, MakeError(E_REJECTED, err));
 }
 
 void TAcquireDiskActor::HandleStartAcquireDiskResponse(
@@ -316,9 +321,7 @@ void TAcquireDiskActor::HandleStartAcquireDiskResponse(
     Devices = msg->Devices;
 
     if (Devices.empty()) {
-        AcquireError = MakeError(E_REJECTED, "nothing to acquire");
-
-        FinishAcquireDisk(ctx);
+        FinishAcquireDisk(ctx, MakeError(E_REJECTED, "nothing to acquire"));
         return;
     }
 
