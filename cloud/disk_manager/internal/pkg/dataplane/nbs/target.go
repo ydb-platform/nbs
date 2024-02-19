@@ -6,6 +6,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,6 +28,8 @@ func (t *diskTarget) Write(
 	}
 
 	startIndex := uint64(chunk.Index) * t.blocksInChunk
+
+	logging.Info(ctx, "writing chunk %v", chunk.Index)
 
 	var err error
 	if chunk.Zero {

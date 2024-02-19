@@ -8,6 +8,7 @@ import (
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,6 +200,8 @@ func (s *diskSource) Read(
 		// Reading from an empty checkpoint retrieves the latest data.
 		checkpointID = ""
 	}
+
+	logging.Info(ctx, "reading chunk %v", chunk.Index)
 
 	return s.session.Read(
 		ctx,
