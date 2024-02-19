@@ -78,7 +78,8 @@ struct TTestEnv
             TDevices devices,
             TMigrations migrations,
             NProto::EVolumeIOMode ioMode,
-            bool useRdma)
+            bool useRdma,
+            TMigrationStatePtr migrationState = nullptr)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -163,7 +164,7 @@ struct TTestEnv
             TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
         );
 
-        auto dummy = std::make_unique<TDummyActor>();
+        auto dummy = std::make_unique<TDummyActor>(std::move(migrationState));
 
         Runtime.AddLocalService(
             VolumeActorId,
@@ -307,6 +308,27 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         UNIT_ASSERT_VALUES_EQUAL(
             5 * 1024 * DefaultBlockSize,
             counters.BytesCount.Value);
+    }
+
+    Y_UNIT_TEST(ShouldDelayMigration)
+    {
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState);
+
+        WaitForNoMigrations(runtime, TDuration::Seconds(5));
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, 3);
     }
 }
 

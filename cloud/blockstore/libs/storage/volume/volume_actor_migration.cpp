@@ -1,5 +1,6 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -87,6 +88,55 @@ void TVolumeActor::CompleteUpdateMigrationState(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::HandlePreparePartitionMigration(
+    const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext
+    );
+
+    auto* actorSystem = ctx.ActorSystem();
+    auto replyFrom = ctx.SelfID;
+
+    if (!State->GetUseFastPath()) {
+        auto response = std::make_unique<
+            TEvVolume::TEvPreparePartitionMigrationResponse>(
+                true // migration allowed
+                );
+        actorSystem->Send(
+            new IEventHandle(
+                requestInfo->Sender,
+                replyFrom,
+                response.release(),
+                0,          // flags
+                requestInfo->Cookie));
+        return;
+    }
+
+    EndpointEventHandler->SwitchEndpointIfNeeded(State->GetDiskId(), "partition migration")
+        .Subscribe([=] (const auto& future) {
+            bool migrationAllowed = !HasError(future.GetValue());
+            auto response = std::make_unique<
+                TEvVolume::TEvPreparePartitionMigrationResponse>(
+                    migrationAllowed);
+
+            actorSystem->Send(
+                new IEventHandle(
+                    requestInfo->Sender,
+                    replyFrom,
+                    response.release(),
+                    0,          // flags
+                    requestInfo->Cookie));
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

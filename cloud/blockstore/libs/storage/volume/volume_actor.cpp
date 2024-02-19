@@ -57,6 +57,7 @@ TVolumeActor::TVolumeActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
@@ -67,6 +68,7 @@ TVolumeActor::TVolumeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , ThrottlerLogger(
         TabletID(),
@@ -937,6 +939,8 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(TEvPartition::TEvGarbageCollectorCompleted, HandleGarbageCollectorCompleted);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
+
+        HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
 
         HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
         HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);

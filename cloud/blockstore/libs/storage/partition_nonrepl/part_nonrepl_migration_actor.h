@@ -46,6 +46,7 @@ public:
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
 
 private:
+    void PrepareForMigration(const NActors::TActorContext& ctx);
     void FinishMigration(const NActors::TActorContext& ctx, bool isRetry);
     NActors::TActorId CreateSrcActor(const NActors::TActorContext& ctx);
     NActors::TActorId CreateDstActor(const NActors::TActorContext& ctx);
@@ -56,6 +57,14 @@ private:
 
     void HandleFinishMigrationResponse(
         const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePreparePartitionMigrationRequest(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePreparePartitionMigrationResponse(
+        const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -453,6 +453,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
             blockDigestGenerator,
             traceSerializer,
             rdmaClient,
+            endpointEventHandler,
             EVolumeStartMode::MOUNTED);
         return actor.release();
     };

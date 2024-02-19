@@ -138,6 +138,7 @@ private:
 
 public:
     ui32 AlterEndpointCounter = 0;
+    ui32 SwitchEndpointCounter = 0;
 
 public:
     TTestEndpointListener(
@@ -203,6 +204,8 @@ public:
         Y_UNUSED(request);
         Y_UNUSED(volume);
         Y_UNUSED(session);
+
+        ++SwitchEndpointCounter;
 
         return MakeFuture<NProto::TError>();
     }
@@ -366,7 +369,8 @@ IEndpointManagerPtr CreateEndpointManager(
     TBootstrap& bootstrap,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> endpointListeners,
     IServerStatsPtr serverStats = CreateServerStatsStub(),
-    TString nbdSocketSuffix = "")
+    TString nbdSocketSuffix = "",
+    IEndpointEventProxyPtr endpointEventHandler = CreateEndpointEventProxy())
 {
     TSessionManagerOptions sessionManagerOptions;
     sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
@@ -394,7 +398,7 @@ IEndpointManagerPtr CreateEndpointManager(
         bootstrap.Logging,
         serverStats,
         bootstrap.Executor,
-        CreateEndpointEventProxy(),
+        std::move(endpointEventHandler),
         std::move(sessionManager),
         std::move(endpointListeners),
         std::move(nbdSocketSuffix));
@@ -1180,6 +1184,68 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 S_ALREADY,
                 response.GetError().GetCode(),
                 response.GetError());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSwitchEndpointWhenNotified)
+    {
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+
+        auto endpointEventHandler = CreateEndpointEventProxy();
+        auto listener = std::make_shared<TTestEndpointListener>();
+        auto manager = CreateEndpointManager(
+            bootstrap,
+            {{ NProto::IPC_VHOST, listener }},
+            CreateServerStatsStub(),
+            "",
+            endpointEventHandler);
+
+        bootstrap.Start();
+
+        auto socketPath = "testSocketPath";
+        auto diskId = "testDiskId";
+
+        {
+            // without started endpoint SwitchEndpointIfNeeded is ignored
+            auto future = endpointEventHandler->SwitchEndpointIfNeeded(
+                diskId, "test");
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(0, listener->SwitchEndpointCounter);
+        }
+
+        NProto::TStartEndpointRequest startRequest;
+        SetDefaultHeaders(startRequest);
+        startRequest.SetUnixSocketPath(socketPath);
+        startRequest.SetDiskId(diskId);
+        startRequest.SetClientId(TestClientId);
+        startRequest.SetIpcType(NProto::IPC_VHOST);
+
+        {
+            auto future = StartEndpoint(*manager, startRequest);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError());
+        }
+
+        {
+            // with started endpoint SwitchEndpointIfNeeded leads to
+            // SwitchEndpoint call
+            auto future = endpointEventHandler->SwitchEndpointIfNeeded(
+                diskId,
+                "test");
+            auto error = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error);
+            UNIT_ASSERT_VALUES_EQUAL(1, listener->SwitchEndpointCounter);
         }
     }
 }

@@ -19,7 +19,7 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationCommonActor::StartWork(
+void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     const NActors::TActorContext& ctx,
     NActors::TActorId srcActorId,
     NActors::TActorId dstActorId)
@@ -36,13 +36,22 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
         ProcessingBlocks.SkipProcessedRanges();
     }
 
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::StartWork(
+    const NActors::TActorContext& ctx)
+{
+    MigrationStarted = true;
     ContinueMigrationIfNeeded(ctx);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::ContinueMigrationIfNeeded(
     const NActors::TActorContext& ctx)
 {
-    if (MigrationInProgress || !ProcessingBlocks.IsProcessingStarted()) {
+    if (!MigrationStarted
+            || MigrationInProgress
+            || !ProcessingBlocks.IsProcessingStarted())
+    {
         return;
     }
 
@@ -199,7 +208,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleMigrateNextRange(
     const TActorContext& ctx)
 {
-    const auto deadline =
+    auto deadline =
         LastRangeMigrationStartTs + MigrationOwner->CalculateMigrationTimeout();
 
     if (ctx.Now() >= deadline) {

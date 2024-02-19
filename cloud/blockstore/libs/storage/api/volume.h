@@ -206,6 +206,25 @@ struct TEvVolume
     };
 
     //
+    // PreparePartitionMigrationRequest
+    //
+    struct TPreparePartitionMigrationRequest
+    {
+    };
+
+    //
+    // PreparePartitionMigrationResponse
+    //
+    struct TPreparePartitionMigrationResponse
+    {
+        bool IsMigrationAllowed;
+
+        explicit TPreparePartitionMigrationResponse(bool isMigrationAllowed)
+            : IsMigrationAllowed(isMigrationAllowed)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -293,6 +312,9 @@ struct TEvVolume
         EvChangeStorageConfigRequest = EvBegin + 54,
         EvChangeStorageConfigResponse = EvBegin + 55,
 
+        EvPreparePartitionMigrationRequest = EvBegin + 56,
+        EvPreparePartitionMigrationResponse = EvBegin + 57,
+
         EvEnd
     };
 
@@ -354,6 +376,16 @@ struct TEvVolume
     using TEvClearBaseDiskIdToTabletIdMapping = TRequestEvent<
         TClearBaseDiskIdToTabletIdMapping,
         EvClearBaseDiskIdToTabletIdMapping
+    >;
+
+    using TEvPreparePartitionMigrationRequest = TRequestEvent<
+        TPreparePartitionMigrationRequest,
+        EvPreparePartitionMigrationRequest
+    >;
+
+    using TEvPreparePartitionMigrationResponse = TRequestEvent<
+        TPreparePartitionMigrationResponse,
+        EvPreparePartitionMigrationResponse
     >;
 };
 
