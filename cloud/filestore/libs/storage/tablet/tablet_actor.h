@@ -171,6 +171,8 @@ private:
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
 
+    ui32 BackpressureErrorCount = 0;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
