@@ -49,6 +49,7 @@ func waitIteration(
 	errors chan error,
 	minRestartPeriodSec uint32,
 	maxRestartPeriodSec uint32,
+	restartTimingsFileName string,
 ) error {
 
 	restartPeriod := common.RandomDuration(
@@ -60,6 +61,21 @@ func waitIteration(
 	case <-time.After(restartPeriod):
 		logging.Info(ctx, "Cancel iteration")
 		cancel()
+
+		if len(restartTimingsFileName) != 0 {
+			f, err := os.OpenFile(
+				restartTimingsFileName,
+				os.O_APPEND|os.O_WRONLY|os.O_CREATE,
+				0644,
+			)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			_, err = f.WriteString(time.Now().String())
+		}
+
 		// Wait for iteration to stop.
 		<-errors
 		return nil
@@ -73,6 +89,7 @@ func run(
 	cmdString string,
 	minRestartPeriodSec uint32,
 	maxRestartPeriodSec uint32,
+	restartTimingsFileName string,
 ) error {
 
 	cmdString = strings.TrimSpace(cmdString)
@@ -112,10 +129,16 @@ func main() {
 	var cmdString string
 	var minRestartPeriodSec uint32
 	var maxRestartPeriodSec uint32
+	var restartTimingsFileName string
 
 	rootCmd := &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmdString, minRestartPeriodSec, maxRestartPeriodSec)
+			return run(
+				cmdString,
+				minRestartPeriodSec,
+				maxRestartPeriodSec,
+				restartTimingsFileName,
+			)
 		},
 	}
 
@@ -136,6 +159,13 @@ func main() {
 		"max-restart-period-sec",
 		30,
 		"maximum time (in seconds) between two consecutive restarts",
+	)
+
+	rootCmd.Flags().StringVar(
+		&restartTimingsFileName,
+		"restart-timings-file-name",
+		"",
+		"file name to store restart timings",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

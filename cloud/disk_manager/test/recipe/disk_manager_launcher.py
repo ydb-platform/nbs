@@ -299,6 +299,7 @@ class DiskManagerServer(Daemon):
                  working_dir,
                  disk_manager_binary_path,
                  with_nemesis,
+                 restart_timings_file_name,
                  min_restart_period_sec: int = 5,
                  max_restart_period_sec: int = 30):
         nemesis_binary_path = yatest_common.binary_path(
@@ -315,6 +316,8 @@ class DiskManagerServer(Daemon):
                 str(min_restart_period_sec),
                 "--max-restart-period-sec",
                 str(max_restart_period_sec),
+                "--restart-timings-file-name",
+                restart_timings_file_name,
             ]
         else:
             command = [disk_manager_binary_path]
@@ -363,6 +366,7 @@ class DiskManagerLauncher:
         ensure_path_exists(working_dir)
 
         self.__restarts_count_file = os.path.join(working_dir, 'restarts_count_{}.txt'.format(idx))
+        restart_timings_file = os.path.join(working_dir, 'restart_timings_{}.txt'.format(idx))
         with open(self.__restarts_count_file, 'w') as f:
             if idx % 2 == 0:
                 f.write(str(idx))
@@ -438,6 +442,7 @@ class DiskManagerLauncher:
             working_dir,
             disk_manager_binary_path,
             with_nemesis,
+            restart_timings_file,
             min_restart_period_sec=min_restart_period_sec,
             max_restart_period_sec=max_restart_period_sec,
         )
