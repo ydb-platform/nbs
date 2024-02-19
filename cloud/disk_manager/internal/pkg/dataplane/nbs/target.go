@@ -29,7 +29,7 @@ func (t *diskTarget) Write(
 
 	startIndex := uint64(chunk.Index) * t.blocksInChunk
 
-	logging.Info(ctx, "writing chunk %v", chunk.Index)
+	logging.Debug(ctx, "writing chunk %v", chunk.Index)
 
 	var err error
 	if chunk.Zero {

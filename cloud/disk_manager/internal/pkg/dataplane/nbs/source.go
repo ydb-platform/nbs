@@ -201,7 +201,7 @@ func (s *diskSource) Read(
 		checkpointID = ""
 	}
 
-	logging.Info(ctx, "reading chunk %v", chunk.Index)
+	logging.Debug(ctx, "reading chunk %v", chunk.Index)
 
 	return s.session.Read(
 		ctx,
