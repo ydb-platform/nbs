@@ -96,6 +96,13 @@ class BaseResourceCleaner:
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         self._ycp = ycp
         self._args = args
+        self._disk_size = None
+        self._disk_blocksize = None
+        if hasattr(args, 'disk_size'):
+            self._disk_size = size_prettifier(
+                args.disk_size * (1024 ** 3)).lower()
+        if hasattr(args, 'disk_blocksize'):
+            self._disk_blocksize = size_prettifier(args.disk_blocksize).lower()
         self._entity_ttls: dict[str, timedelta] = {
             'instance': timedelta(days=1),
             'disk': timedelta(days=1),

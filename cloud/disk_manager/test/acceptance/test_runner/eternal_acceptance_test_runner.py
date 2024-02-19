@@ -28,12 +28,10 @@ class EternalTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(EternalTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
-        disk_size = size_prettifier(args.disk_size * (1024 ** 3)).lower()
-        disk_blocksize = size_prettifier(args.disk_blocksize).lower()
         disk_name_pattern = re.compile(
             fr'^acceptance-test-{test_type}-'
-            fr'{disk_size}-'
-            fr'{disk_blocksize}-[0-9]+$',
+            fr'{self._disk_size}-'
+            fr'{self._disk_blocksize}-[0-9]+$',
         )
         self._entity_ttls = self._entity_ttls | {
             'disk': timedelta(days=5),
