@@ -95,7 +95,7 @@ class _ArgumentNamespaceMock(NamedTuple):
 
 def test_cleanup():
     _now = datetime.now()
-    to_delete_go_test_acceptance_common = [
+    should_delete_inner_test_acceptance_common = [
         _Resource(
             name='acceptance-test-snapshot-acceptance-12931283',
             resource_type='snapshot',
@@ -112,8 +112,8 @@ def test_cleanup():
             created_at=_now - timedelta(days=2),
         ),
     ]
-    to_delete_go_test_acceptance_4gib_4kib = [
-        *to_delete_go_test_acceptance_common,
+    should_delete_inner_test_acceptance_4gib_4kib = [
+        *should_delete_inner_test_acceptance_common,
         _Resource(
             name='acceptance-test-disk-acceptance-4gib-4kib-123124134',
             resource_type='disk',
@@ -130,8 +130,8 @@ def test_cleanup():
             created_at=_now - timedelta(hours=39),
         ),
     ]
-    to_delete_go_test_acceptance_8tib_2kib = [
-        *to_delete_go_test_acceptance_common,
+    should_delete_inner_test_acceptance_8tib_2kib = [
+        *should_delete_inner_test_acceptance_common,
         _Resource(
             name='acceptance-test-disk-acceptance-8tib-2kib-1823123123',
             resource_type='disk',
@@ -153,7 +153,7 @@ def test_cleanup():
             created_at=_now - timedelta(days=2),
         ),
     ]
-    to_delete_go_test_eternal_common = [
+    should_delete_inner_test_eternal_common = [
         _Resource(
             name='acceptance-test-disk-eternal-12391293',
             resource_type='disk',
@@ -175,8 +175,8 @@ def test_cleanup():
             created_at=_now - timedelta(days=11),
         ),
     ]
-    to_delete_go_test_eternal_8tib_16gib = [
-        *to_delete_go_test_eternal_common,
+    should_delete_inner_test_eternal_8tib_16gib = [
+        *should_delete_inner_test_eternal_common,
         _Resource(
             name='acceptance-test-disk-eternal-8tib-16gib-12391293',
             resource_type='disk',
@@ -193,8 +193,8 @@ def test_cleanup():
             created_at=_now - timedelta(days=12),
         ),
     ]
-    to_delete_go_test_eternal_256gib_2mib = [
-        *to_delete_go_test_eternal_common,
+    should_delete_inner_test_eternal_256gib_2mib = [
+        *should_delete_inner_test_eternal_common,
         _Resource(
             name='acceptance-test-disk-eternal-256gib-2mib-12391293',
             resource_type='disk',
@@ -211,7 +211,7 @@ def test_cleanup():
             created_at=_now - timedelta(days=15),
         ),
     ]
-    to_delete_test_acceptance_small = [
+    should_delete_test_acceptance_small = [
         _Resource(
             name='acceptance-test-acceptance-small-2412341243',
             resource_type='instance',
@@ -223,7 +223,7 @@ def test_cleanup():
             created_at=_now - timedelta(days=18),
         ),
     ]
-    to_delete_test_acceptance_medium = [
+    should_delete_test_acceptance_medium = [
         _Resource(
             name='acceptance-test-acceptance-medium-2412341243',
             resource_type='disk',
@@ -240,7 +240,7 @@ def test_cleanup():
             created_at=_now - timedelta(days=77),
         ),
     ]
-    to_delete_test_acceptance_big = [
+    should_delete_test_acceptance_big = [
         _Resource(
             name='acceptance-test-acceptance-big-3745438',
             resource_type='disk',
@@ -252,44 +252,44 @@ def test_cleanup():
             created_at=_now - timedelta(days=13),
         ),
     ]
-    to_delete_test_acceptance_enormous = [
+    should_delete_test_acceptance_enormous = [
         _Resource(
             name='acceptance-test-acceptance-enormous-2412341243',
             resource_type='disk',
             created_at=_now - timedelta(days=9),
         ),
     ]
-    to_delete_test_acceptance_default = [
+    should_delete_test_acceptance_default = [
         _Resource(
             name='acceptance-test-acceptance-default-2412341243',
             resource_type='instance',
             created_at=_now - timedelta(days=14),
         )
     ]
-    to_delete_go_test_eternal_common = [
+    should_delete_inner_test_eternal_common = [
         _Resource(
             name='acceptance-test-eternal-12931239',
             resource_type='instance',
             created_at=_now - timedelta(hours=31),
         ),
     ]
-    to_delete_test_eternal_1tib_4kib = [
+    should_delete_test_eternal_1tib_4kib = [
         _Resource(
             name='acceptance-test-eternal-1tib-4kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
-        *to_delete_go_test_eternal_common,
+        *should_delete_inner_test_eternal_common,
     ]
-    to_delete_test_eternal_8gib_8kib = [
+    should_delete_test_eternal_8gib_8kib = [
         _Resource(
             name='acceptance-test-eternal-8gib-8kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
-        *to_delete_go_test_eternal_common,
+        *should_delete_inner_test_eternal_common,
     ]
-    to_delete_test_sync_8gib_4mib = [
+    should_delete_test_sync_8gib_4mib = [
         _Resource(
             name='acceptance-test-sync-1231312342',
             resource_type='instance',
@@ -311,7 +311,7 @@ def test_cleanup():
             created_at=_now - timedelta(days=29),
         )
     ]
-    not_deleted = [
+    should_not_delete = [
         _Resource(
             name='acceptance-test-snapshot-acceptance-12931283',
             resource_type='snapshot',
@@ -381,42 +381,45 @@ def test_cleanup():
     ycp_mock = _YcpMock(
         [
             *{
-                *to_delete_go_test_acceptance_4gib_4kib,
-                *to_delete_go_test_acceptance_8tib_2kib,
-                *to_delete_go_test_eternal_8tib_16gib,
-                *to_delete_go_test_eternal_256gib_2mib,
-                *to_delete_test_acceptance_small,
-                *to_delete_test_acceptance_medium,
-                *to_delete_test_acceptance_big,
-                *to_delete_test_acceptance_enormous,
-                *to_delete_test_acceptance_default,
-                *to_delete_test_eternal_1tib_4kib,
-                *to_delete_test_eternal_8gib_8kib,
-                *to_delete_test_sync_8gib_4mib,
-                *not_deleted,
+                *should_delete_inner_test_acceptance_4gib_4kib,
+                *should_delete_inner_test_acceptance_8tib_2kib,
+                *should_delete_inner_test_eternal_8tib_16gib,
+                *should_delete_inner_test_eternal_256gib_2mib,
+                *should_delete_test_acceptance_small,
+                *should_delete_test_acceptance_medium,
+                *should_delete_test_acceptance_big,
+                *should_delete_test_acceptance_enormous,
+                *should_delete_test_acceptance_default,
+                *should_delete_test_eternal_1tib_4kib,
+                *should_delete_test_eternal_8gib_8kib,
+                *should_delete_test_sync_8gib_4mib,
+                *should_not_delete,
             }
         ],
         RuntimeError,
     )
-    go_test_cleanup_fixture = [
+    inner_test_cleanup_fixture = [
         (
             ('acceptance', 4, 4096, timedelta(days=1)),
-            to_delete_go_test_acceptance_4gib_4kib,
+            should_delete_inner_test_acceptance_4gib_4kib,
         ),
         (
             ('acceptance', 8 * 1024, 2048, timedelta(days=1)),
-            to_delete_go_test_acceptance_8tib_2kib,
+            should_delete_inner_test_acceptance_8tib_2kib,
         ),
         (
             ('eternal', 8 * 1024, 16 * 1024 ** 3, timedelta(days=5)),
-            to_delete_go_test_eternal_8tib_16gib,
+            should_delete_inner_test_eternal_8tib_16gib,
         ),
         (
             ('eternal', 256, 2 * 1024 ** 2, timedelta(days=5)),
-            to_delete_go_test_eternal_256gib_2mib,
+            should_delete_inner_test_eternal_256gib_2mib,
         ),
     ]
-    for [cleanup_args, expected_to_delete_data] in go_test_cleanup_fixture:
+    for [
+        cleanup_args,
+        expected_should_delete_data,
+    ] in inner_test_cleanup_fixture:
         with ycp_mock.restoring_recorded_deletion():
             # noinspection PyTypeChecker
             cleanup_previous_acceptance_tests_results(
@@ -425,7 +428,7 @@ def test_cleanup():
             assert set(
                 ycp_mock.recorded_deletions,
             ) == set(
-                expected_to_delete_data,
+                expected_should_delete_data,
             ), f"Failed cleanup for args {cleanup_args}"
     test_cleanup_fixture = [
         (
@@ -434,7 +437,7 @@ def test_cleanup():
                 test_type='acceptance',
                 test_suite='small',
             ),
-            to_delete_test_acceptance_small,
+            should_delete_test_acceptance_small,
 
         ),
         (
@@ -443,7 +446,7 @@ def test_cleanup():
                 test_type='acceptance',
                 test_suite='medium',
             ),
-            to_delete_test_acceptance_medium,
+            should_delete_test_acceptance_medium,
 
         ),
         (
@@ -452,7 +455,7 @@ def test_cleanup():
                 test_type='acceptance',
                 test_suite='big',
             ),
-            to_delete_test_acceptance_big,
+            should_delete_test_acceptance_big,
 
         ),
         (
@@ -461,7 +464,7 @@ def test_cleanup():
                 test_type='acceptance',
                 test_suite='enormous',
             ),
-            to_delete_test_acceptance_enormous,
+            should_delete_test_acceptance_enormous,
 
         ),
         (
@@ -470,7 +473,7 @@ def test_cleanup():
                 test_type='acceptance',
                 test_suite='default',
             ),
-            to_delete_test_acceptance_default,
+            should_delete_test_acceptance_default,
 
         ),
         (
@@ -480,7 +483,7 @@ def test_cleanup():
                 disk_size=1024,
                 disk_blocksize=4096,
             ),
-            to_delete_test_eternal_1tib_4kib,
+            should_delete_test_eternal_1tib_4kib,
 
         ),
         (
@@ -490,7 +493,7 @@ def test_cleanup():
                 disk_size=8,
                 disk_blocksize=8 * 1024,
             ),
-            to_delete_test_eternal_8gib_8kib,
+            should_delete_test_eternal_8gib_8kib,
 
         ),
         (
@@ -500,18 +503,18 @@ def test_cleanup():
                 disk_size=8,
                 disk_blocksize=4 * 1024 ** 2,
             ),
-            to_delete_test_sync_8gib_4mib,
+            should_delete_test_sync_8gib_4mib,
         ),
     ]
     for [
         cleaner_type,
         cleanup_args,
-        expected_to_delete_data,
+        expected_should_delete_data,
     ] in test_cleanup_fixture:
         with ycp_mock.restoring_recorded_deletion():
             cleaner_type(ycp_mock, cleanup_args).cleanup()
             assert set(
                 ycp_mock.recorded_deletions,
             ) == set(
-                expected_to_delete_data,
+                expected_should_delete_data,
             ), f"Failed cleanup for args {cleanup_args}"
