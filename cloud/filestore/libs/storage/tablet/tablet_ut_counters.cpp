@@ -648,9 +648,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}},  1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
             {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
-
         });
-
         // clang-format on
 
         tablet.FlushBytes();
