@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 
 #include <util/string/join.h>
+#include <util/generic/cast.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -277,7 +278,10 @@ void TAcquireDiskActor::HandleAcquireDevicesResponse(
     const TEvDiskAgent::TEvAcquireDevicesResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    OnAcquireResponse(ctx, static_cast<ui32>(ev->Cookie), ev->Get()->GetError());
+    OnAcquireResponse(
+        ctx,
+        SafeIntegerCast<ui32>(ev->Cookie),
+        ev->Get()->GetError());
 }
 
 void TAcquireDiskActor::HandleAcquireDevicesUndelivery(
@@ -286,7 +290,7 @@ void TAcquireDiskActor::HandleAcquireDevicesUndelivery(
 {
     OnAcquireResponse(
         ctx,
-        static_cast<ui32>(ev->Cookie),
+        SafeIntegerCast<ui32>(ev->Cookie),
         MakeError(E_REJECTED, "not delivered"));
 }
 
