@@ -42,7 +42,7 @@ union TWorkRequestId
 
 inline IOutputStream& operator<<(IOutputStream& out, const TWorkRequestId& id)
 {
-    Printf(out, "%08X:%X:%X", id.Magic, id.Generation, id.Index);
+    Printf(out, "%08X.%X.%X", id.Magic, id.Generation, id.Index);
     return out;
 }
 

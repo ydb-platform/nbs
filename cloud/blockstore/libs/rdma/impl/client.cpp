@@ -53,6 +53,8 @@ constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
 
+constexpr size_t REQUEST_HISTORY_SIZE = 1024;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest;
@@ -102,9 +104,39 @@ struct TRequest
 
 class TActiveRequests
 {
+    struct THistory
+    {
+        const size_t Capacity;
+
+        TList<ui32> Order;
+        THashSet<ui32> Items;
+
+        THistory(size_t capacity)
+            : Capacity(capacity)
+        {}
+
+        void Put(ui32 reqId)
+        {
+            if (Y_LIKELY(Items.size() == Capacity))
+            {
+                ui32 back = Order.back();
+                Order.pop_back();
+                Items.erase(back);
+            }
+            Order.push_front(reqId);
+            Items.emplace(reqId);
+        }
+
+        bool Contains(ui32 reqId)
+        {
+            return Items.find(reqId) != Items.end();
+        }
+    };
+
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THashSet<TRequest*> Pointers;
+    THistory CompletedRequests = THistory(REQUEST_HISTORY_SIZE);
+    THistory TimedOutRequests = THistory(REQUEST_HISTORY_SIZE);
 
 public:
     ui32 CreateId()
@@ -120,7 +152,6 @@ public:
 
     void Push(TRequestPtr req)
     {
-        Y_ABORT_UNLESS(Pointers.emplace(req.get()).second);
         Y_ABORT_UNLESS(Requests.emplace(req->ReqId, std::move(req)).second);
     }
 
@@ -129,7 +160,7 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-            Pointers.erase(req.get());
+            CompletedRequests.Put(it->first);
             Requests.erase(it);
             return req;
         }
@@ -143,14 +174,28 @@ public:
         }
         auto it = std::begin(Requests);
         TRequestPtr req = std::move(it->second);
-        Pointers.erase(req.get());
+        CompletedRequests.Put(it->first);
         Requests.erase(it);
         return req;
     }
 
-    bool Contains(TRequest* ptr)
+    TRequest* Get(ui32 reqId)
     {
-        return Pointers.contains(ptr);
+        auto it = Requests.find(reqId);
+        if (it != Requests.end()) {
+            return it->second.get();
+        }
+        return nullptr;
+    }
+
+    bool TimedOut(ui32 reqId)
+    {
+        return TimedOutRequests.Contains(reqId);
+    }
+
+    bool Completed(ui32 reqId)
+    {
+        return CompletedRequests.Contains(reqId);
     }
 
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
@@ -166,9 +211,7 @@ public:
         }
 
         for (const auto& x: requests) {
-            // TODO: keep tombstones to distinguish between timed out requests
-            // and unknown reqIds
-            Pointers.erase(x.get());
+            TimedOutRequests.Put(x->ReqId);
             Requests.erase(x->ReqId);
         }
 
@@ -884,7 +927,7 @@ void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
     auto id = TWorkRequestId(wc->wr_id);
 
     RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " " << NVerbs::GetStatusString(wc->status));
+        << " completed with " << NVerbs::GetStatusString(wc->status));
 
     if (!IsWorkRequestValid(id)) {
         RDMA_ERROR(LogThrottler.Unexpected, Log,
@@ -939,7 +982,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 
     Counters->SendRequestStarted();
 
-    send->context = req.get();
+    send->context = reinterpret_cast<void*>(req->ReqId);
     ActiveRequests.Push(std::move(req));
 }
 
@@ -954,7 +997,7 @@ void TClientEndpoint::SendRequestCompleted(
 
     if (status != IBV_WC_SUCCESS) {
         RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << " error: " << NVerbs::GetStatusString(status));
+            << ": " << NVerbs::GetStatusString(status));
 
         Counters->SendRequestError();
         ReportRdmaError();
@@ -962,20 +1005,27 @@ void TClientEndpoint::SendRequestCompleted(
         return;
     }
 
-    auto* req = static_cast<TRequest*>(send->context);
+    auto reqId = reinterpret_cast<uintptr_t>(send->context);
 
-    if (!ActiveRequests.Contains(req)) {
-        RDMA_WARN("SEND " << TWorkRequestId(send->wr.wr_id) << " error: "
-            << "request " << reinterpret_cast<void*>(req) << " not found")
+    if (auto* req = ActiveRequests.Get(reqId)) {
+        LWTRACK(
+            SendRequestCompleted,
+            req->CallContext->LWOrbit,
+            req->CallContext->RequestId);
 
+    } else if (ActiveRequests.TimedOut(reqId)) {
+        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request has timed out before receiving send wc");
+
+    } else if (ActiveRequests.Completed(reqId)) {
+        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request has been completed before receiving send wc");
+
+    } else {
+        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request not found")
         Counters->UnknownRequest();
-        return;
     }
-
-    LWTRACK(
-        SendRequestCompleted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv)
@@ -995,7 +1045,7 @@ void TClientEndpoint::RecvResponseCompleted(
 {
     if (wc_status != IBV_WC_SUCCESS) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: " << NVerbs::GetStatusString(wc_status));
+            << ": " << NVerbs::GetStatusString(wc_status));
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -1008,7 +1058,7 @@ void TClientEndpoint::RecvResponseCompleted(
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: unrecognized protocol version")
+            << ": unrecognized protocol version")
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -1024,7 +1074,7 @@ void TClientEndpoint::RecvResponseCompleted(
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: request " << reqId << " not found");
+            << ": request not found");
 
         Counters->UnknownRequest();
         return;
