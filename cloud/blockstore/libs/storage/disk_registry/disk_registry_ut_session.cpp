@@ -740,11 +740,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
             auto response = diskRegistry.RecvAcquireDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(
-                agents[1].GetDevices(0).GetDeviceUUID(),
-                response->Record.GetDevices(0).GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
     }
 }
