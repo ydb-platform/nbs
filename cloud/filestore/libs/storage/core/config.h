@@ -179,6 +179,8 @@ public:
 
     bool GetConfigsDispatcherServiceEnabled() const;
 
+    ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
