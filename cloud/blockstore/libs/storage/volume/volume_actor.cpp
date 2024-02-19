@@ -368,6 +368,13 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
     return TVolumeActor::STATUS_OFFLINE;
 }
 
+NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+{
+    return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
+               ? RdmaClient
+               : NRdma::IClientPtr{};
+}
+
 ui64 TVolumeActor::GetBlocksCount() const
 {
     return State ? State->GetBlocksCount() : 0;
