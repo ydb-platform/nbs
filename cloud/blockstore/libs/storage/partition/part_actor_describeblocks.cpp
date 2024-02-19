@@ -203,6 +203,18 @@ bool TPartitionActor::PrepareDescribeBlocks(
 
     ui64 commitId = args.CommitId;
 
+    if (State->OverlapsUnconfirmedBlobs(commitId, args.DescribeRange)) {
+        args.Interrupted = true;
+        return true;
+    }
+
+    // NOTE: we should also look in confirmed blobs because they are not added
+    // yet
+    if (State->OverlapsConfirmedBlobs(commitId, args.DescribeRange)) {
+        args.Interrupted = true;
+        return true;
+    }
+
     TDescribeBlocksVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.DescribeRange, commitId);
     auto ready = db.FindMixedBlocks(
@@ -238,9 +250,6 @@ void TPartitionActor::CompleteDescribeBlocks(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
-    FillDescribeBlocksResponse(args, response.get());
-
     RemoveTransaction(*args.RequestInfo);
 
     const ui64 commitId = args.CommitId;
@@ -254,6 +263,19 @@ void TPartitionActor::CompleteDescribeBlocks(
         args.RequestInfo->CallContext->LWOrbit,
         "DescribeBlocks",
         args.RequestInfo->CallContext->RequestId);
+
+    State->GetCleanupQueue().ReleaseBarrier(commitId);
+
+    if (args.Interrupted) {
+        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
+            MakeError(E_REJECTED, "DescribeBlocks transaction was interrupted")
+        );
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+    FillDescribeBlocksResponse(args, response.get());
 
     const ui64 responseBytes = response->Record.ByteSizeLong();
 
@@ -278,8 +300,6 @@ void TPartitionActor::CompleteDescribeBlocks(
     record.Ts = ctx.Now() - duration;
     record.Request = request;
     ProfileLog->Write(std::move(record));
-
-    State->GetCleanupQueue().ReleaseBarrier(args.CommitId);
 }
 
 void TPartitionActor::FillDescribeBlocksResponse(
