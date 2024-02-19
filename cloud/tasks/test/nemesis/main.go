@@ -116,6 +116,7 @@ func run(
 			errors,
 			minRestartPeriodSec,
 			maxRestartPeriodSec,
+			restartTimingsFileName,
 		)
 		if err != nil {
 			return err
