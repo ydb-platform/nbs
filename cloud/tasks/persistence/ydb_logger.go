@@ -49,29 +49,34 @@ type logger struct {
 }
 
 func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
-	ll := logging.GetLogger(ctx)
-
-	if ll == nil {
-		ll = l.logger
+	if logging.GetLogger(ctx) == nil {
+		logging.SetLogger(ctx, l.logger)
 	}
 
-	for _, name := range ydb_log.NamesFromContext(ctx) {
-		ll = ll.WithName(name)
-	}
+	ctx = logging.WithFields(
+		ctx,
+		logging.NewComponentField(logging.ComponentYDB),
+	)
+	ctx = logging.WithFields(ctx, toFields(fields)...)
+
+	// TODO:_ what to do with name provided by ydb sdk?
+	// for _, name := range ydb_log.NamesFromContext(ctx) {
+	// 	ll = ll.WithName(name)
+	// }
 
 	switch ydb_log.LevelFromContext(ctx) {
 	case ydb_log.TRACE:
-		ll.Trace(msg, toFields(fields)...)
+		logging.Trace(ctx, msg)
 	case ydb_log.DEBUG:
-		ll.Debug(msg, toFields(fields)...)
+		logging.Debug(ctx, msg)
 	case ydb_log.INFO:
-		ll.Info(msg, toFields(fields)...)
+		logging.Info(ctx, msg)
 	case ydb_log.WARN:
-		ll.Warn(msg, toFields(fields)...)
+		logging.Warn(ctx, msg)
 	case ydb_log.ERROR:
-		ll.Error(msg, toFields(fields)...)
+		logging.Error(ctx, msg)
 	case ydb_log.FATAL:
-		ll.Fatal(msg, toFields(fields)...)
+		logging.Fatal(ctx, msg)
 	default:
 	}
 }

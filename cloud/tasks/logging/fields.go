@@ -22,6 +22,9 @@ type Field = log.Field
 // const SnapshotID = "SNAPSHOT_ID"
 // const ImageID = "IMAGE_ID"
 
+// TODO:_ move component constants somewhere else?
+const ComponentYDB = "YDB"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func String(key, value string) Field {
