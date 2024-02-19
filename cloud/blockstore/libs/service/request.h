@@ -70,6 +70,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
     xxx(AlterVolume,                        __VA_ARGS__)                       \
     xxx(GetChangedBlocks,                   __VA_ARGS__)                       \
+    xxx(GetCheckpointStatus,                __VA_ARGS__)                       \
     xxx(DescribeVolume,                     __VA_ARGS__)                       \
     xxx(ListVolumes,                        __VA_ARGS__)                       \
     xxx(UploadClientMetrics,                __VA_ARGS__)                       \

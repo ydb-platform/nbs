@@ -408,6 +408,15 @@ TVolumeClient::CreateDeleteCheckpointDataRequest(
     return request;
 }
 
+std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+TVolumeClient::CreateGetCheckpointStatusRequest(const TString& checkpointId)
+{
+    auto request =
+        std::make_unique<TEvService::TEvGetCheckpointStatusRequest>();
+    request->Record.SetCheckpointId(checkpointId);
+    return request;
+}
+
 std::unique_ptr<TEvPartition::TEvBackpressureReport>
 TVolumeClient::CreateBackpressureReport(
     const TBackpressureReport& report)
