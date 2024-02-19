@@ -43,10 +43,47 @@ class YaMuteCheck:
 
         self.regexps.append(tuple(check))
 
-    def __call__(self, suite_name, test_name):
+    def __call__(self, suite_name, test_name, test_case):
+        matching_tests_by_suite_regexps = []
         for ps, pt in self.regexps:
             if ps.match(suite_name) and pt.match(test_name):
                 return True
+            # To mute a single test case against
+            # chunk-level failures
+            if ps.match(suite_name):
+                matching_tests_by_suite_regexps.append(pt)
+
+        if len(matching_tests_by_suite_regexps) == 0:
+            return False
+
+        failure_found = test_case.find("failure")
+        if failure_found is None:
+            return False
+        failure_text = getattr(failure_found, "text", "")
+        failure_text_split = failure_text.split(
+            "List of the tests involved in the launch:",
+        )
+
+        if len(failure_text_split) != 2:
+            return False
+        failed_by_current_chunk_cases = []
+
+        for line in failure_text_split[1].splitlines():
+            line = line.lstrip()
+            if not line.startswith("tests::"):
+                continue
+            test_case_name = line.replace("::", ".").split()[0]
+            failed_by_current_chunk_cases.append(test_case_name)
+
+        matched_test_cases = []
+        for test_case_name in failed_by_current_chunk_cases:
+            for pt in matching_tests_by_suite_regexps:
+                if pt.match(test_case_name):
+                    matched_test_cases.append(test_case_name)
+                    break
+
+        if set(matched_test_cases) == set(failed_by_current_chunk_cases):
+            return True
         return False
 
 
@@ -189,7 +226,7 @@ def transform(
 
             is_fail = is_faulty_testcase(case)
 
-            if mute_check(suite_name, test_name):
+            if mute_check(suite_name, test_name, case):
                 log_print("mute", suite_name, test_name)
                 mute_target(case)
 
