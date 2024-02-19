@@ -15,6 +15,15 @@ type Field = log.Field
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO:_ names of constants. Moreover, do we need them?
+// const Component = "COMPONENT"
+// const TaskID = "TASK_ID"
+// const DiskID = "DISK_ID"
+// const SnapshotID = "SNAPSHOT_ID"
+// const ImageID = "IMAGE_ID"
+
+////////////////////////////////////////////////////////////////////////////////
+
 func String(key, value string) Field {
 	return log.String(key, value)
 }
@@ -49,6 +58,33 @@ func Any(key string, value interface{}) Field {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func NewComponentField(value string) Field {
+	return String("COMPONENT", value)
+}
+
+func NewTaskIDField(value string) Field {
+	return String("TASK_ID", value)
+}
+
+func NewDiskIDField(value string) Field {
+	return String("DISK_ID", value)
+}
+
+func NewSnapshotIDField(value string) Field {
+	return String("SNAPSHOT_ID", value)
+}
+
+func NewImageIDField(value string) Field {
+	return String("IMAGE_ID", value)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func WithFields(ctx context.Context, fields ...Field) context.Context {
+	return ctxlog.WithFields(ctx, fields...)
+}
+
+// TODO:_SetLoggingFields -> WithFieldsFromHeaders
 func SetLoggingFields(ctx context.Context) context.Context {
 	fields := make([]log.Field, 0)
 

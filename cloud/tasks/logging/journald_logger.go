@@ -59,6 +59,37 @@ func getFields(fields ...log.Field) map[string]string {
 	return vars
 }
 
+type journaldLoggerFileds struct {
+	journaldFields map[string]string
+	messageFields  map[string]string
+	errorField     string
+}
+
+func newJournaldLoggerFileds(fields ...log.Field) journaldLoggerFileds {
+	var journaldFields []Field
+	var messageFields []Field
+	// TODO:_ improve naming of 'fields' variables
+	var vars journaldLoggerFileds
+
+	for _, f := range fields {
+		// TODO:_ constant for SYSLOG_IDENTIFIER?
+		if f.Key() == "SYSLOG_IDENTIFIER" {
+			journaldFields = append(journaldFields, f)
+		} else if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
+			vars.errorField = f.Error().Error()
+		} else {
+			messageFields = append(messageFields, f)
+		}
+	}
+
+	vars.journaldFields = getFields(journaldFields...)
+	vars.messageFields = getFields(messageFields...)
+
+	return vars
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Returns the caller of the log methods.
 func captureStacktrace(skip int) (string, int, string, bool) {
 	rpc := make([]uintptr, 1)
@@ -88,6 +119,10 @@ func (l *journaldLogger) structuredLogWithCaller(
 	msg string,
 	fields ...log.Field,
 ) {
+	rawFields := newJournaldLoggerFileds(fields...)
+	for key, value := range rawFields.messageFields {
+		msg = key + ": " + value + ", " + msg
+	}
 
 	msg = strings.ToUpper(level.String()) + " " + msg
 
@@ -97,26 +132,25 @@ func (l *journaldLogger) structuredLogWithCaller(
 
 	if fileName, lineNumber, function, ok := captureStacktrace(l.callerSkip + callerSkipOffset); ok {
 		// See: https://www.freedesktop.org/software/systemd/man/systemd.journal-fields.html#CODE_FILE=
-		fields = append(fields,
-			[]log.Field{
-				log.String("code_file", fileName),
-				log.Int("code_line", lineNumber),
-				log.String("code_func", function),
-			}...,
+		callerFields := getFields(
+			log.String("code_file", fileName),
+			log.Int("code_line", lineNumber),
+			log.String("code_func", function),
 		)
+		for key, value := range callerFields {
+			rawFields.journaldFields[key] = value
+		}
 
 		// Short link to the file and line within the file.
 		caller := fmt.Sprintf("%s:%d", path.Base(fileName), lineNumber)
 		msg = caller + " " + msg
 	}
 
-	for _, f := range fields {
-		if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
-			msg += " => " + f.Error().Error()
-		}
+	if len(rawFields.errorField) > 0 {
+		msg += " => " + rawFields.errorField
 	}
 
-	err := journal.Send(msg, getPriority(level), getFields(fields...))
+	err := journal.Send(msg, getPriority(level), rawFields.journaldFields)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write to journald %v\n", err)
 	}

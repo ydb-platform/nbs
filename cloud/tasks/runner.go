@@ -291,6 +291,7 @@ func (r *runnerForRun) run(
 		}
 	}()
 
+	ctx = logging.WithFields(ctx, logging.NewTaskIDField(execCtx.GetTaskID()))
 	return task.Run(ctx, execCtx)
 }
 
@@ -360,6 +361,7 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
+	ctx = logging.WithFields(ctx, logging.NewTaskIDField(execCtx.GetTaskID()))
 	err := task.Cancel(ctx, execCtx)
 
 	if ctx.Err() != nil {
