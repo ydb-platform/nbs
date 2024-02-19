@@ -9582,7 +9582,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(10, 0);
+        partition.WriteBlocks(11, 0);
         partition.CreateCheckpoint("checkpoint");
 
         partition.WriteBlocks(10, 1);
@@ -9598,21 +9598,36 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         dropAddConfirmedBlobs = true;
         partition.WriteBlocks(11, 2);
-        partition.SendReadBlocksRequest(11);
-        auto response = partition.RecvReadBlocksResponse();
-        // can't read unconfirmed range
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
-        // but we can read other ranges
+
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(11);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            // can't describe unconfirmed range
+            partition.SendDescribeBlocksRequest(TBlockRange32::WithLength(11, 1), "");
+            auto response =
+                partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        // but we can read & describe other ranges
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(10))
         );
+        partition.DescribeBlocks(TBlockRange32::WithLength(10, 1), "");
+
         // older commits are also available even when range overlaps with
         // unconfirmed blobs
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(0),
-            GetBlockContent(partition.ReadBlocks(10, "checkpoint"))
+            GetBlockContent(partition.ReadBlocks(11, "checkpoint"))
         );
+        partition.DescribeBlocks(TBlockRange32::WithLength(11, 1), "checkpoint");
 
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
