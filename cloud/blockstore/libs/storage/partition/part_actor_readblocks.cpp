@@ -985,19 +985,19 @@ bool TPartitionActor::PrepareReadBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    if (State->OverlapsUnconfirmedBlobs(args.CommitId, args.ReadRange)) {
+    ui64 commitId = args.CommitId;
+
+    if (State->OverlapsUnconfirmedBlobs(commitId, args.ReadRange)) {
         args.Interrupted = true;
         return true;
     }
 
     // NOTE: we should also look in confirmed blobs because they are not added
     // yet
-    if (State->OverlapsConfirmedBlobs(args.CommitId, args.ReadRange)) {
+    if (State->OverlapsConfirmedBlobs(commitId, args.ReadRange)) {
         args.Interrupted = true;
         return true;
     }
-
-    ui64 commitId = args.CommitId;
 
     TReadBlocksVisitor visitor(
         BlockDigestGenerator,
