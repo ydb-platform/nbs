@@ -901,20 +901,23 @@ private:
         const TEvDiskRegistry::TEvAllocateCheckpointRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto replyError =
-            [&](const NProto::TError& error)
+        auto reply =
+            [&](const NProto::TError& error, const TString& shadowDiskId)
         {
-            NCloud::Reply(
-                ctx,
-                *ev,
-                std::make_unique<TEvDiskRegistry::TEvGetDependentDisksResponse>(
-                    error));
+            auto response = std::make_unique<
+                TEvDiskRegistry::TEvAllocateCheckpointResponse>(error);
+
+            if (!HasError(response->GetError())) {
+                response->Record.SetCheckpointDiskId(shadowDiskId);
+            }
+
+            NCloud::Reply(ctx, *ev, std::move(response));
         };
 
         auto& record = ev->Get()->Record;
         const auto* srcDisk = State->Disks.FindPtr(record.GetSourceDiskId());
         if (!srcDisk) {
-            replyError(MakeError(E_NOT_FOUND, "Src disk not found"));
+            reply(MakeError(E_NOT_FOUND, "Src disk not found"), TString());
             return;
         }
 
@@ -935,15 +938,7 @@ private:
         auto allocateShadowDiskResponse =
             DoHandleAllocateDisk(allocateDiskRequest.get());
 
-        auto response =
-            std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointResponse>(
-                allocateShadowDiskResponse->GetError());
-
-        if (!HasError(response->GetError())) {
-            response->Record.SetCheckpointDiskId(shadowDiskId);
-        }
-
-        NCloud::Reply(ctx, *ev, std::move(response));
+        reply(allocateShadowDiskResponse->GetError(), shadowDiskId);
     }
 
     void HandleDeallocateCheckpoint(
