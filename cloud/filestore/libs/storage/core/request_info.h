@@ -32,6 +32,9 @@ struct TRequestInfo
     const ui64 Started = GetCycleCount();
     ui64 ExecCycles = 0;
 
+    // ActorSystem start ts. Might be empty.
+    TInstant StartedTs;
+
     TRequestInfo() = default;
 
     TRequestInfo(

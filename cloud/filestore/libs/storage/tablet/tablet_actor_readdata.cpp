@@ -454,9 +454,13 @@ void TReadDataActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvReadDataCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
+        auto response = std::make_unique<TCompletion>(error);
         response->CommitId = CommitId;
         response->MixedBlocksRanges = std::move(MixedBlocksRanges);
+        response->Count = 1;
+        response->Size = OriginByteRange.Length;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -560,6 +564,7 @@ void TIndexTabletActor::HandleReadData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
@@ -583,6 +588,12 @@ void TIndexTabletActor::HandleReadDataCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     ReleaseCollectBarrier(msg->CommitId);
     WorkerActors.erase(ev->Sender);
+
+    Metrics.ReadData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.ReadData.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.ReadData.Time.Record(msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -610,6 +621,7 @@ void TIndexTabletActor::HandleDescribeData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     // TODO: implement a block buffer with lazy block allocation and use it
@@ -770,6 +782,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
+        Metrics.DescribeData.RequestBytes.fetch_add(
+            args.OriginByteRange.Length,
+            std::memory_order_relaxed);
+        Metrics.DescribeData.Time.Record(
+            ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }

@@ -496,7 +496,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         });
     }
 
-    Y_UNIT_TEST_F(ShouldCalculateReadWriteBlobMetrics, TEnv)
+    Y_UNIT_TEST_F(ShouldCalculateReadWriteMetrics, TEnv)
     {
         auto registry = Env.GetRegistry();
 
@@ -523,6 +523,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
         }
 
+        {
+            auto response = Tablet->DescribeData(handle, 0, sz);
+            const auto& blobs = response->Record.GetBlobPieces();
+            UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        }
+
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -533,6 +539,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"histogram", "Time"},
                 {"filesystem", "test"},
                 {"request", "ReadBlob"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "WriteData"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "ReadData"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "DescribeData"}}, 0},
         }, false);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -550,6 +568,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "PatchBlob.Count"},
                 {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "WriteData.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "ReadData.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "DescribeData.Count"},
+                {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
             {{
@@ -561,6 +588,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "PatchBlob.RequestBytes"},
                 {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "WriteData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "ReadData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "DescribeData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
         });
 
         Tablet->DestroyHandle(handle);
