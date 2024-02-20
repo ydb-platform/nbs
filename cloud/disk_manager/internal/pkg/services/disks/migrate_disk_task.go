@@ -17,7 +17,6 @@ import (
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
-	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -486,15 +485,6 @@ func (t *migrateDiskTask) finishMigration(
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
 
-	// If RelocateInfo.TargetBaseDiskID is not empty we do not need to release base
-	// disk slot because it was rebased during relocation.
-	if len(t.state.RelocateInfo.TargetBaseDiskID) == 0 {
-		err = t.releaseBaseDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-	}
-
 	return execCtx.FinishWithCallback(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
@@ -507,27 +497,6 @@ func (t *migrateDiskTask) finishMigration(
 			)
 		},
 	)
-}
-
-func (t *migrateDiskTask) releaseBaseDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	idempotencyKey := fmt.Sprintf("%v_ReleaseBaseDisk", execCtx.GetTaskID())
-
-	taskID, err := t.poolService.ReleaseBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		&pools_protos.ReleaseBaseDiskRequest{
-			OverlayDisk: t.request.Disk,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
 }
 
 func (t *migrateDiskTask) getStatusForAPI(ctx context.Context) (
