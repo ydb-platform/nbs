@@ -55,10 +55,12 @@ void TIndexTabletActor::HandleRenameNode(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TRenameNodeMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TRenameNode>(
         ctx,
@@ -284,6 +286,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.ChildRef);
 

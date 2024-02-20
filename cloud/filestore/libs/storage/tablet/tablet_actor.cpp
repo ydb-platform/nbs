@@ -223,6 +223,8 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
+    TerminateTransactions(ctx);
+
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
     }
@@ -231,6 +233,36 @@ void TIndexTabletActor::OnTabletDead(
     UnregisterFileStore(ctx);
 
     Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::AddTransaction(TRequestInfo& requestInfo)
+{
+    requestInfo.Ref();
+
+    Y_ABORT_UNLESS(requestInfo.Empty());
+    ActiveTransactions.PushBack(&requestInfo);
+}
+
+void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
+{
+    Y_ABORT_UNLESS(!requestInfo.Empty());
+    requestInfo.Unlink();
+
+    Y_ABORT_UNLESS(requestInfo.RefCount() > 1);
+    requestInfo.UnRef();
+}
+
+void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        requestInfo->CancelRequest(ctx);
+
+        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
+        requestInfo->UnRef();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

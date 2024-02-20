@@ -42,10 +42,12 @@ void TIndexTabletActor::HandleSetNodeXAttr(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TSetNodeXAttrMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TSetNodeXAttr>(
         ctx,
@@ -134,6 +136,8 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeXAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (SUCCEEDED(args.Error.GetCode())) {
         NProto::TSessionEvent sessionEvent;
         {

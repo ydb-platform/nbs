@@ -556,10 +556,12 @@ void TIndexTabletActor::HandleReadData(
         GetBlockSize()
     );
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TReadDataMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
@@ -753,6 +755,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (args.DescribeOnly && !HasError(args.Error)) {
         auto response =
             std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();

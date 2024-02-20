@@ -171,6 +171,8 @@ private:
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
 
+    TIntrusiveList<TRequestInfo> ActiveTransactions;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -229,6 +231,10 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+
+    void AddTransaction(TRequestInfo& transaction);
+    void RemoveTransaction(TRequestInfo& transaction);
+    void TerminateTransactions(const NActors::TActorContext& ctx);
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,

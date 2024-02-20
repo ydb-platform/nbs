@@ -46,14 +46,16 @@ void TIndexTabletActor::HandleAcquireLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TAcquireLockMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction(*requestInfo);
+
     ExecuteTx<TAcquireLock>(
         ctx,
-        std::move(requestInfo),
+        requestInfo,
         msg->Record);
 }
 
@@ -107,6 +109,8 @@ void TIndexTabletActor::CompleteTx_AcquireLock(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
+
+    RemoveTransaction(*args.RequestInfo);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

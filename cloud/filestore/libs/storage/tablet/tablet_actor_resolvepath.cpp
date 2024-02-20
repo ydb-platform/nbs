@@ -38,10 +38,12 @@ void TIndexTabletActor::HandleResolvePath(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TResolvePathMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TResolvePath>(
         ctx,
@@ -78,6 +80,8 @@ void TIndexTabletActor::CompleteTx_ResolvePath(
     const TActorContext& ctx,
     TTxIndexTablet::TResolvePath& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvResolvePathResponse>(args.Error);
     CompleteResponse<TEvService::TResolvePathMethod>(
         response->Record,

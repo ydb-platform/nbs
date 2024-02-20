@@ -33,14 +33,16 @@ void TIndexTabletActor::HandleAccessNode(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TAccessNodeMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction(*requestInfo);
+
     ExecuteTx<TAccessNode>(
         ctx,
-        std::move(requestInfo),
+        requestInfo,
         msg->Record);
 }
 
@@ -109,6 +111,8 @@ void TIndexTabletActor::CompleteTx_AccessNode(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
+
+    RemoveTransaction(*args.RequestInfo);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

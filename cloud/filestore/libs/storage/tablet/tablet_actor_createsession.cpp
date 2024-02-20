@@ -96,10 +96,12 @@ void TIndexTabletActor::HandleCreateSession(
         LogTag.c_str(),
         DumpMessage(msg->Record).c_str());
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TCreateSessionMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,
@@ -250,6 +252,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 
     auto* session = FindSession(args.SessionId);
     TABLET_VERIFY(session);
+
+    RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));

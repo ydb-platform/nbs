@@ -37,10 +37,12 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TRemoveNodeXAttrMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TRemoveNodeXAttr>(
         ctx,
@@ -113,6 +115,8 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TRemoveNodeXAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);
     CompleteResponse<TEvService::TRemoveNodeXAttrMethod>(
         response->Record,

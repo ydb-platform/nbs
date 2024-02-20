@@ -42,10 +42,12 @@ void TIndexTabletActor::HandleDestroySession(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TDestroySessionMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TDestroySession>(
         ctx,
@@ -151,6 +153,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroySession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

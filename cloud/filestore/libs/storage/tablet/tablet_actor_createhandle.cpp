@@ -55,10 +55,12 @@ void TIndexTabletActor::HandleCreateHandle(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TCreateHandleMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TCreateHandle>(
         ctx,
@@ -259,6 +261,8 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);

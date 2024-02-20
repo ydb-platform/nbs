@@ -258,6 +258,10 @@ void TIndexTabletActor::HandleWriteBatch(
         return;
     }
 
+    for (const auto& batch: writeBatch) {
+        AddTransaction(*batch.RequestInfo);
+    }
+
     auto batchInfo = GetBatchInfo(writeBatch);
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s WriteBatch started (%u bytes, %s)",
@@ -525,6 +529,10 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
             NCloud::Reply(ctx, *write.RequestInfo, std::move(response));
         }
     };
+
+    for (const auto& batch: args.WriteBatch) {
+        RemoveTransaction(*batch.RequestInfo);
+    }
 
     if (!args.SkipFresh) {
         LOG_TRACE(ctx, TFileStoreComponents::TABLET,

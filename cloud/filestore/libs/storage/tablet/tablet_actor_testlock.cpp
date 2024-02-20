@@ -50,10 +50,12 @@ void TIndexTabletActor::HandleTestLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TTestLockMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TTestLock>(
         ctx,
@@ -111,6 +113,8 @@ void TIndexTabletActor::CompleteTx_TestLock(
     const TActorContext& ctx,
     TTxIndexTablet::TTestLock& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvTestLockResponse>(args.Error);
     if (args.Incompatible.has_value()) {
         SetResponseDetails(response->Record, std::move(*args.Incompatible));

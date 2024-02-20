@@ -47,10 +47,12 @@ void TIndexTabletActor::HandleSetNodeAttr(
         return;
     }
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TSetNodeAttrMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TSetNodeAttr>(
         ctx,
@@ -171,6 +173,8 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvSetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.Node);

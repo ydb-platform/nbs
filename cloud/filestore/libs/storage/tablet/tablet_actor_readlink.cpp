@@ -33,10 +33,12 @@ void TIndexTabletActor::HandleReadLink(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TReadLinkMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TReadLink>(
         ctx,
@@ -89,6 +91,8 @@ void TIndexTabletActor::CompleteTx_ReadLink(
     const TActorContext& ctx,
     TTxIndexTablet::TReadLink& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvReadLinkResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         response->Record.SetSymLink(args.Node->Attrs.GetSymLink());

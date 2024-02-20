@@ -26,10 +26,12 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         msg->CheckpointId.c_str(),
         ToString(msg->Mode).c_str());
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TDeleteCheckpoint>(
         ctx,
@@ -239,6 +241,8 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
         "%s DeleteCheckpoint completed (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());
+
+    RemoveTransaction(*args.RequestInfo);
 
     ReleaseMixedBlocks(args.MixedBlocksRanges);
     ReleaseCollectBarrier(args.CollectBarrier);

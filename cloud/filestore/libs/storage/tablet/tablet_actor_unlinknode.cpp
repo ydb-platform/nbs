@@ -44,10 +44,12 @@ void TIndexTabletActor::HandleUnlinkNode(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TUnlinkNodeMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TUnlinkNode>(
         ctx,
@@ -163,6 +165,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),

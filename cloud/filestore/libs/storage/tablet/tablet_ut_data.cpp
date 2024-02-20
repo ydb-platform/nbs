@@ -10,10 +10,14 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/base/logoblob.h>
+#include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
+
+using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -3554,6 +3558,106 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto response = tablet.RecvDescribeDataResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             ErrorInvalidHandle(invalidHandle).GetCode(),
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    TABLET_TEST(ShouldCancelRequestsIfTabletIsRebooted)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBatchEnabled(false);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.SendRequest(tablet.CreateWriteDataRequest(handle, 0, tabletConfig.BlockSize, 'a'));
+
+        bool putSeen = false;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    putSeen = true;
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT(putSeen);
+
+        tablet.RebootTablet();
+
+        auto response = tablet.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    TABLET_TEST(ShouldCancelBatchedRequestsIfTabletIsRebooted)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBatchEnabled(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        tablet.SendRequest(tablet.CreateWriteDataRequest(handle, 0, tabletConfig.BlockSize, 'a'));
+
+        bool putSeen = false;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    putSeen = true;
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+
+        UNIT_ASSERT(putSeen);
+
+        tablet.RebootTablet();
+
+        auto response = tablet.RecvWriteDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
     }

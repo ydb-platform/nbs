@@ -322,7 +322,7 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TWriteDataMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -339,9 +339,11 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
+    AddTransaction(*requestInfo);
+
     ExecuteTx<TWriteData>(
         ctx,
-        std::move(requestInfo),
+        requestInfo,
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
@@ -528,6 +530,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     };
+
+    RemoveTransaction(*args.RequestInfo);
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);

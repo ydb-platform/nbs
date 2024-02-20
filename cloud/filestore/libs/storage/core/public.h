@@ -16,6 +16,6 @@ class TStorageConfig;
 using TStorageConfigPtr = std::shared_ptr<TStorageConfig>;
 
 struct TRequestInfo;
-using TRequestInfoPtr = std::shared_ptr<TRequestInfo>;
+using TRequestInfoPtr = TIntrusivePtr<TRequestInfo>;
 
 }   // namespace NCloud::NFileStore::NStorage

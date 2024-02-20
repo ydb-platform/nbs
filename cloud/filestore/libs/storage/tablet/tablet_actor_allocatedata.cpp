@@ -69,10 +69,12 @@ void TIndexTabletActor::HandleAllocateData(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
+    auto requestInfo = CreateRequestInfo<TEvService::TAllocateDataMethod>(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction(*requestInfo);
 
     ExecuteTx<TAllocateData>(
         ctx,
@@ -223,6 +225,8 @@ void TIndexTabletActor::CompleteTx_AllocateData(
     const TActorContext& ctx,
     TTxIndexTablet::TAllocateData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

@@ -75,7 +75,7 @@ void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx
 }
 
 std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
-    TRequestInfo&& info,
+    const TRequestInfo& info,
     NProto::EStorageMediaKind media,
     IRequestStatsPtr requestStats,
     TInstant start)
@@ -85,7 +85,7 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
         std::piecewise_construct,
         std::forward_as_tuple(cookie),
         std::forward_as_tuple(
-            std::move(info),
+            info,
             ProfileLog,
             media,
             requestStats));
