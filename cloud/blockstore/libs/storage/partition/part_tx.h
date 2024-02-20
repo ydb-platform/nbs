@@ -891,6 +891,7 @@ struct TTxPartition
         const bool IgnoreBaseDisk;
 
         TVector<ui8> ChangedBlocks;
+        bool Interrupted = false;
 
         TGetChangedBlocks(
                 TRequestInfoPtr requestInfo,

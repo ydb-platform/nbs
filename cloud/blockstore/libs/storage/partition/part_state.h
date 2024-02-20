@@ -1313,7 +1313,17 @@ public:
     }
 
     bool OverlapsUnconfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
+        const TBlockRange32& blockRange) const;
+
+    bool OverlapsUnconfirmedBlobs(
         ui64 commitId,
+        const TBlockRange32& blockRange) const;
+
+    bool OverlapsConfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
         const TBlockRange32& blockRange) const;
 
     bool OverlapsConfirmedBlobs(
