@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"strings"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	ydb_log "github.com/ydb-platform/ydb-go-sdk/v3/log"
@@ -50,19 +51,20 @@ type logger struct {
 
 func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
 	if logging.GetLogger(ctx) == nil {
-		logging.SetLogger(ctx, l.logger)
+		ctx = logging.SetLogger(ctx, l.logger)
 	}
 
 	ctx = logging.WithFields(
 		ctx,
 		logging.NewComponentField(logging.ComponentYDB),
 	)
+	if names := ydb_log.NamesFromContext(ctx); len(names) != 0 {
+		ctx = logging.WithFields(
+			ctx,
+			logging.String("YDB_LOG_NAME", strings.Join(names, ".")),
+		)
+	}
 	ctx = logging.WithFields(ctx, toFields(fields)...)
-
-	// TODO:_ what to do with name provided by ydb sdk?
-	// for _, name := range ydb_log.NamesFromContext(ctx) {
-	// 	ll = ll.WithName(name)
-	// }
 
 	switch ydb_log.LevelFromContext(ctx) {
 	case ydb_log.TRACE:
