@@ -9615,12 +9615,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
         }
 
-        // but we can read & describe other ranges
+        {
+            // can't do GetChangedBlocks on unconfirmed range
+            partition.SendGetChangedBlocksRequest(
+                TBlockRange32::WithLength(11, 1),
+                "checkpoint",
+                "",
+                false);
+            auto response =
+                partition.RecvResponse<TEvService::TEvGetChangedBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        // but we can work with other ranges
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(10))
         );
         partition.DescribeBlocks(TBlockRange32::WithLength(10, 1), "");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(10, 1), "checkpoint", "", false);
 
         // older commits are also available even when range overlaps with
         // unconfirmed blobs
@@ -9629,6 +9642,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(partition.ReadBlocks(11, "checkpoint"))
         );
         partition.DescribeBlocks(TBlockRange32::WithLength(11, 1), "checkpoint");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(11, 1), "", "checkpoint", false);
 
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
