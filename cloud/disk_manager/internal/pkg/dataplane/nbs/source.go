@@ -191,6 +191,8 @@ func (s *diskSource) Read(
 	chunk *dataplane_common.Chunk,
 ) error {
 
+	logging.Debug(ctx, "reading chunk %v", chunk.Index)
+
 	startIndex := uint64(chunk.Index) * s.blocksInChunk
 	// blockCount should be multiple of blocksInChunk.
 
@@ -200,8 +202,6 @@ func (s *diskSource) Read(
 		// Reading from an empty checkpoint retrieves the latest data.
 		checkpointID = ""
 	}
-
-	logging.Debug(ctx, "reading chunk %v", chunk.Index)
 
 	return s.session.Read(
 		ctx,
