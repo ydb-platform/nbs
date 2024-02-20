@@ -2,17 +2,26 @@ import argparse
 import calendar
 import contextlib
 import logging
-import uuid
-
 import re
 import socket
 import subprocess
-
+import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Type
 
+from cloud.blockstore.pylibs import common
+from cloud.blockstore.pylibs.clusters.test_config import get_cluster_test_config
+from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper
+from contrib.ydb.tests.library.harness.kikimr_runner import (
+    get_unique_path_for_current_test,
+    ensure_path_exists
+)
+from .cleanup import (
+    cleanup_previous_acceptance_tests_results,
+    BaseResourceCleaner,
+)
 from .lib import (
     check_ssh_connection,
     create_ycp,
@@ -22,16 +31,6 @@ from .lib import (
     YcpFindDiskPolicy,
     YcpNewDiskPolicy
 )
-
-from cloud.blockstore.pylibs import common
-from cloud.blockstore.pylibs.clusters.test_config import get_cluster_test_config
-from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper
-
-from contrib.ydb.tests.library.harness.kikimr_runner import (
-    get_unique_path_for_current_test,
-    ensure_path_exists
-)
-
 
 _logger = logging.getLogger(__file__)
 
@@ -121,6 +120,8 @@ class BaseTestBinaryExecutor:
 class BaseAcceptanceTestRunner(ABC):
 
     _test_binary_executor_type: Type[BaseTestBinaryExecutor]
+    _cleaner_type: Type[BaseResourceCleaner]
+    _single_disk_test_ttl = timedelta(days=1)
 
     @abstractmethod
     def run(self, profiler: common.Profiler):
@@ -134,6 +135,7 @@ class BaseAcceptanceTestRunner(ABC):
                                                 args.cluster_config_path)
         self._iodepth = self._args.instance_cores * 4
         self._results_processor = None
+        self._cleanup_before_tests = self._args.cleanup_before_tests
         if self._args.results_path is not None:
             self._results_processor = common.ResultsProcessorFsBase(
                 service='disk-manager',
@@ -192,9 +194,18 @@ class BaseAcceptanceTestRunner(ABC):
             auto_delete=not self._args.debug,
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)
+        if self._cleanup_before_tests:
+            self._cleaner_type(self._ycp, self._args).cleanup()
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
         # Execute acceptance test on test disk
+        cleanup_previous_acceptance_tests_results(
+            self._ycp,
+            self._args.test_type,
+            disk.size,
+            disk.block_size,
+            self._single_disk_test_ttl,
+        )
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()
         self._test_binary_executor.run(disk.id, disk.size, disk.block_size)
