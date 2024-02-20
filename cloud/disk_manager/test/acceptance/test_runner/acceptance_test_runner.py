@@ -1,9 +1,11 @@
+import argparse
 import logging
+import re
 
 from cloud.blockstore.pylibs import common
-
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
-    BaseTestBinaryExecutor
+    BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     generate_test_cases,
     YcpNewDiskPolicy
@@ -23,9 +25,23 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
             f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
 
 
+class AcceptanceTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(AcceptanceTestCleaner, self).__init__(ycp, args)
+        _instance_name_pattern = re.compile(
+            rf'^acceptance-test-{args.test_type}-'
+            rf'{args.test_suite}-[0-9]+$',
+        )
+        self._patterns = {
+            'instance': [_instance_name_pattern],
+            'disk': [_instance_name_pattern],
+        }
+
+
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _test_binary_executor_type = AcceptanceTestBinaryExecutor
+    _resource_cleaner = AcceptanceTestCleaner
 
     @property
     def _remote_verify_test_path(self) -> str:

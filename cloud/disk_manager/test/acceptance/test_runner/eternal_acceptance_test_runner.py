@@ -1,19 +1,21 @@
+import argparse
 import contextlib
 import logging
 import math
-
+import re
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+
+from cloud.blockstore.pylibs import common
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor
-
+from .cleanup import BaseResourceCleaner
 from .lib import (
     check_ssh_connection,
     size_prettifier,
     Error,
 )
-
-from cloud.blockstore.pylibs import common
-
 
 _logger = logging.getLogger(__file__)
 
@@ -22,8 +24,28 @@ class EternalAcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
     _entity_suffix = 'eternal'
 
 
+class EternalTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(EternalTestCleaner, self).__init__(ycp, args)
+        test_type = args.test_type
+        disk_name_pattern = re.compile(
+            fr'^acceptance-test-{test_type}-'
+            fr'{self._disk_size}-'
+            fr'{self._disk_blocksize}-[0-9]+$',
+        )
+        self._entity_ttls = self._entity_ttls | {
+            'disk': timedelta(days=5),
+        }
+        self._patterns = {
+            **self._patterns,
+            'disk': [disk_name_pattern],
+        }
+
+
 class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
     _test_binary_executor_type = EternalAcceptanceTestBinaryExecutor
+    _cleaner_type = EternalTestCleaner
+    _single_disk_test_ttl = timedelta(days=5)
 
     @property
     def _main_block_device(self) -> str:
