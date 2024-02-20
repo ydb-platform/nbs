@@ -205,4 +205,9 @@ message TStorageConfig
 
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 333;
+
+    // IndexTabletActor will suicide (and thus reboot) after observing this
+    // number of backpressure errors. Needed to automatically recover after
+    // various races that may happen during index tablet startup due to bugs.
+    optional uint32 MaxBackpressureErrorsBeforeSuicide = 334;
 }

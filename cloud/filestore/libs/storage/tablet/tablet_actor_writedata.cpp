@@ -307,6 +307,17 @@ void TIndexTabletActor::HandleWriteData(
         }
 
         if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+            if (++BackpressureErrorCount >=
+                    Config->GetMaxBackpressureErrorsBeforeSuicide())
+            {
+                LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER,
+                    "%s Suiciding after %u backpressure errors",
+                    LogTag.c_str(),
+                    BackpressureErrorCount);
+
+                Suicide(ctx);
+            }
+
             return MakeError(E_REJECTED, "rejected due to backpressure");
         }
 
@@ -316,6 +327,10 @@ void TIndexTabletActor::HandleWriteData(
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
         return;
     }
+
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
