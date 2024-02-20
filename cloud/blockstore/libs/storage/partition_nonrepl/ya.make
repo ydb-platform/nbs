@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    checksum_range.cpp
     config.cpp
     copy_range.cpp
     migration_timeout_calculator.cpp

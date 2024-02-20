@@ -105,7 +105,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         MakeIntrusive<TCallContext>()
     );
 
-    TVector<TResyncReplica> replicas;
+    TVector<TReplicaId> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
         if (State.GetReplicaInfos()[i].Config->DevicesReadyForReading(
