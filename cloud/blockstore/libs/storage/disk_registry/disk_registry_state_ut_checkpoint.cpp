@@ -25,7 +25,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 AvailableBlockSizes[] =
-    {4096, 8192, 16384, 32768, 65536, 131072};
+    {4_KB, 8_KB, 16_KB, 32_KB, 64_KB, 128_KB};
 
 TDiskRegistryState MakeDiskRegistryState()
 {
