@@ -1,5 +1,6 @@
 #pragma once
 
+#include "checksum_range.h"
 #include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -17,14 +18,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TResyncReplica
-{
-    TString Name;
-    NActors::TActorId ActorId;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TResyncRangeActor final
     : public NActors::TActorBootstrapped<TResyncRangeActor>
 {
@@ -32,11 +25,10 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
-    const TVector<TResyncReplica> Replicas;
+    const TVector<TReplicaId> Replicas;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
-    THashMap<int, ui64> Checksums;
     TVector<int> ActorsToResync;
     ui32 ResyncedCount = 0;
     TGuardedBuffer<TString> Buffer;
@@ -56,7 +48,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         TBlockRange64 range,
-        TVector<TResyncReplica> replicas,
+        TVector<TReplicaId> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator);
 
@@ -64,8 +56,9 @@ public:
 
 private:
     void ChecksumBlocks(const NActors::TActorContext& ctx);
-    void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
-    void CompareChecksums(const NActors::TActorContext& ctx);
+    void CompareChecksums(
+        const NActors::TActorContext& ctx,
+        const THashMap<int, ui64>& checksums);
     void ReadBlocks(const NActors::TActorContext& ctx, int idx);
     void WriteBlocks(const NActors::TActorContext& ctx);
     void WriteReplicaBlocks(const NActors::TActorContext& ctx, int idx);
@@ -74,13 +67,9 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleChecksumResponse(
-        const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleChecksumUndelivery(
-        const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
+    void HandleChecksumRangeCompleted(
+            const TEvNonreplPartitionPrivate::TEvChecksumRangeCompleted::TPtr& ev,
+            const NActors::TActorContext& ctx);
 
     void HandleReadResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,

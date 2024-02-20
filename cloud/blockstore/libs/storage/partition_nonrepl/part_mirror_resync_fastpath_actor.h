@@ -31,7 +31,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
-    const TVector<TResyncReplica> Replicas;
+    const TVector<TReplicaId> Replicas;
     const TString ClientId;
     TGuardedSgList SgList;
 
@@ -44,7 +44,7 @@ public:
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
-        TVector<TResyncReplica> replicas,
+        TVector<TReplicaId> replicas,
         TString clientId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
