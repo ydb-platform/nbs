@@ -405,7 +405,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         breakAgent("agent-1");
 
         {
-            auto response = diskRegistry.AcquireDisk("disk-1", "session-1");
+            diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
+            auto response = diskRegistry.RecvAcquireDiskResponse();
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
             const auto& msg = response->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
@@ -428,10 +432,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         breakAgent("agent-2");
 
         {
-            auto response = diskRegistry.AcquireDisk("disk-1", "session-1");
-            const auto& msg = response->Record;
+            diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
+            auto response = diskRegistry.RecvAcquireDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
 
-            UNIT_ASSERT_VALUES_EQUAL(0, msg.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
 
         diskRegistry.ReleaseDisk("disk-1", "session-1");
@@ -499,9 +504,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
 
         auto response = diskRegistry.RecvAcquireDiskResponse();
-        UNIT_ASSERT_VALUES_EQUAL(
-            response->GetStatus(),
-            E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldHandleTimeoutedStartSession)
@@ -670,6 +673,76 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         runtime->SetObserverFunc(observerFunc);
         diskRegistry.ReleaseDisk("disk-1", "session-1");
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreRetriableErrorsOnAcquireSession)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-2", "rack-1", 10_GB),
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+
+        WaitForSecureErase(*runtime, agents);
+
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        {
+            auto response = diskRegistry.AcquireDisk("disk-1", "session-1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.DevicesSize());
+        }
+
+        // reject acquire requests to uuid-1
+        auto observerFunc = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvAcquireDevicesRequest: {
+                    auto& msg = *event->Get<TEvDiskAgent::TEvAcquireDevicesRequest>();
+                    if (msg.Record.GetDeviceUUIDs(0) == agents[0].GetDevices(0).GetDeviceUUID()) {
+                        auto response = std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>(
+                            MakeError(E_REJECTED));
+
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie));
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        {
+            diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
+            auto response = diskRegistry.RecvAcquireDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
+        }
     }
 }
 
