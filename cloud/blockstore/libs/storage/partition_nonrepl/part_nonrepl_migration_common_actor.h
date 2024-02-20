@@ -65,8 +65,12 @@ public:
 class TNonreplicatedPartitionMigrationCommonActor
     : public NActors::TActorBootstrapped<
           TNonreplicatedPartitionMigrationCommonActor>
+    , IPoisonPillHelperOwner
 {
 private:
+    using TBase = NActors::TActorBootstrapped<
+        TNonreplicatedPartitionMigrationCommonActor>;
+
     IMigrationOwner* const MigrationOwner = nullptr;
     const TStorageConfigPtr Config;
     const IProfileLogPtr ProfileLog;
@@ -130,6 +134,12 @@ public:
 
     // Called from the inheritor to get the next processing range.
     TBlockRange64 GetNextProcessingRange() const;
+
+    // IPoisonPillHelperOwner implementation
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        TBase::Die(ctx);
+    }
 
 private:
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
