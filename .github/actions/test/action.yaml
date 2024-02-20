@@ -146,6 +146,7 @@ runs:
           -m .github/config/muted_ya.txt \
           --ya-out "$OUT_DIR" \
           --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
+          --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \
           --log-out-dir "$ARTIFACTS_DIR/logs/" \
           "$JUNIT_REPORT_XML"
 

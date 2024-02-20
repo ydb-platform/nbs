@@ -3,14 +3,14 @@ package persistence
 import (
 	"context"
 	"fmt"
-	"os"
-	"testing"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	"os"
+	"testing"
+	"time"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -463,6 +463,7 @@ func TestYDBFailMigrationChangingType(t *testing.T) {
 }
 
 func TestYDBFailMigrationChangingPrimaryKey(t *testing.T) {
+	time.Sleep(time.Minute * 10)
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
