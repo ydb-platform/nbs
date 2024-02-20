@@ -49,7 +49,7 @@ func waitIteration(
 	errors chan error,
 	minRestartPeriodSec uint32,
 	maxRestartPeriodSec uint32,
-	restartTimingsFileName string,
+	restartTimingsFile string,
 ) error {
 
 	restartPeriod := common.RandomDuration(
@@ -62,9 +62,9 @@ func waitIteration(
 		logging.Info(ctx, "Cancel iteration")
 		cancel()
 
-		if len(restartTimingsFileName) != 0 {
+		if len(restartTimingsFile) != 0 {
 			f, err := os.OpenFile(
-				restartTimingsFileName,
+				restartTimingsFile,
 				os.O_APPEND|os.O_WRONLY|os.O_CREATE,
 				0644,
 			)
@@ -92,7 +92,7 @@ func run(
 	cmdString string,
 	minRestartPeriodSec uint32,
 	maxRestartPeriodSec uint32,
-	restartTimingsFileName string,
+	restartTimingsFile string,
 ) error {
 
 	cmdString = strings.TrimSpace(cmdString)
@@ -119,7 +119,7 @@ func run(
 			errors,
 			minRestartPeriodSec,
 			maxRestartPeriodSec,
-			restartTimingsFileName,
+			restartTimingsFile,
 		)
 		if err != nil {
 			return err
@@ -133,7 +133,7 @@ func main() {
 	var cmdString string
 	var minRestartPeriodSec uint32
 	var maxRestartPeriodSec uint32
-	var restartTimingsFileName string
+	var restartTimingsFile string
 
 	rootCmd := &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -141,7 +141,7 @@ func main() {
 				cmdString,
 				minRestartPeriodSec,
 				maxRestartPeriodSec,
-				restartTimingsFileName,
+				restartTimingsFile,
 			)
 		},
 	}
@@ -166,7 +166,7 @@ func main() {
 	)
 
 	rootCmd.Flags().StringVar(
-		&restartTimingsFileName,
+		&restartTimingsFile,
 		"restart-timings-file",
 		"",
 		"file where to store restart timings",
