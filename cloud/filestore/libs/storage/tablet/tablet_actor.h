@@ -86,9 +86,14 @@ private:
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
 
-        std::atomic<i64> MixedBytesCount{0};
+        // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> MixedBytesCount{0};
+        std::atomic<i64> MixedBlobsCount{0};
+        std::atomic<i64> DeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
+        std::atomic<i64> GarbageBytesCount{0};
+        std::atomic<i64> FreshBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -120,6 +125,13 @@ private:
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
+        TRequestMetrics ReadData;
+        TRequestMetrics DescribeData;
+        TRequestMetrics WriteData;
+
+        // Compaction/cleanup stats
+        std::atomic<i64> MaxBlobsInRange{0};
+        std::atomic<i64> MaxDeletionsInRange{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -151,6 +163,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
+    TIntrusiveList<TRequestInfo> ActiveTransactions;    
 
     TInstant ReassignRequestSentTs;
 
@@ -171,7 +184,7 @@ private:
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
 
-    TIntrusiveList<TRequestInfo> ActiveTransactions;
+    ui32 BackpressureErrorCount = 0;
 
 public:
     TIndexTabletActor(

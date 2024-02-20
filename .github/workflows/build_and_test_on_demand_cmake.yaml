@@ -81,6 +81,7 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
+          submodules: true
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
@@ -91,6 +92,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: true
       - id: configure-ncp
         name: Configure NCP
         uses: ./.github/actions/ncp

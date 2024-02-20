@@ -69,6 +69,9 @@ public:
     [[nodiscard]] bool CheckInflight(ui64 requestId, const TBlockRange64& range)
         const;
 
+    // Has inflight request tracked.
+    [[nodiscard]] bool HasInflight() const;
+
     // Add inflight request to track.
     void AddInflight(ui64 requestId, const TBlockRange64& range);
 

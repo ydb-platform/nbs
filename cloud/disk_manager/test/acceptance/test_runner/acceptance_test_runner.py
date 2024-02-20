@@ -1,9 +1,11 @@
+import argparse
 import logging
+import re
 
 from cloud.blockstore.pylibs import common
-
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
-    BaseTestBinaryExecutor
+    BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     generate_test_cases,
     YcpNewDiskPolicy
@@ -17,17 +19,29 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
 
     def __init__(self, args, *arguments, **kwargs):
         super(AcceptanceTestBinaryExecutor, self).__init__(args, *arguments, **kwargs)
-        location = args.cluster
-        if args.profile_name is not None:
-            location = args.profile_name
+        location = args.bucket_location or args.profile_name or args.cluster
         self._acceptance_test_cmd.extend([
             '--url-for-create-image-from-url-test',
             f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
 
 
+class AcceptanceTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(AcceptanceTestCleaner, self).__init__(ycp, args)
+        _instance_name_pattern = re.compile(
+            rf'^acceptance-test-{args.test_type}-'
+            rf'{args.test_suite}-[0-9]+$',
+        )
+        self._patterns = {
+            'instance': [_instance_name_pattern],
+            'disk': [_instance_name_pattern],
+        }
+
+
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _test_binary_executor_type = AcceptanceTestBinaryExecutor
+    _resource_cleaner = AcceptanceTestCleaner
 
     @property
     def _remote_verify_test_path(self) -> str:

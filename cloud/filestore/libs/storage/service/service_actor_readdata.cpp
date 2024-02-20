@@ -328,9 +328,10 @@ void TReadDataActor::HandleReadBlobResponse(
         ev->Cookie);
 
     Y_ABORT_UNLESS(ev->Cookie < DescribeResponse.BlobPiecesSize());
+    const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        Y_ABORT_UNLESS(i < DescribeResponse.GetBlobPieces(i).RangesSize());
+        Y_ABORT_UNLESS(i < blobPiece.RangesSize());
 
         const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
@@ -497,6 +498,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         response->Record.MutableBuffer());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+    Die(ctx);
 }
 
 void TReadDataActor::HandleError(
@@ -506,6 +509,7 @@ void TReadDataActor::HandleError(
     auto response = std::make_unique<TEvService::TEvReadDataResponse>(
         std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -160,7 +160,6 @@ IActorSystemPtr CreateDiskAgentActorSystem(const TDiskAgentActorSystemArgs& daAr
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
-    servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableConfigsDispatcher =
         daArgs.StorageConfig->GetConfigsDispatcherServiceEnabled();
 

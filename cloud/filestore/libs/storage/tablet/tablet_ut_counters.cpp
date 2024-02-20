@@ -247,6 +247,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"component", "storage_fs"},
                 {"host", "cluster"},
                 {"filesystem", "test"},
+                {"sensor", "MixedBlobsCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "GarbageQueueSize"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "GarbageBytesCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
+                {"sensor", "FreshBlocksCount"}}, 0},
+            {{
+                {"component", "storage_fs"},
+                {"host", "cluster"},
+                {"filesystem", "test"},
                 {"sensor", "PostponedRequests"}}, 0},
             {{
                 {"component", "storage_fs"},
@@ -287,7 +307,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"component", "storage"},
                 {"type", "hdd"},
-                {"sensor", "UsedBytesCount"}}, 0}
+                {"sensor", "UsedBytesCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "MixedBlobsCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "GarbageQueueSize"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "GarbageBytesCount"}}, 0},
+            {{
+                {"component", "storage"},
+                {"type", "hdd"},
+                {"sensor", "FreshBlocksCount"}}, 0}
         });
         // clang-format on
     }
@@ -460,7 +496,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         });
     }
 
-    Y_UNIT_TEST_F(ShouldCalculateReadWriteBlobMetrics, TEnv)
+    Y_UNIT_TEST_F(ShouldCalculateReadWriteMetrics, TEnv)
     {
         auto registry = Env.GetRegistry();
 
@@ -487,6 +523,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             UNIT_ASSERT(CompareBuffer(buffer, sz, 'a'));
         }
 
+        {
+            auto response = Tablet->DescribeData(handle, 0, sz);
+            const auto& blobs = response->Record.GetBlobPieces();
+            UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        }
+
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -497,6 +539,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"histogram", "Time"},
                 {"filesystem", "test"},
                 {"request", "ReadBlob"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "WriteData"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "ReadData"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "DescribeData"}}, 0},
         }, false);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -514,6 +568,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "PatchBlob.Count"},
                 {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "WriteData.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "ReadData.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "DescribeData.Count"},
+                {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
             {{
@@ -525,9 +588,106 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "PatchBlob.RequestBytes"},
                 {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "WriteData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "ReadData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "DescribeData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
         });
 
         Tablet->DestroyHandle(handle);
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyWriteCompactionStats)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(false);
+
+        storageConfig.SetCompactionThreshold(std::numeric_limits<ui32>::max());
+        storageConfig.SetCleanupThreshold(std::numeric_limits<ui32>::max());
+
+        TTestEnv env({}, storageConfig);
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        const auto nodeIdx = env.CreateNode("nfs");
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+
+        const size_t countrRewrites = 7;
+
+        for (size_t i = 0; i < countrRewrites; ++i) {
+            tablet.AdvanceTime(TDuration::Seconds(1));
+            tablet.SendWriteDataRequest(
+                handle,
+                0,
+                DefaultBlockSize * BlockGroupSize,
+                static_cast<char>('a'));
+            tablet.AssertWriteDataQuickResponse(S_OK);
+        }
+        tablet.Flush();
+        tablet.FlushBytes();
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        TTestRegistryVisitor visitor;
+
+        registry->Visit(TInstant::Zero(), visitor);
+        // clang-format off
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "MaxBlobsInRange"}},     countrRewrites},
+            {{{"sensor", "MaxDeletionsInRange"}}, countrRewrites * BlockGroupSize},
+        });
+        // clang-format on
+    }
+
+    Y_UNIT_TEST(ShouldProperlyReportDataMetrics)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetThrottlingEnabled(false);
+
+        TTestEnv env({}, storageConfig);
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        const auto nodeIdx = env.CreateNode("nfs");
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, nodeId);
+
+        tablet.WriteData(handle, 1, DefaultBlockSize, static_cast<char>('a'));
+        const auto sz = DefaultBlockSize * BlockGroupSize;
+        tablet.WriteData(handle, sz * 10, sz, 'a');
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}},   DefaultBlockSize - 1},
+            {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}},  1},
+            {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
+        });
+        // clang-format on
+
+        tablet.FlushBytes();
     }
 }
 

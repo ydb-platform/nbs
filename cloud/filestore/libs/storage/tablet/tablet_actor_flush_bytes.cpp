@@ -494,6 +494,12 @@ void TIndexTabletActor::HandleFlushBytes(
             BlobIndexOpState.Complete();
         }
 
+        // Flush may have been enqueued if FlushBytes was enqueued by the
+        // tablet (via EnqueueBlobIndexOpIfNeeded).
+        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
+            FlushState.Complete();
+        }
+
         replyError(
             ctx,
             *ev,

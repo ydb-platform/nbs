@@ -25,6 +25,7 @@ nbsd, diskagentd, blockstore-client and blockstore-nbd can be built for Ubuntu 1
 ```bash
 git clone https://github.com/ydb-platform/nbs.git
 cd nbs
+git submodule update --init --recursive
 ```
 
 ## Build with ya

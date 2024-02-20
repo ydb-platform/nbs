@@ -34,9 +34,10 @@ private:
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
 
-   const ui64 CommitId;
+    const ui64 CommitId;
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
+    ui32 BlobsSize = 0;
 
 public:
     TWriteDataActor(
@@ -91,6 +92,10 @@ TWriteDataActor::TWriteDataActor(
     , WriteRange(writeRange)
 {
     ActivityType = TFileStoreActivities::TABLET_WORKER;
+
+    for (const auto& blob: Blobs) {
+        BlobsSize += blob.BlobContent.Size();
+    }
 }
 
 void TWriteDataActor::Bootstrap(const TActorContext& ctx)
@@ -171,8 +176,12 @@ void TWriteDataActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteDataCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvWriteDataCompleted;
+        auto response = std::make_unique<TCompletion>(error);
         response->CommitId = CommitId;
+        response->Count = 1;
+        response->Size = BlobsSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -307,6 +316,17 @@ void TIndexTabletActor::HandleWriteData(
         }
 
         if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+            if (++BackpressureErrorCount >=
+                    Config->GetMaxBackpressureErrorsBeforeSuicide())
+            {
+                LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER,
+                    "%s Suiciding after %u backpressure errors",
+                    LogTag.c_str(),
+                    BackpressureErrorCount);
+
+                Suicide(ctx);
+            }
+
             return MakeError(E_REJECTED, "rejected due to backpressure");
         }
 
@@ -317,6 +337,10 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
+
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
         return;
@@ -326,6 +350,7 @@ void TIndexTabletActor::HandleWriteData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
     if (Config->GetWriteBatchEnabled()) {
@@ -360,6 +385,12 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.WriteData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.WriteData.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.WriteData.Time.Record(msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -543,6 +574,12 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
+
+        Metrics.WriteData.Count.fetch_add(1, std::memory_order_relaxed);
+        Metrics.WriteData.RequestBytes.fetch_add(
+            args.ByteRange.Length,
+            std::memory_order_relaxed);
+        Metrics.WriteData.Time.Record(ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }

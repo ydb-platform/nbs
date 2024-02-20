@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <library/cpp/testing/benchmark/bench.h>
 
@@ -43,9 +44,20 @@ Y_CPU_BENCHMARK(WriteBlocks, iface)
     auto client = bootstrap->GetClient();
 
     auto context = MakeIntrusive<TCallContext>();
+
+    auto blocksCount = 42;
+    TString block(options->BlockSize, 'a');
+
+    TVector<TString> vec;
+    auto sglist = ResizeBlocks(vec, blocksCount, block);
+
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+    request->BlocksCount = blocksCount;
+    request->BlockSize = options->BlockSize;
+    request->Sglist = TGuardedSgList(std::move(sglist));
 
     for (size_t i = 0; i < iface.Iterations(); ++i) {
+        request->SetStartIndex(i);
         CheckError(client->WriteBlocksLocal(context, request));
     }
 

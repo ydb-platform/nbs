@@ -269,20 +269,10 @@ TString TCheckpointInfo::MakeCheckpointDiskId(
 ui64 TDiskInfo::GetBlocksCount() const
 {
     ui64 result = 0;
-    if (MasterDiskId) {
-        for (const auto& replica: Replicas) {
-            for (const auto& device: replica) {
-                result += device.GetBlocksCount();
-            }
-            break;
-        }
-    } else {
-        for (const auto& device: Devices) {
-            const ui64 logicalBlockCount = device.GetBlockSize() *
-                                           device.GetBlocksCount() /
-                                           LogicalBlockSize;
-            result += logicalBlockCount;
-        }
+    for (const auto& device: Devices) {
+        const ui64 logicalBlockCount =
+            device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        result += logicalBlockCount;
     }
     return result;
 }
@@ -800,7 +790,8 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
         return;
     }
 
-    const auto deviceSize = device.GetBlockSize() * device.GetBlocksCount();
+    const auto deviceSize =
+        device.GetBlockSize() * device.GetUnadjustedBlockCount();
 
     if (deviceSize < unit) {
         SetDeviceErrorState(device, timestamp, TStringBuilder()

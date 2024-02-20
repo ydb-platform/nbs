@@ -16,6 +16,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/overloaded.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -134,9 +135,31 @@ bool CompareRequests(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
+    struct T##name##Method                                                     \
+    {                                                                          \
+        using TRequest = NProto::T##name##Request;                             \
+        using TResponse = NProto::T##name##Response;                           \
+    };
+// BLOCKSTORE_DECLARE_METHOD
+
+    BLOCKSTORE_ENDPOINT_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+
+#undef BLOCKSTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+struct TRequestState
+{
+    typename TMethod::TRequest Request;
+    TFuture<typename TMethod::TResponse> Result;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TEndpointManager final
-    : public std::enable_shared_from_this<TEndpointManager>
-    , public IEndpointManager
+    : public IEndpointManager
     , public IEndpointEventHandler
 {
 private:
@@ -147,6 +170,13 @@ private:
     const TString NbdSocketSuffix;
 
     TLog Log;
+
+    using TRequestStateVariant = std::variant<
+        TRequestState<TStartEndpointMethod>,
+        TRequestState<TStopEndpointMethod>,
+        TRequestState<TRefreshEndpointMethod>
+    >;
+    THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
     THashMap<TString, std::shared_ptr<NProto::TStartEndpointRequest>> Requests;
 
@@ -167,25 +197,32 @@ public:
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
     }
 
-    TFuture<NProto::TStartEndpointResponse> StartEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) override;
+#define ENDPOINT_IMPLEMENT_METHOD(name, ...)                                   \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr callContext,                                           \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return Executor->Execute([                                             \
+            ctx = std::move(callContext),                                      \
+            req = std::move(request),                                          \
+            this] () mutable                                                   \
+        {                                                                      \
+            return Do##name(std::move(ctx), std::move(req));                   \
+        });                                                                    \
+    }                                                                          \
+                                                                               \
+    NProto::T##name##Response Do##name(                                        \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProto::T##name##Request> req);                        \
+// ENDPOINT_IMPLEMENT_METHOD
 
-    TFuture<NProto::TStopEndpointResponse> StopEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStopEndpointRequest> request) override;
+    ENDPOINT_IMPLEMENT_METHOD(StartEndpoint)
+    ENDPOINT_IMPLEMENT_METHOD(StopEndpoint)
+    ENDPOINT_IMPLEMENT_METHOD(ListEndpoints)
+    ENDPOINT_IMPLEMENT_METHOD(DescribeEndpoint)
+    ENDPOINT_IMPLEMENT_METHOD(RefreshEndpoint)
 
-    TFuture<NProto::TListEndpointsResponse> ListEndpoints(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListEndpointsRequest> request) override;
-
-    TFuture<NProto::TDescribeEndpointResponse> DescribeEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TDescribeEndpointRequest> request) override;
-
-    TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TRefreshEndpointRequest> request) override;
+#undef ENDPOINT_IMPLEMENT_METHOD
 
     void OnVolumeConnectionEstablished(const TString& diskId) override;
 
@@ -196,26 +233,27 @@ private:
 
     NProto::TStopEndpointResponse StopEndpointImpl(
         TCallContextPtr ctx,
-        const TString& socketPath,
-        const NProto::THeaders& headers);
-
-    NProto::TListEndpointsResponse ListEndpointsImpl(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListEndpointsRequest> request);
+        std::shared_ptr<NProto::TStopEndpointRequest> request);
 
     NProto::TRefreshEndpointResponse RefreshEndpointImpl(
         TCallContextPtr ctx,
-        const TString& socketPath,
-        const NProto::THeaders& headers);
+        std::shared_ptr<NProto::TRefreshEndpointRequest> request);
 
     NProto::TStartEndpointResponse AlterEndpoint(
         TCallContextPtr ctx,
         const NProto::TStartEndpointRequest& newRequest,
         const NProto::TStartEndpointRequest& oldRequest);
 
+    NProto::TError OpenEndpointSockets(
+        const NProto::TStartEndpointRequest& request,
+        const TSessionInfo& sessionInfo);
+
     NProto::TError OpenEndpointSocket(
         const NProto::TStartEndpointRequest& request,
         const TSessionInfo& sessionInfo);
+
+    TVector<TFuture<NProto::TError>> CloseEndpointSockets(
+        const NProto::TStartEndpointRequest& startRequest);
 
     TFuture<NProto::TError> CloseEndpointSocket(
         const NProto::TStartEndpointRequest& startRequest);
@@ -224,21 +262,83 @@ private:
         const NProto::TStartEndpointRequest& request);
 
     void TrySwitchEndpoint(const TString& diskId);
+
+    template <typename TMethod>
+    TPromise<typename TMethod::TResponse> AddProcessingSocket(
+        const typename TMethod::TRequest& request)
+    {
+        auto promise = NewPromise<typename TMethod::TResponse>();
+
+        auto [_, inserted] = ProcessingSockets.emplace(
+            request.GetUnixSocketPath(),
+            TRequestState<TMethod>{request, promise.GetFuture()});
+        Y_ABORT_UNLESS(inserted);
+
+        return promise;
+    }
+
+    void RemoveProcessingSocket(const TString& socketPath)
+    {
+        ProcessingSockets.erase(socketPath);
+    }
+
+    TErrorResponse MakeBusySocketError(
+        const TString& socketPath,
+        const TRequestStateVariant& st)
+    {
+        auto processName = std::visit(TOverloaded{
+            [] (const TRequestState<TStartEndpointMethod>&) {
+                return "starting";
+            },
+            [] (const TRequestState<TStopEndpointMethod>&) {
+                return "stopping";
+            },
+            [] (const TRequestState<TRefreshEndpointMethod>&) {
+                return "refreshing";
+            },
+            [](const auto&) {
+                return "busy (undefined process)";
+            }
+        }, st);
+
+        return TErrorResponse(E_REJECTED, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " is " << processName << " now");
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<NProto::TStartEndpointResponse> TEndpointManager::StartEndpoint(
-    TCallContextPtr callContext,
+NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
+    TCallContextPtr ctx,
     std::shared_ptr<NProto::TStartEndpointRequest> request)
 {
-    return Executor->Execute([
-        ctx = std::move(callContext),
-        req = std::move(request),
-        this] () mutable
-    {
-        return StartEndpointImpl(std::move(ctx), std::move(req));
-    });
+    auto socketPath = request->GetUnixSocketPath();
+
+    auto it = ProcessingSockets.find(socketPath);
+    if (it != ProcessingSockets.end()) {
+        const auto& st = it->second;
+        auto* state = std::get_if<TRequestState<TStartEndpointMethod>>(&st);
+        if (!state) {
+            return MakeBusySocketError(socketPath, st);
+        }
+
+        if (!AreSameStartEndpointRequests(*request, state->Request)) {
+            return TErrorResponse(E_REJECTED, TStringBuilder()
+                << "endpoint " << socketPath.Quote()
+                << " is starting now with other args");
+        }
+
+        return Executor->WaitFor(state->Result);
+    }
+
+    auto promise = AddProcessingSocket<TStartEndpointMethod>(*request);
+
+    auto response = StartEndpointImpl(std::move(ctx), std::move(request));
+    promise.SetValue(response);
+
+    RemoveProcessingSocket(socketPath);
+    return response;
 }
 
 NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
@@ -247,26 +347,18 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
 {
     auto socketPath = request->GetUnixSocketPath();
 
-    auto requestIt = Requests.find(socketPath);
-    if (requestIt != Requests.end()) {
-        const auto& startedEndpoint = *requestIt->second;
-        return AlterEndpoint(std::move(ctx), *request, startedEndpoint);
+    auto it = Requests.find(socketPath);
+    if (it != Requests.end()) {
+        return AlterEndpoint(std::move(ctx), *request, *it->second);
     }
 
-    if (request->GetClientId().empty()) {
-        return TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder() << "ClientId shouldn't be empty");
+    auto future = SessionManager->CreateSession(ctx, *request);
+    auto [sessionInfo, error] = Executor->WaitFor(future);
+    if (HasError(error)) {
+        return TErrorResponse(error);
     }
 
-    auto createSessionFuture = SessionManager->CreateSession(ctx, *request);
-    auto result = Executor->WaitFor(createSessionFuture);
-    if (HasError(result)) {
-        return TErrorResponse(result.GetError());
-    }
-    const auto& sessionInfo = result.GetResult();
-
-    auto error = OpenEndpointSocket(*request, sessionInfo);
+    error = OpenEndpointSockets(*request, sessionInfo);
     if (HasError(error)) {
         auto future = SessionManager->RemoveSession(
             std::move(ctx),
@@ -276,27 +368,10 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
-    auto nbdRequest = CreateNbdStartEndpointRequest(*request);
-    if (nbdRequest) {
-        STORAGE_INFO("Start additional endpoint: " << *nbdRequest);
-        auto error = OpenEndpointSocket(*nbdRequest, sessionInfo);
-
-        if (HasError(error)) {
-            auto closeFuture = CloseEndpointSocket(*request);
-            Executor->WaitFor(closeFuture);
-            auto removeFuture = SessionManager->RemoveSession(
-                std::move(ctx),
-                socketPath,
-                request->GetHeaders());
-            Executor->WaitFor(removeFuture);
-            return TErrorResponse(error);
-        }
-    }
-
     if (auto c = ServerStats->GetEndpointCounter(request->GetIpcType())) {
         c->Inc();
     }
-    auto [it, inserted] = Requests.emplace(socketPath, std::move(request));
+    auto [_, inserted] = Requests.emplace(socketPath, std::move(request));
     STORAGE_VERIFY(inserted, TWellKnownEntityTypes::ENDPOINT, socketPath);
 
     NProto::TStartEndpointResponse response;
@@ -334,11 +409,9 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     }
 
     if (CompareRequests(newRequest, startedEndpoint)) {
-        return TErrorResponse(
-            S_ALREADY,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started");
+        return TErrorResponse(S_ALREADY, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " has already been started");
     }
 
     startedEndpoint.SetVolumeAccessMode(newRequest.GetVolumeAccessMode());
@@ -346,11 +419,9 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     startedEndpoint.SetMountSeqNumber(newRequest.GetMountSeqNumber());
 
     if (!CompareRequests(newRequest, startedEndpoint)) {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started with other args");
+        return TErrorResponse(E_INVALID_STATE, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " has already been started with other args");
     }
 
     auto future = SessionManager->AlterSession(
@@ -390,34 +461,43 @@ NProto::TStartEndpointResponse TEndpointManager::AlterEndpoint(
     return TErrorResponse(Executor->WaitFor(alterFuture));
 }
 
-TFuture<NProto::TStopEndpointResponse> TEndpointManager::StopEndpoint(
-    TCallContextPtr callContext,
+NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
+    TCallContextPtr ctx,
     std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
-    return Executor->Execute([
-        ctx = std::move(callContext),
-        req = std::move(request),
-        this] () mutable
-    {
-        return StopEndpointImpl(
-            std::move(ctx),
-            req->GetUnixSocketPath(),
-            req->GetHeaders());
-    });
+    auto socketPath = request->GetUnixSocketPath();
+
+    auto it = ProcessingSockets.find(socketPath);
+    if (it != ProcessingSockets.end()) {
+        const auto& st = it->second;
+        auto* state = std::get_if<TRequestState<TStopEndpointMethod>>(&st);
+        if (!state) {
+            return MakeBusySocketError(socketPath, st);
+        }
+
+        return Executor->WaitFor(state->Result);
+    }
+
+    auto promise = AddProcessingSocket<TStopEndpointMethod>(*request);
+
+    auto response = StopEndpointImpl(std::move(ctx), std::move(request));
+    promise.SetValue(response);
+
+    RemoveProcessingSocket(socketPath);
+    return response;
 }
 
 NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     TCallContextPtr ctx,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
+    std::shared_ptr<NProto::TStopEndpointRequest> request)
 {
+    auto socketPath = request->GetUnixSocketPath();
+
     auto it = Requests.find(socketPath);
     if (it == Requests.end()) {
-        return TErrorResponse(
-            S_FALSE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " hasn't been started yet");
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " hasn't been started yet");
     }
 
     auto startRequest = std::move(it->second);
@@ -426,52 +506,24 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    TVector<TFuture<NProto::TError>> closeSocketFutures;
-
-    auto future = CloseEndpointSocket(*startRequest);
-    closeSocketFutures.push_back(future);
-
-    auto nbdRequest = CreateNbdStartEndpointRequest(*startRequest);
-    if (nbdRequest) {
-        STORAGE_INFO("Stop additional endpoint: "
-            << nbdRequest->GetUnixSocketPath().Quote());
-        auto future = CloseEndpointSocket(*nbdRequest);
-        closeSocketFutures.push_back(future);
-    }
-
-    auto removeFuture = SessionManager->RemoveSession(
+    auto futures = CloseEndpointSockets(*startRequest);
+    auto future = SessionManager->RemoveSession(
         std::move(ctx),
         socketPath,
-        headers);
-    Executor->WaitFor(removeFuture);
+        request->GetHeaders());
+    futures.push_back(future);
 
-    NProto::TStopEndpointResponse response;
-
-    for (const auto& closeSocketFuture: closeSocketFutures) {
-        auto error = Executor->WaitFor(closeSocketFuture);
-
+    NProto::TError result;
+    for (const auto& future: futures) {
+        auto error = Executor->WaitFor(future);
         if (HasError(error)) {
-            response = TErrorResponse(error);
+            result = error;
         }
     }
-
-    return response;
+    return TErrorResponse(result);
 }
 
-TFuture<NProto::TListEndpointsResponse> TEndpointManager::ListEndpoints(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TListEndpointsRequest> request)
-{
-    return Executor->Execute([
-        ctx = std::move(callContext),
-        req = std::move(request),
-        this] () mutable
-    {
-        return ListEndpointsImpl(std::move(ctx), std::move(req));
-    });
-}
-
-NProto::TListEndpointsResponse TEndpointManager::ListEndpointsImpl(
+NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TListEndpointsRequest> request)
 {
@@ -490,52 +542,61 @@ NProto::TListEndpointsResponse TEndpointManager::ListEndpointsImpl(
     return response;
 }
 
-TFuture<NProto::TDescribeEndpointResponse> TEndpointManager::DescribeEndpoint(
+NProto::TDescribeEndpointResponse TEndpointManager::DoDescribeEndpoint(
     TCallContextPtr ctx,
-    std::shared_ptr<NProto::TDescribeEndpointRequest> request)
+    std::shared_ptr<NProto::TDescribeEndpointRequest> req)
 {
     Y_UNUSED(ctx);
 
     NProto::TDescribeEndpointResponse response;
 
-    auto profile = SessionManager->GetProfile(request->GetUnixSocketPath());
-    if (HasError(profile)) {
-        response.MutableError()->CopyFrom(profile.GetError());
+    auto [profile, err] = SessionManager->GetProfile(req->GetUnixSocketPath());
+    if (HasError(err)) {
+        response.MutableError()->CopyFrom(err);
     } else {
-        response.MutablePerformanceProfile()->CopyFrom(profile.GetResult());
+        response.MutablePerformanceProfile()->CopyFrom(profile);
     }
 
-    return MakeFuture(response);
+    return response;
 }
 
-TFuture<NProto::TRefreshEndpointResponse> TEndpointManager::RefreshEndpoint(
-    TCallContextPtr callContext,
+NProto::TRefreshEndpointResponse TEndpointManager::DoRefreshEndpoint(
+    TCallContextPtr ctx,
     std::shared_ptr<NProto::TRefreshEndpointRequest> request)
 {
-    return Executor->Execute([
-        ctx = std::move(callContext),
-        req = std::move(request),
-        this] () mutable
-    {
-        return RefreshEndpointImpl(
-            std::move(ctx),
-            req->GetUnixSocketPath(),
-            req->GetHeaders());
-    });
+    auto socketPath = request->GetUnixSocketPath();
+
+    auto it = ProcessingSockets.find(socketPath);
+    if (it != ProcessingSockets.end()) {
+        const auto& st = it->second;
+        auto* state = std::get_if<TRequestState<TRefreshEndpointMethod>>(&st);
+        if (!state) {
+            return MakeBusySocketError(socketPath, st);
+        }
+
+        return Executor->WaitFor(state->Result);
+    }
+
+    auto promise = AddProcessingSocket<TRefreshEndpointMethod>(*request);
+
+    auto response = RefreshEndpointImpl(std::move(ctx), std::move(request));
+    promise.SetValue(response);
+
+    RemoveProcessingSocket(socketPath);
+    return response;
 }
 
 NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     TCallContextPtr ctx,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
+    std::shared_ptr<NProto::TRefreshEndpointRequest> request)
 {
+    const auto& socketPath = request->GetUnixSocketPath();
+    const auto& headers = request->GetHeaders();
+
     auto it = Requests.find(socketPath);
     if (it == Requests.end()) {
-        return TErrorResponse(
-            S_FALSE,
-            TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " not started");
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote() << " not started");
     }
 
     auto ipcType = it->second->GetIpcType();
@@ -547,14 +608,36 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     const auto& listener = listenerIt->second;
 
     auto future = SessionManager->GetSession(ctx, socketPath, headers);
-    auto result = Executor->WaitFor(future);
-    if (HasError(result)) {
-        return TErrorResponse(result.GetError());
+    auto [sessionInfo, error] = Executor->WaitFor(future);
+    if (HasError(error)) {
+        return TErrorResponse(error);
     }
 
-    const auto& sessionInfo = result.GetResult();
-    auto error = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    error = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
     return TErrorResponse(error);
+}
+
+NProto::TError TEndpointManager::OpenEndpointSockets(
+    const NProto::TStartEndpointRequest& request,
+    const TSessionInfo& sessionInfo)
+{
+    auto error = OpenEndpointSocket(request, sessionInfo);
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto nbdRequest = CreateNbdStartEndpointRequest(request);
+    if (nbdRequest) {
+        STORAGE_INFO("Start additional endpoint: " << *nbdRequest);
+        auto error = OpenEndpointSocket(*nbdRequest, sessionInfo);
+
+        if (HasError(error)) {
+            auto closeFuture = CloseEndpointSocket(request);
+            Executor->WaitFor(closeFuture);
+            return error;
+        }
+    }
+    return {};
 }
 
 NProto::TError TEndpointManager::OpenEndpointSocket(
@@ -564,19 +647,15 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     auto ipcType = request.GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     if (listenerIt == EndpointListeners.end()) {
-        return TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
+        return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            << "unsupported endpoint type: " << static_cast<ui32>(ipcType));
     }
     auto listener = listenerIt->second;
 
     if (request.GetUnixSocketPath().size() > UnixSocketPathLengthLimit) {
-        return TErrorResponse(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "Length of socket path should not be more than "
-                << UnixSocketPathLengthLimit);
+        return TErrorResponse(E_ARGUMENT, TStringBuilder()
+            << "Length of socket path should not be more than "
+            << UnixSocketPathLengthLimit);
     }
 
     auto future = listener->StartEndpoint(
@@ -584,8 +663,25 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
         sessionInfo.Volume,
         sessionInfo.Session);
 
-    auto error = Executor->WaitFor(future);
-    return error;
+    return Executor->WaitFor(future);
+}
+
+TVector<TFuture<NProto::TError>> TEndpointManager::CloseEndpointSockets(
+    const NProto::TStartEndpointRequest& startRequest)
+{
+    TVector<TFuture<NProto::TError>> futures;
+
+    auto future = CloseEndpointSocket(startRequest);
+    futures.push_back(future);
+
+    auto nbdRequest = CreateNbdStartEndpointRequest(startRequest);
+    if (nbdRequest) {
+        STORAGE_INFO("Stop additional endpoint: "
+            << nbdRequest->GetUnixSocketPath().Quote());
+        auto future = CloseEndpointSocket(*nbdRequest);
+        futures.push_back(future);
+    }
+    return futures;
 }
 
 TFuture<NProto::TError> TEndpointManager::CloseEndpointSocket(
@@ -646,12 +742,10 @@ void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
         std::move(ctx),
         req->GetUnixSocketPath(),
         req->GetHeaders());
-    auto result = Executor->WaitFor(future);
-    if (HasError(result)) {
+    auto [sessionInfo, error] = Executor->WaitFor(future);
+    if (HasError(error)) {
         return;
     }
-
-    const auto& sessionInfo = result.GetResult();
 
     STORAGE_INFO("Switching endpoint for volume " << sessionInfo.Volume.GetDiskId()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
@@ -661,7 +755,7 @@ void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
         *it->second,
         sessionInfo.Volume,
         sessionInfo.Session);
-    auto error = Executor->WaitFor(switchFuture);
+    error = Executor->WaitFor(switchFuture);
     if (HasError(error)) {
         ReportEndpointSwitchFailure(TStringBuilder()
             << "Failed to switch endpoint for volume "
@@ -704,7 +798,7 @@ IEndpointManagerPtr CreateEndpointManager(
     return manager;
 }
 
-bool IsSameStartEndpointRequests(
+bool AreSameStartEndpointRequests(
     const NProto::TStartEndpointRequest& left,
     const NProto::TStartEndpointRequest& right)
 {

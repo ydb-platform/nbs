@@ -463,6 +463,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 response2);
 
             startEndpointPromise.SetValue(NProto::TError{});
+
+            request->MutableHeaders()->SetRequestTimeout(3000);
+            auto future3 = endpointService->KickEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto response3 = future3.GetValue(TDuration::Seconds(3));
+            UNIT_ASSERT_C(!HasError(response3), response3);
         }
 
         executor->Stop();

@@ -2309,6 +2309,74 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldSuicideAfterBackpressureErrors)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * block);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThresholdForBackpressure(2 * block);
+        storageConfig.SetCompactionThresholdForBackpressure(999'999);
+        storageConfig.SetCleanupThresholdForBackpressure(999'999);
+        storageConfig.SetFlushBytesThresholdForBackpressure(1_GB);
+        storageConfig.SetFlushThresholdForBackpressure(block);
+        storageConfig.SetMaxBackpressureErrorsBeforeSuicide(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, block, '0'); // 1 fresh block, 1 marker
+
+        // backpressure due to FlushThresholdForBackpressure
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // this filter is rather coarse so we need to enable it as late as
+        // possible - as close to the poison pill "trigger point" as possible
+        bool poisonPillObserved = false;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvents::TSystem::Poison: {
+                    poisonPillObserved = true;
+                }
+            }
+
+            return false;
+        });
+
+        // backpressure due to FlushThresholdForBackpressure
+        // should cause tablet reboot
+        tablet.SendWriteDataRequest(handle, 0, block, '0');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(poisonPillObserved);
+    }
+
     TABLET_TEST(ShouldReadUnAligned)
     {
         const auto block = tabletConfig.BlockSize;
@@ -3252,6 +3320,99 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(EOperationState::Idle),
                 static_cast<ui32>(stats.GetBlobIndexOpState()));
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(FlushShouldNotGetStuckBecauseOfFlushBytesDuringCompactionMapLoading)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushThreshold(4_KB);
+        storageConfig.SetFlushBytesThreshold(1);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // generating at least one compaction range
+        tablet.WriteData(handle, 0, block, 'a');
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        ui32 flushBytesCount = 0;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvFlushBytesRequest: {
+                    ++flushBytesCount;
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    ++loadChunkCount;
+
+                    // catching the second chunk - first one should be loaded
+                    // so that we are able to write (and thus trigger our
+                    // background ops)
+                    if (loadChunkCount == 2) {
+                        loadChunk = event.Release();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        // rebooting to trigger compaction map reloading
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        handle = CreateHandle(tablet, id);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
+        // this write should succeed - it targets the range that should be
+        // loaded at this point of time
+        tablet.SendWriteDataRequest(handle, 0, 1_KB, 'a');
+        {
+            auto response = tablet.RecvWriteDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // FlushBytes should've been triggered and its operation state should've
+        // been reset to Idle, Flush state should also be idle after this
+        UNIT_ASSERT_VALUES_EQUAL(1, flushBytesCount);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EOperationState::Idle),
+                static_cast<ui32>(stats.GetBlobIndexOpState()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(EOperationState::Idle),
+                static_cast<ui32>(stats.GetFlushState()));
         }
 
         tablet.DestroyHandle(handle);

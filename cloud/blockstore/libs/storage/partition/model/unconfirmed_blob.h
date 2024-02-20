@@ -28,4 +28,15 @@ struct TUnconfirmedBlob
 using TUnconfirmedBlobs = THashMap<ui64, TVector<TUnconfirmedBlob>>;
 using TConfirmedBlobs = THashMap<ui64, TVector<TUnconfirmedBlob>>;
 
+bool Overlaps(
+    const TUnconfirmedBlobs& blobs,
+    ui64 lowCommitId,
+    ui64 highCommitId,
+    const TBlockRange32& blockRange);
+
+bool Overlaps(
+    const TUnconfirmedBlobs& blobs,
+    ui64 commitId,
+    const TBlockRange32& blockRange);
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

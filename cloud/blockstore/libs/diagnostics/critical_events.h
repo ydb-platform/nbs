@@ -54,6 +54,8 @@ namespace NCloud::NBlockStore {
     xxx(ExternalEndpointUnexpectedExit)                                        \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
+    xxx(DiskAgentSecureEraseDuringIo)                                          \
+    xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(BlockDigestMismatchInBlob)                                             \
 // BLOCKSTORE_CRITICAL_EVENTS
 

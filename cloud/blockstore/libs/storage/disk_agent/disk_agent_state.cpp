@@ -673,22 +673,26 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
-    auto onDeviceSecureErased =
+    auto onDeviceSecureEraseFinish =
         [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
          uuid](const TFuture<NProto::TError>& future)
     {
-        if (HasError(future.GetValue())) {
-            return;
-        }
         // The device has been secure erased and now a new client can use it.
         if (auto rdmaTarget = weakRdmaTarget.lock()) {
-            rdmaTarget->DeviceSecureErased(uuid);
+            rdmaTarget->DeviceSecureEraseFinish(uuid, future.GetValue());
         }
     };
 
+    if (RdmaTarget) {
+        auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
+        if (HasError(error)) {
+            return MakeFuture(std::move(error));
+        }
+    }
+
     return device.StorageAdapter
         ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
-        .Subscribe(std::move(onDeviceSecureErased));
+        .Subscribe(std::move(onDeviceSecureEraseFinish));
 }
 
 TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
