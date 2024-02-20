@@ -272,12 +272,13 @@ ModifyScheme {
         ]
 
         services_dbg = [
-            b"BLOCKSTORE_PARTITION",
-            b"BLOCKSTORE_DISK_REGISTRY",
-            b"BLOCKSTORE_DISK_REGISTRY_WORKER",
             b"BLOCKSTORE_DISK_AGENT",
+            b"BLOCKSTORE_DISK_REGISTRY_WORKER",
+            b"BLOCKSTORE_DISK_REGISTRY",
             b"BLOCKSTORE_HIVE_PROXY",
+            b"BLOCKSTORE_PARTITION",
             b"BLOCKSTORE_SS_PROXY",
+            b"BLOCKSTORE_VOLUME_PROXY",
         ]
 
         log_config = TLogConfig()
