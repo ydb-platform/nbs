@@ -74,6 +74,9 @@ func waitIteration(
 			defer f.Close()
 
 			_, err = f.WriteString(time.Now().String())
+			if err != nil {
+				return err
+			}
 		}
 
 		// Wait for iteration to stop.
@@ -164,9 +167,9 @@ func main() {
 
 	rootCmd.Flags().StringVar(
 		&restartTimingsFileName,
-		"restart-timings-file-name",
+		"restart-timings-file",
 		"",
-		"file name to store restart timings",
+		"file where to store restart timings",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

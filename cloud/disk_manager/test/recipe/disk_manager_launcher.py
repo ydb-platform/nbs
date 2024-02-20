@@ -299,7 +299,7 @@ class DiskManagerServer(Daemon):
                  working_dir,
                  disk_manager_binary_path,
                  with_nemesis,
-                 restart_timings_file_name,
+                 restart_timings_file,
                  min_restart_period_sec: int = 5,
                  max_restart_period_sec: int = 30):
         nemesis_binary_path = yatest_common.binary_path(
@@ -316,8 +316,8 @@ class DiskManagerServer(Daemon):
                 str(min_restart_period_sec),
                 "--max-restart-period-sec",
                 str(max_restart_period_sec),
-                "--restart-timings-file-name",
-                restart_timings_file_name,
+                "--restart-timings-file",
+                restart_timings_file,
             ]
         else:
             command = [disk_manager_binary_path]
