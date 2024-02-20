@@ -244,6 +244,8 @@ void TAcquireDiskActor::OnAcquireResponse(
     ui32 nodeId,
     NProto::TError error)
 {
+    Y_ABORT_UNLESS(PendingRequests > 0);
+
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] AcquireDevices on the node #%d %s error: %s",
@@ -266,8 +268,6 @@ void TAcquireDiskActor::OnAcquireResponse(
 
         return;
     }
-
-    Y_ABORT_UNLESS(PendingRequests > 0);
 
     if (--PendingRequests == 0) {
         FinishAcquireDisk(ctx);
@@ -298,16 +298,10 @@ void TAcquireDiskActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
-    const auto err = Sprintf(
-        "[%s] TAcquireDiskActor timeout, targets %s, pending requests: %d",
-        ClientId.c_str(),
-        LogTargets().c_str(),
-        PendingRequests);
-    LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
-
-    FinishAcquireDisk(ctx, MakeError(E_REJECTED, err));
+    OnAcquireResponse(
+        ctx,
+        SafeIntegerCast<ui32>(ev->Cookie),
+        MakeError(E_REJECTED, "timeout"));
 }
 
 void TAcquireDiskActor::HandleStartAcquireDiskResponse(
