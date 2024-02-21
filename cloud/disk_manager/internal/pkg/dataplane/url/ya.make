@@ -13,6 +13,7 @@ END()
 RECURSE(
     common
     qcow2
+    vhd
     vmdk
 )
 
