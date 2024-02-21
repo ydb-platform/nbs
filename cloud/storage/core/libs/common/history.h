@@ -20,8 +20,8 @@ public:
 
     void Put(T item)
     {
-        if (auto back = Ring.PushBack(item)) {
-            Items.erase(*back);
+        if (auto oldest = Ring.PushBack(item)) {
+            Items.erase(*oldest);
         }
         Items.emplace(std::move(item));
     }
