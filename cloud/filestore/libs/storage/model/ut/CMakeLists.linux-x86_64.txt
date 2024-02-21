@@ -14,6 +14,7 @@ target_include_directories(cloud-filestore-libs-storage-model-ut PRIVATE
 target_link_libraries(cloud-filestore-libs-storage-model-ut PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
+  core-libs-common
   yutil
   library-cpp-cpuid_check
   cpp-testing-unittest_main
