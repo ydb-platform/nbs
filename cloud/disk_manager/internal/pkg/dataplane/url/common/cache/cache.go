@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"sort"
 	"sync"
 )
@@ -25,7 +26,11 @@ func (c *chunk) read(start uint64, data []byte) uint64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type readFunc = func(context.Context, uint64, []byte) error
+
 type Cache struct {
+	readOnCacheMiss readFunc
+
 	chunkPool    sync.Pool
 	chunks       map[uint64]*chunk
 	chunksMutex  sync.Mutex
@@ -33,10 +38,11 @@ type Cache struct {
 	chunkSize    uint64
 }
 
-func NewCache() *Cache {
+func NewCache(readOnCacheMiss readFunc) *Cache {
 	// 4 MiB.
 	chunkSize := 4 * 1024 * 1024
 	return &Cache{
+		readOnCacheMiss: readOnCacheMiss,
 		chunkPool: sync.Pool{
 			New: func() interface{} {
 				return &chunk{
@@ -70,9 +76,9 @@ func (c *Cache) readChunk(
 }
 
 func (c *Cache) Read(
+	ctx context.Context,
 	start uint64,
 	data []byte,
-	readOnCacheMiss func(start uint64, data []byte) error,
 ) error {
 
 	end := start + uint64(len(data))
@@ -86,7 +92,7 @@ func (c *Cache) Read(
 			// two chunks).
 			retrievedChunk := c.chunkPool.Get().(*chunk)
 			retrievedChunk.start = chunkStart
-			err := readOnCacheMiss(retrievedChunk.start, retrievedChunk.data)
+			err := c.readOnCacheMiss(ctx, retrievedChunk.start, retrievedChunk.data)
 			if err != nil {
 				return err
 			}
