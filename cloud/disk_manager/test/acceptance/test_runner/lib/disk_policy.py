@@ -64,7 +64,7 @@ class YcpFindDiskPolicy(DiskPolicy):
     def obtain(self) -> Ycp.Disk:
         disks = sorted(
             self._ycp.list_disks(),
-            key=lambda: disk.created_at,
+            key=lambda disk: disk.created_at,
             reverse=True,
         )
         for disk in disks:
