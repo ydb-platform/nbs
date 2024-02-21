@@ -146,7 +146,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(CleanupDisks,                               __VA_ARGS__)               \
     xxx(SecureErase,                                __VA_ARGS__)               \
     xxx(CleanupDevices,                             __VA_ARGS__)               \
-    xxx(StartAcquireDisk,                           __VA_ARGS__)               \
     xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
     xxx(RemoveDiskSession,                          __VA_ARGS__)               \
     xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
@@ -171,36 +170,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
 
 struct TEvDiskRegistryPrivate
 {
-    //
-    // StartAcquireDisk
-    //
-
-    struct TStartAcquireDiskRequest
-    {
-        TString DiskId;
-        TString ClientId;
-
-        TStartAcquireDiskRequest(TString diskId, TString clientId)
-            : DiskId(std::move(diskId))
-            , ClientId(std::move(clientId))
-        {}
-    };
-
-    struct TStartAcquireDiskResponse
-    {
-        TVector<NProto::TDeviceConfig> Devices;
-        ui32 LogicalBlockSize = 0;
-
-        TStartAcquireDiskResponse() = default;
-
-        explicit TStartAcquireDiskResponse(
-                TVector<NProto::TDeviceConfig> devices,
-                ui32 logicalBlockSize)
-            : Devices(std::move(devices))
-            , LogicalBlockSize(logicalBlockSize)
-        {}
-    };
-
     //
     // FinishAcquireDisk
     //
