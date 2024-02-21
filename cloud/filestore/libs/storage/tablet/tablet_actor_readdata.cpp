@@ -36,28 +36,6 @@ bool ShouldReadBlobs(const TVector<TBlockDataRef>& blocks)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CopyFileData(
-    const TString& LogTag,
-    const TByteRange origin,
-    const TByteRange aligned,
-    const ui64 fileSize,
-    TStringBuf content,
-    TString* out)
-{
-    auto end = Min(fileSize, origin.End());
-    if (end < aligned.End()) {
-        ui64 delta = Min(aligned.End() - end, content.size());
-        content.Chop(delta);
-    }
-
-    TABLET_VERIFY(origin.Offset >= aligned.Offset);
-    content.Skip(origin.Offset - aligned.Offset);
-
-    out->assign(content.data(), content.size());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void ApplyBytes(const TBlockBytes& bytes, TStringBuf blockData)
 {
     for (const auto& interval: bytes.Intervals) {
@@ -479,7 +457,7 @@ void TReadDataActor::ReplyAndDie(
                 OriginByteRange,
                 AlignedByteRange,
                 TotalSize,
-                Buffer->GetContentRef(),
+                *Buffer,
                 response->Record.MutableBuffer());
         }
 
@@ -830,7 +808,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange,
             args.AlignedByteRange,
             args.Node->Attrs.GetSize(),
-            args.Buffer->GetContentRef(),
+            *args.Buffer,
             response->Record.MutableBuffer());
 
         CompleteResponse<TEvService::TReadDataMethod>(
