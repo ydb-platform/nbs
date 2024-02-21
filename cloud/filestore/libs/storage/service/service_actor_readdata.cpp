@@ -307,7 +307,7 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        TString errorReason = FormatError(
+        const auto errorReason = FormatError(
             MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
         LOG_WARN(
             ctx,
@@ -337,7 +337,7 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
-            TString errorReason = FormatError(
+            const auto errorReason = FormatError(
                 MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
             LOG_WARN(
                 ctx,
@@ -355,7 +355,7 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
         {
-            const TString error =
+            const auto error =
                 FormatError(MakeError(E_FAIL, "invalid response received"));
             LOG_WARN(
                 ctx,
@@ -431,7 +431,7 @@ void TReadDataActor::ReadData(
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
         ReadRequest.GetLength(),
-        fallbackReason.c_str());
+        fallbackReason.Quote().c_str());
 
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);

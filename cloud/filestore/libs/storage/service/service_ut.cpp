@@ -1567,6 +1567,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         memcpy(data.begin() + patchOffset, patch.Data(), patch.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("request", "ReadData");
+        UNIT_ASSERT(counters);
+
+        UNIT_ASSERT_EQUAL(4, counters->GetCounter("Count")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
@@ -1723,78 +1733,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
-    }
-
-    Y_UNIT_TEST(ServiceShouldReportProperCountersDuringTwoPhaseRead)
-    {
-        TTestEnv env;
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        const TString fs = "test";
-        service.CreateFileStore(fs, 1000);
-
-        {
-            NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageReadEnabled(true);
-            const auto response =
-                ExecuteChangeStorageConfig(std::move(newConfig), service);
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetTwoStageReadEnabled(),
-                true);
-            TDispatchOptions options;
-            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
-        }
-
-        auto headers = service.InitSession(fs, "client");
-
-        ui64 nodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-
-        ui64 handle =
-            service
-                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
-
-        TString data(4_KB, 'A');
-
-        TMutex m;
-        m.lock();
-
-        env.GetRuntime().SetEventFilter(
-            [&](auto& runtime, auto& event)
-            {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvService::EvReadDataResponse: {
-                        m.lock();
-                        m.unlock();
-                        return false;
-                    }
-                }
-
-                return false;
-            });
-
-        service.WriteData(headers, fs, nodeId, handle, 0, data);
-        service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
-
-        auto counters = env.GetCounters()
-                            ->FindSubgroup("component", "service_fs")
-                            ->FindSubgroup("host", "cluster")
-                            ->FindSubgroup("filesystem", fs)
-                            ->FindSubgroup("client", "client")
-                            ->FindSubgroup("request", "ReadData");
-        UNIT_ASSERT(counters);
-
-        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
-
-        m.unlock();
     }
 }
 
