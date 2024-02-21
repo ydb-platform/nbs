@@ -68,7 +68,7 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReadData(const TActorContext& ctx);
+    void ReadData(const TActorContext& ctx, const TString& fallbackReason);
 
     void HandleReadDataResponse(
         const TEvService::TEvReadDataResponse::TPtr& ev,
@@ -223,7 +223,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        ReadData(ctx);
+        ReadData(ctx, FormatError(msg->GetError()));
         return;
     }
 
@@ -307,14 +307,14 @@ void TReadDataActor::HandleReadBlobResponse(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
+        const auto errorReason = FormatError(
+            MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
             "ReadBlob error: %s",
-            FormatError(MakeError(
-                MAKE_KIKIMR_ERROR(msg->Status),
-                msg->ErrorReason)).c_str());
-        ReadData(ctx);
+            errorReason.c_str());
+        ReadData(ctx, errorReason);
 
         return;
     }
@@ -337,14 +337,14 @@ void TReadDataActor::HandleReadBlobResponse(
         const auto& blobRange = blobPiece.GetRanges(i);
         const auto& response = msg->Responses[i];
         if (response.Status != NKikimrProto::OK) {
+            const auto errorReason = FormatError(
+                MakeError(MAKE_KIKIMR_ERROR(response.Status), "read error"));
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "ReadBlob error: %s",
-                FormatError(MakeError(
-                    MAKE_KIKIMR_ERROR(response.Status),
-                    "read error")).c_str());
-            ReadData(ctx);
+                errorReason.c_str());
+            ReadData(ctx, errorReason);
 
             return;
         }
@@ -355,14 +355,14 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
         {
+            const auto error =
+                FormatError(MakeError(E_FAIL, "invalid response received"));
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "ReadBlob error: %s",
-                FormatError(MakeError(
-                    E_FAIL,
-                    "invalid response received")).c_str());
-            ReadData(ctx);
+                error.c_str());
+            ReadData(ctx, error);
 
             return;
         }
@@ -414,18 +414,21 @@ void TReadDataActor::HandlePoisonPill(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TReadDataActor::ReadData(const TActorContext& ctx)
+void TReadDataActor::ReadData(
+    const TActorContext& ctx,
+    const TString& fallbackReason)
 {
     ReadDataFallbackEnabled = true;
 
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
-        "Falling back to ReadData for %lu, %lu, %lu, %lu",
+        "Falling back to ReadData for %lu, %lu, %lu, %lu. Message: %s",
         ReadRequest.GetNodeId(),
         ReadRequest.GetHandle(),
         ReadRequest.GetOffset(),
-        ReadRequest.GetLength());
+        ReadRequest.GetLength(),
+        fallbackReason.Quote().c_str());
 
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
@@ -568,8 +571,8 @@ void TStorageServiceActor::HandleReadData(
 
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
-        StatsRegistry->GetRequestStats(),
+        session->MediaKind,
+        session->RequestStats,
         ctx.Now());
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
