@@ -17,6 +17,7 @@ add_library(filestore-libs-storage-model)
 target_link_libraries(filestore-libs-storage-model PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
+  core-libs-common
   yutil
   tools-enum_parser-enum_serialization_runtime
 )
