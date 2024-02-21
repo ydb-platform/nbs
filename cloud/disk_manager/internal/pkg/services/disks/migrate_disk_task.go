@@ -249,6 +249,19 @@ func (t *migrateDiskTask) start(
 		if err != nil {
 			return err
 		}
+	} else if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
+		// Need to check that RelocateInfo is still actual.
+		// OverlayDiskRebasing should be idempotent.
+		err := t.poolStorage.OverlayDiskRebasing(ctx, storage.RebaseInfo{
+			OverlayDisk:      t.request.Disk,
+			BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+			TargetZoneID:     t.request.DstZoneId,
+			TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+			SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	if !t.state.IsDiskCloned {
