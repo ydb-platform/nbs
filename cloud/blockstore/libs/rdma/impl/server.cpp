@@ -321,15 +321,15 @@ public:
     void EnqueueRequest(TRequestPtr req) noexcept;
 
     // called from CQ thread
+    void HandleCompletionEvent(ibv_wc* wc) override;
     bool HandleInputRequests();
     bool HandleCompletionEvents();
     bool IsFlushed();
 
 private:
-    // called inderectly from CQ by 2 previous functions
+    // called from CQ thread
     void HandleQueuedRequests();
     bool IsWorkRequestValid(const TWorkRequestId& id) const;
-    void HandleCompletionEvent(ibv_wc* wc) override;
     void RecvRequest(TRecvWr* recv);
     void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status);
     void ReadRequestData(TRequestPtr req, TSendWr* send);
@@ -610,6 +610,7 @@ bool TServerSession::IsWorkRequestValid(const TWorkRequestId& id) const
     return false;
 }
 
+// implements NVerbs::ICompletionHandler
 void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
@@ -1427,13 +1428,13 @@ public:
     // called from external thread
     void Start() override;
     void Stop() override;
-
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
 
 private:
+    // called from external thread
     void Listen(TServerEndpoint* endpoint);
 
     // called from CM thread
@@ -1441,12 +1442,9 @@ private:
     void HandleConnectRequest(
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
-
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
-
     void Reject(rdma_cm_id* id, int status) noexcept;
-
     TCompletionPoller* PickPoller() noexcept;
 };
 
@@ -1513,6 +1511,7 @@ void TServer::Stop()
     CompletionPollers.clear();
 }
 
+// implements IServer
 IServerEndpointPtr TServer::StartEndpoint(
     TString host,
     ui32 port,
@@ -1567,6 +1566,7 @@ void TServer::Listen(TServerEndpoint* endpoint)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// implements IConnectionEventHandler
 void TServer::HandleConnectionEvent(rdma_cm_event* event) noexcept
 {
     STORAGE_INFO(NVerbs::GetEventName(event->event) << " received");
