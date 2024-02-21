@@ -284,6 +284,7 @@ def transform(
                     )
                 else:
                     continue
+
                 if logs_directory is not None and not is_mute:
                     log_print(
                         f"add {logs_directory} property "
@@ -295,6 +296,7 @@ def transform(
                         f'{data_url_prefix}/'
                         f'{urllib.parse.quote(logs_directory)}',
                     )
+
                 if logs:
                     log_print(
                         f"add {list(logs.keys())!r} properties for {suite_name}/{test_name}"
