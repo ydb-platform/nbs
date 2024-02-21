@@ -219,40 +219,35 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		if t.disksConfig.GetEnableOptimizationForOverlayDiskRelocation() {
+		err := execCtx.SaveStateWithCallback(
+			ctx,
+			func(ctx context.Context, tx *persistence.Transaction) error {
+				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
+					ctx,
+					tx,
+					t.request.Disk,
+					t.request.DstZoneId,
+				)
+				if err != nil {
+					return err
+				}
 
-			err := execCtx.SaveStateWithCallback(
-				ctx,
-				func(ctx context.Context, tx *persistence.Transaction) error {
-					relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
-						ctx,
-						tx,
-						t.request.Disk,
-						t.request.DstZoneId,
-					)
-					if err != nil {
-						return err
-					}
+				t.state.RelocateInfo = &protos.RelocateInfo{
+					BaseDiskID:       relocateInfo.BaseDiskID,
+					TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+					SlotGeneration:   relocateInfo.SlotGeneration,
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			return err
+		}
 
-					t.state.RelocateInfo = &protos.RelocateInfo{
-						BaseDiskID:       relocateInfo.BaseDiskID,
-						TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
-						SlotGeneration:   relocateInfo.SlotGeneration,
-					}
-					return nil
-				},
-			)
-			if err != nil {
-				return err
-			}
-
-			// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
-			err = execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-		} else {
-			t.state.RelocateInfo = &protos.RelocateInfo{}
+		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
 		}
 	}
 
