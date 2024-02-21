@@ -8,6 +8,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 )
 
+// Implementation is based on main source of information:
+// https://learn.microsoft.com/en-us/windows/win32/vstor/about-vhd
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewImageMapReader(reader common.Reader) *ImageMapReader {
@@ -27,12 +30,19 @@ func (r *ImageMapReader) Size() uint64 {
 }
 
 func (r *ImageMapReader) ReadFooter(ctx context.Context) error {
+	// Because the hard disk footer is a crucial part of the hard disk image,
+	// the footer is mirrored as a header at the front of the file for purposes
+	// of redundancy.
 	return r.readFooter(ctx)
 }
 
 func (r *ImageMapReader) ReadHeader(ctx context.Context) error {
 	// The dynamic disk header should appear on a sector (512-byte) boundary.
 	return r.readHeader(ctx, 512)
+}
+
+func (r *ImageMapReader) Read(context.Context) ([]common.ImageMapItem, error) {
+	return []common.ImageMapItem{}, nil // TODO: Implement.
 }
 
 ////////////////////////////////////////////////////////////////////////////////
