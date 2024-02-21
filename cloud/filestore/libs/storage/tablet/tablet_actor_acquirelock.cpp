@@ -55,7 +55,7 @@ void TIndexTabletActor::HandleAcquireLock(
 
     ExecuteTx<TAcquireLock>(
         ctx,
-        requestInfo,
+        std::move(requestInfo),
         msg->Record);
 }
 

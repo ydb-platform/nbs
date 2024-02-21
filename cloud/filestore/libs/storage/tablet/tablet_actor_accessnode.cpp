@@ -42,7 +42,7 @@ void TIndexTabletActor::HandleAccessNode(
 
     ExecuteTx<TAccessNode>(
         ctx,
-        requestInfo,
+        std::move(requestInfo),
         msg->Record);
 }
 
