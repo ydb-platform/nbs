@@ -7,6 +7,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message DisksConfig {
+    reserved 10;
+
     optional uint32 DefaultBlockSize = 1 [default = 4096];
     optional string DeletedDiskExpirationTimeout = 2 [default = "30m"];
     optional string ClearDeletedDisksTaskScheduleInterval = 3 [default = "1m"];
@@ -16,5 +18,4 @@ message DisksConfig {
     repeated string OverlayDisksFolderIdWhitelist = 7;
     repeated string OverlayDisksFolderIdBlacklist = 8;
     optional string EndedMigrationExpirationTimeout = 9 [default="30m"];
-    optional bool EnableOptimizationForOverlayDiskRelocation = 10 [default=true];
 }
