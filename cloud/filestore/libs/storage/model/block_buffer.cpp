@@ -61,6 +61,64 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TLazyBlockBuffer final
+    : public IBlockBuffer
+{
+private:
+    const TByteRange ByteRange;
+    TString UnalignedHead;
+    TVector<TString> Blocks;
+    TString UnalignedTail;
+
+public:
+    explicit TLazyBlockBuffer(TByteRange byteRange)
+        : ByteRange(byteRange)
+        , Blocks(ByteRange.BlockCount())
+    {
+    }
+
+    TStringBuf GetUnalignedHead() override
+    {
+        if (!UnalignedHead) {
+            UnalignedHead.ReserveAndResize(ByteRange.UnalignedHeadLength());
+        }
+
+        return UnalignedHead;
+    }
+
+    TStringBuf GetUnalignedTail() override
+    {
+        if (!UnalignedTail) {
+            UnalignedTail.ReserveAndResize(ByteRange.UnalignedTailLength());
+        }
+
+        return UnalignedTail;
+    }
+
+    TStringBuf GetBlock(size_t index) override
+    {
+        auto& block = Blocks[index];
+        if (!block) {
+            block.ReserveAndResize(ByteRange.BlockSize);
+        }
+
+        return block;
+    }
+
+    void SetBlock(size_t index, TStringBuf block) override
+    {
+        Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
+        Blocks[index] = block;
+    }
+
+    void ClearBlock(size_t index) override
+    {
+        Blocks[index].clear();
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,6 +134,11 @@ IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 {
     Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
     return std::make_shared<TBlockBuffer>(byteRange, std::move(buffer));
+}
+
+IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange)
+{
+    return std::make_shared<TLazyBlockBuffer>(byteRange);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

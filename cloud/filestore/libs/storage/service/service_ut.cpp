@@ -1546,8 +1546,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
-        // fresh blocks
-        data = TString(4_KB, 'a');
+        // fresh blocks - adding multiple adjacent blocks is important here to
+        // catch some subtle bugs
+        data = TString(8_KB, 'a');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());

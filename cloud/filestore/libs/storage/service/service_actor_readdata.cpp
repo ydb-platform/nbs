@@ -207,6 +207,7 @@ void ApplyFreshDataRange(
         targetBuffer);
 
     // NB: we assume that underlying target data is a continuous buffer
+    // TODO: don't make such an assumption - use GetBlock(i) API
     memcpy(
         targetData,
         sourceFreshData.GetContent().data() +
