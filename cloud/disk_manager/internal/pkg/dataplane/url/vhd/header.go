@@ -2,8 +2,12 @@ package vhd
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	headerCookie = "cxsparse"
+)
+
 // https://learn.microsoft.com/en-us/windows/win32/vstor/about-vhd
-type VHDHeader struct {
+type header struct {
 	Cookie               [8]byte
 	DataOffset           uint64
 	TableOffset          uint64
@@ -17,4 +21,8 @@ type VHDHeader struct {
 	ParentUnicodeName    [512]byte
 	ParentLocatorEntries [192]byte
 	Reserved2            [256]byte
+}
+
+func (h header) validate() bool {
+	return true // TODO: Implement.
 }
