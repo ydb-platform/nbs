@@ -1546,8 +1546,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
-        // fresh blocks
-        data = TString(4_KB, 'a');
+        // fresh blocks - adding multiple adjacent blocks is important here to
+        // catch some subtle bugs
+        data = TString(8_KB, 'a');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
@@ -1568,6 +1569,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         memcpy(data.begin() + patchOffset, patch.Data(), patch.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("request", "ReadData");
+        UNIT_ASSERT(counters);
+
+        UNIT_ASSERT_EQUAL(4, counters->GetCounter("Count")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)

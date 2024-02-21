@@ -245,6 +245,14 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // ReadWrite completion
+    //
+
+    struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
+    {
+    };
+
+    //
     // AddBlob
     //
 
@@ -601,8 +609,8 @@ struct TEvIndexTabletPrivate
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
 
-    using TEvReadDataCompleted = TResponseEvent<TOperationCompleted, EvReadDataCompleted>;
-    using TEvWriteDataCompleted = TResponseEvent<TOperationCompleted, EvWriteDataCompleted>;
+    using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
+    using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

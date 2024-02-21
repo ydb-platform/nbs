@@ -36,28 +36,6 @@ bool ShouldReadBlobs(const TVector<TBlockDataRef>& blocks)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void CopyFileData(
-    const TString& LogTag,
-    const TByteRange origin,
-    const TByteRange aligned,
-    const ui64 fileSize,
-    TStringBuf content,
-    TString* out)
-{
-    auto end = Min(fileSize, origin.End());
-    if (end < aligned.End()) {
-        ui64 delta = Min(aligned.End() - end, content.size());
-        content.Chop(delta);
-    }
-
-    TABLET_VERIFY(origin.Offset >= aligned.Offset);
-    content.Skip(origin.Offset - aligned.Offset);
-
-    out->assign(content.data(), content.size());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 void ApplyBytes(const TBlockBytes& bytes, TStringBuf blockData)
 {
     for (const auto& interval: bytes.Intervals) {
@@ -454,9 +432,13 @@ void TReadDataActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvReadDataCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
+        auto response = std::make_unique<TCompletion>(error);
         response->CommitId = CommitId;
         response->MixedBlocksRanges = std::move(MixedBlocksRanges);
+        response->Count = 1;
+        response->Size = OriginByteRange.Length;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -475,7 +457,7 @@ void TReadDataActor::ReplyAndDie(
                 OriginByteRange,
                 AlignedByteRange,
                 TotalSize,
-                Buffer->GetContentRef(),
+                *Buffer,
                 response->Record.MutableBuffer());
         }
 
@@ -560,6 +542,7 @@ void TIndexTabletActor::HandleReadData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
@@ -583,6 +566,12 @@ void TIndexTabletActor::HandleReadDataCompleted(
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     ReleaseCollectBarrier(msg->CommitId);
     WorkerActors.erase(ev->Sender);
+
+    Metrics.ReadData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.ReadData.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.ReadData.Time.Record(msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -610,11 +599,10 @@ void TIndexTabletActor::HandleDescribeData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
-    // TODO: implement a block buffer with lazy block allocation and use it
-    // here
-    auto blockBuffer = CreateBlockBuffer(alignedByteRange);
+    auto blockBuffer = CreateLazyBlockBuffer(alignedByteRange);
 
     ExecuteTx<TReadData>(
         ctx,
@@ -771,6 +759,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+        Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
+        Metrics.DescribeData.RequestBytes.fetch_add(
+            args.OriginByteRange.Length,
+            std::memory_order_relaxed);
+        Metrics.DescribeData.Time.Record(
+            ctx.Now() - args.RequestInfo->StartedTs);
+
         return;
     }
 
@@ -811,7 +806,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange,
             args.AlignedByteRange,
             args.Node->Attrs.GetSize(),
-            args.Buffer->GetContentRef(),
+            *args.Buffer,
             response->Record.MutableBuffer());
 
         CompleteResponse<TEvService::TReadDataMethod>(
