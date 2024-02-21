@@ -7,8 +7,6 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message DisksConfig {
-    reserved 10;
-
     optional uint32 DefaultBlockSize = 1 [default = 4096];
     optional string DeletedDiskExpirationTimeout = 2 [default = "30m"];
     optional string ClearDeletedDisksTaskScheduleInterval = 3 [default = "1m"];
