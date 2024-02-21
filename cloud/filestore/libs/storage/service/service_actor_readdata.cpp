@@ -223,7 +223,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        ReadData(ctx, msg->GetErrorReason());
+        ReadData(ctx, FormatError(msg->GetError()));
         return;
     }
 
