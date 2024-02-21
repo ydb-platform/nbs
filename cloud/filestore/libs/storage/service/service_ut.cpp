@@ -1792,7 +1792,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             ->FindSubgroup("request", "ReadData");
         UNIT_ASSERT(counters);
 
-        // counters->OutputPlainText(Cerr, "\t");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
 
         m.unlock();
