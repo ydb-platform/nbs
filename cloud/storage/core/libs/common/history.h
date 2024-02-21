@@ -11,7 +11,7 @@ class THistory
 {
 private:
     TRingBuffer<T> Ring;
-    THashSet<T> Items;
+    THashMap<T, size_t> References;
 
 public:
     THistory(size_t capacity)
@@ -20,15 +20,18 @@ public:
 
     void Put(T item)
     {
-        if (auto oldest = Ring.PushBack(item)) {
-            Items.erase(*oldest);
+        References[item]++;
+        if (auto oldest = Ring.PushBack(std::move(item))) {
+            auto it = References.find(*oldest);
+            if (--it->second == 0) {
+                References.erase(it);
+            }
         }
-        Items.emplace(std::move(item));
     }
 
     bool Contains(const T& item) const
     {
-        return Items.find(item) != Items.end();
+        return References.find(item) != References.end();
     }
 };
 
