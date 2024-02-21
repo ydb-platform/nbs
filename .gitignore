@@ -86,6 +86,8 @@ test-results
 
 # IDE files
 *.swp
+.vscode/*
+*.code-workspace
 
 # act files
 .input
