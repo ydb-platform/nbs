@@ -454,6 +454,7 @@ private:
     static TString GetVolumeStatusString(EStatus status);
     EStatus GetVolumeStatus() const;
 
+    NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -774,11 +775,7 @@ private:
         ui64 traceTs);
 
     template <typename TMethod>
-    NProto::TError ProcessAndValidateReadRequest(
-        typename TMethod::TRequest::ProtoRecordType& record) const;
-
-    template <typename TMethod>
-    NProto::TError ProcessAndValidateRequest(
+    NProto::TError ProcessAndValidateReadFromCheckpoint(
         typename TMethod::TRequest::ProtoRecordType& record) const;
 
     template <typename TMethod>

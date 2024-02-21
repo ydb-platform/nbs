@@ -767,7 +767,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             auto response = volume.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
-                "Not found data for checkpoint id=\"c1\"",
+                "Data for checkpoint id=\"c1\" deleted",
                 response->GetError().GetMessage());
             UNIT_ASSERT(HasProtoFlag(
                 response->GetError().GetFlags(),

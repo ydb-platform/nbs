@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_validation.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -2022,10 +2023,7 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
 
     auto checkpointDiskId =
         TCheckpointInfo::MakeCheckpointDiskId(sourceDiskId, checkpointId);
-    auto checkpointMediaKind =
-        diskInfo.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-            ? NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-            : NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+    auto checkpointMediaKind = GetCheckpointShadowDiskType(diskInfo.MediaKind);
 
     TAllocateDiskParams diskParams{
         checkpointDiskId,
