@@ -368,7 +368,7 @@ void TIndexTabletActor::HandleWriteData(
 
     ExecuteTx<TWriteData>(
         ctx,
-        requestInfo,
+        std::move(requestInfo),
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
