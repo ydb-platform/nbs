@@ -32,7 +32,6 @@ private:
     const ui32 VolumeGeneration;
     const TDuration RequestTimeout;
 
-    NProto::TError AcquireError;
     int PendingRequests = 0;
 
 public:
@@ -68,7 +67,6 @@ private:
 
 private:
     STFUNC(StateAcquire);
-    STFUNC(StateFinish);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -76,10 +74,6 @@ private:
 
     void HandleAcquireDevicesResponse(
         const TEvDiskAgent::TEvAcquireDevicesResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleFinishAcquireDiskResponse(
-        const TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleAcquireDevicesUndelivery(
@@ -148,12 +142,10 @@ void TAcquireDiskActor::FinishAcquireDisk(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    AcquireError = std::move(error);
-
-    Become(&TThis::StateFinish);
-
     using TType = TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest;
     NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
+
+    ReplyAndDie(ctx, std::move(error));
 }
 
 void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
@@ -310,15 +302,6 @@ void TAcquireDiskActor::HandleWakeup(
         MakeError(E_REJECTED, "timeout"));
 }
 
-void TAcquireDiskActor::HandleFinishAcquireDiskResponse(
-    const TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    ReplyAndDie(ctx, AcquireError);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TString TAcquireDiskActor::LogTargets() const
@@ -339,26 +322,6 @@ STFUNC(TAcquireDiskActor::StateAcquire)
             HandleAcquireDevicesUndelivery);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
-            break;
-    }
-}
-
-STFUNC(TAcquireDiskActor::StateFinish)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse,
-            HandleFinishAcquireDiskResponse);
-
-        IgnoreFunc(TEvents::TEvWakeup);
-        IgnoreFunc(TEvDiskAgent::TEvAcquireDevicesResponse);
-        IgnoreFunc(TEvDiskAgent::TEvAcquireDevicesRequest);
-        IgnoreFunc(TEvDiskAgent::TEvReleaseDevicesResponse);
-        IgnoreFunc(TEvDiskAgent::TEvReleaseDevicesRequest);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_REGISTRY_WORKER);
