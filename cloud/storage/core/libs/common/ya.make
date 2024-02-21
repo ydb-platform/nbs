@@ -17,6 +17,7 @@ SRCS(
     format.cpp
     guarded_sglist.cpp
     helpers.cpp
+    history.cpp
     media.cpp
     proto_helpers.cpp
     random.cpp

@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -104,39 +105,10 @@ struct TRequest
 
 class TActiveRequests
 {
-    struct THistory
-    {
-        const size_t Capacity;
-
-        TList<ui32> Order;
-        THashSet<ui32> Items;
-
-        THistory(size_t capacity)
-            : Capacity(capacity)
-        {}
-
-        void Put(ui32 reqId)
-        {
-            if (Y_LIKELY(Items.size() == Capacity))
-            {
-                ui32 back = Order.back();
-                Order.pop_back();
-                Items.erase(back);
-            }
-            Order.push_front(reqId);
-            Items.emplace(reqId);
-        }
-
-        bool Contains(ui32 reqId)
-        {
-            return Items.find(reqId) != Items.end();
-        }
-    };
-
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THistory CompletedRequests = THistory(REQUEST_HISTORY_SIZE);
-    THistory TimedOutRequests = THistory(REQUEST_HISTORY_SIZE);
+    THistory<ui32> CompletedRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
+    THistory<ui32> TimedOutRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
 
 public:
     ui32 CreateId()
@@ -188,12 +160,12 @@ public:
         return nullptr;
     }
 
-    bool TimedOut(ui32 reqId)
+    bool TimedOut(ui32 reqId) const
     {
         return TimedOutRequests.Contains(reqId);
     }
 
-    bool Completed(ui32 reqId)
+    bool Completed(ui32 reqId) const
     {
         return CompletedRequests.Contains(reqId);
     }
@@ -982,7 +954,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 
     Counters->SendRequestStarted();
 
-    send->context = reinterpret_cast<void*>(req->ReqId);
+    send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
     ActiveRequests.Push(std::move(req));
 }
 
@@ -1005,7 +977,7 @@ void TClientEndpoint::SendRequestCompleted(
         return;
     }
 
-    auto reqId = reinterpret_cast<uintptr_t>(send->context);
+    auto reqId = SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
 
     if (auto* req = ActiveRequests.Get(reqId)) {
         LWTRACK(
