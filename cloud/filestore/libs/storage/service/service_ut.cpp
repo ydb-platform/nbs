@@ -1568,6 +1568,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         memcpy(data.begin() + patchOffset, patch.Data(), patch.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client")
+                            ->FindSubgroup("request", "ReadData");
+        UNIT_ASSERT(counters);
+
+        UNIT_ASSERT_EQUAL(4, counters->GetCounter("Count")->GetAtomic());
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
