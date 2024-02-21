@@ -743,12 +743,6 @@ public:
             std::move(devices));
     }
 
-    auto CreateFinishAcquireDiskRequest(TString diskId, TString clientId)
-    {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest>(
-            std::move(diskId), std::move(clientId));
-    }
-
     auto CreateRemoveDiskSessionRequest(TString diskId, TString clientId)
     {
         return std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(

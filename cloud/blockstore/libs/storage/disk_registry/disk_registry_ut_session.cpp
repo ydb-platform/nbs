@@ -335,6 +335,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 runtime->GetNodeId(0));
         }
 
+        bool finished = false;
+
+        runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistryPrivate::EvFinishAcquireDiskResponse: {
+                    finished = true;
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
         {
             auto response = diskRegistry.AcquireDisk("disk-1", "session-1");
             const auto& msg = response->Record;
@@ -352,6 +365,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 msg.GetDevices(0).GetNodeId(),
                 runtime->GetNodeId(0));
+
+            UNIT_ASSERT(finished);
         }
 
         diskRegistry.ReleaseDisk("disk-1", "session-1");
