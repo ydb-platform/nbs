@@ -39,27 +39,28 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , TimeoutCalculator(Config, SrcConfig)
 {}
 
-void TNonreplicatedPartitionMigrationActor::Bootstrap(
+void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
-    TNonreplicatedPartitionMigrationCommonActor::Bootstrap(ctx);
-
     StartWork(ctx, CreateSrcActor(ctx), CreateDstActor(ctx));
 }
 
-void TNonreplicatedPartitionMigrationActor::OnMessage(
+bool TNonreplicatedPartitionMigrationActor::OnMessage(
+    const NActors::TActorContext& ctx,
     TAutoPtr<NActors::IEventHandle>& ev)
 {
+    Y_UNUSED(ctx);
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvMigrationStateUpdated, HandleMigrationStateUpdated);
         HFunc(
             TEvDiskRegistry::TEvFinishMigrationResponse,
             HandleFinishMigrationResponse);
-
         default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::PARTITION);
+            return false;
             break;
     }
+    return true;
 }
 
 TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout()
