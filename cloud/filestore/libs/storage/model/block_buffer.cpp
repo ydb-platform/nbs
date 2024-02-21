@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/storage/model/utils.h>
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -57,16 +59,6 @@ public:
         char* ptr = const_cast<char*>(Buffer.data()) + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
-
-    TStringBuf GetContentRef() override
-    {
-        return Buffer;
-    }
-
-    TString GetContent() override
-    {
-        return Buffer;
-    }
 };
 
 }   // namespace
@@ -84,6 +76,56 @@ IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 {
     Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
     return std::make_shared<TBlockBuffer>(byteRange, std::move(buffer));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void CopyFileData(
+    const TString& logTag,
+    const TByteRange origin,
+    const TByteRange aligned,
+    const ui64 fileSize,
+    IBlockBuffer& buffer,
+    TString* out)
+{
+    const auto end = Min(fileSize, origin.End());
+    if (end <= origin.Offset) {
+        return;
+    }
+
+    out->ReserveAndResize(end - origin.Offset);
+    char* outPtr = out->begin();
+
+    ui32 i = 0;
+
+    // processing unaligned head
+    if (origin.Offset > aligned.Offset) {
+        const auto block = buffer.GetBlock(i);
+        const auto shift = origin.Offset - aligned.Offset;
+        const auto sz = Min(block.Size() - shift, out->Size());
+        STORAGE_VERIFY(
+            outPtr + sz <= out->end(),
+            TWellKnownEntityTypes::FILESYSTEM,
+            logTag);
+        memcpy(outPtr, block.Data() + shift, sz);
+        outPtr += sz;
+
+        ++i;
+    }
+
+    while (i < aligned.BlockCount()) {
+        const auto block = buffer.GetBlock(i);
+        // Min needed to properly process unaligned tail
+        const auto len = Min<ui64>(out->end() - outPtr, block.Size());
+        if (!len) {
+            // origin.End() is greater than fileSize
+            break;
+        }
+        memcpy(outPtr, block.Data(), len);
+        outPtr += len;
+
+        ++i;
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

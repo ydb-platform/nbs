@@ -29,6 +29,7 @@ private:
     NProto::TReadDataRequest ReadRequest;
 
     // Filesystem-specific params
+    const TString LogTag;
     const ui32 BlockSize;
 
     // Response data
@@ -43,6 +44,7 @@ public:
     TReadDataActor(
         TRequestInfoPtr requestInfo,
         NProto::TReadDataRequest readRequest,
+        TString logTag,
         ui32 blockSize);
 
     void Bootstrap(const TActorContext& ctx);
@@ -81,9 +83,11 @@ private:
 TReadDataActor::TReadDataActor(
         TRequestInfoPtr requestInfo,
         NProto::TReadDataRequest readRequest,
+        TString logTag,
         ui32 blockSize)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
+    , LogTag(std::move(logTag))
     , BlockSize(blockSize)
     , OriginByteRange(
         ReadRequest.GetOffset(),
@@ -140,10 +144,25 @@ TString DescribeResponseDebugString(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+char* GetDataPtr(
+    ui64 offset,
+    TByteRange alignedByteRange,
+    ui32 blockSize,
+    IBlockBuffer& buffer)
+{
+
+    const ui64 relOffset = offset - alignedByteRange.Offset;
+    const ui32 blockNo = relOffset / blockSize;
+    const auto block = buffer.GetBlock(blockNo);
+    return const_cast<char*>(block.Data()) + relOffset - blockNo * blockSize;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    const IBlockBufferPtr& targetBuffer,
+    IBlockBuffer& targetBuffer,
     TByteRange alignedTargetByteRange,
     ui32 blockSize,
     ui64 offset,
@@ -169,7 +188,6 @@ void ApplyFreshDataRange(
         length,
         DescribeResponseDebugString(describeResponse).c_str());
 
-    char* targetData = const_cast<char*>(targetBuffer->GetContentRef().data());
     auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
 
     Y_ABORT_UNLESS(sourceByteRange == commonRange);
@@ -182,7 +200,11 @@ void ApplyFreshDataRange(
             alignedTargetByteRange.Describe().c_str());
         return;
     }
-    targetData += commonRange.Offset - alignedTargetByteRange.Offset;
+    char* targetData = GetDataPtr(
+        commonRange.Offset,
+        alignedTargetByteRange,
+        blockSize,
+        targetBuffer);
 
     // NB: we assume that underlying target data is a continuous buffer
     memcpy(
@@ -190,28 +212,6 @@ void ApplyFreshDataRange(
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO(debnatkh): get rid of copy-paste
-void CopyFileData(
-    const TByteRange origin,
-    const TByteRange aligned,
-    const ui64 fileSize,
-    TStringBuf content,
-    TString* out)
-{
-    auto end = Min(fileSize, origin.End());
-    if (end < aligned.End()) {
-        ui64 delta = Min(aligned.End() - end, content.size());
-        content.Chop(delta);
-    }
-
-    Y_ABORT_UNLESS(origin.Offset >= aligned.Offset);
-    content.Skip(origin.Offset - aligned.Offset);
-
-    out->assign(content.data(), content.size());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -387,14 +387,11 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         Y_ABORT_UNLESS(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        const TByteRange sourceByteRange(
+        char* targetData = GetDataPtr(
             blobRange.GetOffset(),
-            blobRange.GetLength(),
-            BlockSize);
-
-        char* targetData =
-            const_cast<char*>(BlockBuffer->GetContentRef().data()) +
-            (blobRange.GetOffset() - AlignedByteRange.Offset);
+            AlignedByteRange,
+            BlockSize,
+            *BlockBuffer);
 
         dataIter.ExtractPlainDataAndAdvance(targetData, blobRange.GetLength());
     }
@@ -475,7 +472,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         ApplyFreshDataRange(
             ctx,
             freshDataRange,
-            BlockBuffer,
+            *BlockBuffer,
             AlignedByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
@@ -491,10 +488,11 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
     }
 
     CopyFileData(
+        LogTag,
         OriginByteRange,
         AlignedByteRange,
         DescribeResponse.GetFileSize(),
-        BlockBuffer->GetContent(),
+        *BlockBuffer,
         response->Record.MutableBuffer());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -581,6 +579,7 @@ void TStorageServiceActor::HandleReadData(
     auto actor = std::make_unique<TReadDataActor>(
         std::move(requestInfo),
         std::move(msg->Record),
+        filestore.GetFileSystemId(),
         filestore.GetBlockSize());
 
     NCloud::Register(ctx, std::move(actor));
