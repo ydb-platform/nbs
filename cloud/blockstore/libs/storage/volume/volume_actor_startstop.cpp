@@ -93,9 +93,10 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         StartCompletionTimestamp = ctx.Now();
 
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Volume started. MountSeqNumber: %lu, generation: %lu, "
+            "[%lu] Volume %s started. MountSeqNumber: %lu, generation: %lu, "
             "time: %lu",
             TabletID(),
+            State->GetDiskId().Quote().c_str(),
             State->GetMountSeqNumber(),
             Executor()->Generation(),
             GetStartTime().MicroSeconds());
@@ -181,11 +182,6 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 
     TActorId nonreplicatedActorId;
 
-    NRdma::IClientPtr rdmaClient;
-    if (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma()) {
-        rdmaClient = RdmaClient;
-    }
-
     const auto& migrations = State->GetMeta().GetMigrations();
     const auto& metaReplicas = State->GetMeta().GetReplicas();
 
@@ -198,7 +194,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     Config,
                     nonreplicatedConfig,
                     SelfId(),
-                    std::move(rdmaClient)));
+                    GetRdmaClient()));
         } else {
             // nonreplicated disk in migration state
             nonreplicatedActorId = NCloud::Register(
@@ -211,7 +207,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     State->GetReadWriteAccessClientId(),
                     nonreplicatedConfig,
                     migrations,
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId()));
         }
     } else {
@@ -234,7 +230,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId(),
                     State->GetMeta().GetResyncIndex()));
         } else {
@@ -249,7 +245,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId()));
         }
     }

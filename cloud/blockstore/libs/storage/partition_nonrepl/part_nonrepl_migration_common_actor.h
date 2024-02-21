@@ -33,8 +33,14 @@ class IMigrationOwner
 public:
     virtual ~IMigrationOwner() = default;
 
-    // Delegates the processing of unknown messages to the owner.
-    virtual void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) = 0;
+    // Bootstrap for migration owner.
+    virtual void OnBootstrap(const NActors::TActorContext& ctx) = 0;
+
+    // Delegates the processing of messages to the owner first.
+    // If true is returned, then the message has been processed.
+    virtual bool OnMessage(
+        const NActors::TActorContext& ctx,
+        TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
     // Calculates the time during which a 4MB block should migrate.
     [[nodiscard]] virtual TDuration CalculateMigrationTimeout() = 0;
@@ -99,12 +105,13 @@ private:
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
 
-    // PoisonPill
-    TPoisonPillHelper PoisonPillHelper;
-
     // Usage statistics
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
+
+protected:
+    // PoisonPill
+    TPoisonPillHelper PoisonPillHelper;
 
 public:
     TNonreplicatedPartitionMigrationCommonActor(
@@ -129,7 +136,8 @@ public:
         NActors::TActorId srcActorId,
         NActors::TActorId dstActorId);
 
-    // Called from the inheritor to mark ranges that do not need to be processed.
+    // Called from the inheritor to mark ranges that do not need to be
+    // processed.
     void MarkMigratedBlocks(TBlockRange64 range);
 
     // Called from the inheritor to get the next processing range.

@@ -49,6 +49,8 @@ void TNonreplicatedPartitionMigrationCommonActor::Bootstrap(
     ScheduleCountersUpdate(ctx);
 
     Become(&TThis::StateWork);
+
+    MigrationOwner->OnBootstrap(ctx);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::MarkMigratedBlocks(
@@ -122,6 +124,11 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
 
 STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
 {
+    // Give the inheritor the opportunity to process the message first.
+    if (MigrationOwner->OnMessage(this->ActorContext(), ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvNonreplPartitionPrivate::TEvUpdateCounters,
@@ -167,14 +174,18 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            // Give the inheritor a chance to process the message.
-            MigrationOwner->OnMessage(ev);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }
 
 STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
 {
+    // Give the inheritor the opportunity to process the message first.
+    if (MigrationOwner->OnMessage(this->ActorContext(), ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
 
@@ -211,8 +222,7 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            // Give the inheritor a chance to process the message.
-            MigrationOwner->OnMessage(ev);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

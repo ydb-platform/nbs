@@ -35,10 +35,10 @@ public:
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId);
 
-    void Bootstrap(const NActors::TActorContext& ctx) override;
-
     // IMigrationOwner implementation
-    void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
+    void OnBootstrap(const NActors::TActorContext& ctx) override;
+    bool OnMessage(const NActors::TActorContext& ctx,
+        TAutoPtr<NActors::IEventHandle>& ev) override;
     TDuration CalculateMigrationTimeout() override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
