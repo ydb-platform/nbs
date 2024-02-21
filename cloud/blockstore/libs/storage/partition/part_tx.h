@@ -9,12 +9,12 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_unique_id_with_range.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -109,7 +109,7 @@ struct TTxPartition
         TVector<TCleanupQueueItem> CleanupQueue;
         TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
-        TUnconfirmedBlobs UnconfirmedBlobs;
+        TCommitIdToBlobUniqueIdWithRange UnconfirmedBlobs;
 
         explicit TLoadState(ui64 blocksCount)
             : UsedBlocks(blocksCount)
@@ -1115,12 +1115,12 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         ui64 CommitId = 0;
-        TVector<TUnconfirmedBlob> Blobs;
+        TVector<TBlobUniqueIdWithRange> Blobs;
 
         TAddUnconfirmedBlobs(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                TVector<TUnconfirmedBlob> blobs)
+                TVector<TBlobUniqueIdWithRange> blobs)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , Blobs(std::move(blobs))

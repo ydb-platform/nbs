@@ -247,12 +247,10 @@ void TWriteMergedBlocksActor::AddBlobs(
             ADD_WRITE_RESULT
         );
     } else {
-        TVector<TUnconfirmedBlob> blobs(Reserve(WriteBlobRequests.size()));
+        TVector<TBlobUniqueIdWithRange> blobs(Reserve(WriteBlobRequests.size()));
 
         for (const auto& req: WriteBlobRequests) {
-            blobs.emplace_back(
-                req.BlobId.UniqueId(),
-                req.WriteRange);
+            blobs.emplace_back(req.BlobId.UniqueId(), req.WriteRange);
         }
 
         request = std::make_unique<TEvPartitionPrivate::TEvAddUnconfirmedBlobsRequest>(

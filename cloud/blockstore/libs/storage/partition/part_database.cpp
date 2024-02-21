@@ -1277,7 +1277,7 @@ bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 
 void TPartitionDatabase::WriteUnconfirmedBlob(
     const TPartialBlobId& blobId,
-    const TUnconfirmedBlob& blob)
+    const TBlobUniqueIdWithRange& blob)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
@@ -1298,7 +1298,8 @@ void TPartitionDatabase::DeleteUnconfirmedBlob(const TPartialBlobId& blobId)
         .Delete();
 }
 
-bool TPartitionDatabase::ReadUnconfirmedBlobs(TUnconfirmedBlobs& blobs)
+bool TPartitionDatabase::ReadUnconfirmedBlobs(
+    TCommitIdToBlobUniqueIdWithRange& blobs)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 

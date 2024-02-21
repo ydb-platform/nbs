@@ -608,13 +608,6 @@ bool TPartitionState::OverlapsUnconfirmedBlobs(
     return Overlaps(UnconfirmedBlobs, lowCommitId, highCommitId, blockRange);
 }
 
-bool TPartitionState::OverlapsUnconfirmedBlobs(
-    ui64 commitId,
-    const TBlockRange32& blockRange) const
-{
-    return Overlaps(UnconfirmedBlobs, commitId, blockRange);
-}
-
 bool TPartitionState::OverlapsConfirmedBlobs(
     ui64 lowCommitId,
     ui64 highCommitId,
@@ -623,14 +616,8 @@ bool TPartitionState::OverlapsConfirmedBlobs(
     return Overlaps(ConfirmedBlobs, lowCommitId, highCommitId, blockRange);
 }
 
-bool TPartitionState::OverlapsConfirmedBlobs(
-    ui64 commitId,
-    const TBlockRange32& blockRange) const
-{
-    return Overlaps(ConfirmedBlobs, commitId, blockRange);
-}
-
-void TPartitionState::InitUnconfirmedBlobs(TUnconfirmedBlobs blobs)
+void TPartitionState::InitUnconfirmedBlobs(
+    TCommitIdToBlobUniqueIdWithRange blobs)
 {
     UnconfirmedBlobs = std::move(blobs);
     for (const auto& entry: UnconfirmedBlobs) {
@@ -643,7 +630,7 @@ void TPartitionState::InitUnconfirmedBlobs(TUnconfirmedBlobs blobs)
 void TPartitionState::WriteUnconfirmedBlob(
     TPartitionDatabase& db,
     ui64 commitId,
-    const TUnconfirmedBlob& blob)
+    const TBlobUniqueIdWithRange& blob)
 {
     auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
     db.WriteUnconfirmedBlob(blobId, blob);

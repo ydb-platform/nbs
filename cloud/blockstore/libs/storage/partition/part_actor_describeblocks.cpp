@@ -203,14 +203,14 @@ bool TPartitionActor::PrepareDescribeBlocks(
 
     ui64 commitId = args.CommitId;
 
-    if (State->OverlapsUnconfirmedBlobs(commitId, args.DescribeRange)) {
+    if (State->OverlapsUnconfirmedBlobs(0, commitId, args.DescribeRange)) {
         args.Interrupted = true;
         return true;
     }
 
     // NOTE: we should also look in confirmed blobs because they are not added
     // yet
-    if (State->OverlapsConfirmedBlobs(commitId, args.DescribeRange)) {
+    if (State->OverlapsConfirmedBlobs(0, commitId, args.DescribeRange)) {
         args.Interrupted = true;
         return true;
     }
