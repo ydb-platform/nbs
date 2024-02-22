@@ -365,7 +365,7 @@ TServerSession::TServerSession(
 {
     Connection->context = this;
 
-    STORAGE_INFO("start new session [send_magic=%X recv_magic=%X]",
+    STORAGE_INFO("new session [send_magic=%X recv_magic=%X]",
         SendMagic, RecvMagic);
 
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
