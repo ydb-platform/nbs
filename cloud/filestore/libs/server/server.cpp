@@ -183,12 +183,11 @@ const NCloud::TRequestSourceKinds RequestSourceKinds = {
 
 bool TryParseSourceFd(const TStringBuf& peer, ui32& fd)
 {
-    static const TString PeerFdPrefix = "fd:";
-    if (!peer.StartsWith(PeerFdPrefix)) {
+    static constexpr TStringBuf PeerFdPrefix = "fd:";
+    TStringBuf peerFd;
+    if (!peer.AfterPrefix(PeerFdPrefix, peerFd)) {
         return false;
     }
-
-    auto peerFd = peer.SubString(PeerFdPrefix.length(), peer.length());
     return TryFromString(peerFd, fd);
 }
 
@@ -236,13 +235,10 @@ struct TAppContext
     std::unique_ptr<grpc::Server> Server;
 };
 
-struct TFileStoreContext : TAppContext
+struct TFileStoreContext: TAppContext
 {
-    using TService = IFileStoreService;
-    using TServicePtr = IFileStoreServicePtr;
-
     NProto::TFileStoreService::AsyncService Service;
-    TServicePtr ServiceImpl;
+    IFileStoreServicePtr ServiceImpl;
 
     void ValidateRequest(
         const grpc::ServerContext& context,
@@ -278,11 +274,8 @@ struct TFileStoreContext : TAppContext
 
 struct TEndpointManagerContext : TAppContext
 {
-    using TService = IEndpointManager;
-    using TServicePtr = IEndpointManagerPtr;
-
     NProto::TEndpointManagerService::AsyncService Service;
-    TServicePtr ServiceImpl;
+    IEndpointManagerPtr ServiceImpl;
     std::shared_ptr<TSessionStorage> SessionStorage;
 
     TEndpointManagerContext()
@@ -304,14 +297,11 @@ using NCloud::NStorage::NServer::IClientStoragePtr;
 class TSessionStorage final
     : public std::enable_shared_from_this<TSessionStorage>
 {
-public:
-    using TServicePtr = IEndpointManagerPtr;
-
 private:
     struct TClientInfo
     {
         ui32 Fd = 0;
-        TServicePtr Service;
+        IEndpointManagerPtr Service;
         NProto::ERequestSource Source = NProto::SOURCE_FD_DATA_CHANNEL;
     };
 
@@ -328,7 +318,7 @@ public:
 
     void AddClient(
         const TSocketHolder& socket,
-        TServicePtr sessionService,
+        IEndpointManagerPtr sessionService,
         NProto::ERequestSource source)
     {
         if (AtomicGet(AppCtx.ShouldStop)) {
@@ -341,6 +331,9 @@ public:
             auto it = FindClient(socket);
             Y_ABORT_UNLESS(it == ClientInfos.end());
 
+            // create duplicate socket. we poll socket to know when
+            // client disconnects and dupSocket is passed to GRPC to read
+            // messages.
             dupSocket = SafeCreateDuplicate(socket);
 
             auto client = TClientInfo {
@@ -372,20 +365,20 @@ public:
         }
     }
 
-    TServicePtr GetSessionService(ui32 fd, NProto::ERequestSource& source)
+    IEndpointManagerPtr GetSessionService(ui32 fd, NProto::ERequestSource* source)
     {
         with_lock (Lock) {
             auto it = ClientInfos.find(fd);
             if (it != ClientInfos.end()) {
                 const auto& clientInfo = it->second;
-                source = clientInfo.Source;
+                *source = clientInfo.Source;
                 return clientInfo.Service;
             }
         }
         return nullptr;
     }
 
-    IClientStoragePtr CreateClientStorage(TServicePtr service);
+    IClientStoragePtr CreateClientStorage(IEndpointManagerPtr service);
 
 private:
     static TSocketHolder CreateDuplicate(const TSocketHolder& socket)
@@ -454,7 +447,7 @@ public:
 };
 
 IClientStoragePtr TSessionStorage::CreateClientStorage(
-    TServicePtr service)
+    IEndpointManagerPtr service)
 {
     return std::make_shared<TClientStorage>(
         this->shared_from_this(),
@@ -484,8 +477,10 @@ void TEndpointManagerContext::ValidateRequest(
                 << "failed to parse request source fd: " << peer;
         }
 
-        auto src = NProto::SOURCE_SECURE_CONTROL_CHANNEL;
-        auto sessionService = SessionStorage->GetSessionService(fd, src);
+        // requests coming from unix sockets do not need to be authorized
+        // so pretend they are coming from data channel.
+        auto src = NProto::SOURCE_FD_DATA_CHANNEL;
+        auto sessionService = SessionStorage->GetSessionService(fd, &src);
         if (sessionService == nullptr) {
             ythrow TServiceError(E_GRPC_UNAVAILABLE)
                 << "endpoint has been stopped (fd = " << fd << ").";

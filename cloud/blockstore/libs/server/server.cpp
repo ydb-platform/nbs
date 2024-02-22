@@ -244,6 +244,9 @@ public:
             auto it = FindClient(socket);
             Y_ABORT_UNLESS(it == ClientInfos.end());
 
+            // create duplicate socket. we poll socket to know when
+            // client disconnects and dupSocket is passed to GRPC to read
+            // messages.
             dupSocket = SafeCreateDuplicate(socket);
 
             auto client = TClientInfo {
@@ -700,12 +703,11 @@ private:
 
     bool TryParseSourceFd(const TStringBuf& peer, ui32& fd)
     {
-        static const TString PeerFdPrefix = "fd:";
-        if (!peer.StartsWith(PeerFdPrefix)) {
+        static constexpr TStringBuf PeerFdPrefix = "fd:";
+        TStringBuf peerFd;
+        if (!peer.AfterPrefix(PeerFdPrefix, peerFd)) {
             return false;
         }
-
-        auto peerFd = peer.SubString(PeerFdPrefix.length(), peer.length());
         return TryFromString(peerFd, fd);
     }
 

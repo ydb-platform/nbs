@@ -650,7 +650,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldIdentifyFdControlChannelSource)
     {
-        TFsPath unixSocket("./test_socket");
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         TTestServerBuilder serverConfigBuilder;
         serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
@@ -683,7 +683,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_C(!HasError(response), response.GetError());
     }
 
-    Y_UNIT_TEST(ShouldThrowCriticalEventIfFailedToStartUnixSocketEndpoint)
+    Y_UNIT_TEST(ShouldReportCriticalEventIfFailedToStartUnixSocketEndpoint)
     {
         TFsPath unixSocket("./invalid/path/test_socket");
 
