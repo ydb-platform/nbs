@@ -12,6 +12,9 @@ __pycache__
 *.py[cod]
 *$py.class
 
+# distclang
+.distclang*
+
 # MacOS specific
 .DS_Store
 
@@ -88,6 +91,7 @@ test-results
 *.swp
 .vscode/*
 *.code-workspace
+*.code-workspace.bak
 
 # act files
 .input
