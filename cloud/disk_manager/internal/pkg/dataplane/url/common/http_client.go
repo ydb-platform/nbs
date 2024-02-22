@@ -168,17 +168,11 @@ func (c *httpClient) head(
 	}
 
 	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
-		return nil, NewSourceNotFoundError(
-			"url source not found: code %d",
-			resp.StatusCode,
-		)
+		return nil, NewSourceNotFoundError("http code %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
-		return nil, errors.NewRetriableErrorf(
-			"server error while http range request: code %d",
-			resp.StatusCode,
-		)
+		return nil, errors.NewRetriableErrorf("http code %d", resp.StatusCode)
 	}
 
 	return resp, nil
@@ -233,7 +227,7 @@ func (c *httpClient) body(
 		resp.StatusCode == http.StatusLocked ||
 		resp.StatusCode == http.StatusRequestTimeout {
 		return nil, errors.NewRetriableErrorf(
-			"range [%v:%v), code %v",
+			"range [%v:%v), http code %v",
 			start,
 			end,
 			resp.StatusCode,
@@ -250,7 +244,7 @@ func (c *httpClient) body(
 
 	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		return nil, NewSourceNotFoundError(
-			"url source not found: range [%v:%v), code %v",
+			"range [%v:%v), http code %v",
 			start,
 			end,
 			resp.StatusCode,
@@ -259,7 +253,7 @@ func (c *httpClient) body(
 
 	if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
 		return nil, errors.NewRetriableErrorf(
-			"range [%v:%v), code %v",
+			"range [%v:%v), http code %v",
 			start,
 			end,
 			resp.StatusCode,
