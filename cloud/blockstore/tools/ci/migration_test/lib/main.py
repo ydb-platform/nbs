@@ -32,15 +32,17 @@ class Migration:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        message = 'finish migration test'
-        if exc_type is not None:
-            message = 'halt migration test'
-        self.__runner.change_agent_state(self.__agent_id, 0, message)
+        log_message = 'Migration test was halted due to timeout' if exc_type \
+            else 'Migration test successfully finished'
+        self.__runner.logger.info('Test ended: ' + log_message)
+
+        agent_message = 'halt migration test' if exc_type \
+            else 'finish migration test'
+        self.__runner.change_agent_state(self.__agent_id, 0, agent_message)
 
 
 class TestRunner:
     __DEFAULT_POSTPONED_WEIGHT = 128 * 1024 ** 2  # Bytes
-    __DEFAULT_ZONE_ID = 'ru-central1-a'
 
     def __init__(self, module_factories, args, logger):
         self.module_factories = module_factories
@@ -55,47 +57,64 @@ class TestRunner:
         self.tablet_id = None
         self.instance = None
         self.disk_id = None
+        self.credentials = None
+        self.endpoint = None
+
+        assert bool(args.disk_name) != bool(args.disk_id), \
+            'Either disk name or id should be provided'
 
         if args.dry_run:
             self.sleep_timeout = 0
             self.max_kills = 6
 
-        cluster = get_cluster_test_config(args.cluster, self.__DEFAULT_ZONE_ID, self.args.cluster_config_path)
-        folder_desc = cluster.ipc_type_to_folder_desc(args.ipc_type)
+        if args.run_locally:
+            assert args.disk_id, 'Disk id should be provided'
+            assert not args.use_auth, 'Can\'t use auth while running locally'
+            assert not args.check_load, 'Can\'t check load while running locally'
+            assert not args.disk_name, 'Can\'t find disk by name while running locally'
 
-        self.logger.info(f'Create ycp wrapper: {args.profile_name} {folder_desc.folder_id}')
+            self.disk_id = args.disk_id
+            self.endpoint = '{}:{}'.format('localhost', self.port)
+        else:
+            assert args.cluster, 'Cluster should be provided'
+            assert args.zone, 'Zone should be provided'
+            cluster = get_cluster_test_config(args.cluster, args.zone, args.cluster_config_path)
+            folder_desc = cluster.ipc_type_to_folder_desc(args.ipc_type)
 
-        ycp = YcpWrapper(
-            args.profile_name,
-            folder_desc,
-            logger,
-            make_ycp_engine(args.dry_run),
-            self.module_factories.make_config_generator(args.dry_run),
-            self.helpers,
-            args.generate_ycp_config,
-            args.ycp_requests_template_path)
+            self.logger.info(f'Create ycp wrapper: {args.profile_name} {folder_desc.folder_id}')
+            ycp = YcpWrapper(
+                args.profile_name,
+                folder_desc,
+                logger,
+                make_ycp_engine(args.dry_run),
+                self.module_factories.make_config_generator(args.dry_run),
+                self.helpers,
+                args.generate_ycp_config,
+                args.ycp_requests_template_path)
 
-        for disk in ycp.list_disks():
-            if disk.name == self.args.disk_name:
-                self.disk_id = disk.id
-                self.instance = ycp.get_instance(disk.instance_ids[0])
-                break
+            for disk in ycp.list_disks():
+                if disk.name == args.disk_name or disk.id == args.disk_id:
+                    self.disk_id = disk.id
+                    self.instance = ycp.get_instance(disk.instance_ids[0])
+                    break
 
-        self.credentials = None
-        if self.disk_id is None:
-            raise Error(f"Can't find disk with name {self.args.disk_name}")
+            if args.use_auth:
+                if args.service_account_id:
+                    token = ycp.create_iam_token_for_service_account(args.service_account_id)
+                else:
+                    token = ycp.create_iam_token()
+                self.credentials = ClientCredentials(auth_token=token.iam_token)
 
-        if args.use_auth:
-            if args.service_account_id:
-                token = ycp.create_iam_token_for_service_account(args.service_account_id)
-            else:
-                token = ycp.create_iam_token()
-            self.credentials = ClientCredentials(auth_token=token.iam_token)
+            self.endpoint = '{}:{}'.format(self.instance.compute_node, self.port)
+
+            if self.disk_id is None:
+                description = f'id={args.disk_id}' if args.disk_id else f'name={args.disk_name}'
+                raise Error(f"Can't find disk with {description}")
 
         try:
             self.client = make_client(
                 self.args.dry_run,
-                endpoint='{}:{}'.format(self.instance.compute_node, self.port),
+                self.endpoint,
                 credentials=self.credentials,
                 log=logger
             )
@@ -217,6 +236,7 @@ class TestRunner:
 
         with Migration(self, volume):
             self.check_migration_started()
+            self.logger.info('Migration started, waiting until it finished')
 
             start = time.time()
             while self.check_migration() and (self.max_kills == -1 or self.kills < self.max_kills):
@@ -241,7 +261,7 @@ def parse_args():
     parser.add_argument('--quite', action='store_true', help='log only critical events')
 
     test_arguments_group = parser.add_argument_group('test arguments')
-    common.add_common_parser_arguments(test_arguments_group)
+    common.add_common_parser_arguments(test_arguments_group, cluster_required=False)
     test_arguments_group.add_argument(
         '--ipc-type',
         type=str,
@@ -250,7 +270,12 @@ def parse_args():
     test_arguments_group.add_argument(
         '--disk-name',
         type=str,
-        required=True,
+        required=False,
+        help='run migration test for specified non-repl disk')
+    test_arguments_group.add_argument(
+        '--disk-id',
+        type=str,
+        required=False,
         help='run migration test for specified non-repl disk')
     test_arguments_group.add_argument(
         '--check-load',
@@ -282,7 +307,7 @@ def parse_args():
     )
     test_arguments_group.add_argument(
         '--nbs-port',
-        type=str,
+        type=int,
         help='specify nbs server port'
     )
     test_arguments_group.add_argument(
@@ -290,9 +315,20 @@ def parse_args():
         action='store_true',
         default=False,
         help='make requests to nbs with authorization')
+    test_arguments_group.add_argument(
+        '--run-locally',
+        action='store_true',
+        default=False,
+        help='don\'t use ycp, but run locally on nbs-host')
+    test_arguments_group.add_argument(
+        '--zone',
+        type=str,
+        help='zone')
 
     args = parser.parse_args()
     if args.profile_name is None:
         args.profile_name = args.cluster
+    if args.nbs_port is None:
+        args.nbs_port = 9768 if args.use_auth else 9766
 
     return args
