@@ -181,14 +181,14 @@ const NCloud::TRequestSourceKinds RequestSourceKinds = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TryParseSourceFd(const TStringBuf& peer, ui32& fd)
+bool TryParseSourceFd(const TStringBuf& peer, ui32* fd)
 {
     static constexpr TStringBuf PeerFdPrefix = "fd:";
     TStringBuf peerFd;
     if (!peer.AfterPrefix(PeerFdPrefix, peerFd)) {
         return false;
     }
-    return TryFromString(peerFd, fd);
+    return TryFromString(peerFd, *fd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -365,17 +365,17 @@ public:
         }
     }
 
-    IEndpointManagerPtr GetSessionService(ui32 fd, NProto::ERequestSource* source)
+    bool CheckClientFd(ui32 fd, NProto::ERequestSource* source)
     {
         with_lock (Lock) {
             auto it = ClientInfos.find(fd);
             if (it != ClientInfos.end()) {
                 const auto& clientInfo = it->second;
                 *source = clientInfo.Source;
-                return clientInfo.Service;
+                return true;
             }
         }
-        return nullptr;
+        return false;
     }
 
     IClientStoragePtr CreateClientStorage(IEndpointManagerPtr service);
@@ -470,7 +470,7 @@ void TEndpointManagerContext::ValidateRequest(
     if (!source) {
         ui32 fd = 0;
         auto peer = context.peer();
-        bool result = TryParseSourceFd(peer, fd);
+        bool result = TryParseSourceFd(peer, &fd);
 
         if (!result) {
             ythrow TServiceError(E_FAIL)
@@ -480,8 +480,7 @@ void TEndpointManagerContext::ValidateRequest(
         // requests coming from unix sockets do not need to be authorized
         // so pretend they are coming from data channel.
         auto src = NProto::SOURCE_FD_DATA_CHANNEL;
-        auto sessionService = SessionStorage->GetSessionService(fd, &src);
-        if (sessionService == nullptr) {
+        if (!SessionStorage->CheckClientFd(fd, &src)) {
             ythrow TServiceError(E_GRPC_UNAVAILABLE)
                 << "endpoint has been stopped (fd = " << fd << ").";
         }

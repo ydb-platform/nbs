@@ -21,6 +21,7 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NServer {
 
