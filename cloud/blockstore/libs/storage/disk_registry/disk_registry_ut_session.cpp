@@ -345,7 +345,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         {
