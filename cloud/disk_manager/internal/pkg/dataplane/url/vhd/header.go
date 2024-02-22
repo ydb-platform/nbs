@@ -1,9 +1,14 @@
 package vhd
 
+import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
 	headerCookie = "cxsparse"
+
+	// The dynamic disk header should appear on a sector (512-byte) boundary.
+	headerOffset = uint64(512)
 )
 
 // https://learn.microsoft.com/en-us/windows/win32/vstor/about-vhd
@@ -23,6 +28,14 @@ type header struct {
 	Reserved2            [256]byte
 }
 
-func (h header) validate() bool {
-	return true // TODO: Implement.
+func (h header) validate() error {
+	if string(h.Cookie[:]) != headerCookie {
+		return common.NewSourceInvalidError(
+			"Failed to check vhd header cookie: expected - %s, actual - %s",
+			headerCookie,
+			h.Cookie,
+		)
+	}
+
+	return nil // TODO: Implement.
 }

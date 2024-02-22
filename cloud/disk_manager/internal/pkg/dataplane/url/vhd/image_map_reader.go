@@ -29,19 +29,20 @@ func (r *ImageMapReader) Size() uint64 {
 	return r.footer.CurrentSize
 }
 
-func (r *ImageMapReader) ReadFooter(ctx context.Context) error {
+func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error) {
 	// Because the hard disk footer is a crucial part of the hard disk image,
 	// the footer is mirrored as a header at the front of the file for purposes
 	// of redundancy.
-	return r.readFooter(ctx)
-}
+	err := r.readFooter(ctx)
+	if err != nil {
+		return []common.ImageMapItem{}, err
+	}
 
-func (r *ImageMapReader) ReadHeader(ctx context.Context) error {
-	// The dynamic disk header should appear on a sector (512-byte) boundary.
-	return r.readHeader(ctx, 512)
-}
+	err = r.readHeader(ctx)
+	if err != nil {
+		return []common.ImageMapItem{}, err
+	}
 
-func (r *ImageMapReader) Read(context.Context) ([]common.ImageMapItem, error) {
 	return []common.ImageMapItem{}, nil // TODO: Implement.
 }
 
@@ -68,36 +69,22 @@ func (r *ImageMapReader) readFooter(ctx context.Context) error {
 		return err
 	}
 
-	if string(r.footer.Cookie[:]) != footerCookie {
-		return common.NewSourceInvalidError(
-			"Failed to check vhd footer cookie: expected - %s, actual - %s",
-			footerCookie,
-			r.footer.Cookie,
-		)
-	}
-
-	if !r.footer.validate() {
-		return common.NewSourceInvalidError(
-			"Failed to check vhd footer validity: footer is corrupted",
-		)
-	}
-
-	return nil
+	return r.footer.validate()
 }
 
-func (r *ImageMapReader) readHeader(ctx context.Context, offset uint64) error {
+func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	headerSize := uint64(unsafe.Sizeof(r.header))
-	if r.reader.Size() < offset+headerSize {
+	if r.reader.Size() < headerOffset+headerSize {
 		return common.NewSourceInvalidError(
 			"image size %v is less than header offset and header size %v",
 			r.reader.Size(),
-			offset+headerSize,
+			headerOffset+headerSize,
 		)
 	}
 
 	err := r.reader.ReadBinary(
 		ctx,
-		offset,
+		headerOffset,
 		headerSize,
 		binary.LittleEndian,
 		&r.header,
@@ -106,19 +93,5 @@ func (r *ImageMapReader) readHeader(ctx context.Context, offset uint64) error {
 		return err
 	}
 
-	if string(r.header.Cookie[:]) != headerCookie {
-		return common.NewSourceInvalidError(
-			"Failed to check vhd header cookie: expected - %s, actual - %s",
-			headerCookie,
-			r.header.Cookie,
-		)
-	}
-
-	if !r.header.validate() {
-		return common.NewSourceInvalidError(
-			"Failed to check vhd header validity: header is corrupted",
-		)
-	}
-
-	return nil
+	return r.header.validate()
 }

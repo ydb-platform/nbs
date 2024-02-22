@@ -1,5 +1,7 @@
 package vhd
 
+import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -28,6 +30,14 @@ type footer struct {
 	Reserved           [427]byte
 }
 
-func (h footer) validate() bool {
-	return true // TODO: Implement.
+func (f footer) validate() error {
+	if string(f.Cookie[:]) != footerCookie {
+		return common.NewSourceInvalidError(
+			"Failed to check vhd footer cookie: expected - %s, actual - %s",
+			footerCookie,
+			f.Cookie,
+		)
+	}
+
+	return nil // TODO: Implement.
 }
