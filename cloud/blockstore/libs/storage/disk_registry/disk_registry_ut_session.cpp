@@ -487,7 +487,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            auto response = diskRegistry.RemoveDiskSession("disk-1", "session-1");
+            auto response = diskRegistry.RemoveDiskSession(
+                "disk-1",
+                "session-1",
+                TVector<TAgentReleaseDiskRequestCache>());
             UNIT_ASSERT(!HasError(response->GetError()));
         }
     }

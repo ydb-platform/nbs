@@ -34,6 +34,8 @@ private:
 
     int PendingRequests = 0;
 
+    TVector<TAgentAcquireDiskRequestCache> SentAcquireRequests;
+
 public:
     TAcquireDiskActor(
         const TActorId& owner,
@@ -63,7 +65,13 @@ private:
         NProto::TError error);
 
     template <typename TRequest>
-    void SendRequests(const TActorContext& ctx);
+    struct TSentRequest {
+        TString AgentId;
+        std::unique_ptr<TRequest> Request;
+    };
+
+    template <typename TRequest>
+    TVector<TSentRequest<TRequest>> SendRequests(const TActorContext& ctx);
 
 private:
     STFUNC(StateAcquire);
@@ -135,7 +143,17 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
         DiskId.c_str(),
         LogTargets().c_str());
 
-    SendRequests<TEvDiskAgent::TEvAcquireDevicesRequest>(ctx);
+    auto sentRequests =
+        SendRequests<TEvDiskAgent::TEvAcquireDevicesRequest>(ctx);
+    Y_ABORT_UNLESS(SentAcquireRequests.empty());
+    SentAcquireRequests.reserve(sentRequests.size());
+    auto now = TInstant::Now();
+    for (auto& x: sentRequests) {
+        SentAcquireRequests.emplace_back(
+            std::move(x.AgentId),
+            std::move(x.Request),
+            now);
+    }
 }
 
 void TAcquireDiskActor::FinishAcquireDisk(
@@ -143,7 +161,13 @@ void TAcquireDiskActor::FinishAcquireDisk(
     NProto::TError error)
 {
     using TType = TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest;
-    NCloud::Send(ctx, Owner, std::make_unique<TType>(DiskId, ClientId));
+    NCloud::Send(
+        ctx,
+        Owner,
+        std::make_unique<TType>(
+            DiskId,
+            ClientId,
+            std::move(SentAcquireRequests)));
 
     ReplyAndDie(ctx, std::move(error));
 }
@@ -163,17 +187,27 @@ void TAcquireDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
 }
 
 template <typename TRequest>
-void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
+TVector<TAcquireDiskActor::TSentRequest<TRequest>> TAcquireDiskActor::SendRequests(
+    const TActorContext& ctx)
 {
-    auto it = Devices.begin();
+    auto* it = Devices.begin();
+    TVector<TSentRequest<TRequest>> sentRequests;
     while (it != Devices.end()) {
         auto request = std::make_unique<TRequest>();
+        TSentRequest<TRequest> requestCopy{TString(), std::make_unique<TRequest>()};
         PrepareRequest(request->Record);
+        PrepareRequest(requestCopy.Request->Record);
 
+        requestCopy.AgentId = it->GetAgentId();
         const ui32 nodeId = it->GetNodeId();
 
+        TEvDiskAgent::TEvAcquireDevicesRequest a;
+
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
+            Y_ABORT_UNLESS(it->GetAgentId() == requestCopy.AgentId);
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
+            *requestCopy.Request->Record.AddDeviceUUIDs() =
+                it->GetDeviceUUID();
         }
 
         ++PendingRequests;
@@ -184,6 +218,7 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
             nodeId,
             JoinSeq(", ", request->Record.GetDeviceUUIDs()).c_str());
 
+        sentRequests.push_back(std::move(requestCopy));
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(nodeId),
             ctx.SelfID,
@@ -195,9 +230,12 @@ void TAcquireDiskActor::SendRequests(const TActorContext& ctx)
 
         ctx.Send(event.release());
     }
+    return sentRequests;
 }
 
-void TAcquireDiskActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TAcquireDiskActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
     auto response = std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>(
         std::move(error));
@@ -262,6 +300,7 @@ void TAcquireDiskActor::OnAcquireResponse(
             SendRequests<TEvDiskAgent::TEvReleaseDevicesRequest>(ctx);
         }
 
+        SentAcquireRequests.clear();
         FinishAcquireDisk(ctx, std::move(error));
 
         return;
@@ -409,13 +448,57 @@ void TDiskRegistryActor::HandleFinishAcquireDisk(
     const TEvDiskRegistryPrivate::TEvFinishAcquireDiskRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     State->FinishAcquireDisk(msg->DiskId);
-    auto response =
-        std::make_unique<TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse>();
 
+    OnDiskAcquired(std::move(msg->SentRequests));
+
+    auto response = std::make_unique<
+        TEvDiskRegistryPrivate::TEvFinishAcquireDiskResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TDiskRegistryActor::OnDiskAcquired(
+    TVector<TAgentAcquireDiskRequestCache> sentAcquireRequests)
+{
+    for (auto& sentRequest: sentAcquireRequests) {
+        auto& cachedRequests = AcquireCacheByAgentId[sentRequest.AgentId];
+        std::erase_if(
+            cachedRequests,
+            [&sentRequest](const TAgentAcquireDiskRequestCache& r)
+            {
+                return sentRequest.Request->Record.GetDiskId() ==
+                           r.Request->Record.GetDiskId() &&
+                       sentRequest.Request->Record.GetHeaders().GetClientId() ==
+                           r.Request->Record.GetHeaders().GetClientId();
+            });
+        cachedRequests.push_back(std::move(sentRequest));
+    }
+}
+
+void TDiskRegistryActor::OnDiskReleased(
+    const TVector<TAgentReleaseDiskRequestCache>& sentReleaseRequests)
+{
+    for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {
+        auto it = AcquireCacheByAgentId.find(agentId);
+        if (it == AcquireCacheByAgentId.end()) {
+            continue;
+        }
+        auto& requests = it->second;
+        std::erase_if(
+            requests,
+            [&releaseRequest](const TAgentAcquireDiskRequestCache& r)
+            {
+                return releaseRequest->Record.GetDiskId() ==
+                           r.Request->Record.GetDiskId() &&
+                       releaseRequest->Record.GetHeaders().GetClientId() ==
+                           r.Request->Record.GetHeaders().GetClientId();
+            });
+        if (requests.empty()) {
+            AcquireCacheByAgentId.erase(it);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

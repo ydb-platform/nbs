@@ -606,6 +606,8 @@ STFUNC(TDiskRegistryActor::StateWork)
         IgnoreFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartRequest);
         IgnoreFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse);
 
+        IgnoreFunc(TEvDiskAgent::TEvAcquireDevicesResponse);
+
         HFunc(TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
             HandleBackupDiskRegistryStateResponse);
 

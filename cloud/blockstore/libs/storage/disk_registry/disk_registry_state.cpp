@@ -3141,7 +3141,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
 
 bool TDiskRegistryState::FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const
 {
-    auto isUnavailable = [&] (const auto& d) {
+    auto isUnavailable = [&] (const NProto::TDeviceConfig& d) {
         const auto* agent = AgentList.FindAgent(d.GetAgentId());
 
         return !agent || agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE;

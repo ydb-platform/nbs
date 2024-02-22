@@ -3,6 +3,8 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
+#include <ranges>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -181,11 +183,83 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    SendCachedAcquireRequestsToAgent(ctx, args.Config);
+
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
+}
+
+void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
+    const TActorContext& ctx,
+    const NProto::TAgentConfig& config)
+{
+    auto cacheIt = AcquireCacheByAgentId.find(config.GetAgentId());
+    if (cacheIt == AcquireCacheByAgentId.end()) {
+        return;
+    }
+    // Since we will send all of the requests and they are non-copyable, just
+    // extract whole container.
+    TDeque<TAgentAcquireDiskRequestCache> agentAcquireRequestCache =
+        std::move(cacheIt->second);
+    AcquireCacheByAgentId.erase(cacheIt);
+
+    TDuration remountPeriod = Config->GetClientRemountPeriod();
+    TInstant now = TInstant::Now();
+    while (!agentAcquireRequestCache.empty()) {
+        TAgentAcquireDiskRequestCache request =
+            std::move(agentAcquireRequestCache.front());
+        agentAcquireRequestCache.pop_front();
+
+        // If it is an old enough request, then we probably shouldn't send it.
+        if (now - request.RequestTime > remountPeriod * 3) {
+            continue;
+        }
+
+        TVector<NProto::TDeviceConfig> diskDevices;
+        NProto::TError error = State->GetDiskDevices(
+            request.Request->Record.GetDiskId(),
+            diskDevices);
+        // Something happened with the disk from the request. Skip it.
+        if (HasError(error) || diskDevices.empty()) {
+            continue;
+        }
+
+        TVector<TString> diskAgentDeviceUUIDs;
+        diskAgentDeviceUUIDs.reserve(
+            request.Request->Record.GetDeviceUUIDs().size());
+        for (const auto& device: diskDevices) {
+            if (config.GetAgentId() == device.GetAgentId()) {
+                diskAgentDeviceUUIDs.push_back(device.GetDeviceUUID());
+            }
+        }
+
+        Sort(diskAgentDeviceUUIDs);
+        bool devicesSubset = true;
+        for (const auto& deviceUUID: request.Request->Record.GetDeviceUUIDs()) {
+            if (!BinarySearch(
+                    diskAgentDeviceUUIDs.begin(),
+                    diskAgentDeviceUUIDs.end(),
+                    deviceUUID))
+            {
+                devicesSubset = false;
+                break;
+            }
+        }
+        // Not all of the devices from the request belongs to DiskId from the
+        // request.
+        if (!devicesSubset) {
+            continue;
+        }
+
+        NCloud::Send(
+            ctx,
+            MakeDiskAgentServiceId(config.GetNodeId()),
+            std::move(request.Request),
+            config.GetNodeId());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
