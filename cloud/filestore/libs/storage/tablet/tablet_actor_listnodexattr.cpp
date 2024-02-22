@@ -108,6 +108,8 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodeXAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvListNodeXAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         response->Record.MutableNames()->Reserve(args.Attrs.size());
@@ -115,8 +117,6 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
             response->Record.AddNames(attr.Name);
         }
     }
-
-    RemoveTransaction(*args.RequestInfo);
 
     CompleteResponse<TEvService::TListNodeXAttrMethod>(
         response->Record,

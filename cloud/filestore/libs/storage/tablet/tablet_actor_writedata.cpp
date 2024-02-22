@@ -549,6 +549,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto reply = [&] (
         const TActorContext& ctx,
         TTxIndexTablet::TWriteData& args)
@@ -561,8 +563,6 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     };
-
-    RemoveTransaction(*args.RequestInfo);
 
     if (FAILED(args.Error.GetCode())) {
         reply(ctx, args);

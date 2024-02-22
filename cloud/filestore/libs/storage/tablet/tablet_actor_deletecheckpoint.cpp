@@ -237,12 +237,12 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteCheckpoint& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint completed (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());
-
-    RemoveTransaction(*args.RequestInfo);
 
     ReleaseMixedBlocks(args.MixedBlocksRanges);
     ReleaseCollectBarrier(args.CollectBarrier);

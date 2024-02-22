@@ -164,6 +164,8 @@ void TIndexTabletActor::CompleteTx_ListNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodes& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;
@@ -179,8 +181,6 @@ void TIndexTabletActor::CompleteTx_ListNodes(
             record.SetCookie(args.Next);
         }
     }
-
-    RemoveTransaction(*args.RequestInfo);
 
     CompleteResponse<TEvService::TListNodesMethod>(
         response->Record,

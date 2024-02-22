@@ -104,13 +104,13 @@ void TIndexTabletActor::CompleteTx_AcquireLock(
     const TActorContext& ctx,
     TTxIndexTablet::TAcquireLock& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvAcquireLockResponse>(args.Error);
     CompleteResponse<TEvService::TAcquireLockMethod>(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
-
-    RemoveTransaction(*args.RequestInfo);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

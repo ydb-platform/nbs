@@ -239,6 +239,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed (%s)",
         LogTag.c_str(),
@@ -252,8 +254,6 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 
     auto* session = FindSession(args.SessionId);
     TABLET_VERIFY(session);
-
-    RemoveTransaction(*args.RequestInfo);
 
     auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));

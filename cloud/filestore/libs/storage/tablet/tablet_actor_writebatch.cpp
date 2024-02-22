@@ -503,6 +503,10 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteBatch& args)
 {
+    for (const auto& batch: args.WriteBatch) {
+        RemoveTransaction(*batch.RequestInfo);
+    }
+
     auto reply = [] (
         const TActorContext& ctx,
         TTxIndexTablet::TWriteBatch& args)
@@ -529,10 +533,6 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
             NCloud::Reply(ctx, *write.RequestInfo, std::move(response));
         }
     };
-
-    for (const auto& batch: args.WriteBatch) {
-        RemoveTransaction(*batch.RequestInfo);
-    }
 
     if (!args.SkipFresh) {
         LOG_TRACE(ctx, TFileStoreComponents::TABLET,

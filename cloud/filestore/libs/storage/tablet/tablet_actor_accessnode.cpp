@@ -106,13 +106,13 @@ void TIndexTabletActor::CompleteTx_AccessNode(
     const TActorContext& ctx,
     TTxIndexTablet::TAccessNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvAccessNodeResponse>(args.Error);
     CompleteResponse<TEvService::TAccessNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,
         ctx);
-
-    RemoveTransaction(*args.RequestInfo);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
