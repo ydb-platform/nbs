@@ -24,6 +24,15 @@ func getVMDKUbuntu2204ImageMapFile() string {
 	return os.Getenv("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_MAP_FILE")
 }
 
+func getVMDKWindowsImageFileUrl() string {
+	port := os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT")
+	return fmt.Sprintf("http://localhost:%v", port)
+}
+
+func getVMDKWindowsImageMapFile() string {
+	return os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_MAP_FILE")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func getVMDKReader(
@@ -52,6 +61,15 @@ func TestVMDKMapImageUbuntu2204(t *testing.T) {
 		t,
 		getVMDKUbuntu2204ImageFileURL(),
 		getVMDKUbuntu2204ImageMapFile(),
+		getVMDKReader,
+	)
+}
+
+func TestVMDKMapImageWindows(t *testing.T) {
+	common_testing.MapImageTest(
+		t,
+		getVMDKWindowsImageFileUrl(),
+		getVMDKWindowsImageMapFile(),
 		getVMDKReader,
 	)
 }
