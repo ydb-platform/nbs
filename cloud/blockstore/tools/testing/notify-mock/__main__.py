@@ -64,10 +64,10 @@ def main(args, file):
     server = HTTPServer(('localhost', args.port), create_api(file))
 
     if args.ssl_cert_file is not None or args.ssl_key_file is not None:
-        server.socket = ssl.wrap_socket(
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.ssl_cert_file, args.ssl_key_file)
+        server.socket = context.wrap_socket(
             server.socket,
-            certfile=args.ssl_cert_file,
-            keyfile=args.ssl_key_file,
             server_side=True)
 
     def signal_handler(signum, frame):
