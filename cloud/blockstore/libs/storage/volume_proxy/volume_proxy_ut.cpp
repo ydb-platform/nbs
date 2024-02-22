@@ -243,16 +243,16 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvClientConnected: {
-                        auto* msg = reinterpret_cast<TEvTabletPipe::TEvClientConnected::TPtr*>(&event);
-                        if ((*msg)->Get()->TabletId == volumeTabletId) {
+                        const auto* msg = event->Get<TEvTabletPipe::TEvClientConnected>();
+                        if (msg->TabletId == volumeTabletId) {
                             detectedConnect = true;
                             UNIT_ASSERT(detectedDisconnect);
                         }
                         break;
                     }
                     case TEvTabletPipe::EvClientDestroyed: {
-                        auto* msg = reinterpret_cast<TEvTabletPipe::TEvClientDestroyed::TPtr*>(&event);
-                        if ((*msg)->Get()->TabletId == volumeTabletId) {
+                        const auto* msg = event->Get<TEvTabletPipe::TEvClientDestroyed>();
+                        if (msg->TabletId == volumeTabletId) {
                             detectedDisconnect = true;
                             UNIT_ASSERT(!detectedConnect);
                         }
@@ -419,6 +419,62 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         UNIT_ASSERT(describe);
+    }
+
+    Y_UNIT_TEST(ShouldDetectRemoteTabletDeath)
+    {
+        TTestEnv env(1, 2);
+
+        auto nodeIdx1 = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service1(runtime, nodeIdx1);
+
+        ui64 volumeTabletId = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        if (!volumeTabletId) {
+                            auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                            const auto& volumeDescription =
+                                msg->PathDescription.GetBlockStoreVolumeDescription();
+                            volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service1.CreateVolume();
+        service1.WaitForVolume();
+
+        auto nodeIdx2 = SetupTestEnv(env);
+        TServiceClient service2(runtime, nodeIdx2);
+
+        service2.StatVolume();
+
+        service2.SendRequest(
+            MakeVolumeProxyServiceId(),
+            service2.CreateStatVolumeRequest());
+
+        ui64 disconnections = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvClientDestroyed: {
+                        auto* msg = event->Get<TEvTabletPipe::TEvClientDestroyed>();
+                        if (msg->TabletId == volumeTabletId) {
+                            ++disconnections;                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+
+        auto response = service2.RecvStatVolumeResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
     }
 }
 
