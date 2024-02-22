@@ -167,6 +167,10 @@ func (c *httpClient) head(
 		return nil, errors.NewRetriableError(err)
 	}
 
+	if resp.StatusCode == 403 {
+		return nil, NewSourceForbiddenError("http code %d", resp.StatusCode)
+	}
+
 	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
 		return nil, NewSourceNotFoundError("http code %d", resp.StatusCode)
 	}
@@ -240,6 +244,10 @@ func (c *httpClient) body(
 			start,
 			end,
 		)
+	}
+
+	if resp.StatusCode == 403 {
+		return nil, NewSourceForbiddenError("http code %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode >= 400 && resp.StatusCode <= 499 {
