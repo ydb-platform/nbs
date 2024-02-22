@@ -595,6 +595,24 @@ func (client *grpcClient) DeleteCheckpoint(
 	return resp.(*protos.TDeleteCheckpointResponse), err
 }
 
+func (client *grpcClient) GetCheckpointStatus(
+	ctx context.Context,
+	req *protos.TGetCheckpointStatusRequest,
+) (*protos.TGetCheckpointStatusResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.GetCheckpointStatus(ctx, req)
+		})
+
+	return resp.(*protos.TGetCheckpointStatusResponse), err
+}
+
 func (client *grpcClient) GetChangedBlocks(
 	ctx context.Context,
 	req *protos.TGetChangedBlocksRequest,

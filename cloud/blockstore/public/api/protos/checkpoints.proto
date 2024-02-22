@@ -126,7 +126,6 @@ enum ECheckpointStatus
                     // the future.
 }
 
-
 message TGetCheckpointStatusRequest
 {
     // Optional request headers.

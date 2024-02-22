@@ -61,6 +61,7 @@ struct THandlerFactory
         { "createvolume", NewCreateVolumeCommand },
         { "createvolumefromdevice", NewCreateVolumeFromDeviceCommand },
         { "deletecheckpoint", NewDeleteCheckpointCommand },
+        { "getcheckpointstatus", NewGetCheckpointStatusCommand },
         { "describediskregistryconfig", NewDescribeDiskRegistryConfigCommand },
         { "describeendpoint", NewDescribeEndpointCommand },
         { "describeplacementgroup", NewDescribePlacementGroupCommand },

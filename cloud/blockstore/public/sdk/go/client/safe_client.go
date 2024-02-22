@@ -299,6 +299,20 @@ func (client *safeClient) DeleteCheckpoint(
 	return err
 }
 
+func (client *safeClient) GetCheckpointStatus(
+	ctx context.Context,
+	diskId string,
+	checkpointId string,
+) error {
+	req := &protos.TGetCheckpointStatusRequest{
+		DiskId:       diskId,
+		CheckpointId: checkpointId,
+	}
+
+	_, err := client.Impl.GetCheckpointStatus(ctx, req)
+	return err
+}
+
 func (client *safeClient) GetChangedBlocks(
 	ctx context.Context,
 	diskId string,
