@@ -5,10 +5,10 @@ import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/ur
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	headerCookie = "cxsparse"
-
 	// The dynamic disk header should appear on a sector (512-byte) boundary.
 	headerOffset = uint64(512)
+
+	headerCookie = "cxsparse"
 )
 
 // https://learn.microsoft.com/en-us/windows/win32/vstor/about-vhd
