@@ -127,9 +127,11 @@ class TestRunner:
     @common.retry(tries=5, delay=10, exception=Error)
     def change_agent_state(self, agent_id: str, state: int, message):
         self.logger.info(f'Changing state of agent_id=<{agent_id}> to state=<{state}>')
+        disk_description = f'{self.args.disk_name}' if self.args.disk_name \
+            else f'id={self.args.disk_id}'
         try:
             data = json.dumps({
-                'Message': message + f' ({self.args.disk_name})',
+                'Message': message + f' ({disk_description})',
                 'ChangeAgentState': {
                     'AgentId': agent_id,
                     'State': state
@@ -323,7 +325,7 @@ def parse_args():
     test_arguments_group.add_argument(
         '--zone',
         type=str,
-        help='zone')
+        help='zone id to render template config with')
 
     args = parser.parse_args()
     if args.profile_name is None:
