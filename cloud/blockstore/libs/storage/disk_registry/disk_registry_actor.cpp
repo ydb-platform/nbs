@@ -813,6 +813,7 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
     for (const auto& d: devices) {
         sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
     }
+    sb << ")";
     return sb;
 }
 
