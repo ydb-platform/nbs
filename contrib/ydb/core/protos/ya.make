@@ -6,6 +6,8 @@ IF (OS_WINDOWS)
     NO_OPTIMIZE_PY_PROTOS()
 ENDIF()
 
+SET(PROTOC_TRANSITIVE_HEADERS "no")
+
 SRCS(
     alloc.proto
     base.proto
