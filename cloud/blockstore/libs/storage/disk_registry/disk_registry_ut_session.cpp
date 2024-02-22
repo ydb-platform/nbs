@@ -337,7 +337,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         bool finished = false;
 
-        runtime->SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
+        auto observerFunc = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskRegistryPrivate::EvFinishAcquireDiskResponse: {
                     finished = true;
