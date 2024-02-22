@@ -84,7 +84,7 @@ func NewURLReader(
 
 func (r *urlReader) EnableCache() {
 	if r.cache == nil {
-		r.cache = cache.NewCache()
+		r.cache = cache.NewCache(r.read)
 	}
 }
 
@@ -134,12 +134,7 @@ func (r *urlReader) read(
 		return err
 	}
 
-	reader, err := r.httpClient.Body(
-		ctx,
-		start,
-		end,
-		r.etag,
-	)
+	reader, err := r.httpClient.Body(ctx, start, end, r.etag)
 	if err != nil {
 		return err
 	}
@@ -171,13 +166,7 @@ func (r *urlReader) Read(
 		return size, nil
 	}
 
-	err := r.cache.Read(
-		start,
-		data,
-		func(start uint64, data []byte) error {
-			return r.read(ctx, start, data)
-		},
-	)
+	err := r.cache.Read(ctx, start, data)
 	if err != nil {
 		return 0, err
 	}
@@ -200,12 +189,7 @@ func (r *urlReader) ReadBinary(
 		return err
 	}
 
-	reader, err := r.httpClient.Body(
-		ctx,
-		start,
-		end,
-		r.etag,
-	)
+	reader, err := r.httpClient.Body(ctx, start, end, r.etag)
 	if err != nil {
 		return err
 	}

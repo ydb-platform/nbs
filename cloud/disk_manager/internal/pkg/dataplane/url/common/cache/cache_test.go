@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,13 +16,7 @@ func goCacheRead(cache *Cache, start uint64, wg *errgroup.Group) {
 			data := make([]byte, cache.chunkSize)
 
 			for i := 0; i < 10000; i++ {
-				err := cache.Read(
-					start,
-					data,
-					func(start uint64, data []byte) error {
-						return nil
-					},
-				)
+				err := cache.Read(context.Background(), start, data)
 				if err != nil {
 					return err
 				}
@@ -35,7 +30,11 @@ func goCacheRead(cache *Cache, start uint64, wg *errgroup.Group) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCacheReadConcurrently(t *testing.T) {
-	cache := NewCache()
+	cache := NewCache(
+		func(context.Context, uint64, []byte) error {
+			return nil
+		},
+	)
 	cache.maxCacheSize = cache.chunkSize
 	wg := errgroup.Group{}
 	for i := uint64(0); i <= 3; i++ {
