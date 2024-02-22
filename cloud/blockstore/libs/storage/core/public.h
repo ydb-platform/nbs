@@ -10,7 +10,6 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TFeaturesConfig;
     class TPartitionConfig;
     class TStorageServiceConfig;
 }   // namespace NProto
@@ -30,9 +29,6 @@ using IReadBlocksHandlerPtr = std::shared_ptr<IReadBlocksHandler>;
 
 struct ICompactionPolicy;
 using ICompactionPolicyPtr = std::shared_ptr<ICompactionPolicy>;
-
-class TFeaturesConfig;
-using TFeaturesConfigPtr = std::shared_ptr<TFeaturesConfig>;
 
 struct TManuallyPreemptedVolumes;
 using TManuallyPreemptedVolumesPtr = std::shared_ptr<TManuallyPreemptedVolumes>;

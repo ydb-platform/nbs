@@ -113,7 +113,8 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         storageConfigProto.SetHDDV2MaxBlobsPerRange(4);
         TStorageConfig storageConfig(
             storageConfigProto,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
         const ui32 siblingCount = 2;
         auto config = BuildLoadOptimizationCompactionPolicyConfig(

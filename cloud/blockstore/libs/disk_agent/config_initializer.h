@@ -9,9 +9,9 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>
@@ -31,7 +31,7 @@ struct TConfigInitializer
     NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
-    NStorage::TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
     TString Rack;
 

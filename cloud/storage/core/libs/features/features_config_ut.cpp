@@ -1,12 +1,12 @@
 #include "features_config.h"
 
-#include <cloud/blockstore/config/features.pb.h>
+#include <cloud/storage/core/config/features.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/random/random.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NFeatures {
 
 namespace {
 
@@ -80,4 +80,4 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NFeatures

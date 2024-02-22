@@ -1,13 +1,11 @@
-#include <cloud/blockstore/libs/storage/core/features_config.h>
-
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
 namespace {
 
 using namespace NCloud;
-using namespace NBlockStore;
 using namespace NLastGetopt;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,10 +48,10 @@ int main(int argc, char** argv)
     TOptions opts;
     opts.Parse(argc, argv);
 
-    NProto::TFeaturesConfig proto;
+    NCloud::NProto::TFeaturesConfig proto;
     ParseProtoTextFromFileRobust(opts.FeaturesPath, proto);
 
-    NBlockStore::NStorage::TFeaturesConfig config(std::move(proto));
+    NCloud::NFeatures::TFeaturesConfig config(std::move(proto));
 
     for (const auto& f: config.CollectAllFeatures()) {
         bool enabled = config.IsFeatureEnabled(opts.CloudId, opts.FolderId, f);

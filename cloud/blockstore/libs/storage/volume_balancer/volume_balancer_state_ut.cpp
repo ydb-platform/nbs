@@ -1,7 +1,8 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
+
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -23,20 +24,20 @@ using TVolumeUsage = std::pair<ui64, ui64>;
 TStorageConfigPtr CreateStorageConfig(
     NProto::EVolumePreemptionType type,
     ui32 cpuLackThreshold,
-    TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
     storageConfig.SetCpuLackThreshold(cpuLackThreshold);
     if (!featuresConfig) {
         NProto::TFeaturesConfig config;
-        featuresConfig = std::make_shared<TFeaturesConfig>(config);
+        featuresConfig = std::make_shared<NFeatures::TFeaturesConfig>(config);
     }
 
     return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
 };
 
-TFeaturesConfigPtr CreateFeatureConfig(
+NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     const TString& featureName,
     const TVector<std::pair<TString, TString>>& list,
     bool blacklist)
@@ -57,7 +58,7 @@ TFeaturesConfigPtr CreateFeatureConfig(
             }
         }
     }
-    return std::make_shared<TFeaturesConfig>(config);
+    return std::make_shared<NFeatures::TFeaturesConfig>(config);
 }
 
 NProto::TVolumeBalancerDiskStats CreateVolumeStats(
