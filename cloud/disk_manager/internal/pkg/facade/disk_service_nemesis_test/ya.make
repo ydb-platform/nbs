@@ -5,6 +5,9 @@ SET_APPEND(RECIPE_ARGS --multiple-nbs)
 SET_APPEND(RECIPE_ARGS --encryption)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
+FORK_SUBTESTS()
+SPLIT_FACTOR(4)
+
 GO_XTEST_SRCS(
     ../disk_service_test/disk_relocation_test.go
     ../disk_service_test/disk_service_test.go
