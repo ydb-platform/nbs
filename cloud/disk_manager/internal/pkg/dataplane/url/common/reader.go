@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -189,13 +190,14 @@ func (r *urlReader) ReadBinary(
 		return err
 	}
 
-	reader, err := r.httpClient.Body(ctx, start, end, r.etag)
+	byteData := make([]byte, size)
+
+	_, err = r.Read(ctx, start, byteData)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
 
-	err = binary.Read(reader, byteOrder, data)
+	err = binary.Read(bytes.NewReader(byteData), byteOrder, data)
 	// NBS-3324: interpret all errors as retriable.
 	if err != nil {
 		return errors.NewRetriableError(err)

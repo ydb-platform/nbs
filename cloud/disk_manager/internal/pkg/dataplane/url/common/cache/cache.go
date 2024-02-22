@@ -108,6 +108,8 @@ func (c *Cache) Read(
 	return nil
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 // Not thread-safe.
 func (c *Cache) size() uint64 {
 	return uint64(len(c.chunks)) * c.chunkSize
