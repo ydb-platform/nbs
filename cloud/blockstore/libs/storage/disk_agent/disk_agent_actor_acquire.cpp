@@ -48,6 +48,8 @@ void TDiskAgentActor::HandleAcquireDevices(
         record.GetDeviceUUIDs().end()
     };
 
+    Cout << "HandleAcquireDevices; GetDiskId = " << record.GetDiskId() << Endl;
+
     try {
         LOG_DEBUG_S(
             ctx,

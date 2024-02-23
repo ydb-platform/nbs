@@ -833,7 +833,7 @@ void TVolumeSessionActor::LogNewClient(
         IsThrottlingDisabled(msg->Record) ? "disabled" : "enabled";
 
     LOG_INFO_S(ctx, TBlockStoreComponents::SERVICE,
-        "Mounting volume: " << diskId.Quote() <<
+        "Mounting new volume: " << diskId.Quote() <<
         " (client: " << clientId.Quote() <<
         " instance: " << instanceId.Quote() <<
         " access: " << AccessModeToString(accessMode) <<

@@ -383,8 +383,10 @@ void TDiskRegistryActor::HandleAcquireDisk(
     auto clientId = msg->Record.GetHeaders().GetClientId();
     auto diskId = msg->Record.GetDiskId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AcquireDisk request: "
+    Cout << "HandleAcquireDisk; diskId = " << diskId << Endl;
+
+    LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "!xxxx [%lu] Received AcquireDisk request: "
         "DiskId=%s, ClientId=%s, AccessMode=%u, MountSeqNumber=%lu"
         ", VolumeGeneration=%u",
         TabletID(),

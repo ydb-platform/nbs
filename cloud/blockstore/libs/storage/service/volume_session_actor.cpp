@@ -144,7 +144,7 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
     ScheduleInactiveClientsRemoval(ctx);
 }
 
-void TVolumeSessionActor::ScheduleInactiveClientsRemoval(const TActorContext& ctx)
+void TVolumeSessionActor::ScheduleInactiveClientsRemoval(const TActorContext& ctx)  // ?
 {
     if (IsClientsCheckScheduled) {
         return;

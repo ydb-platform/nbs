@@ -149,8 +149,8 @@ void TDiskRegistryActor::CompleteAddAgent(
     const TActorContext& ctx,
     TTxDiskRegistry::TAddAgent& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Complete register agent: NodeId=%u, AgentId=%s"
+    LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "!xxxx [%lu] Complete register agent: NodeId=%u, AgentId=%s"
         ", AffectedDisks=%lu, Error=%s",
         TabletID(),
         args.Config.GetNodeId(),
@@ -183,6 +183,10 @@ void TDiskRegistryActor::CompleteAddAgent(
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
+    TDuration remountPeriod = Config->GetClientRemountPeriod();
+    Cout << "Try to SendCachedAcquireRequestsToAgent; remountPeriod = "
+         << remountPeriod << Endl;
+
     SendCachedAcquireRequestsToAgent(ctx, args.Config);
 
     ReallocateDisks(ctx);
@@ -208,6 +212,11 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
 
     TDuration remountPeriod = Config->GetClientRemountPeriod();
     TInstant now = TInstant::Now();
+
+    Cout << "SendCachedAcquireRequestsToAgent! remountPeriod = "
+         << remountPeriod << "agentAcquireRequestCache.size = "
+         << agentAcquireRequestCache.size() << Endl;
+
     while (!agentAcquireRequestCache.empty()) {
         TAgentAcquireDiskRequestCache request =
             std::move(agentAcquireRequestCache.front());
@@ -215,6 +224,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
 
         // If it is an old enough request, then we probably shouldn't send it.
         if (now - request.RequestTime > remountPeriod * 3) {
+            Cout << "Old request!..." << Endl;
             continue;
         }
 
@@ -224,6 +234,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
             diskDevices);
         // Something happened with the disk from the request. Skip it.
         if (HasError(error) || diskDevices.empty()) {
+            Cout << "EROROROEOREOROERO" << Endl;
             continue;
         }
 
@@ -235,6 +246,15 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
                 diskAgentDeviceUUIDs.push_back(device.GetDeviceUUID());
             }
         }
+
+        TVector<TString> tmpDevicesInRequest;
+        for (const auto& x: request.Request->Record.GetDeviceUUIDs()) {
+            tmpDevicesInRequest.push_back(x);
+        }
+        Sort(tmpDevicesInRequest);
+        Cout << "real devices = [" << JoinStrings(diskAgentDeviceUUIDs, ", ")
+             << "]; request devices = ["
+             << JoinStrings(tmpDevicesInRequest, ", ") << "]" << Endl;
 
         Sort(diskAgentDeviceUUIDs);
         bool devicesSubset = true;
@@ -251,8 +271,11 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
         // Not all of the devices from the request belongs to DiskId from the
         // request.
         if (!devicesSubset) {
+            Cout << "Not devices subset!" << Endl;
             continue;
         }
+
+        Cout << "SEND! SEND! SEND! SEND!" << Endl;
 
         NCloud::Send(
             ctx,

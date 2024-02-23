@@ -34,10 +34,10 @@ void TVolumeActor::AcquireDisk(
 {
     Y_ABORT_UNLESS(State);
 
-    LOG_DEBUG_S(
+    LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Acquiring disk " << State->GetDiskId()
+        "xxxx! Acquiring disk " << State->GetDiskId()
     );
 
     auto request = std::make_unique<TEvDiskRegistry::TEvAcquireDiskRequest>();

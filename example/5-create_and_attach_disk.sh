@@ -18,7 +18,7 @@ EOF
 }
 
 #defaults
-kind="ssd"
+kind="nonreplicated"
 device="/dev/nbd0"
 options=$(getopt -l "help,kind:,device:" -o "hk:d:" -a -- "$@")
 
