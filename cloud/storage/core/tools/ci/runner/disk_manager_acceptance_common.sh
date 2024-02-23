@@ -25,6 +25,7 @@ function base_shell_args () {
         "--instance-ram" "${instance_ram:?Variable instance_ram not present}"
         "--chunk-storage-type" "${chunk_storage_type:=ydb}"
         "--instance-platform-ids" "standard-v2" "standard-v3"
+        "--cleanup-before-tests"
         "--acceptance-test" "$dm/acceptance-test"
         "--results-path" "${results_path}"
         "--verbose"
