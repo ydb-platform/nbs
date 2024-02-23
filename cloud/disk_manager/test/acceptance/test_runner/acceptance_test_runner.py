@@ -41,7 +41,7 @@ class AcceptanceTestCleaner(BaseResourceCleaner):
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _test_binary_executor_type = AcceptanceTestBinaryExecutor
-    _resource_cleaner = AcceptanceTestCleaner
+    _cleaner_type = AcceptanceTestCleaner
 
     @property
     def _remote_verify_test_path(self) -> str:
