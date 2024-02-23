@@ -50,7 +50,8 @@ class YcpNewDiskPolicy(DiskPolicy):
             ) as disk:
                 yield disk
         except Exception as e:
-            _logger.info(f'Error: {e}')
+            _logger.error(
+                "Error while creating a disk %s", self._name, exc_info=e)
             raise ResourceExhaustedError(f'Cannot create disk in zone'
                                          f' {self._zone_id}')
 
