@@ -271,4 +271,10 @@ using TSessionOwnerMap = THashMap<NActors::TActorId, TSession*>;
 using TSessionClientMap = THashMap<TString, TSession*>;
 using TSessionHistoryList = TDeque<TSessionHistoryEntry>;
 
+struct TSessionsStats
+{
+    ui32 StatefulSessionsCount = 0;
+    ui32 StatelessSessionsCount = 0;
+};
+
 }   // namespace NCloud::NFileStore::NStorage

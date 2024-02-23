@@ -412,6 +412,24 @@ TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessions() const
     return sessions;
 }
 
+TSessionsStats TIndexTabletState::CalculateSessionsStats() const
+{
+    TSessionsStats stats;
+
+    // recalculating these stats on purpose to be able to perform basic
+    // validation of the counters (UsedSessionsCount should be equal to the sum
+    // of Stateless and Stateful SessionsCount)
+    for (const auto& s: Impl->Sessions) {
+        if (s.GetSessionState()) {
+            ++stats.StatefulSessionsCount;
+        } else {
+            ++stats.StatelessSessionsCount;
+        }
+    }
+
+    return stats;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Handles
 

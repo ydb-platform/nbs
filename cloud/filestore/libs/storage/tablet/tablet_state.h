@@ -447,6 +447,7 @@ public:
         const TSessionHistoryEntry& entry, size_t maxEntryCount);
 
     TVector<TMonSessionInfo> GetActiveSessions() const;
+    TSessionsStats CalculateSessionsStats() const;
 
 private:
     TSession* CreateSession(
