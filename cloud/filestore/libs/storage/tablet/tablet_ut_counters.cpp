@@ -378,7 +378,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
-           {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
         });
 
         Tablet->InitSession("client", "session");
@@ -389,9 +392,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
             {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
         });
 
-        Tablet->DestroySession();
+        Tablet->ResetSession("client", "session", 0, "state");
+
+        Tablet->AdvanceTime(TDuration::Seconds(15));
+        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        registry->Visit(TInstant::Zero(), Visitor);
+        Visitor.ValidateExpectedCounters({
+            {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 0},
+        });
+
+        Tablet->RebootTablet();
+        Tablet->AdvanceTime(TDuration::Minutes(1));
+        Tablet->CleanupSessions();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
         Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
@@ -399,6 +420,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
             {{{"sensor", "UsedSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "StatefulSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "StatelessSessionsCount"}, {"filesystem", "test"}}, 0},
+            {{{"sensor", "SessionTimeouts"}, {"filesystem", "test"}}, 1},
         });
     }
 

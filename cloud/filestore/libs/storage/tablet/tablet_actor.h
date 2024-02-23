@@ -82,6 +82,9 @@ private:
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+        std::atomic<i64> StatefulSessionsCount{0};
+        std::atomic<i64> StatelessSessionsCount{0};
+        std::atomic<i64> SessionTimeouts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
@@ -146,7 +149,8 @@ private:
             const NProto::TFileSystem& fileSystem,
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
-            const TCompactionMapStats& compactionStats);
+            const TCompactionMapStats& compactionStats,
+            const TSessionsStats& sessionsStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;

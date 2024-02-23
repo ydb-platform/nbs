@@ -201,12 +201,12 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
 
             return;
-        } else {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s CreateSession: no session available for client c: %s",
-                LogTag.c_str(),
-                clientId.c_str());
         }
+
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession: no session available for client c: %s",
+            LogTag.c_str(),
+            clientId.c_str());
     }
 
     if (!sessionId) {
