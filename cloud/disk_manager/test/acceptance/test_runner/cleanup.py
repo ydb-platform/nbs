@@ -1,7 +1,7 @@
 import argparse
 import logging
 import re
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Any
 
 from cloud.blockstore.pylibs.ycp import YcpWrapper
@@ -36,7 +36,7 @@ def _cleanup_stale_entities(
             if ttl is None:
                 _logger.warning("No ttl for entity %s", entity_type)
                 continue
-            should_be_older_than = datetime.now() - ttl
+            should_be_older_than = datetime.now(timezone.utc) - ttl
             if entity.created_at > should_be_older_than:
                 continue
             for pattern in regexps.get(entity_type, []):

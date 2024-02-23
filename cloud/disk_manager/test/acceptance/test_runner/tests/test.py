@@ -1,6 +1,6 @@
 import contextlib
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import NamedTuple, Type
 
 from cloud.disk_manager.test.acceptance.test_runner.\
@@ -94,7 +94,7 @@ class _ArgumentNamespaceMock(NamedTuple):
 
 
 def test_cleanup():
-    _now = datetime.now()
+    _now = datetime.now(timezone.utc)
     should_delete_inner_test_acceptance_common = [
         _Resource(
             name='acceptance-test-snapshot-acceptance-12931283',
