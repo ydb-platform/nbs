@@ -118,10 +118,11 @@ func checkChunks(
 
 func TestImageReading(t *testing.T) {
 	testCases := []struct {
-		name       string
-		imageURL   string
-		imageSize  uint64
-		imageCRC32 uint32
+		name                          string
+		imageURL                      string
+		imageSize                     uint64
+		imageCRC32                    uint32
+		expectedCacheMissedReadCounts uint64
 	}{
 		{
 			name:       "raw image",
@@ -161,10 +162,11 @@ func TestImageReading(t *testing.T) {
 			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_CRC32")),
 		},
 		{
-			name:       "vmdk stream optimized windows image with multiple grains",
-			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT")),
-			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE")),
-			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32")),
+			name:                          "vmdk stream optimized windows image with multiple grains",
+			imageURL:                      getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT")),
+			imageSize:                     parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE")),
+			imageCRC32:                    parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32")),
+			expectedCacheMissedReadCounts: 400,
 		},
 	}
 
@@ -190,6 +192,14 @@ func TestImageReading(t *testing.T) {
 			require.Equal(t, expectedChunkCount, chunkCount)
 
 			checkChunks(t, ctx, testCase.imageCRC32, chunkCount, source)
+
+			if testCase.expectedCacheMissedReadCounts != 0 {
+				require.LessOrEqual(
+					t,
+					source.CacheMissedRequestsCount(),
+					testCase.expectedCacheMissedReadCounts,
+				)
+			}
 		})
 	}
 }

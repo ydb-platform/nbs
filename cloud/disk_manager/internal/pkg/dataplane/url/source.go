@@ -28,6 +28,8 @@ type URLSource interface {
 	dataplane_common.Source
 
 	ETag() string
+
+	CacheMissedRequestsCount() uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -152,6 +154,10 @@ func (s *urlSource) Close(ctx context.Context) {
 
 func (s *urlSource) ETag() string {
 	return s.reader.ETag()
+}
+
+func (s *urlSource) CacheMissedRequestsCount() uint64 {
+	return s.reader.CacheMissedRequestsCount()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
