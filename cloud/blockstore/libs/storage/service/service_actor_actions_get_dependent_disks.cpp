@@ -151,7 +151,7 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
     auto* msg = ev->Get();
 
     const auto& error = msg->GetError();
-    if (HasError(error)) {
+    if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
         HandleError(ctx, error);
         return;
     }
