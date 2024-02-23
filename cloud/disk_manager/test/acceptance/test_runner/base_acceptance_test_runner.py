@@ -78,7 +78,7 @@ class BaseTestBinaryExecutor:
                 '--suffix',
                 (
                     f'{self._entity_suffix}-'
-                    f'{size_prettifier(int(disk_size) * (1024 ** 3))}-'
+                    f'{size_prettifier(int(disk_size))}-'
                     f'{size_prettifier(int(disk_blocksize))}'.lower()
                 ),
             ]

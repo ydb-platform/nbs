@@ -64,7 +64,7 @@ def cleanup_previous_acceptance_tests_results(
         entity_ttl: timedelta = timedelta(days=1),
 ):
     entity_accessors = _get_entity_accessors(ycp)
-    disk_size = size_prettifier(disk_size * (1024 ** 3)).lower()
+    disk_size = size_prettifier(disk_size).lower()
     disk_blocksize = size_prettifier(disk_blocksize).lower()
     _logger.info(
         "Performing cleanup for %s disk size %s, disk block size %s",
