@@ -185,6 +185,10 @@ void TIndexTabletActor::HandleCleanupSessions(
         return;
     }
 
+    Metrics.SessionTimeouts.fetch_add(
+        sessions.size(),
+        std::memory_order_relaxed);
+
     TVector<NProto::TSession> list(sessions.size());
     for (size_t i = 0; i < sessions.size(); ++i) {
         list[i].CopyFrom(*sessions[i]);

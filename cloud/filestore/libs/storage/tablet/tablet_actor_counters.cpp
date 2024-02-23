@@ -92,9 +92,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
@@ -217,7 +217,8 @@ void TIndexTabletActor::TMetrics::Update(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& stats,
     const NProto::TFileStorePerformanceProfile& performanceProfile,
-    const TCompactionMapStats& compactionStats)
+    const TCompactionMapStats& compactionStats,
+    const TSessionsStats& sessionsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -264,6 +265,9 @@ void TIndexTabletActor::TMetrics::Update(
                 .Stats.DeletionsCount);
     }
 
+    Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
+    Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
+
     BusyIdleCalc.OnUpdateStats();
 }
 
@@ -300,14 +304,15 @@ void TIndexTabletActor::RegisterStatCounters()
     TABLET_VERIFY(!storageMediaKind.empty());
 
     // Update should be called before Register, because we want to write
-    // correct values to solomon. If we reorder this two actions, we can
+    // correct values to solomon. If we reorder these two actions, we can
     // aggregate zero values, in the middle of the registration (or right after
     // registration, before update).
     Metrics.Update(
         fs,
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(1));
+        GetCompactionMapStats(1),
+        CalculateSessionsStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -338,7 +343,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetFileSystem(),
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(1));
+        GetCompactionMapStats(1),
+        CalculateSessionsStats());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
