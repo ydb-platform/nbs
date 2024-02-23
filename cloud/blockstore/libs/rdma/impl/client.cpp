@@ -462,18 +462,18 @@ public:
     TString PeerAddress() const;
     int ReconnectTimerHandle() const;
 
-    // called from client thread
+    // called from external thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
         IClientHandlerPtr handler,
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) noexcept override;
-
     void SendRequest(
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
 
     // called from CQ thread
+    void HandleCompletionEvent(ibv_wc* wc) override;
     bool HandleInputRequests();
     bool HandleCompletionEvents();
     bool AbortRequests() noexcept;
@@ -481,18 +481,15 @@ public:
     bool FlushHanging() const;
 
 private:
+    // called from CQ thread
     void HandleQueuedRequests();
     bool IsWorkRequestValid(const TWorkRequestId& id) const;
     void HandleFlush(const TWorkRequestId& id) noexcept;
-    void HandleCompletionEvent(ibv_wc* wc) override;
-
     void SendRequest(TRequestPtr req, TSendWr* send);
     void SendRequestCompleted(
         TSendWr* send, ibv_wc_status status) noexcept;
-
     void RecvResponse(TRecvWr* recv);
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
-
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
 };
@@ -698,6 +695,7 @@ void TClientEndpoint::StartReceive()
     }
 }
 
+// implements IClientEndpoint
 TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     IClientHandlerPtr handler,
     std::unique_ptr<TNullContext> context,
@@ -746,6 +744,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     return TClientRequestPtr(std::move(req));
 }
 
+// implements IClientEndpoint
 void TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
     TCallContextPtr callContext) noexcept
@@ -894,6 +893,7 @@ void TClientEndpoint::HandleFlush(const TWorkRequestId& id) noexcept
     }
 }
 
+// implements NVerbs::ICompletionHandler
 void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
@@ -1568,31 +1568,30 @@ public:
         IMonitoringServicePtr monitoring,
         TClientConfigPtr config);
 
+    // called from external thread
     void Start() noexcept override;
     void Stop() noexcept override;
-
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) noexcept override;
 
 private:
+    // called from external thread
     void HandleConnectionEvent(
         NVerbs::TConnectionEventPtr event) noexcept override;
 
+    // called from CM thread
     void Reconnect(TClientEndpoint* endpont) noexcept override;
     void BeginResolveAddress(TClientEndpoint* endpoint) noexcept;
     void BeginResolveRoute(TClientEndpoint* endpoint) noexcept;
     void BeginConnect(TClientEndpoint* endpoint) noexcept;
     void HandleDisconnected(TClientEndpoint* endpoint) noexcept;
-
     void HandleConnected(
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
-
     void HandleRejected(
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
-
     TCompletionPoller& PickPoller() noexcept;
 };
 
@@ -1658,6 +1657,7 @@ void TClient::Stop() noexcept
     CompletionPollers.clear();
 }
 
+// implements IClient
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port) noexcept
@@ -1696,6 +1696,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// implements IConnectionEventHandler
 void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
@@ -1751,6 +1752,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
+// implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
     if (endpoint->Reconnect.Hanging()) {
