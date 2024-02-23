@@ -44,8 +44,8 @@ func newNBSServerControllerService(nbsClient nbsclient.ClientIface) csi.Controll
 func (c *nbsServerControllerService) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	log.Printf("csi.CreateVolumeRequest: %+v", req)
 
-	if len(req.GetName()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "Name missing in CreateVolumeRequest)")
 	}
 
 	caps := req.GetVolumeCapabilities()
@@ -53,44 +53,46 @@ func (c *nbsServerControllerService) CreateVolume(ctx context.Context, req *csi.
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
 
-	requiredBytes := req.CapacityRange.RequiredBytes
+	var requiredBytes int64 = 16 * (1 << (10 * 3))
+	if req.CapacityRange != nil {
+		requiredBytes = req.CapacityRange.RequiredBytes
+	}
+
 	if uint64(requiredBytes)%uint64(diskBlockSize) != 0 {
 		return nil, status.Errorf(codes.InvalidArgument,
 			"incorrect value: required bytes %d, block size: %d", requiredBytes, diskBlockSize,
 		)
 	}
 
-	diskID := "nbs-" + req.Name
-	// diskID, err := generateDiskID(req.Name)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// TODO: check if volume exists
-	//c.nbsClient.DescribeVolume()
+	volumeId := "nbs-" + req.Name
 
 	createVolumeRequest := &nbsblockstorepublicapi.TCreateVolumeRequest{
-		DiskId:           diskID,
+		DiskId:           volumeId,
 		BlockSize:        diskBlockSize,
 		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
 		StorageMediaKind: nbsstoragecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
 	}
-	log.Printf("Createing volume: %+v", createVolumeRequest)
+	log.Printf("Creating volume: %+v", createVolumeRequest)
 	createVolumeResponse, err := c.nbsClient.CreateVolume(ctx, createVolumeRequest)
 	if err != nil {
 		log.Printf("Failed to create volume: %+v", err)
-		// return nil, err
+		// TODO: choose error code
+		return nil, status.Errorf(codes.AlreadyExists, "Failed to create volume: %+v", err)
 	}
 	log.Printf("Volume created: %+v", createVolumeResponse)
 
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
 		CapacityBytes: requiredBytes,
-		VolumeId:      diskID,
+		VolumeId:      volumeId,
 	}}, nil
 }
 
 func (c *nbsServerControllerService) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	log.Printf("csi.DeleteVolumeRequest: %+v", req)
+
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in DeleteVolumeRequest)")
+	}
 
 	// TODO: check if volume exists
 	//c.nbsClient.DescribeVolume()
@@ -109,10 +111,76 @@ func (c *nbsServerControllerService) DeleteVolume(ctx context.Context, req *csi.
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+func (c *nbsServerControllerService) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	log.Printf("csi.ControllerPublishVolumeRequest: %+v", req)
+
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in ControllerPublishVolumeRequest)")
+	}
+	if req.NodeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "NodeId missing in ControllerPublishVolumeRequest)")
+	}
+	if req.VolumeCapability == nil {
+		return nil, status.Error(codes.InvalidArgument, "VolumeCapability missing in ControllerPublishVolumeRequest)")
+	}
+
+	if !c.doesVolumeExist(ctx, req.VolumeId) {
+		return nil, status.Errorf(codes.NotFound, "Volume %q does not exist", req.VolumeId)
+	}
+
+	// TODO: check if node exists
+	if req.NodeId != "my-node" {
+		return nil, status.Errorf(codes.NotFound, "Node %d does not exist", req.NodeId)
+	}
+
+	return &csi.ControllerPublishVolumeResponse{}, nil
+}
+
+func (c *nbsServerControllerService) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	log.Printf("csi.ControllerUnpublishVolumeRequest: %+v", req)
+
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in ControllerUnpublishVolumeRequest)")
+	}
+
+	return &csi.ControllerUnpublishVolumeResponse{}, nil
+}
+
+func (c *nbsServerControllerService) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	log.Printf("csi.ValidateVolumeCapabilities: %+v", req)
+
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in ValidateVolumeCapabilitiesRequest)")
+	}
+	if req.VolumeCapabilities == nil {
+		return nil, status.Error(codes.InvalidArgument, "VolumeCapabilities missing in ValidateVolumeCapabilitiesRequest")
+	}
+
+	if !c.doesVolumeExist(ctx, req.VolumeId) {
+		return nil, status.Errorf(codes.NotFound, "Volume %q does not exist", req.VolumeId)
+	}
+
+	return &csi.ValidateVolumeCapabilitiesResponse{}, nil
+}
+
 func (c *nbsServerControllerService) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	log.Printf("csi.ControllerGetCapabilitiesRequest: %+v", req)
 
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: nbsServerControllerServiceCapabilities,
 	}, nil
+}
+
+func (c *nbsServerControllerService) doesVolumeExist(ctx context.Context, volumeId string) bool {
+	describeVolumeRequest := &nbsblockstorepublicapi.TDescribeVolumeRequest{
+		DiskId: volumeId,
+	}
+	log.Printf("Describing volume: %+v", describeVolumeRequest)
+	_, err := c.nbsClient.DescribeVolume(ctx, describeVolumeRequest)
+	if err != nil {
+		log.Printf("Failed to describe volume: %+v", err)
+		// TODO: check error code
+		return false
+	}
+	return true
 }

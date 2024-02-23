@@ -7,7 +7,6 @@ SRCS(
     driver.go
     identity.go
     node.go
-    util.go
 )
 
 END()

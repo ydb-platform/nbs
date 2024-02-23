@@ -21,7 +21,7 @@ func main() {
 	}
 
 	flag.StringVar(&cfg.Endpoint, "endpoint", "/csi/csi.sock", "CSI endpoint")
-	flag.StringVar(&cfg.NodeID, "node-id", "", "Node id")
+	flag.StringVar(&cfg.NodeID, "node-id", "my-node", "Node id")
 
 	flag.Parse()
 

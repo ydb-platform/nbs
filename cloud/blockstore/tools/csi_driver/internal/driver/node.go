@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -24,7 +23,7 @@ const podEndpointsDir = "/nbs-endpoints/"
 const volumeSocketName = "nbs-volume.sock"
 
 var capabilities = []*csi.NodeServiceCapability{
-	{
+	&csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
@@ -48,8 +47,14 @@ func newNodeService(nodeID, clientID string, nbsClient nbsclient.ClientIface) cs
 func (s *nodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	log.Printf("csi.NodeStageVolumeRequest: %+v", req)
 
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in NodeStageVolumeRequest")
+	}
+	if req.StagingTargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "StagingTargetPath missing in NodeStageVolumeRequest")
+	}
 	if req.VolumeCapability == nil {
-		return nil, status.Error(codes.InvalidArgument, "NodeStageVolume Volume Capability must be provided")
+		return nil, status.Error(codes.InvalidArgument, "VolumeCapability missing im NodeStageVolumeRequest")
 	}
 
 	var ipcType nbsblockstorepublicapi.EClientIpcType
@@ -101,6 +106,13 @@ func (s *nodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 func (s *nodeService) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log.Printf("csi.NodeUnstageVolumeRequest: %+v", req)
+
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId missing in NodeUnstageVolumeRequest")
+	}
+	if req.StagingTargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "StagingTargetPath missing in NodeUnstageVolumeRequest")
+	}
 
 	// TODO: check if endpoint exists
 	//s.nbsClient.DescribeEndpoint()
@@ -179,7 +191,20 @@ func (s *nodeService) nodePublishVolumeForBlock(req *csi.NodePublishVolumeReques
 func (s *nodeService) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log.Printf("csi.NodeUnpublishVolumeRequest: %+v", req)
 
+	if req.VolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in NodeUnpublishVolumeRequest")
+	}
+	if req.TargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Target Path missing in NodeUnpublishVolumeRequest")
+	}
+
 	err := s.unmount(req.TargetPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: remove req.TargetPath for Block
+	err = os.RemoveAll(filepath.Dir(req.TargetPath))
 	if err != nil {
 		return nil, err
 	}
@@ -250,11 +275,11 @@ func (s *nodeService) mount(source, target, fsType string, opts ...string) error
 	mountArgs = append(mountArgs, target)
 
 	log.Printf("Executing mount command: %s %s", mountCmd, strings.Join(mountArgs, " "))
-	out, err := exec.Command(mountCmd, mountArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("mounting failed: %v cmd: '%s %s' output: %q",
-			err, mountCmd, strings.Join(mountArgs, " "), string(out))
-	}
+	// out, err := exec.Command(mountCmd, mountArgs...).CombinedOutput()
+	// if err != nil {
+	// 	return fmt.Errorf("mounting failed: %v cmd: '%s %s' output: %q",
+	// 		err, mountCmd, strings.Join(mountArgs, " "), string(out))
+	// }
 
 	return nil
 }
@@ -266,11 +291,11 @@ func (s *nodeService) unmount(target string) error {
 	unmountArgs = append(unmountArgs, target)
 
 	log.Printf("Executing unmount command: %s %s", unmountCmd, strings.Join(unmountArgs, " "))
-	out, err := exec.Command(unmountCmd, unmountArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("mounting failed: %v cmd: '%s %s' output: %q",
-			err, unmountCmd, strings.Join(unmountArgs, " "), string(out))
-	}
+	// out, err := exec.Command(unmountCmd, unmountArgs...).CombinedOutput()
+	// if err != nil {
+	// 	return fmt.Errorf("mounting failed: %v cmd: '%s %s' output: %q",
+	// 		err, unmountCmd, strings.Join(unmountArgs, " "), string(out))
+	// }
 
 	return nil
 }
