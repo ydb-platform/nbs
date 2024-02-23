@@ -3,7 +3,7 @@ export d="/root"
 scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export scripts
 export dm="${d}/disk_manager_acceptance_test/disk_manager_acceptance_tests"
-export cluster="nemax"
+export cluster="${cluster:=nemax}"
 
 export results_dir="/var/www/build/results"
 
