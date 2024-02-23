@@ -1,6 +1,5 @@
 #include "tablet_proxy.h"
 
-#include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/ss_proxy_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_proxy_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
