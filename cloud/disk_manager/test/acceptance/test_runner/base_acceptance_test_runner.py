@@ -199,13 +199,14 @@ class BaseAcceptanceTestRunner(ABC):
 
     def _perform_acceptance_test_on_single_disk(self, disk: Ycp.Disk) -> List[str]:
         # Execute acceptance test on test disk
-        cleanup_previous_acceptance_tests_results(
-            self._ycp,
-            self._args.test_type,
-            disk.size,
-            disk.block_size,
-            self._single_disk_test_ttl,
-        )
+        if self._cleanup_before_tests:
+            cleanup_previous_acceptance_tests_results(
+                self._ycp,
+                self._args.test_type,
+                int(disk.size),
+                int(disk.block_size),
+                self._single_disk_test_ttl,
+            )
         _logger.info(f'Executing acceptance test on disk <id={disk.id}>')
         self._setup_binary_executor()
         self._test_binary_executor.run(disk.id, disk.size, disk.block_size)
