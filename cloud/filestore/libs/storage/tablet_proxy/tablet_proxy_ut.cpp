@@ -37,35 +37,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         TTestEnv env(cfg);
         env.CreateSubDomain("nfs");
 
+        auto& runtime = env.GetRuntime();
         ui32 nodeIdx1 = env.CreateNode("nfs");
 
-        auto& runtime = env.GetRuntime();
-        TServiceClient service1(runtime, nodeIdx1);
+        TSSProxyClient ssProxy(env.GetStorageConfig(), runtime, nodeIdx1);
+        ssProxy.CreateFileStore("test", 1000);
 
-        ui64 fsTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeFileStoreResponse: {
-                        if (!fsTabletId) {
-                            auto* msg = event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
-                            const auto& fsDescription =
-                                msg->PathDescription.GetFileStoreDescription();
-                            fsTabletId = fsDescription.GetIndexTabletId();
-                        }
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
+        auto response = ssProxy.DescribeFileStore("test");
+        auto fsTabletId = response->
+            PathDescription.
+            GetFileStoreDescription().
+            GetIndexTabletId();
 
-        service1.CreateFileStore("fs", 1000);
-
-//        auto nodeIdx2 = end.CreateNode("nfs");
-//        TServiceClient service2(runtime, nodeIdx2);
-
-//        service2.SendRequest(
-//            MakeVolumeProxyServiceId(),
-//            service2.CreateStatVolumeRequest());
+        TIndexTabletProxyClient tabletProxy1(env.GetRuntime(), nodeIdx1);
+        tabletProxy1.WaitReady("test");
 
         ui64 disconnections = 0;
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
@@ -79,11 +64,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        RebootTablet(runtime, fsTabletId, service1.GetSender(), nodeIdx1);
-//        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+        ui32 nodeIdx2 = env.CreateNode("nfs");
 
-        //auto response = service2.RecvStatVolumeResponse();
-        //UNIT_ASSERT(FAILED(response->GetStatus()));
+        TIndexTabletProxyClient tabletProxy2(env.GetRuntime(), nodeIdx2);
+        tabletProxy2.WaitReady("test");
+
+        tabletProxy2.SendWaitReadyRequest("test");
+
+        RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+
+        auto waitResponse = tabletProxy2.RecvWaitReadyResponse();
+        UNIT_ASSERT(FAILED(waitResponse->GetStatus()));
     }
 }
 
