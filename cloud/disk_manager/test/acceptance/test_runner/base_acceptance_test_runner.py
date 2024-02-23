@@ -72,14 +72,14 @@ class BaseTestBinaryExecutor:
 
         self._s3_host = getattr(args, 's3_host', None)
 
-    def run(self, disk_id: str, disk_size: int, disk_blocksize: int) -> None:
+    def run(self, disk_id: str, disk_size: str, disk_blocksize: str) -> None:
         self._acceptance_test_cmd.extend(
             [
                 '--suffix',
                 (
                     f'{self._entity_suffix}-'
-                    f'{size_prettifier(disk_size * (1024 ** 3))}-'
-                    f'{size_prettifier(disk_blocksize)}'.lower()
+                    f'{size_prettifier(int(disk_size) * (1024 ** 3))}-'
+                    f'{size_prettifier(int(disk_blocksize))}'.lower()
                 ),
             ]
         )
