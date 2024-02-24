@@ -316,7 +316,8 @@ void TIndexTabletActor::HandleWriteData(
         }
 
         if (!IsWriteAllowed(BuildBackpressureThresholds())) {
-            if (++BackpressureErrorCount >=
+            if (CompactionStateLoadStatus.Finished
+                    && ++BackpressureErrorCount >=
                     Config->GetMaxBackpressureErrorsBeforeSuicide())
             {
                 LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER,
