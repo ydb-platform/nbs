@@ -14,6 +14,8 @@
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 
+#include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 namespace NCloud::NBlockStore::NServer {

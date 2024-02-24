@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>

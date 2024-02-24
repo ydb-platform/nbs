@@ -6,6 +6,8 @@
 #include "events.h"
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
