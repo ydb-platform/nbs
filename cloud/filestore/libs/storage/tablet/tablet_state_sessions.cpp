@@ -1,5 +1,7 @@
 #include "tablet_state_impl.h"
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -375,6 +377,21 @@ TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
     }
 
     return result;
+}
+
+TVector<NProtoPrivate::TTabletSessionInfo> TIndexTabletState::DescribeSessions() const
+{
+    TVector<NProtoPrivate::TTabletSessionInfo> sessionInfos;
+    for (const auto& session: Impl->Sessions) {
+        NProtoPrivate::TTabletSessionInfo sessionInfo;
+        sessionInfo.SetSessionId(session.GetSessionId());
+        sessionInfo.SetClientId(session.GetClientId());
+        sessionInfo.SetSessionState(session.GetSessionState());
+        sessionInfo.SetMaxSeqNo(session.GetMaxSeqNo());
+        sessionInfo.SetMaxRwSeqNo(session.GetMaxRwSeqNo());
+        sessionInfos.push_back(std::move(sessionInfo));
+    }
+    return sessionInfos;
 }
 
 const TSessionHistoryList& TIndexTabletState::GetSessionHistoryList() const

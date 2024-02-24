@@ -22,15 +22,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetStorageConfigFieldsActionActor final
-    : public TActorBootstrapped<TGetStorageConfigFieldsActionActor>
+class TDescribeSessionsActionActor final
+    : public TActorBootstrapped<TDescribeSessionsActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
 public:
-    TGetStorageConfigFieldsActionActor(
+    TDescribeSessionsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -39,19 +39,19 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProtoPrivate::TGetStorageConfigFieldsResponse& response);
+        const NProtoPrivate::TDescribeSessionsResponse& response);
 
 private:
     STFUNC(StateWork);
 
-    void HandleGetStorageConfigFieldsResponse(
-        const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
+    void HandleDescribeSessionsResponse(
+        const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TGetStorageConfigFieldsActionActor::TGetStorageConfigFieldsActionActor(
+TDescribeSessionsActionActor::TDescribeSessionsActionActor(
         TRequestInfoPtr requestInfo,
         TString input)
     : RequestInfo(std::move(requestInfo))
@@ -60,9 +60,9 @@ TGetStorageConfigFieldsActionActor::TGetStorageConfigFieldsActionActor(
     ActivityType = TFileStoreActivities::SERVICE_WORKER;
 }
 
-void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
+void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
 {
-    NProtoPrivate::TGetStorageConfigFieldsRequest request;
+    NProtoPrivate::TDescribeSessionsRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
@@ -78,10 +78,9 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     auto requestToTablet =
-        std::make_unique<TEvIndexTablet::TEvGetStorageConfigFieldsRequest>();
+        std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
 
     auto& record = requestToTablet->Record;
-    *record.MutableStorageConfigFields() = request.GetStorageConfigFields();
     record.SetFileSystemId(request.GetFileSystemId());
 
     NCloud::Send(
@@ -92,9 +91,9 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TGetStorageConfigFieldsActionActor::ReplyAndDie(
+void TDescribeSessionsActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProtoPrivate::TGetStorageConfigFieldsResponse& response)
+    const NProtoPrivate::TDescribeSessionsResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
@@ -109,8 +108,8 @@ void TGetStorageConfigFieldsActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
-    const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
+void TDescribeSessionsActionActor::HandleDescribeSessionsResponse(
+    const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
@@ -118,12 +117,12 @@ void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TGetStorageConfigFieldsActionActor::StateWork)
+STFUNC(TDescribeSessionsActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvIndexTablet::TEvGetStorageConfigFieldsResponse,
-            HandleGetStorageConfigFieldsResponse);
+            TEvIndexTablet::TEvDescribeSessionsResponse,
+            HandleDescribeSessionsResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
@@ -133,11 +132,11 @@ STFUNC(TGetStorageConfigFieldsActionActor::StateWork)
 
 } // namespace
 
-IActorPtr TStorageServiceActor::CreateGetStorageConfigFieldsActionActor(
+IActorPtr TStorageServiceActor::CreateDescribeSessionsActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return std::make_unique<TGetStorageConfigFieldsActionActor>(
+    return std::make_unique<TDescribeSessionsActionActor>(
         std::move(requestInfo),
         std::move(input));
 }
