@@ -1,5 +1,7 @@
 #include "tablet_state_impl.h"
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
