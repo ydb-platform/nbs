@@ -39,7 +39,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProtoPrivate::TGetStorageConfigFieldsResponse response);
+        const NProtoPrivate::TGetStorageConfigFieldsResponse& response);
 
 private:
     STFUNC(StateWork);
@@ -77,30 +77,30 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto requestToTablets =
+    auto requestToTablet =
         std::make_unique<TEvIndexTablet::TEvGetStorageConfigFieldsRequest>();
 
-    auto& record = requestToTablets->Record;
+    auto& record = requestToTablet->Record;
     *record.MutableStorageConfigFields() = request.GetStorageConfigFields();
     record.SetFileSystemId(request.GetFileSystemId());
 
     NCloud::Send(
         ctx,
         MakeIndexTabletProxyServiceId(),
-        std::move(requestToTablets));
+        std::move(requestToTablet));
 
     Become(&TThis::StateWork);
 }
 
 void TGetStorageConfigFieldsActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProtoPrivate::TGetStorageConfigFieldsResponse response)
+    const NProtoPrivate::TGetStorageConfigFieldsResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
 
     google::protobuf::util::MessageToJsonString(
-        std::move(response),
+        response,
         msg->Record.MutableOutput());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(msg));
@@ -113,7 +113,7 @@ void TGetStorageConfigFieldsActionActor::HandleGetStorageConfigFieldsResponse(
     const TEvIndexTablet::TEvGetStorageConfigFieldsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    ReplyAndDie(ctx, std::move(ev->Get()->Record));
+    ReplyAndDie(ctx, ev->Get()->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

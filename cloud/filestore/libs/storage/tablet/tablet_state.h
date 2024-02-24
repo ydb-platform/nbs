@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "tablet_database.h"
 #include "tablet_tx.h"
 
@@ -440,6 +441,7 @@ public:
 
     TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
+    TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
