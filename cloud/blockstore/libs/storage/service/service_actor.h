@@ -366,6 +366,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateGetNameserverNodesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateCmsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
