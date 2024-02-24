@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "tablet_database.h"
 #include "tablet_tx.h"
 
