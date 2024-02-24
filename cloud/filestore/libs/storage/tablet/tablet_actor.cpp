@@ -300,6 +300,8 @@ void TIndexTabletActor::HandleSessionDisconnected(
     OrphanSession(ev->Sender, ctx.Now());
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::HandleGetFileSystemConfig(
     const TEvIndexTablet::TEvGetFileSystemConfigRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -338,6 +340,23 @@ void TIndexTabletActor::HandleGetStorageConfigFields(
     }
     NCloud::Reply(ctx, *ev, std::move(response));
 }
+
+void TIndexTabletActor::HandleDescribeSessions(
+    const TEvIndexTablet::TEvDescribeSessionsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvDescribeSessionsResponse>();
+
+    auto sessionInfos = DescribeSessions();
+    for (auto& si: sessionInfos) {
+        *response->Record.AddSessions() = std::move(si);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 {

@@ -8,7 +8,7 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -22,51 +22,47 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TChangeStorageConfigActionActor final
-    : public TActorBootstrapped<TChangeStorageConfigActionActor>
+class TDescribeSessionsActionActor final
+    : public TActorBootstrapped<TDescribeSessionsActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
-    const TStorageConfigPtr Config;
 
 public:
-    TChangeStorageConfigActionActor(
+    TDescribeSessionsActionActor(
         TRequestInfoPtr requestInfo,
-        TString input,
-        TStorageConfigPtr config);
+        TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProtoPrivate::TChangeStorageConfigResponse& response);
+        const NProtoPrivate::TDescribeSessionsResponse& response);
 
 private:
     STFUNC(StateWork);
 
-    void HandleChangeStorageConfigResponse(
-        const TEvIndexTablet::TEvChangeStorageConfigResponse::TPtr& ev,
+    void HandleDescribeSessionsResponse(
+        const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
+TDescribeSessionsActionActor::TDescribeSessionsActionActor(
         TRequestInfoPtr requestInfo,
-        TString input,
-        TStorageConfigPtr config)
+        TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-    , Config(config)
 {
     ActivityType = TFileStoreActivities::SERVICE_WORKER;
 }
 
-void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
+void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
 {
-    NProtoPrivate::TChangeStorageConfigRequest request;
+    NProtoPrivate::TDescribeSessionsRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
@@ -81,17 +77,11 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE,
-        "Start to change storage config of %s",
-        request.GetFileSystemId().Quote().c_str());
-
     auto requestToTablet =
-        std::make_unique<TEvIndexTablet::TEvChangeStorageConfigRequest>();
+        std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+
     auto& record = requestToTablet->Record;
     record.SetFileSystemId(request.GetFileSystemId());
-    *record.MutableStorageConfig() = request.GetStorageConfig();
-    record.SetMergeWithStorageConfigFromTabletDB(
-        request.GetMergeWithStorageConfigFromTabletDB());
 
     NCloud::Send(
         ctx,
@@ -101,9 +91,9 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TChangeStorageConfigActionActor::ReplyAndDie(
+void TDescribeSessionsActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProtoPrivate::TChangeStorageConfigResponse& response)
+    const NProtoPrivate::TDescribeSessionsResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
@@ -118,28 +108,21 @@ void TChangeStorageConfigActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TChangeStorageConfigActionActor::HandleChangeStorageConfigResponse(
-    const TEvIndexTablet::TEvChangeStorageConfigResponse::TPtr& ev,
+void TDescribeSessionsActionActor::HandleDescribeSessionsResponse(
+    const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-    if (SUCCEEDED(msg->GetStatus())) {
-        NCloud::Send(
-            ctx,
-            ev->Sender,
-            std::make_unique<TEvents::TEvPoisonPill>());
-    }
-    ReplyAndDie(ctx, msg->Record);
+    ReplyAndDie(ctx, ev->Get()->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TChangeStorageConfigActionActor::StateWork)
+STFUNC(TDescribeSessionsActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvIndexTablet::TEvChangeStorageConfigResponse,
-            HandleChangeStorageConfigResponse);
+            TEvIndexTablet::TEvDescribeSessionsResponse,
+            HandleDescribeSessionsResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
@@ -147,16 +130,15 @@ STFUNC(TChangeStorageConfigActionActor::StateWork)
     }
 }
 
-}   // namespace
+} // namespace
 
-NActors::IActorPtr TStorageServiceActor::CreateChangeStorageConfigActionActor(
+IActorPtr TStorageServiceActor::CreateDescribeSessionsActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return std::make_unique<TChangeStorageConfigActionActor>(
+    return std::make_unique<TDescribeSessionsActionActor>(
         std::move(requestInfo),
-        std::move(input),
-        StorageConfig);
+        std::move(input));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
