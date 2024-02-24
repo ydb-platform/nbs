@@ -1,4 +1,3 @@
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "tablet_state_impl.h"
 
 #include <contrib/ydb/library/actors/core/actor.h>
