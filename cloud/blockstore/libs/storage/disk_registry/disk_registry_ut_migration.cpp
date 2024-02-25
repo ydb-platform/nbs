@@ -1248,7 +1248,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             NProto::AGENT_STATE_UNAVAILABLE);
 
         runtime->AdvanceCurrentTime(TDuration::Seconds(20));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(500));
 
         UNIT_ASSERT_VALUES_EQUAL(1, getMigrationsSize());
 

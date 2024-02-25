@@ -28,7 +28,7 @@ private:
     TVector<NProto::TDeviceConfig> Devices;
     int PendingRequests = 0;
 
-    TVector<TAgentReleaseDiskRequestCache> SentReleaseRequests;
+    TVector<TAgentReleaseDiskCachedRequest> SentReleaseRequests;
 
 public:
     TReleaseDiskActor(

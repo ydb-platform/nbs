@@ -121,7 +121,7 @@ private:
 
     THashMap<TString, TAgentRegInfo> AgentRegInfo;
 
-    THashMap<TString, TDeque<TAgentAcquireDiskRequestCache>>
+    THashMap<TString, TDeque<TAgentAcquireDiskCachedRequest>>
         AcquireCacheByAgentId;
 
     // Requests in-progress
@@ -273,9 +273,9 @@ private:
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 
     void OnDiskAcquired(
-        TVector<TAgentAcquireDiskRequestCache> sentAcquireRequests);
+        TVector<TAgentAcquireDiskCachedRequest> sentAcquireRequests);
     void OnDiskReleased(
-        const TVector<TAgentReleaseDiskRequestCache>& sentReleaseRequests);
+        const TVector<TAgentReleaseDiskCachedRequest>& sentReleaseRequests);
 
     void SendCachedAcquireRequestsToAgent(
         const NActors::TActorContext& ctx,

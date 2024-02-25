@@ -911,4 +911,10 @@ message TStorageServiceConfig
 
     // Enables runtime config update tool.
     optional bool ConfigsDispatcherServiceEnabled = 347;
+
+    // Amount of time after which the disk registry will not send cached disk
+    // acquire request on the disk agent restart (ms).
+    // Note: it should be larger than ClientRemountPeriod, otherwise it's
+    // useless.
+    optional uint32 CachedAcquireRequestLifetimeThreshold = 348;
 }

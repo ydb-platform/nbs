@@ -75,13 +75,15 @@ struct TUserNotificationKey
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAgentAcquireDiskRequestCache {
+struct TAgentAcquireDiskCachedRequest
+{
     TString AgentId;
     std::unique_ptr<TEvDiskAgent::TEvAcquireDevicesRequest> Request;
     TInstant RequestTime;
 };
 
-struct TAgentReleaseDiskRequestCache {
+struct TAgentReleaseDiskCachedRequest
+{
     TString AgentId;
     std::unique_ptr<TEvDiskAgent::TEvReleaseDevicesRequest> Request;
 };
@@ -192,12 +194,12 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
-        TVector<TAgentAcquireDiskRequestCache> SentRequests;
+        TVector<TAgentAcquireDiskCachedRequest> SentRequests;
 
         TFinishAcquireDiskRequest(
-            TString diskId,
-            TString clientId,
-            TVector<TAgentAcquireDiskRequestCache> sentRequests)
+                TString diskId,
+                TString clientId,
+                TVector<TAgentAcquireDiskCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))
@@ -215,12 +217,12 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
-        TVector<TAgentReleaseDiskRequestCache> SentRequests;
+        TVector<TAgentReleaseDiskCachedRequest> SentRequests;
 
         TRemoveDiskSessionRequest(
-            TString diskId,
-            TString clientId,
-            TVector<TAgentReleaseDiskRequestCache> sentRequests)
+                TString diskId,
+                TString clientId,
+                TVector<TAgentReleaseDiskCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))

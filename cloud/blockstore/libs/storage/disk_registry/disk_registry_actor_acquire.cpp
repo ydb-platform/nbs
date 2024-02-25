@@ -34,7 +34,7 @@ private:
 
     int PendingRequests = 0;
 
-    TVector<TAgentAcquireDiskRequestCache> SentAcquireRequests;
+    TVector<TAgentAcquireDiskCachedRequest> SentAcquireRequests;
 
 public:
     TAcquireDiskActor(
@@ -65,7 +65,8 @@ private:
         NProto::TError error);
 
     template <typename TRequest>
-    struct TSentRequest {
+    struct TSentRequest
+    {
         TString AgentId;
         std::unique_ptr<TRequest> Request;
     };
@@ -147,7 +148,7 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
         SendRequests<TEvDiskAgent::TEvAcquireDevicesRequest>(ctx);
     Y_ABORT_UNLESS(SentAcquireRequests.empty());
     SentAcquireRequests.reserve(sentRequests.size());
-    auto now = TInstant::Now();
+    TInstant now = ctx.Now();
     for (auto& x: sentRequests) {
         SentAcquireRequests.emplace_back(
             std::move(x.AgentId),
@@ -462,13 +463,13 @@ void TDiskRegistryActor::HandleFinishAcquireDisk(
 }
 
 void TDiskRegistryActor::OnDiskAcquired(
-    TVector<TAgentAcquireDiskRequestCache> sentAcquireRequests)
+    TVector<TAgentAcquireDiskCachedRequest> sentAcquireRequests)
 {
     for (auto& sentRequest: sentAcquireRequests) {
         auto& cachedRequests = AcquireCacheByAgentId[sentRequest.AgentId];
-        std::erase_if(
+        EraseIf(
             cachedRequests,
-            [&sentRequest](const TAgentAcquireDiskRequestCache& r)
+            [&sentRequest](const TAgentAcquireDiskCachedRequest& r)
             {
                 return sentRequest.Request->Record.GetDiskId() ==
                            r.Request->Record.GetDiskId() &&
@@ -480,7 +481,7 @@ void TDiskRegistryActor::OnDiskAcquired(
 }
 
 void TDiskRegistryActor::OnDiskReleased(
-    const TVector<TAgentReleaseDiskRequestCache>& sentReleaseRequests)
+    const TVector<TAgentReleaseDiskCachedRequest>& sentReleaseRequests)
 {
     for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {
         auto it = AcquireCacheByAgentId.find(agentId);
@@ -488,9 +489,9 @@ void TDiskRegistryActor::OnDiskReleased(
             continue;
         }
         auto& requests = it->second;
-        std::erase_if(
+        EraseIf(
             requests,
-            [&releaseRequest](const TAgentAcquireDiskRequestCache& r)
+            [&releaseRequest](const TAgentAcquireDiskCachedRequest& r)
             {
                 return releaseRequest->Record.GetDiskId() ==
                            r.Request->Record.GetDiskId() &&

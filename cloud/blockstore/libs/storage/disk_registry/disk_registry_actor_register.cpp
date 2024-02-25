@@ -184,7 +184,7 @@ void TDiskRegistryActor::CompleteAddAgent(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     TDuration remountPeriod = Config->GetClientRemountPeriod();
-    Cout << "Try to SendCachedAcquireRequestsToAgent; remountPeriod = "
+    Cerr << "Try to SendCachedAcquireRequestsToAgent; remountPeriod = "
          << remountPeriod << Endl;
 
     SendCachedAcquireRequestsToAgent(ctx, args.Config);
@@ -206,25 +206,31 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     }
     // Since we will send all of the requests and they are non-copyable, just
     // extract whole container.
-    TDeque<TAgentAcquireDiskRequestCache> agentAcquireRequestCache =
+    TDeque<TAgentAcquireDiskCachedRequest> agentAcquireRequestCache =
         std::move(cacheIt->second);
     AcquireCacheByAgentId.erase(cacheIt);
 
-    TDuration remountPeriod = Config->GetClientRemountPeriod();
-    TInstant now = TInstant::Now();
+    TDuration lifetimeThreshold =
+        Config->GetCachedAcquireRequestLifetimeThreshold();
+    TInstant now = ctx.Now();
 
-    Cout << "SendCachedAcquireRequestsToAgent! remountPeriod = "
-         << remountPeriod << "agentAcquireRequestCache.size = "
+    Cerr << "SendCachedAcquireRequestsToAgent! lifetimeThreshold = "
+         << lifetimeThreshold << "agentAcquireRequestCache.size = "
          << agentAcquireRequestCache.size() << Endl;
 
     while (!agentAcquireRequestCache.empty()) {
-        TAgentAcquireDiskRequestCache request =
+        TAgentAcquireDiskCachedRequest request =
             std::move(agentAcquireRequestCache.front());
         agentAcquireRequestCache.pop_front();
 
+        Cerr << "now = " << now
+             << "; request.RequestTime = " << request.RequestTime
+             << "; diff = " << (now - request.RequestTime)
+             << "; lifetimeThreshold = " << lifetimeThreshold << Endl;
+
         // If it is an old enough request, then we probably shouldn't send it.
-        if (now - request.RequestTime > remountPeriod * 3) {
-            Cout << "Old request!..." << Endl;
+        if (now - request.RequestTime > lifetimeThreshold) {
+            Cerr << "Old request!..." << Endl;
             continue;
         }
 
@@ -234,7 +240,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
             diskDevices);
         // Something happened with the disk from the request. Skip it.
         if (HasError(error) || diskDevices.empty()) {
-            Cout << "EROROROEOREOROERO" << Endl;
+            Cerr << "EROROROEOREOROERO" << Endl;
             continue;
         }
 
@@ -252,30 +258,30 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
             tmpDevicesInRequest.push_back(x);
         }
         Sort(tmpDevicesInRequest);
-        Cout << "real devices = [" << JoinStrings(diskAgentDeviceUUIDs, ", ")
+        Cerr << "real devices = [" << JoinStrings(diskAgentDeviceUUIDs, ", ")
              << "]; request devices = ["
              << JoinStrings(tmpDevicesInRequest, ", ") << "]" << Endl;
 
         Sort(diskAgentDeviceUUIDs);
-        bool devicesSubset = true;
+        bool diskDevicesChanged = false;
         for (const auto& deviceUUID: request.Request->Record.GetDeviceUUIDs()) {
             if (!BinarySearch(
                     diskAgentDeviceUUIDs.begin(),
                     diskAgentDeviceUUIDs.end(),
                     deviceUUID))
             {
-                devicesSubset = false;
+                diskDevicesChanged = true;
                 break;
             }
         }
-        // Not all of the devices from the request belongs to DiskId from the
-        // request.
-        if (!devicesSubset) {
-            Cout << "Not devices subset!" << Endl;
+        // We shouldn't send the request if all of the devices from the request
+        // do not belong to the disk.
+        if (diskDevicesChanged) {
+            Cerr << "Not devices subset!" << Endl;
             continue;
         }
 
-        Cout << "SEND! SEND! SEND! SEND!" << Endl;
+        Cerr << "SEND! SEND! SEND! SEND!" << Endl;
 
         NCloud::Send(
             ctx,
