@@ -1,6 +1,9 @@
+import base64
+import json
 import logging
 import os
 import signal
+import tempfile
 import uuid
 
 import yatest.common as common
@@ -23,7 +26,7 @@ class NfsCliClient:
         self.__cwd = cwd
         self.__timeout = timeout
 
-    def create(self, fs, cloud, folder, blk_size=4096, blk_count=100*1024*1024*1024):
+    def create(self, fs, cloud, folder, blk_size=4096, blk_count=100 * 1024 * 1024 * 1024):
         cmd = [
             self.__binary_path, "create",
             "--filesystem", fs,
@@ -122,6 +125,42 @@ class NfsCliClient:
         ] + self.__cmd_opts(vhost=True)
 
         return common.execute(cmd)
+
+    def create_session(self, fs, session_id, client_id):
+        cmd = [
+            self.__binary_path, "createsession",
+            "--filesystem", fs,
+            "--session-id", session_id,
+            "--client-id", client_id,
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
+    def reset_session(self, fs, session_id, client_id, session_state):
+        cmd = [
+            self.__binary_path, "resetsession",
+            "--filesystem", fs,
+            "--session-id", session_id,
+            "--client-id", client_id,
+            "--session-state", base64.b64encode(session_state).decode("utf-8"),
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
+    def execute_action(self, action, request):
+        request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
+        json.dump(request, request_file)
+        request_file.close()
+        cmd = [
+            self.__binary_path, "executeaction",
+            "--action", action,
+            "--input-file", request_file.name,
+        ] + self.__cmd_opts()
+        print(cmd)
+
+        res = common.execute(cmd)
+        os.unlink(request_file.name)
+        return res.stdout
 
     def __cmd_opts(self, vhost=False):
         opts = [
