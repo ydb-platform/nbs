@@ -2,8 +2,6 @@
 
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
-#include <library/cpp/string_utils/base64/base64.h>
-
 namespace NCloud::NFileStore::NClient {
 
 namespace {
