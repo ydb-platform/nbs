@@ -1352,6 +1352,60 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             service,
             runtime);
     }
+
+    Y_UNIT_TEST(ShouldExecuteCmsAction)
+    {
+        TTestEnv env;
+        TServiceClient service(env.GetRuntime(), SetupTestEnv(env));
+
+        env.GetRuntime().SetEventFilter([] (auto&, auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvService::EvCmsActionRequest: {
+                    auto* msg = event->template Get<TEvService::TEvCmsActionRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(1, msg->Record.ActionsSize());
+                    const auto& action = msg->Record.GetActions(0);
+                    UNIT_ASSERT_EQUAL(NProto::TAction_EType_REMOVE_HOST, action.GetType());
+                    UNIT_ASSERT_EQUAL("localhost", action.GetHost());
+                    UNIT_ASSERT(!action.GetDryRun());
+                    break;
+                }
+                case TEvService::EvCmsActionResponse: {
+                    auto* msg = event->template Get<TEvService::TEvCmsActionResponse>();
+                    auto& r = *msg->Record.AddActionResults();
+                    *r.MutableResult() = MakeError(E_TRY_AGAIN);
+                    r.SetTimeout(42);
+                    r.AddDependentDisks("vol0");
+                    break;
+                }
+            }
+            return false;
+        });
+
+        NProto::TCmsActionRequest request;
+        auto& action = *request.AddActions();
+        action.SetType(NProto::TAction_EType_REMOVE_HOST);
+        action.SetHost("localhost");
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        const auto response = service.ExecuteAction("cms", buf);
+
+        NProto::TCmsActionResponse responseProto;
+        if (!google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &responseProto).ok())
+        {
+            UNIT_ASSERT(false);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, responseProto.ActionResultsSize());
+        const auto& r = responseProto.GetActionResults(0);
+        UNIT_ASSERT_VALUES_EQUAL(42, r.GetTimeout());
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.GetResult().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, r.DependentDisksSize());
+        UNIT_ASSERT_VALUES_EQUAL("vol0", r.GetDependentDisks(0));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

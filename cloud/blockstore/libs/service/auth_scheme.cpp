@@ -194,6 +194,7 @@ TPermissionList GetRequestPermissions(
         perms("reallocatedisk", {EPermission::Update}),
         perms("rebindvolumes", {EPermission::Update}),
         perms("setuserid", {EPermission::Update}),
+        perms("cms", {EPermission::Update}),
 
         // Delete
         perms("deletecheckpointdata", {EPermission::Delete}),

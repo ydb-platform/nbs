@@ -80,6 +80,7 @@ void TServiceActor::HandleExecuteAction(
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },
         {"changestorageconfig",               &TServiceActor::CreateChangeStorageConfigActionActor         },
         {"getnameservernodes",                &TServiceActor::CreateGetNameserverNodesActionActor          },
+        {"cms",                               &TServiceActor::CreateCmsActionActor                         },
     };
 
     NProto::TError error;
