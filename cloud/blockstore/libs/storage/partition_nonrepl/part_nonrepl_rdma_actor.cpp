@@ -89,6 +89,7 @@ void TNonreplicatedPartitionRdmaActor::ScheduleCountersUpdate(
 
 template <typename TMethod>
 bool TNonreplicatedPartitionRdmaActor::InitRequests(
+    const typename TMethod::TRequest& msg,
     const NActors::TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
@@ -118,6 +119,27 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
                 "index: " << blockRange.Start
                 << ", count: " << blockRange.Size()
                 << "]"));
+        return false;
+    }
+
+    if (!msg.Record.GetHeaders().GetIsBackgroundRequest()
+            && RequiresReadWriteAccess<TMethod>
+            && PartConfig->IsReadOnly())
+    {
+        reply(
+            ctx,
+            requestInfo,
+            PartConfig->MakeIOError(
+                "disk in error state",
+                true // cooldown passed
+                ));
+        return false;
+    } else if (RequiresCheckpointSupport(msg.Record)) {
+        reply(
+            ctx,
+            requestInfo,
+            PartConfig->MakeError(E_ARGUMENT, TStringBuilder()
+                << "checkpoints not supported"));
         return false;
     }
 
@@ -169,36 +191,42 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
 }
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TWriteBlocksMethod>(
+    const TEvService::TWriteBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TWriteBlocksLocalMethod>(
+    const TEvService::TWriteBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TZeroBlocksMethod>(
+    const TEvService::TZeroBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TReadBlocksMethod>(
+    const TEvService::TReadBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvService::TReadBlocksLocalMethod>(
+    const TEvService::TReadBlocksLocalMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests);
 
 template bool TNonreplicatedPartitionRdmaActor::InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
+    const TEvNonreplPartitionPrivate::TChecksumBlocksMethod::TRequest& msg,
     const TActorContext& ctx,
     TRequestInfo& requestInfo,
     const TBlockRange64& blockRange,

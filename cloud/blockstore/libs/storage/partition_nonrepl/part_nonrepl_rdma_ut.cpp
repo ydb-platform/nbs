@@ -757,6 +757,117 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(30, zeroRequestId);
         }
     }
+
+    Y_UNIT_TEST(ShouldSupportReadOnlyMode)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime, NProto::VOLUME_IO_ERROR_READ_ONLY);
+
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        TString expectedBlockData(DefaultBlockSize, 0);
+
+        auto readBlocks = [&]
+        {
+            auto response = client.ReadBlocks(
+                TBlockRange64::WithLength(1024, 3072));
+            const auto& blocks = response->Record.GetBlocks();
+
+            UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(0));
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3071).size());
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(3071));
+        };
+
+        readBlocks();
+
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        }
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::MakeClosedInterval(1024, 4023),
+                2);
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        }
+
+        readBlocks();
+
+        {
+            client.SendZeroBlocksRequest(
+                TBlockRange64::MakeClosedInterval(2024, 3023));
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        }
+
+        readBlocks();
+
+        expectedBlockData = TString(DefaultBlockSize, 'A');
+        {
+            auto request = client.CreateWriteBlocksLocalRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                expectedBlockData);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+            client.SendRequest(client.GetActorId(), std::move(request));
+            auto response = client.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        readBlocks();
+    }
+
+    Y_UNIT_TEST(ShouldNotHandleRequestsWithRequiredCheckpointSupport)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        {
+            auto request = client.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            request->Record.SetCheckpointId("abc");
+            client.SendRequest(client.GetActorId(), std::move(request));
+
+            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            runtime.DispatchEvents();
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "checkpoints not supported"));
+        }
+
+        {
+            auto request = client.CreateWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                'a');
+            client.SendRequest(client.GetActorId(), std::move(request));
+
+            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
+            runtime.DispatchEvents();
+
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
