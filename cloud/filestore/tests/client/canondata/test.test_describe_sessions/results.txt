@@ -1,0 +1,14 @@
+{
+    "Sessions": [
+        {
+            "SessionId": "session0",
+            "ClientId": "client0",
+            "SessionState": "c29tZSBzZXNzaW9uIHN0YXRl"
+        },
+        {
+            "SessionId": "session1",
+            "ClientId": "client1",
+            "SessionState": "YW5vdGhlciBzZXNzaW9uIHN0YXRl"
+        }
+    ]
+}
