@@ -2,15 +2,16 @@
 
 #include "public.h"
 
+#include "cloud/blockstore/libs/storage/api/disk_agent.h"
+
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <util/generic/queue.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -70,6 +71,21 @@ struct TUserNotificationKey
         : EntityId(std::move(entityId))
         , SeqNo(seqNo)
     {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAgentAcquireDiskCachedRequest
+{
+    TString AgentId;
+    std::unique_ptr<TEvDiskAgent::TEvAcquireDevicesRequest> Request;
+    TInstant RequestTime;
+};
+
+struct TAgentReleaseDiskCachedRequest
+{
+    TString AgentId;
+    std::unique_ptr<TEvDiskAgent::TEvReleaseDevicesRequest> Request;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,10 +194,15 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
+        TVector<TAgentAcquireDiskCachedRequest> SentRequests;
 
-        TFinishAcquireDiskRequest(TString diskId, TString clientId)
+        TFinishAcquireDiskRequest(
+                TString diskId,
+                TString clientId,
+                TVector<TAgentAcquireDiskCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
+            , SentRequests(std::move(sentRequests))
         {}
     };
 
@@ -196,12 +217,15 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
+        TVector<TAgentReleaseDiskCachedRequest> SentRequests;
 
         TRemoveDiskSessionRequest(
                 TString diskId,
-                TString clientId)
+                TString clientId,
+                TVector<TAgentReleaseDiskCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
+            , SentRequests(std::move(sentRequests))
         {}
     };
 
