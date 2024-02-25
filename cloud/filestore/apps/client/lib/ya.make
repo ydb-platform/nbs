@@ -4,6 +4,7 @@ SRCS(
     add_cluster_node.cpp
     command.cpp
     create.cpp
+    create_session.cpp
     describe.cpp
     destroy.cpp
     execute_action.cpp
@@ -18,6 +19,7 @@ SRCS(
     performance_profile_params.cpp
     read.cpp
     remove_cluster_node.cpp
+    reset_session.cpp
     resize.cpp
     rm.cpp
     start_endpoint.cpp

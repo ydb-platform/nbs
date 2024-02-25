@@ -98,3 +98,32 @@ def test_list_filestores():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_describe_sessions():
+    client, results_path = __init_test()
+
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    # creating a bunch of sessions
+    client.create_session("fs0", "session0", "client0")
+    client.create_session("fs0", "session1", "client1")
+    client.reset_session(
+        "fs0",
+        "session0",
+        "client0",
+        "some session state".encode("utf-8"))
+    client.reset_session(
+        "fs0",
+        "session1",
+        "client1",
+        "another session state".encode("utf-8"))
+
+    out = client.execute_action("describesessions", {"FileSystemId": "fs0"})
+    sessions = json.loads(out)
+
+    with open(results_path, "w") as results_file:
+        json.dump(sessions, results_file, indent=4)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
