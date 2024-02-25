@@ -388,7 +388,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // Register agent should send cached acquire requests.
         RegisterAgent(*runtime, 0);
         UNIT_ASSERT_EQUAL(agent1AcquireCallCount, 1);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 1);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 0);
         UNIT_ASSERT_EQUAL(accessMode, NProto::VOLUME_ACCESS_READ_WRITE);
         UNIT_ASSERT_EQUAL(mountSeqNumber, 77);
         UNIT_ASSERT_EQUAL(diskId, "disk-1");
@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // them and didn't cache fresh ones yet.
         RegisterAgent(*runtime, 0);
         UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 1);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 1);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 0);
 
         diskRegistry.AcquireDisk(
             "disk-1",
@@ -407,7 +407,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             77,
             88);
         UNIT_ASSERT_EQUAL(agent1AcquireCallCount, 2);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 2);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 1);
 
         const NProto::TStorageServiceConfig storageConfig =
             CreateDefaultStorageConfig();
@@ -418,7 +418,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // passed since the last acquire.
         RegisterAgent(*runtime, 0);
         UNIT_ASSERT_EQUAL(agent1AcquireCallCount, 2);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 2);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 1);
 
         diskRegistry.AcquireDisk(
             "disk-1",
@@ -427,7 +427,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             77,
             88);
         UNIT_ASSERT_EQUAL(agent1AcquireCallCount, 3);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 3);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 2);
 
         // Although a release event wasn't sent, agent registering shouldn't
         // send acquire because the disk is destroyed.
@@ -435,7 +435,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.DeallocateDisk("disk-1");
         RegisterAgent(*runtime, 0);
         UNIT_ASSERT_EQUAL(agent1AcquireCallCount, 3);
-        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 3);
+        UNIT_ASSERT_EQUAL(agent2AcquireCallCount, 2);
     }
 
     Y_UNIT_TEST(ShouldAcquireDisk)

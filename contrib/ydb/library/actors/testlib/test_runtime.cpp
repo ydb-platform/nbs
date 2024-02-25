@@ -838,11 +838,13 @@ namespace NActors {
         Y_ABORT_UNLESS(!UseRealThreads);
         if (newTime.MicroSeconds() > CurrentTimestamp) {
             CurrentTimestamp = newTime.MicroSeconds();
-            for (auto& kv : Nodes) {
+            for (auto& kv: Nodes) {
                 AtomicStore(kv.second->ActorSystemTimestamp, CurrentTimestamp);
                 AtomicStore(kv.second->ActorSystemMonotonic, CurrentTimestamp);
             }
         }
+        Cerr << "UpdateCurrentTime; newTime = " << newTime
+             << "; CurrentTimestamp = " << CurrentTimestamp << Endl;
     }
 
     void TTestActorRuntimeBase::AdvanceCurrentTime(TDuration duration) {
