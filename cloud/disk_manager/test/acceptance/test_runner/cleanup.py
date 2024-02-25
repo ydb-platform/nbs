@@ -1,7 +1,7 @@
 import argparse
 import logging
 import re
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Any
 
 from cloud.blockstore.pylibs.ycp import YcpWrapper
@@ -36,7 +36,7 @@ def _cleanup_stale_entities(
             if ttl is None:
                 _logger.warning("No ttl for entity %s", entity_type)
                 continue
-            should_be_older_than = datetime.now() - ttl
+            should_be_older_than = datetime.now(timezone.utc) - ttl
             if entity.created_at > should_be_older_than:
                 continue
             for pattern in regexps.get(entity_type, []):
@@ -64,7 +64,7 @@ def cleanup_previous_acceptance_tests_results(
         entity_ttl: timedelta = timedelta(days=1),
 ):
     entity_accessors = _get_entity_accessors(ycp)
-    disk_size = size_prettifier(disk_size * (1024 ** 3)).lower()
+    disk_size = size_prettifier(disk_size).lower()
     disk_blocksize = size_prettifier(disk_blocksize).lower()
     _logger.info(
         "Performing cleanup for %s disk size %s, disk block size %s",
