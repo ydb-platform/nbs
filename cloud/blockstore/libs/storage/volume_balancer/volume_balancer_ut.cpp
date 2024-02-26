@@ -7,10 +7,10 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 
 #include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -377,7 +377,7 @@ public:
     }
 };
 
-TFeaturesConfigPtr CreateFeatureConfig(
+NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     const TString& featureName,
     const TVector<std::pair<TString, TString>>& list,
     bool blacklist = true)
@@ -398,7 +398,7 @@ TFeaturesConfigPtr CreateFeatureConfig(
             }
         }
     }
-    return std::make_shared<TFeaturesConfig>(config);
+    return std::make_shared<NFeatures::TFeaturesConfig>(config);
 }
 
 IActorPtr CreateVolumeBalancerActor(

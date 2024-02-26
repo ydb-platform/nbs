@@ -2,7 +2,7 @@
 
 #include <util/digest/city.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NFeatures {
 
 namespace {
 
@@ -108,4 +108,4 @@ bool TFeaturesConfig::GetFeature(
     return result;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NFeatures

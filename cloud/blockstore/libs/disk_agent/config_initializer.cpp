@@ -6,10 +6,10 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
@@ -194,14 +194,14 @@ void TConfigInitializer::InitSpdkEnvConfig()
 
 void TConfigInitializer::InitFeaturesConfig()
 {
-    NProto::TFeaturesConfig featuresConfig;
+    NCloud::NProto::TFeaturesConfig featuresConfig;
 
     if (Options->FeaturesConfig) {
         ParseProtoTextFromFileRobust(Options->FeaturesConfig, featuresConfig);
     }
 
     FeaturesConfig =
-        std::make_shared<NStorage::TFeaturesConfig>(featuresConfig);
+        std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig);
 }
 
 NKikimrConfig::TLogConfig TConfigInitializer::GetLogConfig() const
@@ -289,11 +289,11 @@ void TConfigInitializer::ApplyAuthConfig(const TString& text)
 
 void TConfigInitializer::ApplyFeaturesConfig(const TString& text)
 {
-    NProto::TFeaturesConfig config;
+    NCloud::NProto::TFeaturesConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
     FeaturesConfig =
-        std::make_shared<NStorage::TFeaturesConfig>(config);
+        std::make_shared<NFeatures::TFeaturesConfig>(config);
 
     // features config has changed, update storage config
     StorageConfig->SetFeaturesConfig(FeaturesConfig);

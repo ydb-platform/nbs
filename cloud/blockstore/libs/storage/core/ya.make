@@ -9,7 +9,6 @@ SRCS(
     config.cpp
     disk_counters.cpp
     disk_validation.cpp
-    features_config.cpp
     forward_helpers.cpp
     manually_preempted_volumes.cpp
     metrics.cpp
@@ -43,8 +42,10 @@ PEERDIR(
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/public/api/protos
 
+    cloud/storage/core/config
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/features
     cloud/storage/core/libs/kikimr
 
     contrib/libs/openssl

@@ -28,7 +28,7 @@ TStorageConfigPtr CreateStorageConfig(ui32 limit)
     cfg.SetMaxLocalVolumes(limit);
     return std::make_shared<TStorageConfig>(
         cfg,
-        std::make_shared<TFeaturesConfig>());
+        std::make_shared<NFeatures::TFeaturesConfig>());
 }
 
 }   // namespace

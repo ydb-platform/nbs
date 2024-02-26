@@ -1023,7 +1023,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
     Y_UNIT_TEST(ShouldGetSSDChannelsFromFeaturesConfig)
     {
-        NProto::TFeaturesConfig featuresConfig;
+        NCloud::NProto::TFeaturesConfig featuresConfig;
         NProto::TStorageServiceConfig storageServiceConfig;
 
         auto* feature = featuresConfig.AddFeatures();
@@ -1075,7 +1075,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetAllocationUnitHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto blocksCount = 1_GB / DefaultBlockSize;
@@ -1188,7 +1189,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetMinChannelCount(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
@@ -1206,7 +1208,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetFreshChannelCount(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
@@ -1241,7 +1244,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetFreshChannelCount(1);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
@@ -1265,7 +1269,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetFreshChannelCount(0);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
             ResizeVolume(*config, volumeParams, {}, {}, volumeConfig);
 
@@ -1303,7 +1308,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto blocksCount = 4_GB / DefaultBlockSize;
@@ -1354,7 +1360,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
 
         auto config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto blocksCount = 4_GB / DefaultBlockSize;
@@ -1385,7 +1392,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetHybridMixedChannelPoolKind("mixed2");
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         volumeConfig.Clear();
@@ -1420,7 +1428,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetPoolKindChangeAllowed(true);
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         volumeConfig.Clear();
@@ -1442,7 +1451,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetPoolKindChangeAllowed(false);
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         volumeConfig.Clear();
@@ -1469,7 +1479,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetPoolKindChangeAllowed(true);
         config = std::make_unique<TStorageConfig>(
             storageServiceConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         volumeConfig.Clear();
@@ -1496,7 +1507,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetAllocationUnitHDD(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto blocksCount = 1_GB / DefaultBlockSize;
@@ -1536,7 +1548,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetFreshChannelCount(1);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto blocksCount = 2_TB / 4_KB;
@@ -1630,7 +1643,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             NProto::TStorageServiceConfig storageServiceConfig;
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
 
             auto info = ComputePartitionsInfo(
@@ -1657,7 +1671,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetMaxPartitionsPerVolume(2);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
 
             auto blocksCount = 1_TB / 4_KB - 1;
@@ -1787,7 +1802,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
             storageServiceConfig.SetMaxPartitionsPerVolume(4);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
-                std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+                std::make_shared<NFeatures::TFeaturesConfig>(
+                    NCloud::NProto::TFeaturesConfig())
             );
 
             auto blocksCount = 4_TB / 4_KB;
@@ -1824,7 +1840,8 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         storageServiceConfig.SetMaxPartitionsPerVolume(2);
         auto config = std::make_unique<TStorageConfig>(
             std::move(storageServiceConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         auto blocksCount = 1_TB / 4_KB;

@@ -117,7 +117,8 @@ struct TTestEnv
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         Runtime.SetRegistrationObserverFunc(

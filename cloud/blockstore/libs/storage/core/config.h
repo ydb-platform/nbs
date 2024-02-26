@@ -1,9 +1,10 @@
 #pragma once
 
 #include "public.h"
-#include "features_config.h"
+
 
 #include <cloud/blockstore/config/storage.pb.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <util/datetime/base.h>
@@ -23,12 +24,12 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        TFeaturesConfigPtr featuresConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig);
     ~TStorageConfig();
 
     TStorageConfig(const TStorageConfig& config);
 
-    void SetFeaturesConfig(TFeaturesConfigPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
