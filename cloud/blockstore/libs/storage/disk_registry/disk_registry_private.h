@@ -87,6 +87,19 @@ struct TAgentReleaseDevicesCachedRequest
     NProto::TReleaseDevicesRequest Request;
 };
 
+struct TCachedAcquireKey
+{
+    TString DiskId;
+    TString ClientId;
+
+    friend std::strong_ordering operator<=>(
+        const TCachedAcquireKey&,
+        const TCachedAcquireKey&) = default;
+};
+
+using TCachedAcquireRequests =
+    TMap<TCachedAcquireKey, TAgentAcquireDevicesCachedRequest>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TBrokenDiskInfo

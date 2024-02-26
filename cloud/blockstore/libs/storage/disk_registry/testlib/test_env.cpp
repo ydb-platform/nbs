@@ -19,7 +19,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfig()
     configProto.SetMirroredMigrationStartAllowed(true);
     configProto.SetAllocationUnitNonReplicatedSSD(10);
     configProto.SetDiskRegistryVolumeConfigUpdatePeriod(5000);
-    configProto.SetCachedAcquireRequestLifetime(40000);
+    configProto.SetCachedAcquireRequestLifetime(1000 * 60 * 60);
 
     return configProto;
 }

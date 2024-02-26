@@ -827,7 +827,7 @@ void TDiskRegistryActor::OnDiskAcquired(
 {
     for (auto& sentRequest: sentAcquireRequests) {
         TCachedAcquireRequests& cachedRequests =
-            AcquireCacheByAgentId[sentRequest.AgentId];
+            State->GetAcquireCacheByAgentId()[sentRequest.AgentId];
         TCachedAcquireKey key{
             sentRequest.Request.GetDiskId(),
             sentRequest.Request.GetHeaders().GetClientId()};
@@ -838,9 +838,10 @@ void TDiskRegistryActor::OnDiskAcquired(
 void TDiskRegistryActor::OnDiskReleased(
     const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests)
 {
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
     for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {
-        auto it = AcquireCacheByAgentId.find(agentId);
-        if (it == AcquireCacheByAgentId.end()) {
+        auto it = acquireCacheByAgentId.find(agentId);
+        if (it == acquireCacheByAgentId.end()) {
             continue;
         }
         TCachedAcquireRequests& cachedRequests = it->second;
@@ -849,21 +850,22 @@ void TDiskRegistryActor::OnDiskReleased(
             releaseRequest.GetHeaders().GetClientId()};
         cachedRequests.erase(key);
         if (cachedRequests.empty()) {
-            AcquireCacheByAgentId.erase(it);
+            acquireCacheByAgentId.erase(it);
         }
     }
 }
 
 void TDiskRegistryActor::OnDiskDeallocated(const TDiskId& diskId)
 {
-    for (auto& [_, request]: AcquireCacheByAgentId) {
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    for (auto& [_, request]: acquireCacheByAgentId) {
         EraseNodesIf(
             request,
             [&diskId](const auto& item)
             { return item.first.DiskId == diskId; });
     }
     EraseNodesIf(
-        AcquireCacheByAgentId,
+        acquireCacheByAgentId,
         [](const auto& item) { return item.second.empty(); });
 }
 
@@ -871,15 +873,16 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     const TActorContext& ctx,
     const NProto::TAgentConfig& config)
 {
-    auto cacheIt = AcquireCacheByAgentId.find(config.GetAgentId());
-    if (cacheIt == AcquireCacheByAgentId.end()) {
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
+    if (cacheIt == acquireCacheByAgentId.end()) {
         return;
     }
     // Since we will send all of the requests and they are non-copyable, just
     // extract whole container.
     TCachedAcquireRequests agentAcquireRequestCache =
         std::move(cacheIt->second);
-    AcquireCacheByAgentId.erase(cacheIt);
+    acquireCacheByAgentId.erase(cacheIt);
 
     TDuration lifetimeThreshold =
         Config->GetCachedAcquireRequestLifetime();
