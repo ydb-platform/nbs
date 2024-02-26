@@ -8,7 +8,6 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
-
 namespace NCloud::NBlockStore::NClient {
 
 namespace {

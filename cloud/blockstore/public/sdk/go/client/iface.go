@@ -162,11 +162,6 @@ type ClientIface interface {
 		req *protos.TDeleteCheckpointRequest,
 	) (*protos.TDeleteCheckpointResponse, error)
 
-	GetCheckpointStatus(
-		ctx context.Context,
-		req *protos.TGetCheckpointStatusRequest,
-	) (*protos.TGetCheckpointStatusResponse, error)
-
 	//
 	// Support for differential backup.
 	//

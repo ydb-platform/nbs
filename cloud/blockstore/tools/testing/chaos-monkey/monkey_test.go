@@ -192,14 +192,6 @@ func (n nbsService) DeleteCheckpoint(
 	panic("implement me")
 }
 
-func (n nbsService) GetCheckpointStatus(
-	ctx context.Context,
-	request *protos.TGetCheckpointStatusRequest,
-) (*protos.TGetCheckpointStatusResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (n nbsService) GetChangedBlocks(
 	ctx context.Context,
 	request *protos.TGetChangedBlocksRequest,
