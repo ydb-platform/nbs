@@ -47,7 +47,9 @@ class YcpNewInstancePolicy:
                         compute_node=self._compute_node,
                         placement_group_name=self._placement_group,
                         platform_id=platform_id,
-                        auto_delete=False) as instance:
+                        auto_delete=False,
+                        underlay_vm=self._ycp._folder_desc.create_underlay_vms,
+                ) as instance:
                     self._instance = instance
                 break
             except Exception as e:
