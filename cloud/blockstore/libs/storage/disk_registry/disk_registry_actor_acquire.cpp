@@ -52,8 +52,8 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void PrepareRequest(NProto::TAcquireDevicesRequest& request);
-    void PrepareRequest(NProto::TReleaseDevicesRequest& request);
+    void PrepareRequest(NProto::TAcquireDevicesRequest& request) const;
+    void PrepareRequest(NProto::TReleaseDevicesRequest& request) const;
 
     void FinishAcquireDisk(const TActorContext& ctx, NProto::TError error);
 
@@ -68,11 +68,17 @@ private:
     struct TSentRequest
     {
         TString AgentId;
-        std::unique_ptr<TRequest> Request;
+        ui32 NodeId = 0;
+        decltype(TRequest::Record) Record;
     };
 
     template <typename TRequest>
-    TVector<TSentRequest<TRequest>> SendRequests(const TActorContext& ctx);
+    TVector<TSentRequest<TRequest>> CreateRequests() const;
+
+    template <typename TRequest>
+    void SendRequests(
+        const TActorContext& ctx,
+        const TVector<TSentRequest<TRequest>>& requests);
 
 private:
     STFUNC(StateAcquire);
@@ -144,15 +150,16 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
         DiskId.c_str(),
         LogTargets().c_str());
 
-    auto sentRequests =
-        SendRequests<TEvDiskAgent::TEvAcquireDevicesRequest>(ctx);
+    auto sentRequests = CreateRequests<TEvDiskAgent::TEvAcquireDevicesRequest>();
+    SendRequests(ctx, sentRequests);
+
     Y_ABORT_UNLESS(SentAcquireRequests.empty());
     SentAcquireRequests.reserve(sentRequests.size());
     TInstant now = ctx.Now();
     for (auto& x: sentRequests) {
         SentAcquireRequests.emplace_back(
             std::move(x.AgentId),
-            std::move(x.Request->Record),
+            std::move(x.Record),
             now);
     }
 }
@@ -173,7 +180,8 @@ void TAcquireDiskActor::FinishAcquireDisk(
     ReplyAndDie(ctx, std::move(error));
 }
 
-void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
+void TAcquireDiskActor::PrepareRequest(
+    NProto::TAcquireDevicesRequest& request) const
 {
     request.MutableHeaders()->SetClientId(ClientId);
     request.SetAccessMode(AccessMode);
@@ -182,53 +190,64 @@ void TAcquireDiskActor::PrepareRequest(NProto::TAcquireDevicesRequest& request)
     request.SetVolumeGeneration(VolumeGeneration);
 }
 
-void TAcquireDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
+void TAcquireDiskActor::PrepareRequest(
+    NProto::TReleaseDevicesRequest& request) const
 {
     request.MutableHeaders()->SetClientId(ClientId);
 }
 
 template <typename TRequest>
-TVector<TAcquireDiskActor::TSentRequest<TRequest>> TAcquireDiskActor::SendRequests(
-    const TActorContext& ctx)
+auto TAcquireDiskActor::CreateRequests() const
+    -> TVector<TSentRequest<TRequest>>
 {
-    auto* it = Devices.begin();
-    TVector<TSentRequest<TRequest>> sentRequests;
+    auto it = Devices.begin();
+    TVector<TSentRequest<TRequest>> requests;
     while (it != Devices.end()) {
-        auto request = std::make_unique<TRequest>();
-        TSentRequest<TRequest> requestCopy{
-            it->GetAgentId(),
-            std::make_unique<TRequest>()};
-        PrepareRequest(request->Record);
-        PrepareRequest(requestCopy.Request->Record);
-
         const ui32 nodeId = it->GetNodeId();
 
-        for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
-            *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
-            *requestCopy.Request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
-        }
+        auto& request = requests.emplace_back();
+        request.AgentId = it->GetAgentId();
+        request.NodeId = nodeId;
+        PrepareRequest(request.Record);
 
-        ++PendingRequests;
+        for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
+            *request.Record.AddDeviceUUIDs() = it->GetDeviceUUID();
+        }
+    }
+    return requests;
+}
+
+template <typename TRequest>
+void TAcquireDiskActor::SendRequests(
+    const TActorContext& ctx,
+    const TVector<TSentRequest<TRequest>>& requests)
+{
+    PendingRequests = 0;
+
+    for (const auto& r: requests) {
+        auto request = std::make_unique<TRequest>(
+            TCallContextPtr {},
+            r.Record);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%s] Send an acquire request to node #%d. Devices: %s",
             ClientId.c_str(),
-            nodeId,
+            r.NodeId,
             JoinSeq(", ", request->Record.GetDeviceUUIDs()).c_str());
 
-        sentRequests.push_back(std::move(requestCopy));
         auto event = std::make_unique<IEventHandle>(
-            MakeDiskAgentServiceId(nodeId),
+            MakeDiskAgentServiceId(r.NodeId),
             ctx.SelfID,
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
-            nodeId,
+            r.NodeId,
             &ctx.SelfID   // forwardOnNondelivery
         );
 
         ctx.Send(event.release());
+
+        ++PendingRequests;
     }
-    return sentRequests;
 }
 
 void TAcquireDiskActor::ReplyAndDie(
@@ -295,7 +314,9 @@ void TAcquireDiskActor::OnAcquireResponse(
                 DiskId.c_str(),
                 LogTargets().c_str());
 
-            SendRequests<TEvDiskAgent::TEvReleaseDevicesRequest>(ctx);
+            SendRequests(
+                ctx,
+                CreateRequests<TEvDiskAgent::TEvReleaseDevicesRequest>());
         }
 
         SentAcquireRequests.clear();

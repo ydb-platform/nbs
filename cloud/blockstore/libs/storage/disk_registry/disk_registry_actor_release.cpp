@@ -114,7 +114,7 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
         return d.GetNodeId();
     });
 
-    auto* it = Devices.begin();
+    auto it = Devices.begin();
     while (it != Devices.end()) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();

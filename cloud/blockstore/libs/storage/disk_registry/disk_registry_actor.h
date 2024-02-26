@@ -126,14 +126,9 @@ private:
         TDiskId DiskId;
         TString ClientId;
 
-        bool operator<(const TCachedAcquireKey& other) const
-        {
-            auto tie = [](const TCachedAcquireKey& key)
-            {
-                return std::tie(key.DiskId, key.ClientId);
-            };
-            return tie(*this) < tie(other);
-        }
+        friend std::strong_ordering operator<=>(
+            const TCachedAcquireKey&,
+            const TCachedAcquireKey&) = default;
     };
 
     using TCachedAcquireRequests =
@@ -292,6 +287,7 @@ private:
         TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests);
     void OnDiskReleased(
         const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests);
+    void OnDiskDeallocated(const TDiskId& diskId);
     void SendCachedAcquireRequestsToAgent(
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig& config);

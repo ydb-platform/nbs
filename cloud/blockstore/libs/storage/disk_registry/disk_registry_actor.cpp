@@ -10,7 +10,7 @@
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
-#include "util/string/join.h"
+#include <util/string/join.h>
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -852,6 +852,19 @@ void TDiskRegistryActor::OnDiskReleased(
             AcquireCacheByAgentId.erase(it);
         }
     }
+}
+
+void TDiskRegistryActor::OnDiskDeallocated(const TDiskId& diskId)
+{
+    for (auto& [_, request]: AcquireCacheByAgentId) {
+        EraseNodesIf(
+            request,
+            [&diskId](const auto& item)
+            { return item.first.DiskId == diskId; });
+    }
+    EraseNodesIf(
+        AcquireCacheByAgentId,
+        [](const auto& item) { return item.second.empty(); });
 }
 
 void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
