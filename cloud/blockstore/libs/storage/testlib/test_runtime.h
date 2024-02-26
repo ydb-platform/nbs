@@ -1,9 +1,9 @@
 #pragma once
 
-#include <cloud/blockstore/config/features.pb.h>
-
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+
+#include <cloud/storage/core/config/features.pb.h>
 
 #include <ydb/core/base/tabletid.h>
 #include <ydb/core/testlib/tablet_helpers.h>
@@ -77,6 +77,6 @@ inline TString GetErrorReason(T* response)
 
 TStorageConfigPtr CreateTestStorageConfig(
     NProto::TStorageServiceConfig config,
-    NProto::TFeaturesConfig featuresConfig = {});
+    NCloud::NProto::TFeaturesConfig featuresConfig = {});
 
 }   // namespace NCloud::NBlockStore::NStorage

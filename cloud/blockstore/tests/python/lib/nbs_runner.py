@@ -6,9 +6,9 @@ import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
-from cloud.blockstore.config.features_pb2 import TFeaturesConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig, TServerConfig, TLocation
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from cloud.storage.core.tools.testing.access_service.lib import AccessService

@@ -4,11 +4,11 @@ from ydb.core.protos.config_pb2 import TActorSystemConfig, TLogConfig, TIntercon
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.discovery_pb2 import TDiscoveryServiceConfig
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, TDiskRegistryProxyConfig
-from cloud.blockstore.config.features_pb2 import TFeaturesConfig
 from cloud.blockstore.config.logbroker_pb2 import TLogbrokerConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig
 from cloud.blockstore.config.spdk_pb2 import TSpdkEnvConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 
 CONFIG_NAMES = {
     'ActorSystemConfig': "nbs-sys.txt",

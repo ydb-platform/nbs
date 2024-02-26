@@ -9,10 +9,11 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
+#include <cloud/storage/core/config/features.pb.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -90,7 +91,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         {
             NProto::TFeaturesConfig config;
             ci.FeaturesConfig =
-                std::make_shared<NStorage::TFeaturesConfig>(config);
+                std::make_shared<NFeatures::TFeaturesConfig>(config);
 
             auto storageConfigStr = R"(MultipartitionVolumesEnabled: true)";
             NProto::TStorageServiceConfig storageConfig;

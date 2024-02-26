@@ -19,12 +19,12 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/iam/iface/public.h>
 #include <cloud/storage/core/libs/kikimr/config_initializer.h>
 
@@ -53,7 +53,7 @@ struct TConfigInitializerYdb final
 
     NYdbStats::TYdbStatsConfigPtr StatsConfig;
     NStorage::TStorageConfigPtr StorageConfig;
-    NStorage::TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
     NNotify::TNotifyConfigPtr NotifyConfig;
     NIamClient::TIamClientConfigPtr IamClientConfig;

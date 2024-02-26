@@ -1,4 +1,3 @@
-#include <cloud/blockstore/config/features.pb.h>
 #include <cloud/blockstore/config/diagnostics.pb.h>
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -17,6 +16,8 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
+
+#include <cloud/storage/core/config/features.pb.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/printf.h>
@@ -303,7 +304,8 @@ struct TTestEnv
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         SetupTabletServices(Runtime);

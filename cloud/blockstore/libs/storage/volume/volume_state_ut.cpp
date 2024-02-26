@@ -70,7 +70,7 @@ TStorageConfigPtr MakeConfig(
     config.SetVolumeHistoryCacheSize(VolumeHistoryCacheSize);
     return std::make_shared<TStorageConfig>(
         std::move(config),
-        std::make_shared<TFeaturesConfig>());
+        std::make_shared<NFeatures::TFeaturesConfig>());
 }
 
 TVolumeState CreateVolumeState(

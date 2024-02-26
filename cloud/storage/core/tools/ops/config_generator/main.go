@@ -37,7 +37,7 @@ func getNbsConfigMap() configurator.ConfigMap {
 	return configurator.ConfigMap{
 		"nbs-server.txt":              {Proto: &nbsProto.TServerAppConfig{}, FileName: "server.txt"},
 		"nbs-client.txt":              {Proto: &nbsProto.TClientAppConfig{}, FileName: "client.txt"},
-		"nbs-features.txt":            {Proto: &nbsProto.TFeaturesConfig{}, FileName: "features.txt"},
+		"nbs-features.txt":            {Proto: &coreProto.TFeaturesConfig{}, FileName: "features.txt"},
 		"nbs-storage.txt":             {Proto: &nbsProto.TStorageServiceConfig{}, FileName: "storage.txt"},
 		"nbs-diag.txt":                {Proto: &nbsProto.TDiagnosticsConfig{}, FileName: "diagnostics.txt"},
 		"nbs-stats-upload.txt":        {Proto: &nbsProto.TYdbStatsConfig{}, FileName: "ydbstats.txt"},

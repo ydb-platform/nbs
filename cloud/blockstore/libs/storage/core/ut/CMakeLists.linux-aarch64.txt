@@ -37,7 +37,6 @@ target_sources(cloud-blockstore-libs-storage-core-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/block_handler_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/compaction_map_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/compaction_policy_ut.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/features_config_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/manually_preempted_volumes_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/metrics_ut.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/core/mount_token_ut.cpp

@@ -2,13 +2,13 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/config/features.pb.h>
+#include <cloud/storage/core/config/features.pb.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NFeatures {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,4 +54,4 @@ private:
         TString* value) const;
 };
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NFeatures

@@ -1,8 +1,8 @@
 syntax = "proto2";
 
-package NCloud.NBlockStore.NProto;
+package NCloud.NProto;
 
-option go_package = "a.yandex-team.ru/cloud/blockstore/config";
+option go_package = "a.yandex-team.ru/cloud/storage/core/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 

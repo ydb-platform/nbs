@@ -331,7 +331,8 @@ TStorageConfigPtr CreateStorageConfig(NProto::TStorageServiceConfig proto)
 {
     return std::make_shared<TStorageConfig>(
         std::move(proto),
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
 }
 

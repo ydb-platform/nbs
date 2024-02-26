@@ -231,7 +231,8 @@ struct TTestEnv
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         auto nodeId = Runtime.GetNodeId(0);
@@ -1226,7 +1227,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionResyncTest)
 
         env.Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         const auto range = TBlockRange64::WithLength(0, 5120);

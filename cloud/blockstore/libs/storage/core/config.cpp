@@ -1,6 +1,6 @@
 #include "config.h"
 
-#include "features_config.h"
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <ydb/core/control/immediate_control_board_impl.h>
 
@@ -607,7 +607,7 @@ constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& def
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     TControlWrapper Control##name {                                            \
@@ -625,12 +625,12 @@ struct TStorageConfig::TImpl
 
     TImpl(
             NProto::TStorageServiceConfig storageServiceConfig,
-            TFeaturesConfigPtr featuresConfig)
+            NFeatures::TFeaturesConfigPtr featuresConfig)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
     {}
 
-    void SetFeaturesConfig(TFeaturesConfigPtr featuresConfig)
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
     {
         FeaturesConfig = std::move(featuresConfig);
     }
@@ -652,7 +652,7 @@ struct TStorageConfig::TImpl
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
     : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
 {}
 
@@ -664,7 +664,8 @@ TStorageConfig::TStorageConfig(const TStorageConfig& config)
 TStorageConfig::~TStorageConfig()
 {}
 
-void TStorageConfig::SetFeaturesConfig(TFeaturesConfigPtr featuresConfig)
+void TStorageConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
