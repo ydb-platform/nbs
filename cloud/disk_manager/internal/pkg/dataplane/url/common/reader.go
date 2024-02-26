@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/cache"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,8 +144,7 @@ func (r *urlReader) read(
 	_, err = io.ReadFull(reader, data)
 	if err != nil {
 		// NBS-3324: interpret all errors as retriable.
-		// return errors.NewRetriableError(err)
-		return err
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
@@ -200,8 +200,7 @@ func (r *urlReader) ReadBinary(
 	err = binary.Read(bytes.NewReader(byteData), byteOrder, data)
 	// NBS-3324: interpret all errors as retriable.
 	if err != nil {
-		// return errors.NewRetriableError(err)
-		return err
+		return errors.NewRetriableError(err)
 	}
 
 	return nil
