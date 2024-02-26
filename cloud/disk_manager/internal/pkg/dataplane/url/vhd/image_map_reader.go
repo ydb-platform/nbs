@@ -16,7 +16,6 @@ import (
 
 const (
 	sectorLength     = uint32(512)
-	batOffset        = uint64(1536)
 	unusedTableEntry = uint32(0xFFFFFFFF)
 )
 
@@ -145,7 +144,7 @@ func (r *ImageMapReader) readBAT(ctx context.Context) error {
 
 	return r.reader.ReadBinary(
 		ctx,
-		batOffset,
+		r.header.TableOffset,
 		r.getBATSizeInBytes(),
 		binary.BigEndian,
 		&r.bat,
