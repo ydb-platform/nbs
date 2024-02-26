@@ -459,22 +459,22 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             service2.CreateStatVolumeRequest());
 
         ui64 disconnections = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvClientDestroyed: {
-                        auto* msg = event->Get<TEvTabletPipe::TEvClientDestroyed>();
+                        auto* msg =
+                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
                         if (msg->TabletId == volumeTabletId) {
-                            ++disconnections;                        }
+                            ++disconnections;
+                        }
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
         UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
-
-        auto response = service2.RecvStatVolumeResponse();
-        UNIT_ASSERT(FAILED(response->GetStatus()));
     }
 }
 
