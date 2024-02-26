@@ -2,10 +2,9 @@
 
 #include "public.h"
 
-#include "cloud/blockstore/libs/storage/api/disk_agent.h"
-
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
@@ -75,17 +74,17 @@ struct TUserNotificationKey
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAgentAcquireDiskCachedRequest
+struct TAgentAcquireDevicesCachedRequest
 {
     TString AgentId;
-    std::unique_ptr<TEvDiskAgent::TEvAcquireDevicesRequest> Request;
+    NProto::TAcquireDevicesRequest Request;
     TInstant RequestTime;
 };
 
-struct TAgentReleaseDiskCachedRequest
+struct TAgentReleaseDevicesCachedRequest
 {
     TString AgentId;
-    std::unique_ptr<TEvDiskAgent::TEvReleaseDevicesRequest> Request;
+    NProto::TReleaseDevicesRequest Request;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,12 +193,12 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
-        TVector<TAgentAcquireDiskCachedRequest> SentRequests;
+        TVector<TAgentAcquireDevicesCachedRequest> SentRequests;
 
         TFinishAcquireDiskRequest(
                 TString diskId,
                 TString clientId,
-                TVector<TAgentAcquireDiskCachedRequest> sentRequests)
+                TVector<TAgentAcquireDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))
@@ -217,12 +216,12 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
-        TVector<TAgentReleaseDiskCachedRequest> SentRequests;
+        TVector<TAgentReleaseDevicesCachedRequest> SentRequests;
 
         TRemoveDiskSessionRequest(
                 TString diskId,
                 TString clientId,
-                TVector<TAgentReleaseDiskCachedRequest> sentRequests)
+                TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))

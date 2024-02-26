@@ -746,7 +746,7 @@ public:
     auto CreateRemoveDiskSessionRequest(
         TString diskId,
         TString clientId,
-        TVector<TAgentReleaseDiskCachedRequest> sentRequests)
+        TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
     {
         return std::make_unique<
             TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(

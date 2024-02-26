@@ -525,7 +525,7 @@ public:
 
     bool GetConfigsDispatcherServiceEnabled() const;
 
-    TDuration GetCachedAcquireRequestLifetimeThreshold() const;
+    TDuration GetCachedAcquireRequestLifetime() const;
 };
 
 ui64 GetAllocationUnit(

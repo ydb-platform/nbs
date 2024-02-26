@@ -463,7 +463,7 @@ TDuration MSeconds(ui32 value)
     xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
     xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
-    xxx(CachedAcquireRequestLifetimeThreshold,     TDuration, Seconds(10)     )\
+    xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \

@@ -823,20 +823,20 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::OnDiskAcquired(
-    TVector<TAgentAcquireDiskCachedRequest> sentAcquireRequests)
+    TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests)
 {
     for (auto& sentRequest: sentAcquireRequests) {
         TCachedAcquireRequests& cachedRequests =
             AcquireCacheByAgentId[sentRequest.AgentId];
         TCachedAcquireKey key{
-            sentRequest.Request->Record.GetDiskId(),
-            sentRequest.Request->Record.GetHeaders().GetClientId()};
+            sentRequest.Request.GetDiskId(),
+            sentRequest.Request.GetHeaders().GetClientId()};
         cachedRequests[key] = std::move(sentRequest);
     }
 }
 
 void TDiskRegistryActor::OnDiskReleased(
-    const TVector<TAgentReleaseDiskCachedRequest>& sentReleaseRequests)
+    const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests)
 {
     for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {
         auto it = AcquireCacheByAgentId.find(agentId);
@@ -845,8 +845,8 @@ void TDiskRegistryActor::OnDiskReleased(
         }
         TCachedAcquireRequests& cachedRequests = it->second;
         TCachedAcquireKey key{
-            releaseRequest->Record.GetDiskId(),
-            releaseRequest->Record.GetHeaders().GetClientId()};
+            releaseRequest.GetDiskId(),
+            releaseRequest.GetHeaders().GetClientId()};
         cachedRequests.erase(key);
         if (cachedRequests.empty()) {
             AcquireCacheByAgentId.erase(it);
@@ -869,19 +869,18 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     AcquireCacheByAgentId.erase(cacheIt);
 
     TDuration lifetimeThreshold =
-        Config->GetCachedAcquireRequestLifetimeThreshold();
+        Config->GetCachedAcquireRequestLifetime();
     TInstant now = ctx.Now();
 
-    for (auto& [_, request] : agentAcquireRequestCache) {
+    for (auto& [_, request]: agentAcquireRequestCache) {
         // If it is an old enough request, then we probably shouldn't send it.
         if (now - request.RequestTime > lifetimeThreshold) {
             continue;
         }
 
         TVector<NProto::TDeviceConfig> diskDevices;
-        NProto::TError error = State->GetDiskDevices(
-            request.Request->Record.GetDiskId(),
-            diskDevices);
+        NProto::TError error =
+            State->GetDiskDevices(request.Request.GetDiskId(), diskDevices);
         // Something happened with the disk from the request. Skip it.
         if (HasError(error) || diskDevices.empty()) {
             continue;
@@ -895,7 +894,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
         }
 
         bool diskDevicesChanged = false;
-        for (const auto& deviceUUID: request.Request->Record.GetDeviceUUIDs()) {
+        for (const auto& deviceUUID: request.Request.GetDeviceUUIDs()) {
             if (!diskAgentDeviceUUIDs.contains(deviceUUID)) {
                 diskDevicesChanged = true;
                 break;
@@ -913,15 +912,19 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
             "[%lu] Send cached AcquireDisk request DiskId=%s to node #%d, "
             "AgentId=%s. Devices: [%s]",
             TabletID(),
-            request.Request->Record.GetDiskId().c_str(),
+            request.Request.GetDiskId().c_str(),
             config.GetNodeId(),
             config.GetAgentId().c_str(),
-            JoinSeq(", ", request.Request->Record.GetDeviceUUIDs()).c_str());
+            JoinSeq(", ", request.Request.GetDeviceUUIDs()).c_str());
+
+        auto requestEv =
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
+        requestEv->Record = std::move(request.Request);
 
         NCloud::Send(
             ctx,
             MakeDiskAgentServiceId(config.GetNodeId()),
-            std::move(request.Request),
+            std::move(requestEv),
             config.GetNodeId());
     }
 }

@@ -28,7 +28,7 @@ private:
     TVector<NProto::TDeviceConfig> Devices;
     int PendingRequests = 0;
 
-    TVector<TAgentReleaseDiskCachedRequest> SentReleaseRequests;
+    TVector<TAgentReleaseDevicesCachedRequest> SentReleaseRequests;
 
 public:
     TReleaseDiskActor(
@@ -118,18 +118,16 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
     while (it != Devices.end()) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
-        auto requestCopy =
-            std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
+        NProto::TReleaseDevicesRequest requestCopy;
         PrepareRequest(request->Record);
-        PrepareRequest(requestCopy->Record);
+        PrepareRequest(requestCopy);
 
         const ui32 nodeId = it->GetNodeId();
         const TString& agentId = it->GetAgentId();
 
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
-            Y_ABORT_UNLESS(it->GetAgentId() == agentId);
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
-            *requestCopy->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
+            *requestCopy.AddDeviceUUIDs() = it->GetDeviceUUID();
         }
 
         ++PendingRequests;

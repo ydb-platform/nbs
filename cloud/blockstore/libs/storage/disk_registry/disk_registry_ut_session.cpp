@@ -412,7 +412,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         const NProto::TStorageServiceConfig storageConfig =
             CreateDefaultStorageConfig();
         runtime->AdvanceCurrentTime(TDuration::MilliSeconds(
-            storageConfig.GetCachedAcquireRequestLifetimeThreshold() * 2));
+            storageConfig.GetCachedAcquireRequestLifetime() * 2));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         // This register shouldn't send acquire requests because too much time
         // passed since the last acquire.
@@ -621,7 +621,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto response = diskRegistry.RemoveDiskSession(
                 "disk-1",
                 "session-1",
-                TVector<TAgentReleaseDiskCachedRequest>());
+                TVector<TAgentReleaseDevicesCachedRequest>());
             UNIT_ASSERT(!HasError(response->GetError()));
         }
     }

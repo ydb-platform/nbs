@@ -34,7 +34,7 @@ private:
 
     int PendingRequests = 0;
 
-    TVector<TAgentAcquireDiskCachedRequest> SentAcquireRequests;
+    TVector<TAgentAcquireDevicesCachedRequest> SentAcquireRequests;
 
 public:
     TAcquireDiskActor(
@@ -152,7 +152,7 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
     for (auto& x: sentRequests) {
         SentAcquireRequests.emplace_back(
             std::move(x.AgentId),
-            std::move(x.Request),
+            std::move(x.Request->Record),
             now);
     }
 }
@@ -204,7 +204,6 @@ TVector<TAcquireDiskActor::TSentRequest<TRequest>> TAcquireDiskActor::SendReques
         const ui32 nodeId = it->GetNodeId();
 
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
-            Y_ABORT_UNLESS(it->GetAgentId() == requestCopy.AgentId);
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
             *requestCopy.Request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
         }

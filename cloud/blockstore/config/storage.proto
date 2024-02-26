@@ -916,5 +916,5 @@ message TStorageServiceConfig
     // acquire request on the disk agent restart (ms).
     // Note: it should be larger than ClientRemountPeriod, otherwise it's
     // useless.
-    optional uint32 CachedAcquireRequestLifetimeThreshold = 348;
+    optional uint32 CachedAcquireRequestLifetime = 348;
 }
