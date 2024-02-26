@@ -17,7 +17,7 @@ struct IFileSystemLoop
     virtual ~IFileSystemLoop() = default;
 
     virtual NThreading::TFuture<NProto::TError> StartAsync() = 0;
-    virtual NThreading::TFuture<void> StopAsync() = 0;
+    virtual NThreading::TFuture<NProto::TError> StopAsync() = 0;
     virtual NThreading::TFuture<void> SuspendAsync() = 0;
     virtual NThreading::TFuture<NProto::TError> AlterAsync(
         bool isReadonly,

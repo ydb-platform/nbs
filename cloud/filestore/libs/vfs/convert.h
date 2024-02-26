@@ -6,6 +6,7 @@
 
 struct stat;
 struct statvfs;
+struct fuse_attr;
 
 namespace NProto {
 
@@ -27,6 +28,10 @@ void ConvertAttr(
     ui32 blockSize,
     const NProto::TNodeAttr& attr,
     struct stat& st);
+void ConvertAttr(
+    ui32 blockSize,
+    const NProto::TNodeAttr& attr,
+    struct fuse_attr& st);
 void ConvertStat(
     const NProto::TFileStore& info,
     const NProto::TFileStoreStats& stats,

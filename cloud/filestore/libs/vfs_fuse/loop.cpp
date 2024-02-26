@@ -1,6 +1,5 @@
 #include "loop.h"
 
-#include "config.h"
 #include "fs.h"
 #include "fuse.h"
 #include "log.h"
@@ -529,10 +528,10 @@ public:
             });
     }
 
-    TFuture<void> StopAsync() override
+    TFuture<NProto::TError> StopAsync() override
     {
         if (!SessionThread) {
-            return MakeFuture();
+            return MakeFuture<NProto::TError>();
         }
 
         CompletionQueue->Stop(FUSE_ERROR);
@@ -559,7 +558,7 @@ public:
                         p->Config->GetFileSystemId(),
                         p->Config->GetClientId());
                 }
-                return;
+                return NProto::TError{};
             });
     }
 

@@ -12,13 +12,15 @@ namespace NCloud::NFileStore {
 // Common.
 //
 
+NProto::TError ErrorIO();
+NProto::TError ErrorInvalidState();
 NProto::TError ErrorNotSupported(const TString& message = {});
-NProto::TError ErrorInvalidNodeType(ui64 nodeId);
 
 //
 // Nodes.
 //
 
+NProto::TError ErrorInvalidNodeType(ui64 nodeId);
 NProto::TError ErrorInvalidParent(ui64 nodeId);
 NProto::TError ErrorInvalidTarget(ui64 nodeId, const TString& name = {});
 NProto::TError ErrorAlreadyExists(const TString& path);

@@ -190,9 +190,9 @@ struct TBootstrap
         std::remove(SocketPath.c_str());
     }
 
-    TFuture<void> StopAsync()
+    TFuture<NProto::TError> StopAsync()
     {
-        TFuture<void> f = MakeFuture();
+        auto f = MakeFuture<NProto::TError>();
         if (Loop) {
             f = f.Apply([&] (auto) {
                 return Loop->StopAsync();
