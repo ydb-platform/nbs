@@ -1,6 +1,11 @@
 #include "config_initializer.h"
 #include "options.h"
 
+#include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <contrib/ydb/core/protos/shared_cache.pb.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
