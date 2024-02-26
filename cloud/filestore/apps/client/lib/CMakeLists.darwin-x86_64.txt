@@ -28,6 +28,7 @@ target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/add_cluster_node.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/command.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/create.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/create_session.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/describe.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/destroy.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/execute_action.cpp
@@ -42,6 +43,7 @@ target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/performance_profile_params.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/read.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/remove_cluster_node.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/reset_session.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/resize.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/rm.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/start_endpoint.cpp
