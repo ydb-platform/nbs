@@ -45,6 +45,13 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_CRC32", "1412309815")
 
+    vhd_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd.img")
+    vhd_image_file_server = ImageFileServerLauncher(vhd_image_file_path)
+    vhd_image_file_server.start()
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT", str(vhd_image_file_server.port))
+    image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
+
     nonexistent_image_file_server = ImageFileServerLauncher("nonexistent")
     nonexistent_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_NON_EXISTENT_IMAGE_FILE_SERVER_PORT", str(nonexistent_image_file_server.port))
