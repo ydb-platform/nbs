@@ -79,7 +79,7 @@ struct TTestEnv
             TMigrations migrations,
             NProto::EVolumeIOMode ioMode,
             bool useRdma,
-            TMigrationStatePtr migrationState = nullptr)
+            TMigrationStatePtr migrationState)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -231,7 +231,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
-            false);
+            false,
+            nullptr   // no migration state
+        );
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -263,7 +265,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
-            true);
+            true,
+            nullptr   // no migration state
+        );
 
         env.Rdma().InitAllEndpoints();
 
@@ -280,7 +284,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_ERROR_READ_ONLY,
-            false);
+            false,
+            nullptr   // no migration state
+        );
 
         // petya should be migrated => 3 ranges
         WaitForMigrations(runtime, 3);
@@ -295,7 +301,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
             TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
             NProto::VOLUME_IO_OK,
-            false);
+            false,
+            nullptr   // no migration state
+        );
 
         TPartitionClient client(runtime, env.ActorId);
 

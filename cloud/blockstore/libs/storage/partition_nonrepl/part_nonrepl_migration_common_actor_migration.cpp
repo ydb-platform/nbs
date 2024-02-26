@@ -48,9 +48,8 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
 void TNonreplicatedPartitionMigrationCommonActor::ContinueMigrationIfNeeded(
     const NActors::TActorContext& ctx)
 {
-    if (!MigrationStarted
-            || MigrationInProgress
-            || !ProcessingBlocks.IsProcessingStarted())
+    if (!MigrationStarted || MigrationInProgress ||
+        !ProcessingBlocks.IsProcessingStarted())
     {
         return;
     }
@@ -208,7 +207,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleMigrateNextRange(
     const TActorContext& ctx)
 {
-    auto deadline =
+    const auto deadline =
         LastRangeMigrationStartTs + MigrationOwner->CalculateMigrationTimeout();
 
     if (ctx.Now() >= deadline) {

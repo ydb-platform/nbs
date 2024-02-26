@@ -98,45 +98,37 @@ void TVolumeActor::HandlePreparePartitionMigration(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext
-    );
-
-    auto* actorSystem = ctx.ActorSystem();
-    auto replyFrom = ctx.SelfID;
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     if (!State->GetUseFastPath()) {
-        auto response = std::make_unique<
-            TEvVolume::TEvPreparePartitionMigrationResponse>(
-                true // migration allowed
-                );
-        actorSystem->Send(
-            new IEventHandle(
-                requestInfo->Sender,
-                replyFrom,
-                response.release(),
-                0,          // flags
-                requestInfo->Cookie));
+        auto response =
+            std::make_unique<TEvVolume::TEvPreparePartitionMigrationResponse>(
+                true   // migration allowed
+            );
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }
 
-    EndpointEventHandler->SwitchEndpointIfNeeded(State->GetDiskId(), "partition migration")
-        .Subscribe([=] (const auto& future) {
-            bool migrationAllowed = !HasError(future.GetValue());
-            auto response = std::make_unique<
-                TEvVolume::TEvPreparePartitionMigrationResponse>(
+    EndpointEventHandler
+        ->SwitchEndpointIfNeeded(State->GetDiskId(), "partition migration")
+        .Subscribe(
+            [actorSystem = ctx.ActorSystem(),
+             replyFrom = ctx.SelfID,
+             requestInfo = std::move(requestInfo)](const auto& future)
+            {
+                bool migrationAllowed = !HasError(future.GetValue());
+                auto response = std::make_unique<
+                    TEvVolume::TEvPreparePartitionMigrationResponse>(
                     migrationAllowed);
 
-            actorSystem->Send(
-                new IEventHandle(
+                actorSystem->Send(new IEventHandle(
                     requestInfo->Sender,
                     replyFrom,
                     response.release(),
-                    0,          // flags
+                    0,   // flags
                     requestInfo->Cookie));
-        });
+            });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

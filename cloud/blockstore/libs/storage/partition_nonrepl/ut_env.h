@@ -196,10 +196,11 @@ private:
         const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvVolume::TEvPreparePartitionMigrationResponse>(
-                MigrationState ? MigrationState->IsMigrationAllowed : true
-                ));
+                MigrationState ? MigrationState->IsMigrationAllowed : true));
     }
 };
 
