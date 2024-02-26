@@ -337,3 +337,34 @@ message TDescribeDataResponse
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeSessions request/response.
+
+message TDescribeSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TTabletSessionInfo
+{
+    // A subset of the params stored in TSession in the IndexTablet's DB.
+    string SessionId = 1;
+    string ClientId = 2;
+    bytes SessionState = 3;
+    uint64 MaxSeqNo = 4;
+    uint64 MaxRwSeqNo = 5;
+}
+
+message TDescribeSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // All tablet sessions.
+    repeated TTabletSessionInfo Sessions = 2;
+}

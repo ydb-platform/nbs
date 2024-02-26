@@ -358,6 +358,11 @@ public:
             rangeId);
     }
 
+    auto CreateCleanupSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
+    }
+
     //
     // TEvService
     //

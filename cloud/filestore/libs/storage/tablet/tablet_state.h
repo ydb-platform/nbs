@@ -440,11 +440,15 @@ public:
 
     TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
+    TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
         TIndexTabletDatabase& db,
         const TSessionHistoryEntry& entry, size_t maxEntryCount);
+
+    TVector<TMonSessionInfo> GetActiveSessions() const;
+    TSessionsStats CalculateSessionsStats() const;
 
 private:
     TSession* CreateSession(

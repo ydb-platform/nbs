@@ -1,5 +1,7 @@
 #include "tablet_state_impl.h"
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/log.h>
 
@@ -377,6 +379,21 @@ TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
     return result;
 }
 
+TVector<NProtoPrivate::TTabletSessionInfo> TIndexTabletState::DescribeSessions() const
+{
+    TVector<NProtoPrivate::TTabletSessionInfo> sessionInfos;
+    for (const auto& session: Impl->Sessions) {
+        NProtoPrivate::TTabletSessionInfo sessionInfo;
+        sessionInfo.SetSessionId(session.GetSessionId());
+        sessionInfo.SetClientId(session.GetClientId());
+        sessionInfo.SetSessionState(session.GetSessionState());
+        sessionInfo.SetMaxSeqNo(session.GetMaxSeqNo());
+        sessionInfo.SetMaxRwSeqNo(session.GetMaxRwSeqNo());
+        sessionInfos.push_back(std::move(sessionInfo));
+    }
+    return sessionInfos;
+}
+
 const TSessionHistoryList& TIndexTabletState::GetSessionHistoryList() const
 {
     return Impl->SessionHistoryList;
@@ -397,6 +414,37 @@ void TIndexTabletState::AddSessionHistoryEntry(
     if (entryToDelete) {
         db.DeleteSessionHistoryEntry(entryToDelete);
     }
+}
+
+TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessions() const
+{
+    TVector<TMonSessionInfo> sessions;
+    for (const auto& p: Impl->SessionByClient) {
+        sessions.emplace_back();
+        auto& info = sessions.back();
+        info.ClientId = p.first;
+        info.ProtoInfo = *static_cast<NProto::TSession*>(p.second);
+        info.SubSessions = p.second->SubSessions.GetAllSubSessions();
+    }
+    return sessions;
+}
+
+TSessionsStats TIndexTabletState::CalculateSessionsStats() const
+{
+    TSessionsStats stats;
+
+    // recalculating these stats on purpose to be able to perform basic
+    // validation of the counters (UsedSessionsCount should be equal to the sum
+    // of Stateless and Stateful SessionsCount)
+    for (const auto& s: Impl->Sessions) {
+        if (s.GetSessionState()) {
+            ++stats.StatefulSessionsCount;
+        } else {
+            ++stats.StatelessSessionsCount;
+        }
+    }
+
+    return stats;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
