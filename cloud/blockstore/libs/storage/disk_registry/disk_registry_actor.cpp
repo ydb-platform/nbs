@@ -826,17 +826,12 @@ void TDiskRegistryActor::OnDiskAcquired(
     TVector<TAgentAcquireDiskCachedRequest> sentAcquireRequests)
 {
     for (auto& sentRequest: sentAcquireRequests) {
-        auto& cachedRequests = AcquireCacheByAgentId[sentRequest.AgentId];
-        EraseIf(
-            cachedRequests,
-            [&sentRequest](const TAgentAcquireDiskCachedRequest& r)
-            {
-                return sentRequest.Request->Record.GetDiskId() ==
-                           r.Request->Record.GetDiskId() &&
-                       sentRequest.Request->Record.GetHeaders().GetClientId() ==
-                           r.Request->Record.GetHeaders().GetClientId();
-            });
-        cachedRequests.push_back(std::move(sentRequest));
+        TCachedAcquireRequests& cachedRequests =
+            AcquireCacheByAgentId[sentRequest.AgentId];
+        TCachedAcquireKey key{
+            sentRequest.Request->Record.GetDiskId(),
+            sentRequest.Request->Record.GetHeaders().GetClientId()};
+        cachedRequests[key] = std::move(sentRequest);
     }
 }
 
@@ -848,17 +843,12 @@ void TDiskRegistryActor::OnDiskReleased(
         if (it == AcquireCacheByAgentId.end()) {
             continue;
         }
-        auto& requests = it->second;
-        EraseIf(
-            requests,
-            [&releaseRequest](const TAgentAcquireDiskCachedRequest& r)
-            {
-                return releaseRequest->Record.GetDiskId() ==
-                           r.Request->Record.GetDiskId() &&
-                       releaseRequest->Record.GetHeaders().GetClientId() ==
-                           r.Request->Record.GetHeaders().GetClientId();
-            });
-        if (requests.empty()) {
+        TCachedAcquireRequests& cachedRequests = it->second;
+        TCachedAcquireKey key{
+            releaseRequest->Record.GetDiskId(),
+            releaseRequest->Record.GetHeaders().GetClientId()};
+        cachedRequests.erase(key);
+        if (cachedRequests.empty()) {
             AcquireCacheByAgentId.erase(it);
         }
     }
@@ -874,7 +864,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     }
     // Since we will send all of the requests and they are non-copyable, just
     // extract whole container.
-    TDeque<TAgentAcquireDiskCachedRequest> agentAcquireRequestCache =
+    TCachedAcquireRequests agentAcquireRequestCache =
         std::move(cacheIt->second);
     AcquireCacheByAgentId.erase(cacheIt);
 
@@ -882,11 +872,7 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
         Config->GetCachedAcquireRequestLifetimeThreshold();
     TInstant now = ctx.Now();
 
-    while (!agentAcquireRequestCache.empty()) {
-        TAgentAcquireDiskCachedRequest request =
-            std::move(agentAcquireRequestCache.front());
-        agentAcquireRequestCache.pop_front();
-
+    for (auto& [_, request] : agentAcquireRequestCache) {
         // If it is an old enough request, then we probably shouldn't send it.
         if (now - request.RequestTime > lifetimeThreshold) {
             continue;
@@ -901,23 +887,16 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
             continue;
         }
 
-        TVector<TString> diskAgentDeviceUUIDs;
-        diskAgentDeviceUUIDs.reserve(
-            request.Request->Record.GetDeviceUUIDs().size());
+        TSet<TString> diskAgentDeviceUUIDs;
         for (const auto& device: diskDevices) {
             if (config.GetAgentId() == device.GetAgentId()) {
-                diskAgentDeviceUUIDs.push_back(device.GetDeviceUUID());
+                diskAgentDeviceUUIDs.insert(device.GetDeviceUUID());
             }
         }
 
-        Sort(diskAgentDeviceUUIDs);
         bool diskDevicesChanged = false;
         for (const auto& deviceUUID: request.Request->Record.GetDeviceUUIDs()) {
-            if (!BinarySearch(
-                    diskAgentDeviceUUIDs.begin(),
-                    diskAgentDeviceUUIDs.end(),
-                    deviceUUID))
-            {
+            if (!diskAgentDeviceUUIDs.contains(deviceUUID)) {
                 diskDevicesChanged = true;
                 break;
             }

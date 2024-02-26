@@ -121,8 +121,24 @@ private:
 
     THashMap<TString, TAgentRegInfo> AgentRegInfo;
 
-    THashMap<TString, TDeque<TAgentAcquireDiskCachedRequest>>
-        AcquireCacheByAgentId;
+    struct TCachedAcquireKey
+    {
+        TDiskId DiskId;
+        TString ClientId;
+
+        bool operator<(const TCachedAcquireKey& other) const
+        {
+            auto tie = [](const TCachedAcquireKey& key)
+            {
+                return std::tie(key.DiskId, key.ClientId);
+            };
+            return tie(*this) < tie(other);
+        }
+    };
+
+    using TCachedAcquireRequests =
+        TMap<TCachedAcquireKey, TAgentAcquireDiskCachedRequest>;
+    THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;

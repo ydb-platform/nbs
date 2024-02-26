@@ -195,20 +195,18 @@ TVector<TAcquireDiskActor::TSentRequest<TRequest>> TAcquireDiskActor::SendReques
     TVector<TSentRequest<TRequest>> sentRequests;
     while (it != Devices.end()) {
         auto request = std::make_unique<TRequest>();
-        TSentRequest<TRequest> requestCopy{TString(), std::make_unique<TRequest>()};
+        TSentRequest<TRequest> requestCopy{
+            it->GetAgentId(),
+            std::make_unique<TRequest>()};
         PrepareRequest(request->Record);
         PrepareRequest(requestCopy.Request->Record);
 
-        requestCopy.AgentId = it->GetAgentId();
         const ui32 nodeId = it->GetNodeId();
-
-        TEvDiskAgent::TEvAcquireDevicesRequest a;
 
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
             Y_ABORT_UNLESS(it->GetAgentId() == requestCopy.AgentId);
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
-            *requestCopy.Request->Record.AddDeviceUUIDs() =
-                it->GetDeviceUUID();
+            *requestCopy.Request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
         }
 
         ++PendingRequests;
