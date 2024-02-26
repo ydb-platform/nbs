@@ -119,13 +119,15 @@ type httpClientInterface interface {
 		start, end uint64, // Half-open interval [start:end).
 		etag string,
 	) (io.ReadCloser, error)
+	RequestsCount() uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type httpClient struct {
-	client *http.Client
-	url    string
+	client        *http.Client
+	url           string
+	requestsCount uint64
 }
 
 func (c *httpClient) Head(ctx context.Context) (*http.Response, error) {
@@ -140,7 +142,12 @@ func (c *httpClient) Body(
 ) (io.ReadCloser, error) {
 
 	body, err := c.body(ctx, start, end, etag)
+	c.requestsCount++
 	return body, newErrorWithURLReplaced(err, getParametersFromURL(c.url))
+}
+
+func (h *httpClient) RequestsCount() uint64 {
+	return h.requestsCount
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -65,6 +65,10 @@ func (h httpClientMock) Body(
 	return buffer, nil
 }
 
+func (h httpClientMock) RequestsCount() uint64 {
+	return 0
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func newTestReader(t *testing.T, data []byte) *urlReader {

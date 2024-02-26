@@ -31,6 +31,8 @@ type Reader interface {
 		byteOrder binary.ByteOrder,
 		data interface{},
 	) error
+
+	CacheMissedRequestsCount() uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +97,10 @@ func (r *urlReader) Size() uint64 {
 
 func (r *urlReader) ETag() string {
 	return r.etag
+}
+
+func (r *urlReader) CacheMissedRequestsCount() uint64 {
+	return r.httpClient.RequestsCount()
 }
 
 func (r *urlReader) validateRange(
