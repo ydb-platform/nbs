@@ -353,7 +353,8 @@ struct TTestRuntimeBuilder
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             StorageConfig,
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         NProto::TDiskRegistryProxyConfig proxyConfigProto;

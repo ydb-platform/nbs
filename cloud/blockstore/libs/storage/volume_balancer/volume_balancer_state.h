@@ -4,7 +4,8 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
+
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <ydb/core/tablet/tablet_metrics.h>
 

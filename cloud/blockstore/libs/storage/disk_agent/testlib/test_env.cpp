@@ -321,7 +321,8 @@ TTestEnv TTestEnvBuilder::Build()
         TDefaultAllocator::Instance(), 0, 0, 0);
     auto config = std::make_shared<TStorageConfig>(
         std::move(StorageServiceConfig),
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
     auto agentConfig = std::make_shared<TDiskAgentConfig>(
         std::move(AgentConfigProto),

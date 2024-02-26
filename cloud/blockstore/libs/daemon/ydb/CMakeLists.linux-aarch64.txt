@@ -37,6 +37,7 @@ target_link_libraries(libs-daemon-ydb PUBLIC
   libs-storage-disk_registry_proxy
   storage-init-server
   blockstore-libs-ydbstats
+  storage-core-config
   core-libs-actors
   core-libs-aio
   core-libs-common
