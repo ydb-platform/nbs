@@ -525,6 +525,8 @@ public:
     bool GetCheckBlockChecksumsInBlobsUponRead() const;
 
     bool GetConfigsDispatcherServiceEnabled() const;
+
+    TDuration GetCachedAcquireRequestLifetime() const;
 };
 
 ui64 GetAllocationUnit(

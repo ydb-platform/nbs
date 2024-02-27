@@ -3949,6 +3949,14 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     SelfCounters.PlacementGroupsWithBrokenTwoOrMorePartitions->Set(
         placementGroupsWithBrokenTwoOrMorePartitions);
 
+    size_t cachedAcquireDevicesRequestAmount = Accumulate(
+        AcquireCacheByAgentId.begin(),
+        AcquireCacheByAgentId.end(),
+        0,
+        [](size_t sum, const auto& item) { return sum + item.second.size(); });
+    SelfCounters.CachedAcquireDevicesRequestAmount->Set(
+        cachedAcquireDevicesRequestAmount);
+
     auto replicaCountStats = ReplicaTable.CalculateReplicaCountStats();
     SelfCounters.Mirror2Disks->Set(replicaCountStats.Mirror2DiskMinus0);
     SelfCounters.Mirror2DisksMinus1->Set(replicaCountStats.Mirror2DiskMinus1);

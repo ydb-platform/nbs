@@ -321,6 +321,8 @@ private:
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
+    THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -782,6 +784,11 @@ public:
     const TReplicaTable& GetReplicaTable() const
     {
         return ReplicaTable;
+    }
+
+    THashMap<TString, TCachedAcquireRequests>& GetAcquireCacheByAgentId()
+    {
+        return AcquireCacheByAgentId;
     }
 
     TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const
