@@ -83,6 +83,18 @@ void TDiskRegistryActor::ExecuteUpdateDiskRegistryAgentListParams(
     Y_UNUSED(ctx);
     Y_UNUSED(args);
 
+    if (args.AgentIds.empty()) {
+        args.Error = MakeError(E_ARGUMENT, "agentIds list is empty");
+        return;
+    }
+
+    for (const auto& agentId: args.AgentIds) {
+        if (!State->FindAgent(agentId)) {
+            args.Error = MakeError(E_NOT_FOUND, "agentId not found: " + agentId);
+            return;
+        }
+    }
+
     TDiskRegistryDatabase db(tx.DB);
     for (const auto& agentId: args.AgentIds) {
         State->SetDiskRegistryAgentListParams(db, agentId, args.Params);
@@ -93,8 +105,9 @@ void TDiskRegistryActor::CompleteUpdateDiskRegistryAgentListParams(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateDiskRegistryAgentListParams& args)
 {
-    auto response = std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
-        MakeError(S_OK));
+    auto response = std::make_unique<
+        TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>(
+        std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

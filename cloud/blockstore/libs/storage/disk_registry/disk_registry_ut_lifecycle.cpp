@@ -2121,6 +2121,44 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFailToUpdateAgentListParamsWithIncorrectAgentIds)
+    {
+        const auto agent = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+        });
+
+        auto runtime = TTestRuntimeBuilder().Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, { agent }));
+
+        {
+            diskRegistry.SendUpdateDiskRegistryAgentListParamsRequest(
+                TVector<TString>{},
+                100s,
+                500s,
+                1000s);
+            auto response =
+                diskRegistry.RecvUpdateDiskRegistryAgentListParamsResponse();
+
+            UNIT_ASSERT(response->Record.HasError());
+            UNIT_ASSERT_EQUAL(E_ARGUMENT, response->Record.GetError().GetCode());
+        }
+        {
+            diskRegistry.SendUpdateDiskRegistryAgentListParamsRequest(
+                TVector<TString>{"nonexistent-agent"},
+                100s,
+                500s,
+                1000s);
+            auto response =
+                diskRegistry.RecvUpdateDiskRegistryAgentListParamsResponse();
+
+            UNIT_ASSERT(response->Record.HasError());
+            UNIT_ASSERT_EQUAL(E_NOT_FOUND, response->Record.GetError().GetCode());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
