@@ -44,7 +44,7 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
-    NCloud::NProto::EStorageMediaKind MediaKind;
+    const  NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
     TReadDataActor(
@@ -54,7 +54,7 @@ public:
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        const NCloud::NProto::EStorageMediaKind mediaKind);
+        NCloud::NProto::EStorageMediaKind mediaKind);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -96,7 +96,7 @@ TReadDataActor::TReadDataActor(
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        const NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
