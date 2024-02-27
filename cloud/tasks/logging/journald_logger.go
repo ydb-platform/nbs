@@ -122,13 +122,21 @@ func newJournaldLoggerFileds(fields ...log.Field) (ff journaldLoggerFileds) {
 
 	var messageFieldsAll []rawField
 
+	journaldFieldsKeys := map[string]struct{}{
+		idempotencyKeyKey:   {},
+		requestIdKey:        {},
+		operationIdKey:      {},
+		syslogIdentifierKey: {},
+	}
+
 	for _, f := range fields {
-		if f.Key() == syslogIdentifierKey {
+		if _, ok := journaldFieldsKeys[f.Key()]; ok {
 			rawField := getField(f)
 			ff.journaldFields[rawField.key] = rawField.value
-		} else if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
+		}
+		if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
 			ff.errorField = f.Error().Error()
-		} else {
+		} else if f.Key() != syslogIdentifierKey {
 			rawField := getField(f)
 			messageFieldsAll = append(messageFieldsAll, rawField)
 		}

@@ -27,6 +27,9 @@ import (
 type journaldEntry struct {
 	message          string
 	priority         journal.Priority
+	idempotencyKey   string
+	requestID        string
+	operationID      string
 	syslogIdentifier string
 	codeFile         string
 	codeLine         string
@@ -54,6 +57,21 @@ func parseJournaldEntry(data []byte) (journaldEntry, error) {
 		return journaldEntry{}, fmt.Errorf("PRIORITY field is not an int %w", err)
 	}
 
+	idempotencyKey, ok := entry["IDEMPOTENCY_KEY"]
+	if !ok {
+		return journaldEntry{}, fmt.Errorf("No IDEMPOTENCY_KEY field")
+	}
+
+	requestID, ok := entry["REQUEST_ID"]
+	if !ok {
+		return journaldEntry{}, fmt.Errorf("No IDEMPOTENCY_KEY field")
+	}
+
+	operationID, ok := entry["OPERATION_ID"]
+	if !ok {
+		return journaldEntry{}, fmt.Errorf("No OPERATION_ID field")
+	}
+
 	syslogIdentifier, ok := entry["SYSLOG_IDENTIFIER"]
 	if !ok {
 		return journaldEntry{}, fmt.Errorf("No SYSLOG_IDENTIFIER field")
@@ -77,6 +95,9 @@ func parseJournaldEntry(data []byte) (journaldEntry, error) {
 	return journaldEntry{
 		message:          message,
 		priority:         journal.Priority(priority),
+		idempotencyKey:   idempotencyKey,
+		requestID:        requestID,
+		operationID:      operationID,
 		syslogIdentifier: syslogIdentifier,
 		codeFile:         codeFile,
 		codeLine:         codeLine,
@@ -186,6 +207,9 @@ func testJournaldLog(t *testing.T, reader *journaldReader) {
 			{
 				message:          fmt.Sprintf("%s:%d INFO => %s => happened", caller, lineNo-7, fields),
 				priority:         journal.PriInfo,
+				idempotencyKey:   "idempID",
+				requestID:        "reqID",
+				operationID:      "opID",
 				syslogIdentifier: "disk-manager",
 				codeFile:         callerFile,
 				codeLine:         strconv.Itoa(lineNo - 7),
@@ -194,6 +218,9 @@ func testJournaldLog(t *testing.T, reader *journaldReader) {
 			{
 				message:          fmt.Sprintf("%s:%d WARN => %s => happened", caller, lineNo-6, fields),
 				priority:         journal.PriWarning,
+				idempotencyKey:   "idempID",
+				requestID:        "reqID",
+				operationID:      "opID",
 				syslogIdentifier: "disk-manager",
 				codeFile:         callerFile,
 				codeLine:         strconv.Itoa(lineNo - 6),
@@ -202,6 +229,9 @@ func testJournaldLog(t *testing.T, reader *journaldReader) {
 			{
 				message:          fmt.Sprintf("%s:%d ERROR => %s => happened", caller, lineNo-5, fields),
 				priority:         journal.PriErr,
+				idempotencyKey:   "idempID",
+				requestID:        "reqID",
+				operationID:      "opID",
 				syslogIdentifier: "disk-manager",
 				codeFile:         callerFile,
 				codeLine:         strconv.Itoa(lineNo - 5),
@@ -210,6 +240,9 @@ func testJournaldLog(t *testing.T, reader *journaldReader) {
 			{
 				message:          fmt.Sprintf("%s:%d FATAL => %s => happened", caller, lineNo-4, fields),
 				priority:         journal.PriCrit,
+				idempotencyKey:   "idempID",
+				requestID:        "reqID",
+				operationID:      "opID",
 				syslogIdentifier: "disk-manager",
 				codeFile:         callerFile,
 				codeLine:         strconv.Itoa(lineNo - 4),

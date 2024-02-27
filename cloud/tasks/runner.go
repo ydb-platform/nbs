@@ -521,7 +521,7 @@ func lockAndExecuteTask(
 	runCtx = headers.Append(runCtx, taskState.Metadata.Vals())
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
-	runCtx = logging.WithGeneralFields(runCtx)
+	runCtx = logging.WithCommonFields(runCtx)
 
 	execCtx := newExecutionContext(task, taskStorage, taskState)
 

@@ -79,7 +79,7 @@ func WithFields(ctx context.Context, fields ...Field) context.Context {
 	return ctxlog.WithFields(ctx, fields...)
 }
 
-func WithGeneralFields(ctx context.Context) context.Context {
+func WithCommonFields(ctx context.Context) context.Context {
 	fields := make([]log.Field, 0)
 
 	idempotencyKey := headers.GetIdempotencyKey(ctx)

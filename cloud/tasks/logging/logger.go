@@ -33,7 +33,7 @@ type loggerKey struct{}
 type loggerNameKey struct{}
 
 func SetLogger(ctx context.Context, logger Logger) context.Context {
-	return WithGeneralFields(context.WithValue(ctx, loggerKey{}, logger))
+	return WithCommonFields(context.WithValue(ctx, loggerKey{}, logger))
 }
 
 func GetLogger(ctx context.Context) Logger {
