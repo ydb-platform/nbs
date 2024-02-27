@@ -83,10 +83,13 @@ jobs:
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha != ''
       with:
+        submodules: true
         ref: ${{ github.event.pull_request.head.sha }}
     - name: Checkout
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha == ''
+      with:
+        submodules: true
 
     - name: Prepare s3cmd
       uses: ./.github/actions/s3cmd
