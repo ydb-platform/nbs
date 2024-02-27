@@ -48,14 +48,6 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
     _single_disk_test_ttl = timedelta(days=5)
 
     @property
-    def _main_block_device(self) -> str:
-        return '/dev/vdb'
-
-    @property
-    def _secondary_block_device(self) -> str:
-        return '/dev/vdc'
-
-    @property
     def _remote_cmp_path(self) -> str:
         return '/usr/bin/acceptance-cmp'
 
@@ -107,13 +99,10 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
             _logger.info(
                 f'Waiting until disk <id={disk.id}> will be attached'
                 f' to instance <id={instance.id}> and secondary disk'
-                f' appears as block device <name={self._main_block_device}>')
+                f' appears as block device')
 
-            stack.enter_context(
-                self._instance_policy.attach_disk(
-                    disk,
-                    self._main_block_device
-                )
+            primary_disk_path = stack.enter_context(
+                self._instance_policy.attach_disk(disk)
             )
             runtime = math.ceil(
                 (math.sqrt(0.476+1.24*self._args.disk_size)-0.69)/1.24)*60
@@ -125,7 +114,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
             _logger.info(f'Disk filling <percent={percentage}>')
 
             self._perform_verification_write(
-                f'fio --name=fill-disk --filename={self._main_block_device}'
+                f'fio --name=fill-disk --filename={primary_disk_path}'
                 f' --rw=write --bsrange=1-64M --bs_unaligned'
                 f' --iodepth={self._iodepth} --ioengine=libaio'
                 f' --size={percentage}% --runtime={runtime}'
@@ -139,7 +128,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
             _logger.info(
                 f'Waiting until disk <id={disk.id}> will be attached'
                 f' to instance <id={instance.id}> and secondary disk'
-                f' appears as block device <name={self._main_block_device}>')
+                f' appears as block device')
 
             for disk_id in disk_ids:
                 output_disk = self._ycp.get_disk(disk_id)
@@ -148,15 +137,11 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 _logger.info(
                     f'Waiting until disk <id={output_disk.id}> will be'
                     f' attached to instance <id={instance.id}> and'
-                    f' secondary disk appears as block device'
-                    f' <name={self._secondary_block_device}>')
+                    f' secondary disk appears as block device')
 
                 with contextlib.ExitStack() as inner_disk_exit_stack:
-                    inner_disk_exit_stack.enter_context(
-                        self._instance_policy.attach_disk(
-                            output_disk,
-                            self._secondary_block_device
-                        ),
+                    secondary_disk_path = inner_disk_exit_stack.enter_context(
+                        self._instance_policy.attach_disk(output_disk),
                     )
                     byte_count = int((self._args.disk_size * (1024 ** 3)) / self._iodepth)
                     cmds = []
@@ -175,8 +160,8 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                         cmd = (f'{self._remote_cmp_path} --verbose'
                                f' --bytes={byte_count}'
                                f' --ignore-initial={offset}'
-                               f' {self._main_block_device}'
-                               f' {self._secondary_block_device}')
+                               f' {primary_disk_path}'
+                               f' {secondary_disk_path}')
                         future = executor.submit(ssh.exec_command, cmd)
                         futures.append(future)
                         cmds.append(cmd)
