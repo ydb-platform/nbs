@@ -112,9 +112,7 @@ TWriteBatchActor::TWriteBatchActor(
     , WriteBatch(std::move(writeBatch))
     , Blobs(std::move(blobs))
     , WriteRanges(std::move(writeRanges))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TWriteBatchActor::Bootstrap(const TActorContext& ctx)
 {

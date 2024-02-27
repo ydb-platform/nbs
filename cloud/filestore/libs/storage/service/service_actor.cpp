@@ -27,9 +27,7 @@ TStorageServiceActor::TStorageServiceActor(
     , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
-{
-    ActivityType = TFileStoreActivities::SERVICE;
-}
+{}
 
 TStorageServiceActor::~TStorageServiceActor()
 {

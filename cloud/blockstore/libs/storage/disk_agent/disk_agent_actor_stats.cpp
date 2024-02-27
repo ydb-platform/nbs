@@ -127,9 +127,7 @@ TStatsActor::TStatsActor(const TActorId& owner, const TVector<NProto::TDeviceCon
     : Owner(owner)
     , Devices(devices)
     , Rng(12345, 0)
-{
-    ActivityType = TBlockStoreActivities::DISK_AGENT_WORKER;
-}
+{}
 
 void TStatsActor::Bootstrap(const TActorContext& ctx)
 {

@@ -34,9 +34,7 @@ TReadBlobActor::TReadBlobActor(
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {

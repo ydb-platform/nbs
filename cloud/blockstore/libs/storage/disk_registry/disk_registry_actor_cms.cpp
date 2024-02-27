@@ -73,9 +73,7 @@ TCmsRequestActor::TCmsRequestActor(
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
     , Response(std::make_unique<TEvService::TEvCmsActionResponse>())
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TCmsRequestActor::Bootstrap(const TActorContext& ctx)
 {

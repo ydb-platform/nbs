@@ -50,9 +50,7 @@ TSyncManuallyPreemptedVolumesActor::TSyncManuallyPreemptedVolumesActor(
         TString data)
     : FilePath(std::move(filePath))
     , Data(std::move(data))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TSyncManuallyPreemptedVolumesActor::Bootstrap(const TActorContext& ctx)
 {

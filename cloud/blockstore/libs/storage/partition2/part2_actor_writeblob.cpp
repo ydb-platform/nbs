@@ -90,9 +90,7 @@ TWriteBlobActor::TWriteBlobActor(
     , TabletId(tabletId)
     , Request(std::move(request))
     , GroupId(groupId)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
 {

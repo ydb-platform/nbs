@@ -92,9 +92,7 @@ TReleaseDiskActor::TReleaseDiskActor(
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
     , Devices(std::move(devices))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
 {

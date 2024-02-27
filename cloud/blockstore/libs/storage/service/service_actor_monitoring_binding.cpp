@@ -58,9 +58,7 @@ THttpVolumeBindingActor::THttpVolumeBindingActor(
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , Push(push)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void THttpVolumeBindingActor::Bootstrap(const TActorContext& ctx)
 {

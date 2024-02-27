@@ -56,9 +56,7 @@ TDescribeSessionsActionActor::TDescribeSessionsActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
 {

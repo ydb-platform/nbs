@@ -59,9 +59,7 @@ TCleanupActor::TCleanupActor(
     : Owner(owner)
     , Request(std::move(request))
     , DiskIds(std::move(diskIds))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TCleanupActor::Bootstrap(const TActorContext& ctx)
 {

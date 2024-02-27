@@ -100,9 +100,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {

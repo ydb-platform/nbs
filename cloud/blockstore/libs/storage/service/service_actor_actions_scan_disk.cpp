@@ -57,9 +57,7 @@ TScanDiskActor::TScanDiskActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 {
@@ -208,7 +206,6 @@ TScanDiskStatusActor::TScanDiskStatusActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {
-    ActivityType = TBlockStoreActivities::SERVICE;
 }
 
 void TScanDiskStatusActor::Bootstrap(const TActorContext& ctx)

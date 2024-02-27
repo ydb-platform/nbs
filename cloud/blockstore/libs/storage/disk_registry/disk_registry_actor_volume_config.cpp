@@ -64,9 +64,7 @@ TUpdateActor::TUpdateActor(
     , RequestInfo(requestInfo)
     , Config(std::move(config))
     , SeqNo(seqNo)
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TUpdateActor::Bootstrap(const TActorContext& ctx)
 {

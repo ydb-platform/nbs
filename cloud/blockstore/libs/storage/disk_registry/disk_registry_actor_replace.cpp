@@ -63,9 +63,7 @@ TReplaceActor::TReplaceActor(
     , DeviceId(std::move(deviceId))
     , DeviceReplacementId(std::move(deviceReplacementId))
     , Timestamp(timestamp)
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TReplaceActor::Bootstrap(const TActorContext& ctx)
 {

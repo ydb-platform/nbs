@@ -1014,9 +1014,7 @@ TTestVolumeProxyActor::TTestVolumeProxyActor(
     , BaseDiskCheckpointId(baseDiskCheckpointId)
     , BasePartitionContent(std::move(basePartitionContent))
     , BaseDiskBlockSize(baseDiskBlockSize)
-{
-    ActivityType = TBlockStoreActivities::VOLUME_PROXY;
-}
+{}
 
 void TTestVolumeProxyActor::Bootstrap(const TActorContext& ctx)
 {

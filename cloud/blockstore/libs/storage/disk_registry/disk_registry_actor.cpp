@@ -44,9 +44,7 @@ TDiskRegistryActor::TDiskRegistryActor(
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY;
-}
+{}
 
 TDiskRegistryActor::~TDiskRegistryActor()
 {}

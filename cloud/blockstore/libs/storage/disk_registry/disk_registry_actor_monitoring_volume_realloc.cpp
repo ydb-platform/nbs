@@ -63,9 +63,7 @@ THttpVolumeReallocActor::THttpVolumeReallocActor(
     , TabletId(tabletId)
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void THttpVolumeReallocActor::Bootstrap(const TActorContext& ctx)
 {

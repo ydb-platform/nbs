@@ -71,9 +71,7 @@ THttpResetMountSeqNumberActor::THttpResetMountSeqNumberActor(
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
     , TabletId(tabletId)
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 void THttpResetMountSeqNumberActor::Bootstrap(const TActorContext& ctx)
 {

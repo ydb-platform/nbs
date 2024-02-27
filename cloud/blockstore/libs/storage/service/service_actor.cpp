@@ -39,9 +39,7 @@ TServiceActor::TServiceActor(
     , VolumeStats(std::move(volumeStats))
     , SharedCounters(MakeIntrusive<TSharedServiceCounters>(Config))
     , State(std::move(preemptedVolumes))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 TServiceActor::~TServiceActor()
 {}

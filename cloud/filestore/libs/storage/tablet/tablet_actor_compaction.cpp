@@ -111,9 +111,7 @@ TCompactionActor::TCompactionActor(
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {

@@ -97,9 +97,7 @@ THttpReadBlockActor::THttpReadBlockActor(
     , CommitId(commitId)
     , Binary(binary)
     , BufferHolder(TString::Uninitialized(blockSize))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void THttpReadBlockActor::Bootstrap(const TActorContext& ctx)
 {

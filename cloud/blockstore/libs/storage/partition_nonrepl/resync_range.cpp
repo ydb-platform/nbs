@@ -30,9 +30,7 @@ TResyncRangeActor::TResyncRangeActor(
     , Replicas(std::move(replicas))
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
 {

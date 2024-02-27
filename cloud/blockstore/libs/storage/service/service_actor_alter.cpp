@@ -162,9 +162,7 @@ TAlterVolumeActor::TAlterVolumeActor(
     , NewBlocksCount(request.GetBlocksCount())
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 TAlterVolumeActor::TAlterVolumeActor(
         const TActorId& sender,
@@ -177,8 +175,6 @@ TAlterVolumeActor::TAlterVolumeActor(
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
 {
-    ActivityType = TBlockStoreActivities::SERVICE;
-
     VolumeConfig.SetProjectId(request.GetProjectId());
     VolumeConfig.SetFolderId(request.GetFolderId());
     VolumeConfig.SetCloudId(request.GetCloudId());
@@ -202,7 +198,6 @@ TAlterVolumeActor::TAlterVolumeActor(
 {
     VolumeConfig.SetIsPartitionsPoolKindSetManually(
         request.GetIsPartitionsPoolKindSetManually());
-    ActivityType = TBlockStoreActivities::SERVICE;
 }
 
 void TAlterVolumeActor::Bootstrap(const TActorContext& ctx)

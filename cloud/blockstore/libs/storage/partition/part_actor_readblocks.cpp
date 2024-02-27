@@ -361,9 +361,7 @@ TReadBlocksActor::TReadBlocksActor(
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
 {

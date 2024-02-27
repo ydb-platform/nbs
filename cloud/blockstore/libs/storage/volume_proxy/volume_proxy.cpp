@@ -239,7 +239,6 @@ TVolumeProxyActor::TVolumeProxyActor(
     , TraceSerializer(std::move(traceSerializer))
     , ClientCache(CreateTabletPipeClientCache(*Config))
 {
-    ActivityType = TBlockStoreActivities::VOLUME_PROXY;
 }
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(

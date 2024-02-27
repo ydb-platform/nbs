@@ -57,9 +57,7 @@ TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {

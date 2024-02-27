@@ -50,9 +50,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
     : Config(config)
     , ClientCache(CreateTabletPipeClientCache(*config))
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 {

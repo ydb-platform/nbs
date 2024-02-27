@@ -89,7 +89,6 @@ THttpGarbageActor::THttpGarbageActor(
     , Action(action)
     , BlobIds(std::move(blobIds))
 {
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void THttpGarbageActor::Bootstrap(const TActorContext& ctx)
