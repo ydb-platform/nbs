@@ -44,7 +44,7 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
-    const  NCloud::NProto::EStorageMediaKind MediaKind;
+    const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
     TReadDataActor(
