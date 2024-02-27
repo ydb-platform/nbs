@@ -291,7 +291,6 @@ func (r *runnerForRun) run(
 		}
 	}()
 
-	ctx = logging.WithFields(ctx, logging.NewTaskIDField(execCtx.GetTaskID()))
 	return task.Run(ctx, execCtx)
 }
 
@@ -361,7 +360,6 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
-	ctx = logging.WithFields(ctx, logging.NewTaskIDField(execCtx.GetTaskID()))
 	err := task.Cancel(ctx, execCtx)
 
 	if ctx.Err() != nil {
@@ -523,7 +521,7 @@ func lockAndExecuteTask(
 	runCtx = headers.Append(runCtx, taskState.Metadata.Vals())
 	// All derived tasks should be pinned to the same storage folder.
 	runCtx = setStorageFolder(runCtx, taskState.StorageFolder)
-	runCtx = logging.SetLoggingFields(runCtx)
+	runCtx = logging.WithGeneralFields(runCtx)
 
 	execCtx := newExecutionContext(task, taskStorage, taskState)
 

@@ -295,7 +295,8 @@ func NewNbsClient(
 
 func NewContextWithToken(token string) context.Context {
 	ctx := headers.SetOutgoingAccessToken(context.Background(), token)
-	return logging.SetLogger(ctx, logging.NewStderrLogger(logging.DebugLevel))
+	// TODO:_ back
+	return logging.SetLogger(ctx, logging.NewJournaldLogger(logging.DebugLevel))
 }
 
 func NewContext() context.Context {

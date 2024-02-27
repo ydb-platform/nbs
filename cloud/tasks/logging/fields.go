@@ -15,14 +15,6 @@ type Field = log.Field
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO:_ names of constants. Moreover, do we need them?
-// const Component = "COMPONENT"
-// const TaskID = "TASK_ID"
-// const DiskID = "DISK_ID"
-// const SnapshotID = "SNAPSHOT_ID"
-// const ImageID = "IMAGE_ID"
-
-// TODO:_ move component constants somewhere else?
 const ComponentYDB = "YDB"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,26 +79,25 @@ func WithFields(ctx context.Context, fields ...Field) context.Context {
 	return ctxlog.WithFields(ctx, fields...)
 }
 
-// TODO:_SetLoggingFields -> WithFieldsFromHeaders
-func SetLoggingFields(ctx context.Context) context.Context {
+func WithGeneralFields(ctx context.Context) context.Context {
 	fields := make([]log.Field, 0)
 
 	idempotencyKey := headers.GetIdempotencyKey(ctx)
 	if len(idempotencyKey) != 0 {
-		fields = append(fields, log.String("IDEMPOTENCY_KEY", idempotencyKey))
+		fields = append(fields, log.String(idempotencyKeyKey, idempotencyKey))
 	}
 
 	requestID := headers.GetRequestID(ctx)
 	if len(requestID) != 0 {
-		fields = append(fields, log.String("REQUEST_ID", requestID))
+		fields = append(fields, log.String(requestIdKey, requestID))
 	}
 
 	operationID := headers.GetOperationID(ctx)
 	if len(operationID) != 0 {
-		fields = append(fields, log.String("OPERATION_ID", operationID))
+		fields = append(fields, log.String(operationIdKey, operationID))
 	}
 
-	fields = append(fields, log.String("SYSLOG_IDENTIFIER", "disk-manager"))
+	fields = append(fields, log.String(syslogIdentifierKey, "disk-manager"))
 
 	return ctxlog.WithFields(ctx, fields...)
 }

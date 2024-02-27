@@ -19,6 +19,11 @@ import (
 // -> journaldLogger.structuredLogWithCaller
 const callerSkipOffset = 4
 
+const idempotencyKeyKey = "IDEMPOTENCY_KEY"
+const requestIdKey = "REQUEST_ID"
+const operationIdKey = "OPERATION_ID"
+const syslogIdentifierKey = "SYSLOG_IDENTIFIER"
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func getPriority(level Level) journal.Priority {
@@ -42,50 +47,100 @@ func getPriority(level Level) journal.Priority {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func getFields(fields ...log.Field) map[string]string {
+type rawField struct {
+	key   string
+	value string
+}
+
+func getField(field log.Field) rawField {
+	// The variable name must be in uppercase and consist only of characters,
+	// numbers and underscores, and may not begin with an underscore:
+	// https://www.freedesktop.org/software/systemd/man/sd_journal_print.html
+	return rawField{
+		key:   strings.ToUpper(field.Key()),
+		value: fmt.Sprintf("%v", field.Any()),
+	}
+}
+
+// Takes the latest value for each key
+func getFieldsMap(fields ...log.Field) map[string]string {
 	if len(fields) == 0 {
 		return nil
 	}
 
 	vars := make(map[string]string)
 	for _, f := range fields {
-		// The variable name must be in uppercase and consist only of characters,
-		// numbers and underscores, and may not begin with an underscore:
-		// https://www.freedesktop.org/software/systemd/man/sd_journal_print.html
-		key := strings.ToUpper(f.Key())
-		vars[key] = fmt.Sprintf("%v", f.Any())
+		rawField := getField(f)
+		vars[rawField.key] = rawField.value
 	}
 
 	return vars
+}
+
+// Takes the latest value for each key
+// Preserves order of fields
+func deduplicateFields(
+	fields ...rawField,
+) (deduplicated []rawField) {
+
+	fieldsMap := make(map[string]string)
+	for _, f := range fields {
+		fieldsMap[f.key] = f.value
+	}
+
+	for _, f := range fields {
+		if value, ok := fieldsMap[f.key]; ok {
+			deduplicated = append(
+				deduplicated,
+				rawField{key: f.key, value: value},
+			)
+			delete(fieldsMap, f.key)
+		}
+	}
+
+	return
+}
+
+func serializeFields(fields []rawField) (fieldsStr string) {
+	for idx, f := range fields {
+		fieldsStr += f.key + ": " + f.value
+		if idx+1 < len(fields) {
+			fieldsStr += ", "
+		}
+	}
+	return
 }
 
 type journaldLoggerFileds struct {
 	journaldFields map[string]string
-	messageFields  map[string]string
+	messageFields  []rawField
 	errorField     string
 }
 
-func newJournaldLoggerFileds(fields ...log.Field) journaldLoggerFileds {
-	var journaldFields []Field
-	var messageFields []Field
-	// TODO:_ improve naming of 'fields' variables
-	var vars journaldLoggerFileds
+func newJournaldLoggerFileds(fields ...log.Field) (ff journaldLoggerFileds) {
+	fmt.Printf("newJournaldLoggerFileds: len = %d, %v\n", len(fields), fields)
+	ff.journaldFields = make(map[string]string)
+
+	var messageFieldsAll []rawField
 
 	for _, f := range fields {
-		// TODO:_ constant for SYSLOG_IDENTIFIER?
-		if f.Key() == "SYSLOG_IDENTIFIER" {
-			journaldFields = append(journaldFields, f)
+		if f.Key() == syslogIdentifierKey {
+			rawField := getField(f)
+			ff.journaldFields[rawField.key] = rawField.value
+			fmt.Printf("journald: %v\n", rawField)
 		} else if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
-			vars.errorField = f.Error().Error()
+			ff.errorField = f.Error().Error()
+			fmt.Printf("error: %v\n", ff.errorField)
 		} else {
-			messageFields = append(messageFields, f)
+			rawField := getField(f)
+			messageFieldsAll = append(messageFieldsAll, rawField)
+			fmt.Printf("message: %v\n", rawField)
 		}
 	}
 
-	vars.journaldFields = getFields(journaldFields...)
-	vars.messageFields = getFields(messageFields...)
+	ff.messageFields = deduplicateFields(messageFieldsAll...)
 
-	return vars
+	return
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,26 +174,28 @@ func (l *journaldLogger) structuredLogWithCaller(
 	msg string,
 	fields ...log.Field,
 ) {
-	rawFields := newJournaldLoggerFileds(fields...)
-	for key, value := range rawFields.messageFields {
-		msg = key + ": " + value + ", " + msg
+	ff := newJournaldLoggerFileds(fields...)
+
+	if len(ff.messageFields) > 0 {
+		msg = serializeFields(ff.messageFields) + " => " + msg
 	}
+	msg = "=> " + msg
 
 	msg = strings.ToUpper(level.String()) + " " + msg
 
 	if len(l.name) > 0 {
-		msg = l.name + " => " + msg
+		msg = l.name + " " + msg
 	}
 
 	if fileName, lineNumber, function, ok := captureStacktrace(l.callerSkip + callerSkipOffset); ok {
 		// See: https://www.freedesktop.org/software/systemd/man/systemd.journal-fields.html#CODE_FILE=
-		callerFields := getFields(
+		callerFields := getFieldsMap(
 			log.String("code_file", fileName),
 			log.Int("code_line", lineNumber),
 			log.String("code_func", function),
 		)
 		for key, value := range callerFields {
-			rawFields.journaldFields[key] = value
+			ff.journaldFields[key] = value
 		}
 
 		// Short link to the file and line within the file.
@@ -146,11 +203,11 @@ func (l *journaldLogger) structuredLogWithCaller(
 		msg = caller + " " + msg
 	}
 
-	if len(rawFields.errorField) > 0 {
-		msg += " => " + rawFields.errorField
+	if len(ff.errorField) > 0 {
+		msg += " => " + ff.errorField
 	}
 
-	err := journal.Send(msg, getPriority(level), rawFields.journaldFields)
+	err := journal.Send(msg, getPriority(level), ff.journaldFields)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write to journald %v\n", err)
 	}
