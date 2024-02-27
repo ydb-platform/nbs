@@ -7252,7 +7252,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         );
 
-        volume.WaitReady();
+        volume.UpdateVolumeConfig();
 
         UNIT_ASSERT(externalBootHappened);
 

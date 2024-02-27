@@ -1187,7 +1187,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSwitchEndpointWhenNotified)
+    Y_UNIT_TEST(ShouldSwitchEndpointWhenEndpointStarted)
     {
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         TBootstrap bootstrap(CreateTestService(mountedVolumes));
