@@ -70,11 +70,17 @@ class YaMuteCheck:
 
         for line in failure_text_split[1].splitlines():
             line = line.lstrip()
-            if not line.startswith("tests::"):
+            if "::" not in line:
+                continue
+            if "duration:" not in line:
                 continue
             test_case_name = line.replace("::", ".").split()[0]
             failed_by_current_chunk_cases.append(test_case_name)
 
+        if len(failed_by_current_chunk_cases) == 0:
+            log_print(
+                f"Error, no failed subtests found for the failed test case: {suite_name} {test_name}"
+            )
         matched_test_cases = []
         for test_case_name in failed_by_current_chunk_cases:
             for pt in matching_tests_by_suite_regexps:
