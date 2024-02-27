@@ -33,6 +33,5 @@ void SetErrorProtoFlag(NProto::TError& error, const T flag)
     SetProtoFlag(flags, flag);
     error.SetFlags(flags);
 }
-}
 
 }   // namespace NCloud

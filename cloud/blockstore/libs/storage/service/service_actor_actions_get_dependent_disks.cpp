@@ -151,7 +151,7 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
 {
     auto* msg = ev->Get();
 
-    const auto& error = msg->GetError();
+    auto error = msg->GetError();
     if (error.GetCode() == E_NOT_FOUND) {
         SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
     }
