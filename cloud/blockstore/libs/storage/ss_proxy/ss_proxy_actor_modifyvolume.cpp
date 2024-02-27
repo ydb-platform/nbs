@@ -71,9 +71,7 @@ TModifyVolumeActor::TModifyVolumeActor(
     , NewMountToken(std::move(newMountToken))
     , TokenVersion(tokenVersion)
     , FillGeneration(fillGeneration)
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TModifyVolumeActor::Bootstrap(const TActorContext& ctx)
 {

@@ -81,8 +81,6 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
 {
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-
     Config.SetFileSystemId(FileSystemId);
     Config.SetCloudId(request.GetCloudId());
     Config.SetFolderId(request.GetFolderId());
@@ -98,8 +96,6 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
 {
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-
     Config.SetFileSystemId(FileSystemId);
     Config.SetBlocksCount(request.GetBlocksCount());
     Config.SetVersion(request.GetConfigVersion());

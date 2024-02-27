@@ -59,9 +59,7 @@ THttpUnmountVolumeActor::THttpUnmountVolumeActor(
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , SessionId(std::move(sessionId))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void THttpUnmountVolumeActor::Bootstrap(const TActorContext& ctx)
 {

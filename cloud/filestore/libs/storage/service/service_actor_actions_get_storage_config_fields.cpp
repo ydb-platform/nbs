@@ -56,9 +56,7 @@ TGetStorageConfigFieldsActionActor::TGetStorageConfigFieldsActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
 {

@@ -90,9 +90,7 @@ TMirrorRequestActor<TMethod>::TMirrorRequestActor(
     , ParentActorId(parentActorId)
     , NonreplicatedRequestCounter(nonreplicatedRequestCounter)
     , ShouldProcessError(shouldProcessError)
-{
-    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 template <typename TMethod>
 void TMirrorRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)

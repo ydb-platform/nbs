@@ -196,9 +196,7 @@ public:
         , Attributes(std::move(attributes))
         , OriginalRequest(std::move(originalRequest))
         , Counters(std::move(counters))
-    {
-        TThis::ActivityType = TStorageActivities::AUTH;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

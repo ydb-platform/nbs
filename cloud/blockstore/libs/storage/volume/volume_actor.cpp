@@ -76,9 +76,7 @@ TVolumeActor::TVolumeActor(
                 time);
         }
     )
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 TVolumeActor::~TVolumeActor()
 {

@@ -252,9 +252,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {

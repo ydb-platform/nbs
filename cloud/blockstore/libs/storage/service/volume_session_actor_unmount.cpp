@@ -101,9 +101,7 @@ TUnmountRequestActor::TUnmountRequestActor(
     , SessionActorId(sessionActorId)
     , VolumeProxy(volumeProxy)
     , TabletId(tabletId)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUnmountRequestActor::Bootstrap(const TActorContext& ctx)
 {

@@ -31,8 +31,6 @@ TLoadFreshBlobsActor::TLoadFreshBlobsActor(
     , FreshChannels(std::move(freshChannels))
 {
     Y_UNUSED(StorageAccessMode);
-
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TLoadFreshBlobsActor::Bootstrap(const TActorContext& ctx)

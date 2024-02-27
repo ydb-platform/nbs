@@ -69,9 +69,7 @@ TStatFileStoreActor::TStatFileStoreActor(
         TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TStatFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

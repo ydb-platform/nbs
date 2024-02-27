@@ -78,9 +78,7 @@ TSecureEraseActor::TSecureEraseActor(
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
     , Devices(std::move(devicesToClean))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
 {

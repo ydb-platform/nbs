@@ -71,9 +71,7 @@ TDestroyCheckpointActor::TDestroyCheckpointActor(
     : Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CheckpointId(std::move(checkpointId))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TDestroyCheckpointActor::Bootstrap(const TActorContext& ctx)
 {

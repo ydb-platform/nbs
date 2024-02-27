@@ -187,9 +187,7 @@ TCreateSessionActor::TCreateSessionActor(
     , ReadOnly(readOnly)
     , SessionId(std::move(sessionId))
     , Owner(owner)
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TCreateSessionActor::Bootstrap(const TActorContext& ctx)
 {

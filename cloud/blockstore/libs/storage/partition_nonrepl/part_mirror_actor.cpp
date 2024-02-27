@@ -46,9 +46,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         std::move(partConfig),
         std::move(migrations),
         std::move(replicas))
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TMirrorPartitionActor::~TMirrorPartitionActor()
 {

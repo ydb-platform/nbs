@@ -126,8 +126,6 @@ TAcquireDiskActor::TAcquireDiskActor(
     , VolumeGeneration(volumeGeneration)
     , RequestTimeout(requestTimeout)
 {
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-
     SortBy(Devices, [] (auto& d) {
         return d.GetNodeId();
     });

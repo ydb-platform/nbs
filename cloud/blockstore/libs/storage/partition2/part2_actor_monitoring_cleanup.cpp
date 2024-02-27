@@ -71,9 +71,7 @@ TForcedCleanupActor::TForcedCleanupActor(
         TDuration retryTimeout)
     : Tablet(tablet)
     , RetryTimeout(retryTimeout)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TForcedCleanupActor::Bootstrap(const TActorContext& ctx)
 {

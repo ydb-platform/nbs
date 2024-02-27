@@ -1133,9 +1133,7 @@ TTestVolumeProxyActor::TTestVolumeProxyActor(
     , BasePartitionContent(std::move(basePartitionContent))
     , BlocksCount(blocksCount)
     , BaseBlockSize(baseBlockSize)
-{
-    ActivityType = TBlockStoreActivities::VOLUME_PROXY;
-}
+{}
 
 void TTestVolumeProxyActor::Bootstrap(const TActorContext& ctx)
 {

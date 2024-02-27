@@ -60,9 +60,7 @@ TDescribeSchemeActor::TDescribeSchemeActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Path(std::move(path))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
 {

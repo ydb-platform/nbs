@@ -146,8 +146,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
-
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)

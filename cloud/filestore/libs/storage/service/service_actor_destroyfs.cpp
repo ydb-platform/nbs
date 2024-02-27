@@ -53,9 +53,7 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
         TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

@@ -55,9 +55,7 @@ public:
         , Response(std::move(response))
         , CallContext(std::move(callContext))
         , RequestTimeout(requestTimeout)
-    {
-        TThis::ActivityType = TFileStoreActivities::SERVICE_PROXY;
-    }
+    {}
 
     ~TRequestActor() override
     {

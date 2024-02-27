@@ -81,9 +81,7 @@ TCreateVolumeActor::TCreateVolumeActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TCreateVolumeActor::Bootstrap(const TActorContext& ctx)
 {

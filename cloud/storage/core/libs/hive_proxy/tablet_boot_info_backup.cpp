@@ -36,9 +36,7 @@ TTabletBootInfoBackup::TTabletBootInfoBackup(
     , BackupFilePath(std::move(backupFilePath))
     , ReadOnlyMode(readOnlyMode)
     , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
-{
-    ActivityType = TStorageActivities::HIVE_PROXY;
-}
+{}
 
 void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
 {

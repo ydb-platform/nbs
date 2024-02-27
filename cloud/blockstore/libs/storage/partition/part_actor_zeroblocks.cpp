@@ -78,9 +78,7 @@ TZeroBlocksActor::TZeroBlocksActor(
     , Tablet(tablet)
     , CommitId(commitId)
     , MergedBlobs(std::move(mergedBlobs))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TZeroBlocksActor::Bootstrap(const TActorContext& ctx)
 {

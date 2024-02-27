@@ -32,9 +32,7 @@ TPathDescriptionBackup::TPathDescriptionBackup(
     : BackupFilePath(std::move(backupFilePath))
     , ReadOnlyMode(readOnlyMode)
     , TmpBackupFilePath(BackupFilePath.GetPath() + ".tmp")
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TPathDescriptionBackup::Bootstrap(const TActorContext& ctx)
 {

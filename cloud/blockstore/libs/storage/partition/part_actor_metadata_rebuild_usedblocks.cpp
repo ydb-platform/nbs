@@ -126,9 +126,7 @@ TMetadataRebuildUsedBlocksActor::TMetadataRebuildUsedBlocksActor(
     , BlocksPerBatch(blocksPerBatch)
     , BlockCount(blockCount)
     , RetryTimeout(retryTimeout)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMetadataRebuildUsedBlocksActor::Bootstrap(const TActorContext& ctx)
 {
