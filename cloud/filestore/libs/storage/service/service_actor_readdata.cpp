@@ -44,7 +44,7 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
-    const NCloud::NProto::EStorageMediaKind MediaKind;
+    NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
     TReadDataActor(
@@ -90,21 +90,21 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-    TRequestInfoPtr requestInfo,
-    NProto::TReadDataRequest readRequest,
-    TString logTag,
-    ui32 blockSize,
-    IRequestStatsPtr requestStats,
-    IProfileLogPtr profileLog,
-    const NCloud::NProto::EStorageMediaKind mediaKind)
+        TRequestInfoPtr requestInfo,
+        NProto::TReadDataRequest readRequest,
+        TString logTag,
+        ui32 blockSize,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog,
+        const NCloud::NProto::EStorageMediaKind mediaKind)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
     , OriginByteRange(
-          ReadRequest.GetOffset(),
-          ReadRequest.GetLength(),
-          BlockSize)
+        ReadRequest.GetOffset(),
+        ReadRequest.GetLength(),
+        BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
     , RequestStats(std::move(requestStats))
