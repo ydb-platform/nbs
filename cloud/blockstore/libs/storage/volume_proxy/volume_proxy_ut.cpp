@@ -431,11 +431,13 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         TServiceClient service1(runtime, nodeIdx1);
 
         ui64 volumeTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         if (!volumeTabletId) {
-                            auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                            using TEvent = TEvSSProxy::TEvDescribeVolumeResponse;
+                            auto* msg = event->template Get<TEvent>();
                             const auto& volumeDescription =
                                 msg->PathDescription.GetBlockStoreVolumeDescription();
                             volumeTabletId = volumeDescription.GetVolumeTabletId();
@@ -443,7 +445,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         service1.CreateVolume();
