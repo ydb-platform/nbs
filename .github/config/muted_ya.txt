@@ -5,7 +5,7 @@ cloud/blockstore/tests/resize-disk *
 cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure
 cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure/store_chunks_in_s3
 cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/tests tests.TestShallowCopySnapshotWithRandomFailure/store_chunks_in_ydb
-cloud/disk_manager/internal/pkg/facade/disk_service_nemesis_test tests.TestDiskServiceMigrate*
+cloud/disk_manager/internal/pkg/facade/disk_service_nemesis_test disk_service_nemesis_test.TestDiskServiceMigrate*
 cloud/filestore/tests/fio_index_migration/qemu-intrahost-migration-kikimr-nemesis-test *
 cloud/filestore/tests/fio_index_migration/qemu-intrahost-migration-kikimr-test *
 cloud/filestore/tests/fio_index_migration/qemu-intrahost-migration-local-test *
