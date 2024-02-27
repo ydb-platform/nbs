@@ -57,7 +57,7 @@ class VirtualDevicesToIdMapper:
             _, stdout, stderr = ssh.exec_command(args)
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
-                output += line.rstrip() + " "
+                output += line
                 _logger.info("stdout: %s", output)
             if stderr.channel.recv_exit_status():
                 stderr_lines = stderr.readlines()
@@ -120,7 +120,7 @@ class VirtualDevicesToIdMapper:
 
     @staticmethod
     def list_virtual_disks(lsblk_output: str) -> list[str]:
-
+        result = []
         record = json.loads(lsblk_output)
 
         for disk in record['blockdevices']:
@@ -131,7 +131,8 @@ class VirtualDevicesToIdMapper:
             if disk.get('subsystems', '') != 'block:virtio:pci':
                 continue
 
-            yield disk['name']
+            result.append(disk['name'])
+        return result
 
     @staticmethod
     def get_disk_id_to_device_path_mapping(udevadm_output: str) -> dict[str, str]:
