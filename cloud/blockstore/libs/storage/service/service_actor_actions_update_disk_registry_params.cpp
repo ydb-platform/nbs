@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -130,9 +131,12 @@ void TUpdateDiskRegistryAgentListParamsActor::HandleUpdateDiskRegistryAgentListP
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    const auto& error = msg->GetError();
+    auto error = msg->GetError();
+    if (error.GetCode() == E_NOT_FOUND) {
+        SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+    }
 
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         HandleError(ctx, error);
         return;
     }
