@@ -269,6 +269,15 @@ private:
 
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 
+    void OnDiskAcquired(
+        TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests);
+    void OnDiskReleased(
+        const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests);
+    void OnDiskDeallocated(const TDiskId& diskId);
+    void SendCachedAcquireRequestsToAgent(
+        const NActors::TActorContext& ctx,
+        const NProto::TAgentConfig& config);
+
     void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
     void RenderDisks(IOutputStream& out, ui32 limit) const;

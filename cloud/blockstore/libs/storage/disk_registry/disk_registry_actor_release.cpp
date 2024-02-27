@@ -28,6 +28,8 @@ private:
     TVector<NProto::TDeviceConfig> Devices;
     int PendingRequests = 0;
 
+    TVector<TAgentReleaseDevicesCachedRequest> SentReleaseRequests;
+
 public:
     TReleaseDiskActor(
         const TActorId& owner,
@@ -41,6 +43,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void PrepareRequest(NProto::TReleaseDevicesRequest& request);
     void RemoveDiskSession(const TActorContext& ctx);
     void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
@@ -96,6 +99,13 @@ TReleaseDiskActor::TReleaseDiskActor(
     ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
 }
 
+void TReleaseDiskActor::PrepareRequest(NProto::TReleaseDevicesRequest& request)
+{
+    request.MutableHeaders()->SetClientId(ClientId);
+    request.SetDiskId(DiskId);
+    request.SetVolumeGeneration(VolumeGeneration);
+}
+
 void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
@@ -108,17 +118,21 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
     while (it != Devices.end()) {
         auto request =
             std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
-        request->Record.MutableHeaders()->SetClientId(ClientId);
-        request->Record.SetDiskId(DiskId);
-        request->Record.SetVolumeGeneration(VolumeGeneration);
+        NProto::TReleaseDevicesRequest requestCopy;
+        PrepareRequest(request->Record);
+        PrepareRequest(requestCopy);
 
         const ui32 nodeId = it->GetNodeId();
+        const TString& agentId = it->GetAgentId();
 
         for (; it != Devices.end() && it->GetNodeId() == nodeId; ++it) {
             *request->Record.AddDeviceUUIDs() = it->GetDeviceUUID();
+            *requestCopy.AddDeviceUUIDs() = it->GetDeviceUUID();
         }
 
         ++PendingRequests;
+        SentReleaseRequests.push_back(
+            TAgentReleaseDevicesCachedRequest{agentId, std::move(requestCopy)});
         NCloud::Send(
             ctx,
             MakeDiskAgentServiceId(nodeId),
@@ -131,8 +145,11 @@ void TReleaseDiskActor::Bootstrap(const TActorContext& ctx)
 
 void TReleaseDiskActor::RemoveDiskSession(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-        DiskId, ClientId);
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
+            DiskId,
+            ClientId,
+            std::move(SentReleaseRequests));
 
     NCloud::Send(ctx, Owner, std::move(request));
 }
@@ -342,6 +359,8 @@ void TDiskRegistryActor::HandleRemoveDiskSession(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    OnDiskReleased(msg->SentRequests);
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
