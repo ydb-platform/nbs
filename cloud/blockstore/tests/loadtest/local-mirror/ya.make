@@ -19,7 +19,7 @@ DATA(
 REQUIREMENTS(
     ram_disk:16
     cpu:all
-    container:2185033214  # container with tcp_tw_reuse = 1
+    container:5897560351  # container with tcp_tw_reuse = 1
 )
 
 END()
