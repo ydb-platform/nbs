@@ -62,14 +62,14 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 	var item common.ImageMapItem
 	var entry imageMapEntry
 
-	for i, _ := range r.bat {
+	for i, batEntry := range r.bat {
 		offset := item.Start + item.Length
 		imageMapEntrySize := min(uint64(r.header.BlockSize), r.Size()-offset)
 
 		newEntry := imageMapEntry{
 			hasData: false,
 		}
-		if r.bat[i] != unusedTableEntry {
+		if batEntry != unusedTableEntry {
 			newEntry = imageMapEntry{
 				hasData: true,
 				offset:  r.getBlockDataAddress(uint32(i)),

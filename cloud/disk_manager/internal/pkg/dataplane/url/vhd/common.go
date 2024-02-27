@@ -10,17 +10,12 @@ type imageMapEntry struct {
 }
 
 func (e *imageMapEntry) mergeable(other imageMapEntry) bool {
-	return e.hasData == other.hasData && e.offset == other.offset
+	return e.hasData == other.hasData && !e.hasData
 }
 
 func (e *imageMapEntry) dumpToItem(item *common.ImageMapItem) {
-	if e.hasData {
-		item.Zero = false
-		item.Data = true
-	} else {
-		item.Zero = true
-		item.Data = false
-	}
+	item.Data = e.hasData
+	item.Zero = !e.hasData
 
 	if e.offset != 0 {
 		item.RawOffset = new(uint64)
