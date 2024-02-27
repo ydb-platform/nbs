@@ -62,7 +62,7 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 	var item common.ImageMapItem
 	var entry imageMapEntry
 
-	for i, batEntry := range r.bat {
+	for _, batEntry := range r.bat {
 		offset := item.Start + item.Length
 		imageMapEntrySize := min(uint64(r.header.BlockSize), r.Size()-offset)
 
@@ -72,7 +72,7 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 		if batEntry != unusedTableEntry {
 			newEntry = imageMapEntry{
 				hasData: true,
-				offset:  r.getBlockDataAddress(uint32(i)),
+				offset:  r.getBlockDataAddress(batEntry),
 			}
 		}
 
@@ -190,13 +190,13 @@ func (r *ImageMapReader) getSectorPaddedBitmapSizeInBytes() uint64 {
 // GetBitmapAddress returns the address of the 'block bitmap section' of a given
 // block. Address is the absolute byte offset of the 'block bitmap section'. A
 // block consists of 'block bitmap section' and 'data section'
-func (r *ImageMapReader) getBitmapAddress(blockIndex uint32) uint64 {
-	return uint64(r.bat[blockIndex]) * uint64(sectorLength)
+func (r *ImageMapReader) getBitmapAddress(batEntry uint32) uint64 {
+	return uint64(batEntry) * uint64(sectorLength)
 }
 
 // GetBlockDataAddress returns the address of the 'data section' of a given
 // block. Address is the absolute byte offset of the 'data section'. A block
 // consists of 'block bitmap section' and 'data section'
-func (r *ImageMapReader) getBlockDataAddress(blockIndex uint32) uint64 {
-	return r.getBitmapAddress(blockIndex) + r.getSectorPaddedBitmapSizeInBytes()
+func (r *ImageMapReader) getBlockDataAddress(batEntry uint32) uint64 {
+	return r.getBitmapAddress(batEntry) + r.getSectorPaddedBitmapSizeInBytes()
 }
