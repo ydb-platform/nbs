@@ -299,7 +299,8 @@ TExportInfo NegotiateClient(
 void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
-    TStringStream& out)
+    TStringStream& out,
+    ui32 length = 4*1024)
 {
     TRequestReader reader(in);
     TRequestWriter writer(out);
@@ -311,7 +312,7 @@ void ProcessRequests(
         request.Type = NBD_CMD_READ;
         request.Handle = 1;
         request.From = 0;
-        request.Length = 4*1024;
+        request.Length = length;
 
         writer.WriteRequest(request);
     }
@@ -323,7 +324,7 @@ void ProcessRequests(
         request.Type = NBD_CMD_WRITE;
         request.Handle = 2;
         request.From = 0;
-        request.Length = 4*1024;
+        request.Length = length;
 
         writer.WriteRequest(request, TString(request.Length, 'a'));
     }
@@ -335,7 +336,7 @@ void ProcessRequests(
         request.Type = NBD_CMD_WRITE_ZEROES;
         request.Handle = 3;
         request.From = 0;
-        request.Length = 4*1024;
+        request.Length = length;
 
         writer.WriteRequest(request);
     }
@@ -350,7 +351,7 @@ void ProcessRequests(
         reader.ReadStructuredReplyData(reply, replyData);
         UNIT_ASSERT(reply.Type == NBD_REPLY_TYPE_OFFSET_DATA);
         UNIT_ASSERT(reply.Handle == 1);
-        UNIT_ASSERT(replyData.Size() == 4*1024);
+        UNIT_ASSERT(replyData.Size() == length);
     }
 
     {
@@ -515,6 +516,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
 
         NegotiateClient(*handler, in, out);
         ProcessRequests(*handler, in, out);
+        ProcessRequests(*handler, in, out, 0);
 
         bootstrap->Stop();
     }
