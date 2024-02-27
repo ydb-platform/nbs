@@ -69,5 +69,9 @@ class YcpNewInstancePolicy:
     @contextmanager
     def attach_disk(self, disk: Ycp.Disk, block_device: str) -> None:
         with self._ycp.attach_disk(self._instance, disk):
-            wait_for_block_device_to_appear(self._instance.ip, block_device, self._module_factory, self._ssh_key_path)
-            yield
+            yield wait_for_block_device_to_appear(
+                self._instance.ip,
+                disk.id,
+                self._module_factory,
+                self._ssh_key_path,
+            )
