@@ -43,7 +43,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         auto clouds = RandomStrings(1000);
         ui32 matches = 0;
         for (const auto& cloud: clouds) {
-            matches += config.IsFeatureEnabled(cloud, {}, f->GetName());
+            matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
         UNIT_ASSERT_C(150 < matches && matches < 250, TStringBuilder()
@@ -51,6 +51,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
 
         UNIT_ASSERT(config.IsFeatureEnabled(
             "whitelisted_cloud",
+            {},
             {},
             f->GetName()));
     }
@@ -67,7 +68,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         auto folders = RandomStrings(1000);
         ui32 matches = 0;
         for (const auto& folder: folders) {
-            matches += config.IsFeatureEnabled({}, folder, f->GetName());
+            matches += config.IsFeatureEnabled({}, folder, {}, f->GetName());
         }
 
         UNIT_ASSERT_C(250 < matches && matches < 350, TStringBuilder()
@@ -76,6 +77,75 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         UNIT_ASSERT(config.IsFeatureEnabled(
             {},
             "whitelisted_folder",
+            {},
+            f->GetName()));
+    }
+
+    Y_UNIT_TEST(ShouldMatchId)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("some_feature");
+        *f->MutableWhitelist()->AddEntityIds() = "whitelisted_id";
+        TFeaturesConfig config(fc);
+
+        // id doesn't match "whitelisted_id"
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            "cloud_id",
+            {},
+            {},
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            {},
+            "folder_id",
+            {},
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            {},
+            {},
+            "id",
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            "cloud_id",
+            "folder_id",
+            {},
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            "cloud_id",
+            {},
+            "id",
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            {},
+            "folder_id",
+            "id",
+            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled(
+            "cloud_id",
+            "folder_id",
+            "id",
+            f->GetName()));
+
+        // id matches "whitelisted_id"
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            {},
+            {},
+            "whitelisted_id",
+            f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            "cloud_id",
+            {},
+            "whitelisted_id",
+            f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            {},
+            "folder_id",
+            "whitelisted_id",
+            f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled(
+            "cloud_id",
+            "folder_id",
+            "whitelisted_id",
             f->GetName()));
     }
 }

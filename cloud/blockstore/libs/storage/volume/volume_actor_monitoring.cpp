@@ -324,7 +324,8 @@ bool TVolumeActor::CanChangeThrottlingPolicy() const
     const auto& volumeConfig = GetNewestConfig();
     return Config->IsChangeThrottlingPolicyFeatureEnabled(
         volumeConfig.GetCloudId(),
-        volumeConfig.GetFolderId());
+        volumeConfig.GetFolderId(),
+        volumeConfig.GetDiskId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

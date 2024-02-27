@@ -81,7 +81,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
             "yc.disk-manager.cloud",
-            "yc.disk-manager.folder"));
+            "yc.disk-manager.folder",
+            ""));
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
@@ -118,7 +119,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
             "yc.disk-manager.cloud",
-            "yc.disk-manager.folder"));
+            "yc.disk-manager.folder",
+            ""));
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 

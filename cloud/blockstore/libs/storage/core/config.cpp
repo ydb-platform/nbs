@@ -108,7 +108,7 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
-    xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20        )\
+    xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20       )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -745,9 +745,14 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_BINARY_FEATURE_GETTER(name)                                 \
 bool TStorageConfig::Is##name##FeatureEnabled(                                 \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->IsFeatureEnabled(cloudId, folderId, #name);   \
+    return Impl->FeaturesConfig->IsFeatureEnabled(                             \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
 }                                                                              \
 
 // BLOCKSTORE_BINARY_FEATURE_GETTER
@@ -759,9 +764,14 @@ bool TStorageConfig::Is##name##FeatureEnabled(                                 \
 #define BLOCKSTORE_DURATION_FEATURE_GETTER(name)                               \
 TDuration TStorageConfig::Get##name##FeatureValue(                             \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    auto v = Impl->FeaturesConfig->GetFeatureValue(cloudId, folderId, #name);  \
+    const auto v = Impl->FeaturesConfig->GetFeatureValue(                      \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
     if (v) {                                                                   \
         return TDuration::Parse(v);                                            \
     }                                                                          \
@@ -778,9 +788,14 @@ TDuration TStorageConfig::Get##name##FeatureValue(                             \
 #define BLOCKSTORE_STRING_FEATURE_GETTER(name)                                 \
 TString TStorageConfig::Get##name##FeatureValue(                               \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->GetFeatureValue(cloudId, folderId, #name);    \
+    return Impl->FeaturesConfig->GetFeatureValue(                              \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
 }                                                                              \
 
 // BLOCKSTORE_STRING_FEATURE_GETTER

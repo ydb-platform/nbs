@@ -38,6 +38,10 @@ TFeaturesConfig::TFeaturesConfig(
             info.FolderIds.emplace(folderId);
         }
 
+        for (const auto& entityId: cloudList.GetEntityIds()) {
+            info.EntityIds.emplace(entityId);
+        }
+
         info.Value = feature.GetValue();
 
         Features.emplace(feature.GetName(), std::move(info));
@@ -52,18 +56,20 @@ bool TFeaturesConfig::IsValid() const
 bool TFeaturesConfig::IsFeatureEnabled(
     const TString& cloudId,
     const TString& folderId,
+    const TString& entityId,
     const TString& featureName) const
 {
-    return GetFeature(cloudId, folderId, featureName, nullptr);
+    return GetFeature(cloudId, folderId, entityId, featureName, nullptr);
 }
 
 TString TFeaturesConfig::GetFeatureValue(
     const TString& cloudId,
     const TString& folderId,
+    const TString& entityId,
     const TString& featureName) const
 {
     TString value;
-    GetFeature(cloudId, folderId, featureName, &value);
+    GetFeature(cloudId, folderId, entityId, featureName, &value);
     return value;
 }
 
@@ -79,6 +85,7 @@ TVector<TString> TFeaturesConfig::CollectAllFeatures() const
 bool TFeaturesConfig::GetFeature(
     const TString& cloudId,
     const TString& folderId,
+    const TString& entityId,
     const TString& featureName,
     TString* value) const
 {
@@ -93,6 +100,7 @@ bool TFeaturesConfig::GetFeature(
 
         if (it->second.CloudIds.contains(cloudId)
                 || it->second.FolderIds.contains(folderId)
+                || it->second.EntityIds.contains(entityId)
                 || probabilityMatch)
         {
             result = !isBlacklist;
