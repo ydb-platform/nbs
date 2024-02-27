@@ -80,9 +80,7 @@ TCreateVolumeFromDeviceActor::TCreateVolumeFromDeviceActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TCreateVolumeFromDeviceActor::Bootstrap(const TActorContext& ctx)
 {

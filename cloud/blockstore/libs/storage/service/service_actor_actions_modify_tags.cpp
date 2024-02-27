@@ -85,9 +85,7 @@ TModifyTagsActionActor::TModifyTagsActionActor(
     TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 bool TModifyTagsActionActor::ValidateTag(
     const TActorContext& ctx,

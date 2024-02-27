@@ -52,9 +52,7 @@ TVolumeLivenessCheckActor::TVolumeLivenessCheckActor(
         TVector<TString> volumesToCheck)
     : RequestInfo(std::move(requestInfo))
     , VolumesToCheck(std::move(volumesToCheck))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TVolumeLivenessCheckActor::Bootstrap(const TActorContext& ctx)
 {

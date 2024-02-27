@@ -239,9 +239,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
-{
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)

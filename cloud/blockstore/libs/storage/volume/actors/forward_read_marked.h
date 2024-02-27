@@ -100,9 +100,7 @@ TReadMarkedActor<TMethod>::TReadMarkedActor(
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
-{
-    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 template <ReadRequest TMethod>
 void TReadMarkedActor<TMethod>::Bootstrap(const TActorContext& ctx)

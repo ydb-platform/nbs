@@ -134,9 +134,7 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
     , CommitId(commitId)
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
 {

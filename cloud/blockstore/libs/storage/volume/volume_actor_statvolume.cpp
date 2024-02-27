@@ -143,9 +143,7 @@ TStatPartitionActor::TStatPartitionActor(
     , PartActorIds(std::move(partActorIds))
     , Record(std::move(record))
     , Checkpoints(std::move(checkpoints))
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 void TStatPartitionActor::Bootstrap(const TActorContext& ctx)
 {

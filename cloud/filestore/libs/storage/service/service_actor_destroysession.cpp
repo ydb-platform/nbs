@@ -81,9 +81,7 @@ TDestroySessionActor::TDestroySessionActor(
     , SessionId(std::move(sessionId))
     , SeqNo(seqNo)
     , Deadline(Config->GetIdleSessionTimeout().ToDeadLine())
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TDestroySessionActor::Bootstrap(const TActorContext& ctx)
 {

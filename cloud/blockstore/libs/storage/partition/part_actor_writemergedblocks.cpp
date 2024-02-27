@@ -141,9 +141,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
     , WriteHandler(std::move(writeHandler))
     , ChecksumsEnabled(checksumsEnabled)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
 {

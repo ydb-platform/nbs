@@ -71,9 +71,7 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , FileStoreConfig(std::move(fileStoreConfig))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

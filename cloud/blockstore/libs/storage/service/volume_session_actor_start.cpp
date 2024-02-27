@@ -175,9 +175,7 @@ TStartVolumeActor::TStartVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , DiskId(std::move(diskId))
     , VolumeTabletId(volumeTabletId)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TStartVolumeActor::Bootstrap(const TActorContext& ctx)
 {

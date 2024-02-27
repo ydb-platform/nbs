@@ -67,9 +67,7 @@ TReplaceActor::TReplaceActor(
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , DeviceId(std::move(deviceId))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TReplaceActor::Bootstrap(const TActorContext& ctx)
 {

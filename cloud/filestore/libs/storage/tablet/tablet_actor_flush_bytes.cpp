@@ -193,9 +193,7 @@ TFlushBytesActor::TFlushBytesActor(
     , SrcBlobOffsets(std::move(srcBlobOffsets))
     , DstBlobs(std::move(dstBlobs))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TFlushBytesActor::Bootstrap(const TActorContext& ctx)
 {

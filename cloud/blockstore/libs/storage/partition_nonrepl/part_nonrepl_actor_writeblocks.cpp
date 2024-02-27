@@ -95,9 +95,7 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
     , Part(part)
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentWriteActor::Bootstrap(const TActorContext& ctx)
 {

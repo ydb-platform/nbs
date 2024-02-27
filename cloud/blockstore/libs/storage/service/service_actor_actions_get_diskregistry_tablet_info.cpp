@@ -52,9 +52,7 @@ private:
 TGetDiskRegistryTabletInfoActor::TGetDiskRegistryTabletInfoActor(
         TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TGetDiskRegistryTabletInfoActor::Bootstrap(const TActorContext& ctx)
 {

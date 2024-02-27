@@ -57,9 +57,7 @@ TRestoreDiskRegistryStateActor::TRestoreDiskRegistryStateActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TRestoreDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
 {

@@ -36,9 +36,7 @@ TDiskAgentActor::TDiskAgentActor(
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
-{
-    ActivityType = TBlockStoreActivities::DISK_AGENT;
-}
+{}
 
 TDiskAgentActor::~TDiskAgentActor()
 {}

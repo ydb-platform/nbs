@@ -35,9 +35,7 @@ TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , ClientCache(CreateTabletPipeClientCache(*Config))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 

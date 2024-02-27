@@ -150,9 +150,7 @@ TVolumeClientActor::TVolumeClientActor(
     , DiskId(std::move(diskId))
     , TabletId(tabletId)
     , ClientConfig(CreateTabletPipeClientConfig(*config))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TVolumeClientActor::OnConnectionError(
     const TActorContext& ctx,

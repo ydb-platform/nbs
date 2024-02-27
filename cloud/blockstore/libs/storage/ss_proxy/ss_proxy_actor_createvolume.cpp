@@ -124,8 +124,6 @@ TCreateVolumeActor::TCreateVolumeActor(
         ParentDirs.push_back(dir);
         dir += "/" + VolumePathItems[i];
     }
-
-    ActivityType = TBlockStoreActivities::SS_PROXY;
 }
 
 void TCreateVolumeActor::Bootstrap(const TActorContext& ctx)

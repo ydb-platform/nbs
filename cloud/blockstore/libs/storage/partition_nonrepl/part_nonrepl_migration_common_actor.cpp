@@ -36,9 +36,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;

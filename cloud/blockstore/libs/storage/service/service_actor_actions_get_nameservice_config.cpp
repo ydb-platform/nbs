@@ -58,9 +58,7 @@ private:
 TGetDynamicNameserverNodes::TGetDynamicNameserverNodes(
     TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TGetDynamicNameserverNodes::Bootstrap(const TActorContext& ctx)
 {

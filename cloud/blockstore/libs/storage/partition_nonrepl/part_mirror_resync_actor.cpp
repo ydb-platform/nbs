@@ -44,9 +44,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor()
 {

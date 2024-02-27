@@ -92,9 +92,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
     , Part(part)
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentZeroActor::Bootstrap(const TActorContext& ctx)
 {

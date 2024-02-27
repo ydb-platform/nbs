@@ -57,9 +57,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , FileStoreConfig(std::move(fileStoreConfig))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 void TAlterFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

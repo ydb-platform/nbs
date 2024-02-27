@@ -62,9 +62,7 @@ public:
         , RequestType(requestType)
         , RequestTimeout(requestTimeout)
         , DiskId(std::move(diskId))
-    {
-        TThis::ActivityType = TBlockStoreActivities::SERVICE_PROXY;
-    }
+    {}
 
     ~TRequestActor() override
     {

@@ -922,7 +922,6 @@ TPartitionRequestActor<TMethod>::TPartitionRequestActor(
     , ChildCallContexts(Reserve(PartitionRequests.size()))
 {
     Y_DEBUG_ABORT_UNLESS(PartitionsCount >= PartitionRequests.size());
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
 }
 
 template <typename TMethod>

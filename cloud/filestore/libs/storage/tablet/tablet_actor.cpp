@@ -54,7 +54,6 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::move(config))
 {
-    ActivityType = TFileStoreActivities::TABLET;
     UpdateLogTag();
 }
 

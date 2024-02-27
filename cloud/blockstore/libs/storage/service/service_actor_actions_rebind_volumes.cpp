@@ -65,9 +65,7 @@ TRebindVolumesActor::TRebindVolumesActor(
     : RequestInfo(std::move(requestInfo))
     , RebindRequest(std::move(rebindRequest))
     , DiskIds(std::move(diskIds))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
 {

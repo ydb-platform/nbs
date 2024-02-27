@@ -57,9 +57,7 @@ TCmsActor::TCmsActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TCmsActor::Bootstrap(const TActorContext& ctx)
 {

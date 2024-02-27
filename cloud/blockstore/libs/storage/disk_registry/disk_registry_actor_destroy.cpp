@@ -64,9 +64,7 @@ TDestroyActor::TDestroyActor(
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskIds(std::move(diskIds))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TDestroyActor::Bootstrap(const TActorContext& ctx)
 {

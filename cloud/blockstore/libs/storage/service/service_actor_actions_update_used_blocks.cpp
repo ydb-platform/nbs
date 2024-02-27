@@ -65,9 +65,7 @@ TUpdateUsedBlocksActionActor::TUpdateUsedBlocksActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdateUsedBlocksActionActor::Bootstrap(const TActorContext& ctx)
 {

@@ -148,9 +148,7 @@ TScanDiskActor::TScanDiskActor(
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
     , GuardedBuffer(std::move(blockBuffer))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TScanDiskActor::Bootstrap(const TActorContext &ctx)
 {

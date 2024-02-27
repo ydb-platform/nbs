@@ -271,8 +271,6 @@ TMountRequestActor::TMountRequestActor(
     , Params(params)
     , MountOptionsChanged(mountOptionsChanged)
 {
-    ActivityType = TBlockStoreActivities::SERVICE;
-
     MountMode = Request.GetVolumeMountMode();
     if (Params.BindingType == NProto::BINDING_REMOTE) {
         MountMode = NProto::VOLUME_MOUNT_REMOTE;

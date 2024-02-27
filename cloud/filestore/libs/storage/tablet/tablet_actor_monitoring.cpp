@@ -757,9 +757,7 @@ struct TIndexTabletMonitoringActor
         , Owner(owner)
         , TabletId(tablet)
         , Request(std::move(request))
-    {
-        TThis::ActivityType = TFileStoreComponents::TABLET_WORKER;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

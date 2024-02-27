@@ -57,9 +57,7 @@ public:
         , TabletBootInfoBackup(std::move(tabletBootInfoCache))
         , TabletId(tabletId)
         , Reply(std::move(reply))
-    {
-        ActivityType = TStorageActivities::HIVE_PROXY;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -120,9 +118,7 @@ private:
 
 THiveProxyFallbackActor::THiveProxyFallbackActor(THiveProxyConfig config)
     : Config(std::move(config))
-{
-    ActivityType = TStorageActivities::HIVE_PROXY;
-}
+{}
 
 void THiveProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {
