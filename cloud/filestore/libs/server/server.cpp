@@ -371,7 +371,7 @@ private:
         return TSocketHolder(duplicateFd);
     }
 
-    // Grpc can relase socket before we call RemoveClient. So it is possible
+    // Grpc can release socket before we call RemoveClient. So it is possible
     // to observe the situation when CreateDuplicate returns fd which was not
     // yet removed from ClientInfo's. So completed RemoveClient will close fd
     // related to another connection.
