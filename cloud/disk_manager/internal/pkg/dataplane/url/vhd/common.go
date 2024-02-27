@@ -5,16 +5,16 @@ import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/ur
 ////////////////////////////////////////////////////////////////////////////////
 
 type imageMapEntry struct {
-	data   bool
-	offset uint64
+	hasData bool
+	offset  uint64
 }
 
 func (e *imageMapEntry) mergeable(other imageMapEntry) bool {
-	return e.data == other.data && e.offset == other.offset
+	return e.hasData == other.hasData && e.offset == other.offset
 }
 
 func (e *imageMapEntry) dumpToItem(item *common.ImageMapItem) {
-	if e.data {
+	if e.hasData {
 		item.Zero = false
 		item.Data = true
 	} else {

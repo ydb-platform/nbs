@@ -17,6 +17,7 @@ import (
 const (
 	sectorLength     = uint32(512)
 	unusedTableEntry = uint32(0xFFFFFFFF)
+	batEntrySize     = uint64(4)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,12 +64,20 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 
 	for i, _ := range r.bat {
 		offset := item.Start + item.Length
-		bytes := min(uint64(r.header.BlockSize), r.Size()-offset)
+		imageMapEntrySize := min(uint64(r.header.BlockSize), r.Size()-offset)
 
-		newEntry := r.readImageMapEntry(uint32(i))
+		newEntry := imageMapEntry{
+			hasData: false,
+		}
+		if r.bat[i] != unusedTableEntry {
+			newEntry = imageMapEntry{
+				hasData: true,
+				offset:  r.getBlockDataAddress(uint32(i)),
+			}
+		}
 
 		if entry.mergeable(newEntry) {
-			item.Length += bytes
+			item.Length += imageMapEntrySize
 		} else {
 			if item.Length != 0 {
 				entry.dumpToItem(&item)
@@ -77,7 +86,7 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 
 			item = common.ImageMapItem{
 				Start:  offset,
-				Length: bytes,
+				Length: imageMapEntrySize,
 			}
 
 			entry = newEntry
@@ -152,7 +161,7 @@ func (r *ImageMapReader) readBAT(ctx context.Context) error {
 }
 
 func (r *ImageMapReader) getBATSizeInBytes() uint64 {
-	return uint64(r.header.MaxTableEntries) * 32 / 8
+	return uint64(r.header.MaxTableEntries) * batEntrySize
 }
 
 // GetBitmapSizeInBytes returns the size of the 'block bitmap section' that
@@ -190,18 +199,4 @@ func (r *ImageMapReader) getBitmapAddress(blockIndex uint32) uint64 {
 // consists of 'block bitmap section' and 'data section'
 func (r *ImageMapReader) getBlockDataAddress(blockIndex uint32) uint64 {
 	return r.getBitmapAddress(blockIndex) + r.getSectorPaddedBitmapSizeInBytes()
-}
-
-func (r *ImageMapReader) readImageMapEntry(blockIndex uint32) imageMapEntry {
-	entry := r.bat[blockIndex]
-	if entry == unusedTableEntry {
-		return imageMapEntry{
-			data: false,
-		}
-	} else {
-		return imageMapEntry{
-			data:   true,
-			offset: r.getBlockDataAddress(blockIndex),
-		}
-	}
 }
