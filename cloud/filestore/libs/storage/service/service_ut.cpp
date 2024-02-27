@@ -1627,11 +1627,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             ->FindSubgroup("component", "service_fs")
                             ->FindSubgroup("host", "cluster")
                             ->FindSubgroup("filesystem", fs)
-                            ->FindSubgroup("client", "client")
-                            ->FindSubgroup("request", "ReadData");
-        UNIT_ASSERT(counters);
-
-        UNIT_ASSERT_EQUAL(4, counters->GetCounter("Count")->GetAtomic());
+                            ->FindSubgroup("client", "client");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)

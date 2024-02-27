@@ -40,12 +40,21 @@ private:
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
 
+    // Stats for reporting
+    IRequestStatsPtr RequestStats;
+    IProfileLogPtr ProfileLog;
+    TMaybe<TInFlightRequest> InFlightRequest;
+    const NCloud::NProto::EStorageMediaKind MediaKind;
+
 public:
     TReadDataActor(
         TRequestInfoPtr requestInfo,
         NProto::TReadDataRequest readRequest,
         TString logTag,
-        ui32 blockSize);
+        ui32 blockSize,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog,
+        const NCloud::NProto::EStorageMediaKind mediaKind);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -81,20 +90,26 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadDataActor::TReadDataActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TReadDataRequest readRequest,
-        TString logTag,
-        ui32 blockSize)
+    TRequestInfoPtr requestInfo,
+    NProto::TReadDataRequest readRequest,
+    TString logTag,
+    ui32 blockSize,
+    IRequestStatsPtr requestStats,
+    IProfileLogPtr profileLog,
+    const NCloud::NProto::EStorageMediaKind mediaKind)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
     , BlockSize(blockSize)
     , OriginByteRange(
-        ReadRequest.GetOffset(),
-        ReadRequest.GetLength(),
-        BlockSize)
+          ReadRequest.GetOffset(),
+          ReadRequest.GetLength(),
+          BlockSize)
     , AlignedByteRange(OriginByteRange.AlignedSuperRange())
     , BlockBuffer(CreateBlockBuffer(AlignedByteRange))
+    , RequestStats(std::move(requestStats))
+    , ProfileLog(std::move(profileLog))
+    , MediaKind(mediaKind)
 {
 }
 
@@ -123,6 +138,23 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
     request->Record.SetHandle(ReadRequest.GetHandle());
     request->Record.SetOffset(ReadRequest.GetOffset());
     request->Record.SetLength(ReadRequest.GetLength());
+
+    // RequestType is set in order to properly record the request type
+    RequestInfo->CallContext->RequestType = EFileStoreRequest::DescribeData;
+    InFlightRequest.ConstructInPlace(
+        TRequestInfo(
+            RequestInfo->Sender,
+            RequestInfo->Cookie,
+            RequestInfo->CallContext),
+        ProfileLog,
+        MediaKind,
+        RequestStats);
+    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
+
+    InFlightRequest->Start(ctx.Now());
+    InitProfileLogRequestInfo(
+        InFlightRequest->ProfileLogRequest,
+        request->Record);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -222,6 +254,13 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+
+    Y_ABORT_UNLESS(InFlightRequest);
+
+    InFlightRequest->Complete(ctx.Now(), msg->GetError());
+    FinalizeProfileLogRequestInfo(
+        InFlightRequest->ProfileLogRequest,
+        msg->Record);
 
     if (FAILED(msg->GetStatus())) {
         ReadData(ctx, FormatError(msg->GetError()));
@@ -584,7 +623,10 @@ void TStorageServiceActor::HandleReadData(
         std::move(requestInfo),
         std::move(msg->Record),
         filestore.GetFileSystemId(),
-        filestore.GetBlockSize());
+        filestore.GetBlockSize(),
+        session->RequestStats,
+        ProfileLog,
+        session->MediaKind);
 
     NCloud::Register(ctx, std::move(actor));
 }
