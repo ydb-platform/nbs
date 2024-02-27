@@ -1,5 +1,5 @@
 ##teamcity[message text='|[ main     |] Run test #0 in zone1 for network-ssd-nonreplicated' status='NORMAL' ]
-##teamcity[message text='|[ main     |] Run test #1 in zone1 for network-ssd-io-m2' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Run test #0 in zone1 for network-ssd-io-m2' status='NORMAL' ]
 ##teamcity[message text='|[ main     |] Waiting for 2 tests...' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Listing all instances fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
@@ -26,8 +26,6 @@
 ##teamcity[message text='|[ #0/zone1 |] Deleting instance <id=fake-instance-id>' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance delete --request -' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Deleted instance <id=fake-instance-id>' status='NORMAL' ]
-##teamcity[message text='|[ main     |] Successfully finished in zone <id=zone1>.
-instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Listing all instances fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Creating instance' status='NORMAL' ]
@@ -53,6 +51,8 @@ instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Deleting instance <id=fake-instance-id>' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance delete --request -' status='NORMAL' ]
 ##teamcity[message text='|[ #1/zone1 |] Deleted instance <id=fake-instance-id>' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Successfully finished in zone <id=zone1>.
+instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
 ##teamcity[message text='|[ main     |] Successfully finished in zone <id=zone1>.
 instance <id=fake-instance-id>, disk <id=fake-disk-id>' status='NORMAL' ]
 Command=ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder

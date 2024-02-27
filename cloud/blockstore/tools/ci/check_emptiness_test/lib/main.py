@@ -214,6 +214,9 @@ def run_test_suite(module_factories, args, logger):
             for type_id in types:
                 for zone_id in args.zones:
                     logger.info(f'Run test #{task_num} in {zone_id} for {type_id}')
+
+            for type_id in types:
+                for zone_id in args.zones:
                     futures.append(executor.submit(
                         _scan_disk,
                         module_factories,
@@ -226,5 +229,11 @@ def run_test_suite(module_factories, args, logger):
         finally:
             should_stop.set()
             logger.info(f'Waiting for {len(futures)} tests...')
+            results = []
+            # collecting all results first to avoid races in output between the
+            # code in _scan_disk and this code
             for future in futures:
-                logger.info(future.result())
+                results.append(future.result())
+
+            for result in results:
+                logger.info(result)
