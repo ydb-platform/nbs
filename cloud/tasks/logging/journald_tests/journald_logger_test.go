@@ -173,7 +173,6 @@ func testJournaldLog(t *testing.T, reader *journaldReader) {
 	entries := reader.readEntries(t, 4)
 
 	pc, callerFile, lineNo, ok := runtime.Caller(0)
-	fmt.Printf("line no: %d", lineNo)
 	require.True(t, ok)
 
 	frame, _ := runtime.CallersFrames([]uintptr{pc}).Next()
@@ -263,7 +262,7 @@ func testJournaldLogWithAdditionalFields(t *testing.T, reader *journaldReader) {
 }
 
 func TestJournaldLog(t *testing.T) {
-	reader := journaldReader{readCount: 0}
-	testJournaldLog(t, &reader)
-	testJournaldLogWithAdditionalFields(t, &reader)
+	reader := &journaldReader{readCount: 0}
+	testJournaldLog(t, reader)
+	testJournaldLogWithAdditionalFields(t, reader)
 }

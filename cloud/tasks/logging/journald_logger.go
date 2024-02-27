@@ -62,7 +62,7 @@ func getField(field log.Field) rawField {
 	}
 }
 
-// Takes the latest value for each key
+// Gets the latest value for each key
 func getFieldsMap(fields ...log.Field) map[string]string {
 	if len(fields) == 0 {
 		return nil
@@ -77,8 +77,8 @@ func getFieldsMap(fields ...log.Field) map[string]string {
 	return vars
 }
 
-// Takes the latest value for each key
-// Preserves order of fields
+// Gets the latest value for each key
+// Preserves the order of fields
 func deduplicateFields(
 	fields ...rawField,
 ) (deduplicated []rawField) {
@@ -118,7 +118,6 @@ type journaldLoggerFileds struct {
 }
 
 func newJournaldLoggerFileds(fields ...log.Field) (ff journaldLoggerFileds) {
-	fmt.Printf("newJournaldLoggerFileds: len = %d, %v\n", len(fields), fields)
 	ff.journaldFields = make(map[string]string)
 
 	var messageFieldsAll []rawField
@@ -127,14 +126,11 @@ func newJournaldLoggerFileds(fields ...log.Field) (ff journaldLoggerFileds) {
 		if f.Key() == syslogIdentifierKey {
 			rawField := getField(f)
 			ff.journaldFields[rawField.key] = rawField.value
-			fmt.Printf("journald: %v\n", rawField)
 		} else if f.Key() == log.DefaultErrorFieldName && f.Type() == log.FieldTypeError {
 			ff.errorField = f.Error().Error()
-			fmt.Printf("error: %v\n", ff.errorField)
 		} else {
 			rawField := getField(f)
 			messageFieldsAll = append(messageFieldsAll, rawField)
-			fmt.Printf("message: %v\n", rawField)
 		}
 	}
 
