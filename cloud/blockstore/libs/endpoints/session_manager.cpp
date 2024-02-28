@@ -687,7 +687,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     if (Options.StrictContractValidation &&
         !volume.GetIsFastPathEnabled()   // switching fast path to slow path
                                          // during migration might lead to
-                                         // validation false posiitives
+                                         // validation false positives
     )
     {
         client = CreateValidationClient(
