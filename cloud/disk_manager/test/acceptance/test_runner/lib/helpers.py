@@ -113,9 +113,7 @@ class VirtualDevicesToIdMapper:
             time.sleep(1)
 
         raise TimeoutError(
-            "Error while waiting for the disk %s to appear timeout %d seconds expired",
-            disk_id,
-            timeout_sec,
+            f"Error while waiting for the disk {disk_id} to appear timeout {timeout_sec} seconds expired",
         )
 
     @staticmethod

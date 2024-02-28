@@ -218,7 +218,7 @@ class SshClient:
             'scp',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
-            "-o", "UserKnownHostsFile=/dev/null",
+            '-o', 'UserKnownHostsFile=/dev/null',
             *self._key_path_cmd_argument,
             local_path,
             f'{self._scp_authorization_string}:{remote_path}',
