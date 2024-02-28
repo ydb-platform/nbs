@@ -58,7 +58,7 @@ class VirtualDevicesToIdMapper:
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
                 output += line
-                _logger.info("stdout: %s", output)
+                _logger.info("stdout: %s", line)
             if stderr.channel.recv_exit_status():
                 stderr_lines = stderr.readlines()
                 stderr_str = ''.join(stderr_lines)
