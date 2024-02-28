@@ -1037,10 +1037,10 @@ bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
         reply(
             MakeError(E_NOT_FOUND, "Checkpoint not found"),
             NProto::ECheckpointStatus::ERROR);
-    } else {
-        reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
+        return true;
     }
 
+    reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
     return true;
 }
 
