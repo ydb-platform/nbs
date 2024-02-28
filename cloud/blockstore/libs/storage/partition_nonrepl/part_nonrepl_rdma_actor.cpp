@@ -95,7 +95,7 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
     const TBlockRange64& blockRange,
     TVector<TDeviceRequest>* deviceRequests)
 {
-    auto reply = [=] (
+    auto reply = [] (
         const TActorContext& ctx,
         TRequestInfo& requestInfo,
         NProto::TError error)

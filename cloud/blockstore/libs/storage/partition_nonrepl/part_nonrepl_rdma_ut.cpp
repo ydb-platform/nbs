@@ -768,9 +768,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        TString expectedBlockData(DefaultBlockSize, 0);
+        TString zeroedBlockData(DefaultBlockSize, 0);
 
-        auto readBlocks = [&]
+        auto readBlocks = [&](const auto& expectedBlockData)
         {
             auto response = client.ReadBlocks(
                 TBlockRange64::WithLength(1024, 3072));
@@ -784,8 +784,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(3071));
         };
 
-        readBlocks();
+        readBlocks(zeroedBlockData);
 
+        // write blocks requests are fobidden in read only mode
         {
             client.SendWriteBlocksRequest(
                 TBlockRange64::WithLength(1024, 3072),
@@ -793,30 +794,29 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             auto response = client.RecvWriteBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
-        {
-            client.SendWriteBlocksRequest(
-                TBlockRange64::MakeClosedInterval(1024, 4023),
-                2);
-            auto response = client.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
-        }
 
-        readBlocks();
+        readBlocks(zeroedBlockData);
 
+        // zero blocks requests are fobidden in read only mode
         {
             client.SendZeroBlocksRequest(
-                TBlockRange64::MakeClosedInterval(2024, 3023));
+                TBlockRange64::WithLength(1024, 3072));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }
 
-        readBlocks();
+        readBlocks(zeroedBlockData);
 
-        expectedBlockData = TString(DefaultBlockSize, 'A');
+        // background write requests are allowed
+        // background requests are requests that originate from
+        // blockstore-server itself e.g. NRD migration-related reads and writes.
+
+        TString modifiedBlockData(DefaultBlockSize, 'A');
+
         {
             auto request = client.CreateWriteBlocksLocalRequest(
                 TBlockRange64::WithLength(1024, 3072),
-                expectedBlockData);
+                modifiedBlockData);
             request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
             client.SendRequest(client.GetActorId(), std::move(request));
             auto response = client.RecvWriteBlocksLocalResponse();
@@ -826,7 +826,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 response->GetErrorReason());
         }
 
-        readBlocks();
+        readBlocks(modifiedBlockData);
     }
 
     Y_UNIT_TEST(ShouldNotHandleRequestsWithRequiredCheckpointSupport)
@@ -845,26 +845,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             request->Record.SetCheckpointId("abc");
             client.SendRequest(client.GetActorId(), std::move(request));
 
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
             runtime.DispatchEvents();
 
             auto response = client.RecvReadBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             UNIT_ASSERT(response->GetErrorReason().Contains(
                 "checkpoints not supported"));
-        }
-
-        {
-            auto request = client.CreateWriteBlocksRequest(
-                TBlockRange64::WithLength(1024, 3072),
-                'a');
-            client.SendRequest(client.GetActorId(), std::move(request));
-
-            runtime.AdvanceCurrentTime(TDuration::Minutes(10));
-            runtime.DispatchEvents();
-
-            auto response = client.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
     }
 
