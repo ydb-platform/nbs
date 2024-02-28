@@ -190,6 +190,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -349,6 +350,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode);
     ~TVolumeActor() override;
 
@@ -750,6 +752,10 @@ private:
 
     void HandleUpdateMigrationState(
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePreparePartitionMigration(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateResyncState(

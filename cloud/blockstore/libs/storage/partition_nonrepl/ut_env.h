@@ -85,12 +85,25 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMigrationState
+{
+    bool IsMigrationAllowed = true;
+};
+
+using TMigrationStatePtr = std::shared_ptr<TMigrationState>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDummyActor final
     : public NActors::TActor<TDummyActor>
 {
+private:
+    TMigrationStatePtr MigrationState;
+
 public:
-    TDummyActor()
+    TDummyActor(TMigrationStatePtr migrationState = nullptr)
         : TActor(&TThis::StateWork)
+        , MigrationState(std::move(migrationState))
     {
     }
 
@@ -111,6 +124,8 @@ private:
             HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
             HFunc(TEvDiskRegistry::TEvFinishMigrationRequest, HandleFinishMigration);
+
+            HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -175,6 +190,17 @@ private:
     {
         NCloud::Reply(ctx, *ev,
             std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>());
+    }
+
+    void HandlePreparePartitionMigration(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolume::TEvPreparePartitionMigrationResponse>(
+                MigrationState ? MigrationState->IsMigrationAllowed : true));
     }
 };
 
@@ -395,6 +421,34 @@ inline void WaitForMigrations(
     }
 
     UNIT_ASSERT_VALUES_EQUAL(rangeCount, migratedRanges);
+}
+
+inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration timeout)
+{
+    ui32 migratedRanges = 0;
+    runtime.SetObserverFunc([&] (auto& event) {
+        switch (event->GetTypeRewrite()) {
+            case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                auto* msg =
+                    event->template Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+                if (!HasError(msg->Error)) {
+                    ++migratedRanges;
+                }
+                break;
+            }
+        }
+        return NActors::TTestActorRuntime::DefaultObserverFunc(event);
+    });
+
+    NActors::TDispatchOptions options;
+    options.FinalEvents = {
+        NActors::TDispatchOptions::TFinalEventCondition(
+            TEvNonreplPartitionPrivate::EvRangeMigrated)
+    };
+
+    runtime.DispatchEvents(options, timeout);
+
+    UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
