@@ -138,8 +138,7 @@ bool TNonreplicatedPartitionRdmaActor::InitRequests(
         reply(
             ctx,
             requestInfo,
-            PartConfig->MakeError(E_ARGUMENT, TStringBuilder()
-                << "checkpoints not supported"));
+            PartConfig->MakeError(E_ARGUMENT, "checkpoints not supported"));
         return false;
     }
 
