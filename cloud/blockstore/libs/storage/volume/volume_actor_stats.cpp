@@ -371,7 +371,9 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.LastVolumeLoadTime.Set(GetLoadTime().MicroSeconds());
     simple.LastVolumeStartTime.Set(GetStartTime().MicroSeconds());
     simple.HasStorageConfigPatch.Set(HasStorageConfigPatch);
-    simple.UseFastPath.Set(State->GetUseFastPath());
+    simple.UseFastPath.Set(
+        State->GetUseFastPath() &&
+        State->GetMeta().GetMigrations().size() == 0);
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);
