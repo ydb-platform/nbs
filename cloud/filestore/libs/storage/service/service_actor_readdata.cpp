@@ -149,7 +149,6 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         ProfileLog,
         MediaKind,
         RequestStats);
-    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     InFlightRequest->Start(ctx.Now());
     InitProfileLogRequestInfo(
@@ -261,6 +260,9 @@ void TReadDataActor::HandleDescribeDataResponse(
     FinalizeProfileLogRequestInfo(
         InFlightRequest->ProfileLogRequest,
         msg->Record);
+    // After the DescribeData response is received, we continue to consider the
+    // request as a ReadData request
+    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     if (FAILED(msg->GetStatus())) {
         ReadData(ctx, FormatError(msg->GetError()));

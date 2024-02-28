@@ -1632,7 +1632,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             auto subgroup = counters->FindSubgroup("request", "DescribeData");
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                4,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
         {
