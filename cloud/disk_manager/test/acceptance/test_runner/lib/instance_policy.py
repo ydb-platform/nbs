@@ -47,7 +47,9 @@ class YcpNewInstancePolicy:
                         compute_node=self._compute_node,
                         placement_group_name=self._placement_group,
                         platform_id=platform_id,
-                        auto_delete=False) as instance:
+                        auto_delete=False,
+                        underlay_vm=self._ycp._folder_desc.create_underlay_vms,
+                ) as instance:
                     self._instance = instance
                 break
             except Exception as e:
@@ -65,7 +67,11 @@ class YcpNewInstancePolicy:
                 self._ycp.delete_instance(self._instance)
 
     @contextmanager
-    def attach_disk(self, disk: Ycp.Disk, block_device: str) -> None:
+    def attach_disk(self, disk: Ycp.Disk):
         with self._ycp.attach_disk(self._instance, disk):
-            wait_for_block_device_to_appear(self._instance.ip, block_device, self._module_factory, self._ssh_key_path)
-            yield
+            yield wait_for_block_device_to_appear(
+                self._instance.ip,
+                disk.id,
+                self._module_factory,
+                self._ssh_key_path,
+            )

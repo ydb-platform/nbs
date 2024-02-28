@@ -84,16 +84,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     f'-{size_prettifier(self._args.disk_blocksize)}').lower()
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
-                block_device_1 = '/dev/vdb'
                 _logger.info(
                     f'Waiting until disk <id={disk.id}> will be attached '
-                    f' to instance <id={instance.id}> and appears as block device '
-                    f'<name={block_device_1}>')
+                    f' to instance <id={instance.id}> and appears as block device')
 
-                with self._instance_policy.attach_disk(
-                    disk,
-                    block_device_1
-                ):
+                with self._instance_policy.attach_disk(disk) as block_device_1:
                     self._create_ext4_filesystem(block_device_1, instance)
                     folder_1 = '/tmp/sync_acceptance_test'
                     self._mount_block_device(folder_1, block_device_1, instance)
@@ -111,16 +106,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     ) as disk_copy:
                         _logger.info('Created disk from snapshot')
 
-                        block_device_2 = '/dev/vdc'
                         _logger.info(
                             f'Waiting until disk copy <id={disk_copy.id}> will be '
-                            f'attached to instance <id={instance.id}> and appears '
-                            f'as block device <name={block_device_2}>')
+                            f'attached to instance <id={instance.id}> and appears as a block device')
 
-                        with self._instance_policy.attach_disk(
-                                disk_copy,
-                                block_device_2
-                        ):
+                        with self._instance_policy.attach_disk(disk_copy) as block_device_2:
                             _logger.info('Attached disk copy to device')
 
                             folder_2 = '/tmp/sync_acceptance_test_copy'

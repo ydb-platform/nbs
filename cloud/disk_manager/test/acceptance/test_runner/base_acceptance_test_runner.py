@@ -240,9 +240,12 @@ class BaseAcceptanceTestRunner(ABC):
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
                 output += line.rstrip() + " "
-                _logger.info(output)
+                _logger.info("stdout: %s", output)
             if stderr.channel.recv_exit_status():
-                stderr_str = ''.join(stderr.readlines())
+                stderr_lines = stderr.readlines()
+                stderr_str = ''.join(stderr_lines)
+                for stderr_line in stderr_lines:
+                    _logger.info("stderr: %s ", stderr_line.rstrip())
                 raise Error(f'failed to execute command {cmd} on remote host'
                             f' {ip}: {stderr_str}')
             return output
