@@ -16,11 +16,20 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-//
+// An actor for shadow disk. Can migrate data from the source disk into the
+// shadow disk and serves read requests from the checkpoint.
 class TShadowDiskActor final
     : public TNonreplicatedPartitionMigrationCommonActor
     , public IMigrationOwner
 {
+public:
+    enum class EAcquireReason
+    {
+        FirstAcquire,
+        PeriodicalReAcquire,
+        ForcedReAcquire,
+    };
+
 private:
     enum class EActorState
     {
@@ -30,19 +39,6 @@ private:
         Preparing,
         CheckpointReady,
         Error,
-    };
-
-    enum class EWakeupReason
-    {
-        AcquireTimeout,
-        PeriodicalReAcquire
-    };
-
-    enum class EAcquireReason
-    {
-        FirstAcquire,
-        PeriodicalReAcquire,
-        ForcedReAcquire,
     };
 
     const TStorageConfigPtr Config;
@@ -55,7 +51,6 @@ private:
     const ui32 Generation = 0;
     const TActorId VolumeActorId;
     const TActorId SrcActorId;
-    const TString ShadowDiskClientId = "shadow-disk-client-id";
 
     TActorId DstActorId;
     ui64 ProcessedBlockCount = 0;
@@ -63,25 +58,9 @@ private:
     EActorState State = EActorState::Error;
     TMigrationTimeoutCalculator TimeoutCalculator;
 
-    // The time when we started acquiring the shadow disk.
-    TInstant AcquireStartedAt = {};
-
-    // Delay provider when retrying describe and acquire requests to disk
-    // registry. This provider is used when writing to the source disk is
-    // blocked.
-    TBackoffDelayProvider BlockingDelays;
-    // Delay provider when retrying describe and acquire requests to disk
-    // registry. This provider is used when writing to the source disk is
-    // not blocked.
-    TBackoffDelayProvider NonBlockingDelays;
-
-    // The list of devices received via the describe request.
-    // This is necessary to check that all disk devices have been acquired.
+    TActorId AcquireActorId;
+    // The list of devices received on first acquire.
     TDevices ShadowDiskDevices;
-    TDevices AcquiredShadowDiskDevices;
-
-    // We re-acquire shadow disk every ClientRemountPeriod interval.
-    bool PeriodicalReAcquireShadowDiskScheduled = false;
 
     bool ForcedReAcquireInProgress = false;
 
@@ -114,54 +93,34 @@ public:
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:
-    void DescribeShadowDisk(const NActors::TActorContext& ctx);
     void AcquireShadowDisk(
         const NActors::TActorContext& ctx,
         EAcquireReason acquireReason);
-
-    std::unique_ptr<TEvDiskRegistry::TEvDescribeDiskRequest>
-    MakeDescribeDiskRequest() const;
-    std::unique_ptr<TEvDiskRegistry::TEvAcquireDiskRequest>
-    MakeAcquireDiskRequest() const;
-
-    void HandleDescribeDiskResponse(
-        const TEvDiskRegistry::TEvDescribeDiskResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
     void HandleAcquireDiskResponse(
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleDiskRegistryError(
+    void CreateShadowDiskPartitionActor(
         const NActors::TActorContext& ctx,
-        const NProto::TError& error,
-        std::unique_ptr<IEventHandle> retryEvent,
-        const TString& actionName);
-
-    void MaybeCreateShadowDiskPartitionActor(const NActors::TActorContext& ctx);
-    void OnShadowDiskAcquiringCompleted(
-        const NActors::TActorContext& ctx,
-        EAcquireReason acquireReason);
+        const TDevices& acquiredShadowDiskDevices);
     void SetErrorState(const NActors::TActorContext& ctx);
-    void OnMaybeAcquireTimeout(const NActors::TActorContext& ctx);
-
     void SchedulePeriodicalReAcquire(const NActors::TActorContext& ctx);
-    void OnPeriodicalReAcquire(const NActors::TActorContext& ctx);
 
-    // If you haven't started migrating to the shadow disk yet, we can send
-    // records directly to the source disk.
+    // If we haven't started migrating to the shadow disk yet, we can send
+    // write and zero requests directly to the source disk.
     bool CanJustForwardWritesToSrcDisk() const;
 
-    // If the shadow disk is only partially migrated, and it is not ready to
-    // write (because it is not captured), we reject writes to the source disk.
+    // If the shadow disk is only partially filled, and it is not ready to
+    // write (because it is not acquired), we reject writes to the source disk.
     bool IsWritesToSrcDiskForbidden() const;
 
-    // If the shadow disk is not captured, or has lost capture, then user writes
-    // to the source disk will not be considered completed, the client will
-    // repeat recording attempts. Since we don't want to slow down the client's
-    // recordings for a long time, we need to keep track of the time during
-    // which the recordings did not occur in order to stop attempts to fill a
-    // broken shadow disk.
-    bool IsWritesToSrcDiskPossible() const;
+    // If the shadow disk is not acquired, or has lost acquiring, then user
+    // writes to the source disk will not be considered completed, the client
+    // will repeat recording attempts. Since we don't want to slow down the
+    // client's recordings for a long time, we need to keep track of the time
+    // during which the recordings did not occur in order to stop attempts to
+    // fill a broken shadow disk.
+    bool IsWritesToSrcDiskImpossible() const;
 
     bool WaitingForAcquire() const;
     bool Acquired() const;
@@ -189,6 +148,14 @@ private:
 
     void HandleUpdateShadowDiskStateResponse(
         const TEvVolumePrivate::TEvUpdateShadowDiskStateResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateCounters(
+        const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleShadowDiskCounters(
+        const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(

@@ -3209,80 +3209,116 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 status->Record.GetCheckpointStatus());
         }
 
-        // Write all '2' to block 0.
-        // Writes to the disk are not blocked. But may overlaps with migrating blocks.
-        for (;;) {
+        auto tryWriteBlock = [&](ui64 blockIndx, ui8 content) -> bool
+        {
             auto request = volume.CreateWriteBlocksRequest(
-                TBlockRange64::MakeOneBlock(0),
+                TBlockRange64::MakeOneBlock(blockIndx),
                 clientInfo.GetClientId(),
-                GetBlockContent(2));
+                GetBlockContent(content));
             volume.SendToPipe(std::move(request));
             auto response =
                 volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
-            if (response->GetStatus() == S_OK) {
-                break;
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Request WriteBlocks intersects with currently migrated "
+                    "range",
+                    response->GetError().GetMessage());
+                return false;
             }
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "Request WriteBlocks intersects with currently migrated range",
-                response->GetError().GetMessage());
+            return true;
+        };
 
-            // Advance migration.
-            runtime->DispatchEvents({}, TDuration::Seconds(1));
-        }
-
-        // Wait for checkpoint ready.
-        for (;;) {
+        auto tryReadBlock =
+            [&](ui64 blockIndx, ui8 content, const TString& checkpoint) -> bool
+        {
             auto request = volume.CreateReadBlocksRequest(
-                TBlockRange64::MakeOneBlock(0),
+                TBlockRange64::MakeOneBlock(blockIndx),
                 clientInfo.GetClientId(),
-                "c1");
+                checkpoint);
             volume.SendToPipe(std::move(request));
             auto response =
                 volume.RecvResponse<TEvService::TEvReadBlocksResponse>();
-            if (response->GetStatus() == S_OK) {
-                break;
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't read from checkpoint \"c1\" while the data is being "
+                    "filled in.",
+                    response->GetError().GetMessage());
+                return false;
             }
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "Can't read from checkpoint \"c1\" while the data is being "
-                "filled in.",
-                response->GetError().GetMessage());
-
-        {   // Validate checkpoint state (ready).
-            auto status = volume.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::READY,
-                status->Record.GetCheckpointStatus());
-        }
-
-        // Write all '3' to block 0.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            clientInfo.GetClientId(),
-            GetBlockContent(3));
-
-        auto checkBlock = [&](ui64 blockIndex, TString checkpointId, char fill)
-        {
-            auto resp = volume.ReadBlocks(
-                TBlockRange64::MakeOneBlock(blockIndex),
-                clientInfo.GetClientId(),
-                checkpointId);
-
-            const auto& bufs = resp->Record.GetBlocks().GetBuffers();
+            const auto& bufs = response->Record.GetBlocks().GetBuffers();
             UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
-            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(fill), bufs[0]);
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(content), bufs[0]);
+            return true;
         };
 
-        // Read block 0 from the disk. It should contain all '3'.
-        checkBlock(0, "", 3);
-        // Read block 0 from checkpoint. It should contain all '2'.
-        checkBlock(0, "c1", 2);
+        // The index of the block that is recorded during the filling of the
+        // shadow disk. We use it later to check the contents of the disk and
+        // the checkpoint.
+        ui64 blockIndxToVerify = 0;
 
-        // Read block 1 from disk. It should contain all '1'.
-        checkBlock(1, "", 1);
-        // Read block 1 from checkpoint. It should contain all '1'.
-        checkBlock(1, "c1", 1);
+        // Writes to the disk are not blocked. But may overlaps with migrating
+        // blocks.
+        for (ui64 i = 0;; ++i) {
+            ui64 blockIndx = i % expectedBlockCount;
+            ui8 content = i % 256;
+
+            // We are trying to write the block to the disk. It may fail if it
+            // intersects with the current migrated range.
+            if (tryWriteBlock(blockIndx, content)) {
+                // We save the index of the successfully written block with
+                // non-zero data to check the contents of the disk and the
+                // checkpoint later.
+                if (content != 0 && blockIndxToVerify == 0) {
+                    blockIndxToVerify = blockIndx;
+                }
+
+                // Reading from disk should always be successful.
+                UNIT_ASSERT_EQUAL(true, tryReadBlock(blockIndx, content, ""));
+
+                // Reading from the checkpoint will be successful when the
+                // checkpoint preparation is completed.
+                if (tryReadBlock(0, 0, "c1")) {
+                    // Validate checkpoint state (ready).
+                    auto status = volume.GetCheckpointStatus("c1");
+                    UNIT_ASSERT_EQUAL(
+                        NProto::ECheckpointStatus::READY,
+                        status->Record.GetCheckpointStatus());
+                    break;
+                }
+
+                // Validate checkpoint state (not ready).
+                auto status = volume.GetCheckpointStatus("c1");
+                UNIT_ASSERT_EQUAL(
+                    NProto::ECheckpointStatus::NOT_READY,
+                    status->Record.GetCheckpointStatus());
+            }
+
+            // Advance migration.
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+
+        // Check that the recording to the disk has happened.
+        UNIT_ASSERT_UNEQUAL(0, blockIndxToVerify);
+
+        // Read block blockIndxToVerify from disk. It should contain valid data.
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            tryReadBlock(blockIndxToVerify, blockIndxToVerify % 256, ""));
+
+        // Write all '0' to block blockIndxToVerify.
+        UNIT_ASSERT_VALUES_EQUAL(true, tryWriteBlock(blockIndxToVerify, 0));
+
+        // Read block blockIndxToVerify from the disk. It should contain all
+        // '0'.
+        UNIT_ASSERT_VALUES_EQUAL(true, tryReadBlock(blockIndxToVerify, 0, ""));
+
+        // Read block blockIndxToVerify from checkpoint. It should contain valid
+        // data.
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            tryReadBlock(blockIndxToVerify, blockIndxToVerify % 256, "c1"));
 
         // Delete checkpoint data.
         volume.DeleteCheckpointData("c1");
@@ -3313,13 +3349,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.ReconnectPipe();
 
         // Write OK.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            clientInfo.GetClientId(),
-            GetBlockContent(4));
+        UNIT_ASSERT_VALUES_EQUAL(true, tryWriteBlock(0, 4));
 
         // Read block 0 from the disk. It should contain all '4'.
-        checkBlock(0, "", 4);
+        UNIT_ASSERT_VALUES_EQUAL(true, tryReadBlock(0, 4, ""));
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskNonrepl)
