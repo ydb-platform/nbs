@@ -189,6 +189,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
+        *msg,
         ctx,
         *requestInfo,
         blockRange,
