@@ -15,14 +15,9 @@ namespace NCloud {
 
 #define STORAGE_ACTORS(xxx)                                                    \
     xxx(HIVE_PROXY)                                                            \
-// STORAGE_ACTORS
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define STORAGE_COMPONENTS(xxx)                                                \
     xxx(AUTH)                                                                  \
     xxx(USER_STATS)                                                            \
-// STORAGE_COMPONENTS
+// STORAGE_ACTORS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,9 +33,6 @@ struct TStorageEvents
 // STORAGE_DECLARE_COMPONENT
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
-
-        AUTH_START,
-        AUTH_END = AUTH_START + 100,
 
 #undef STORAGE_DECLARE_COMPONENT
 
@@ -66,12 +58,6 @@ struct TStoragePrivateEvents
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
 
-        AUTH_START,
-        AUTH_END = AUTH_START + 100,
-
-        USER_STATS_START,
-        USER_STATS_END = USER_STATS_START + 100,
-
 #undef STORAGE_DECLARE_COMPONENT
 
         END
@@ -90,11 +76,10 @@ struct TStorageComponents
         START = 3096,   // TODO
 
 #define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component ,                                                            \
+        component,                                                             \
 // STORAGE_DECLARE_COMPONENT
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
-        STORAGE_COMPONENTS(STORAGE_DECLARE_COMPONENT)
 
 #undef STORAGE_DECLARE_COMPONENT
 
