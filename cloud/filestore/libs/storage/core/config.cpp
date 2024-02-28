@@ -133,6 +133,9 @@ namespace {
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
+    xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
 // FILESTORE_STORAGE_CONFIG
