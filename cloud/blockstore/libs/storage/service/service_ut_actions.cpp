@@ -972,11 +972,11 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT(describeReceived);
     }
 
-    Y_UNIT_TEST(ShouldForwardUpdateParamsRequestsToDiskRegistry)
+    void UpdateDiskRegistryAgentListParamsTest(
+        ui32 returnedCode,
+        ui32 expectedErrorFlags)
     {
-        auto drState = MakeIntrusive<TDiskRegistryState>();
-        TTestEnv env(1, 1, 4, 1, {drState});
-        auto& runtime = env.GetRuntime();
+        TTestEnv env(1, 1, 4, 1, MakeIntrusive<TDiskRegistryState>());
 
         NProto::TStorageServiceConfig config;
         ui32 nodeIdx = SetupTestEnv(env, config);
@@ -989,13 +989,19 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         requestParams.SetNewNonReplicatedAgentMaxTimeoutMs(456);
 
         bool updateParamsReceived = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvUpdateDiskRegistryAgentListParamsRequest: {
                         updateParamsReceived = true;
                         auto* msg = event->Get<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>();
                         const auto& params = msg->Record.GetParams();
                         UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(requestParams, params));
+                        break;
+                    }
+                    case TEvDiskRegistry::EvUpdateDiskRegistryAgentListParamsResponse: {
+                        auto* msg = event->Get<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse>();
+                        msg->Record.MutableError()->SetCode(returnedCode);
+                        break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -1004,10 +1010,20 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         TString buf;
         google::protobuf::util::MessageToJsonString(requestParams, &buf);
-        const auto response = service.ExecuteAction("updatediskregistryagentlistparams", buf);
+        service.SendExecuteActionRequest("updatediskregistryagentlistparams", buf);
+        const auto response = service.RecvExecuteActionResponse();
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         UNIT_ASSERT(updateParamsReceived);
+        UNIT_ASSERT_VALUES_EQUAL(returnedCode, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(expectedErrorFlags, response->GetError().GetFlags());
+    }
+
+    Y_UNIT_TEST(ShouldForwardUpdateParamsRequestsToDiskRegistry) {
+        UpdateDiskRegistryAgentListParamsTest(S_OK, NProto::EF_NONE);
+    }
+
+    Y_UNIT_TEST(ShouldForwardUpdateParamsRequestsToDiskRegistryAndSilentNotFound) {
+        UpdateDiskRegistryAgentListParamsTest(E_NOT_FOUND, NProto::EF_SILENT);
     }
 
     Y_UNIT_TEST(ShouldFinishFillDisk)
@@ -1210,17 +1226,19 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         google::protobuf::util::MessageToJsonString(request, &jsonInput);
 
         service.SendExecuteActionRequest("GetDependentDisks", jsonInput);
-        const auto serviceResponse = service.RecvExecuteActionResponse();
+        const auto response = service.RecvExecuteActionResponse();
 
         UNIT_ASSERT(requestReceived);
-        UNIT_ASSERT_VALUES_EQUAL(returnedCode, serviceResponse->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(expectedErrorFlags, serviceResponse->GetError().GetFlags());
+        UNIT_ASSERT_VALUES_EQUAL(returnedCode, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(expectedErrorFlags, response->GetError().GetFlags());
 
         if (returnedCode == S_OK) {
-            NProto::TGetDependentDisksResponse response;
+            NProto::TGetDependentDisksResponse output;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                serviceResponse->Record.GetOutput(), &response).ok());
-            ASSERT_VECTORS_EQUAL(returnedDiskIds, response.GetDependentDiskIds());
+                response->Record.GetOutput(), &output).ok());
+            ASSERT_VECTORS_EQUAL(returnedDiskIds, output.GetDependentDiskIds());
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL("", response->Record.GetOutput());
         }
     }
 
@@ -1234,7 +1252,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         ShouldGetDependentDevicesTest({"disk1", "disk2"}, S_OK, NProto::EF_NONE);
     }
 
-    Y_UNIT_TEST(ShouldGetDependentDevicesSilentNotFound)
+    Y_UNIT_TEST(ShouldGetDependentDevicesAndSilentNotFound)
     {
         ShouldGetDependentDevicesTest({}, E_NOT_FOUND, NProto::EF_SILENT);
     }
