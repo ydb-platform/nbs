@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TUtilsTest)
         UNIT_ASSERT_VALUES_EQUAL(12345, fd);
     }
 
-    Y_UNIT_TEST(ShouldFailIfPeerStringIsIncorrent)
+    Y_UNIT_TEST(ShouldFailIfPeerStringIsIncorrect)
     {
         {
             const TStringBuf b{"fd12345"};
