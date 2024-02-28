@@ -310,7 +310,6 @@ void TVolumeProxyActor::OnConnectionError(
 
     CancelActiveRequests(ctx, conn);
     ProcessPendingRequests(ctx, conn);
-
 }
 
 void TVolumeProxyActor::ProcessPendingRequests(
