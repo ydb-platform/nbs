@@ -88,8 +88,7 @@ THttpGarbageActor::THttpGarbageActor(
     , TabletId(tabletId)
     , Action(action)
     , BlobIds(std::move(blobIds))
-{
-}
+{}
 
 void THttpGarbageActor::Bootstrap(const TActorContext& ctx)
 {

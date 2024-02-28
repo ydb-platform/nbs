@@ -19,6 +19,13 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define STORAGE_COMPONENTS(xxx)                                                \
+    xxx(AUTH)                                                                  \
+    xxx(USER_STATS)                                                            \
+// STORAGE_COMPONENTS
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TStorageEvents
 {
     enum
@@ -76,19 +83,22 @@ struct TStoragePrivateEvents
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageActivities
+struct TStorageComponents
 {
     enum
     {
+        START = 3096,   // TODO
+
 #define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component = NKikimrServices::TActivity::CLOUD_STORAGE_##component,     \
+        component ,                                                            \
 // STORAGE_DECLARE_COMPONENT
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
+        STORAGE_COMPONENTS(STORAGE_DECLARE_COMPONENT)
 
-        AUTH = NKikimrServices::TActivity::BLOCKSTORE_AUTH,
-        USER_STATS = NKikimrServices::TActivity::BLOCKSTORE_USER_STATS
 #undef STORAGE_DECLARE_COMPONENT
+
+        END
     };
 };
 

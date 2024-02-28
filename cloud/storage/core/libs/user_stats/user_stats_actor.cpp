@@ -144,7 +144,7 @@ STFUNC(TUserStatsActor::StateWork)
         HFunc(TEvUserStats::TEvUserStatsProviderCreate, HandleUserStatsProviderCreate);
 
         default:
-            HandleUnexpectedEvent(ev, TStorageActivities::USER_STATS);
+            HandleUnexpectedEvent(ev, TStorageComponents::USER_STATS);
     }
 }
 

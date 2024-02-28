@@ -129,20 +129,4 @@ struct TBlockStorePrivateEvents
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::BLOCKSTORE)");
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBlockStoreActivities
-{
-    enum
-    {
-#define BLOCKSTORE_DECLARE_COMPONENT(component)                                \
-        component = NKikimrServices::TActivity::BLOCKSTORE_##component,        \
-// BLOCKSTORE_DECLARE_COMPONENT
-
-        BLOCKSTORE_ACTORS(BLOCKSTORE_DECLARE_COMPONENT)
-
-#undef BLOCKSTORE_DECLARE_COMPONENT
-    };
-};
-
 }   // namespace NCloud::NBlockStore

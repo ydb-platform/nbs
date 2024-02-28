@@ -59,22 +59,6 @@ const TString& GetComponentName(int component);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileStoreActivities
-{
-    enum
-    {
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
-        component = NKikimrServices::TActivity::FILESTORE_##component,         \
-// FILESTORE_DECLARE_COMPONENT
-
-        FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
-
-#undef FILESTORE_DECLARE_COMPONENT
-    };
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TFileStoreEvents
 {
     enum
