@@ -210,7 +210,7 @@ void TVolumeClientActor::HandleConnect(
         "Connection to tablet: " <<
         msg->TabletId <<
         " has been established");
-    EndpointEventHandler->OnVolumeConnectionEstablished(DiskId);
+    EndpointEventHandler->SwitchEndpointIfNeeded(DiskId, "volume connected");
 }
 
 void TVolumeClientActor::HandleDisconnect(

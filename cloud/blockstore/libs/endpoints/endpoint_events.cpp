@@ -2,6 +2,8 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12,17 +14,23 @@ private:
     IEndpointEventHandlerPtr Handler;
 
 public:
-    void OnVolumeConnectionEstablished(const TString& diskId) override;
+    TFuture<NProto::TError> SwitchEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) override;
     void Register(IEndpointEventHandlerPtr listener) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TEndpointEventProxy::OnVolumeConnectionEstablished(const TString& diskId)
+TFuture<NProto::TError> TEndpointEventProxy::SwitchEndpointIfNeeded(
+    const TString& diskId,
+    const TString& reason)
 {
     if (Handler) {
-        Handler->OnVolumeConnectionEstablished(diskId);
+        return Handler->SwitchEndpointIfNeeded(diskId, reason);
     }
+
+    return MakeFuture(MakeError(S_OK));
 }
 
 void TEndpointEventProxy::Register(IEndpointEventHandlerPtr listener)
