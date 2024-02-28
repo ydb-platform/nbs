@@ -185,6 +185,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvService::TReadBlocksLocalMethod>(
+        *msg,
         ctx,
         *requestInfo,
         blockRange,
