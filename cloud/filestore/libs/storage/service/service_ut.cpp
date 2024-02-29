@@ -1528,7 +1528,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
-    Y_UNIT_TEST(ShouldDestroyUnsuccessfulSessionActor)
+    Y_UNIT_TEST(UnsuccessfulSessionActorShouldStopWorking)
     {
         NProto::TStorageConfig config;
         config.SetIdleSessionTimeout(5'000); // 5s
@@ -1550,12 +1550,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore("test", 1000);
 
         THeaders headers = {"test", "client", "", 0};
-        auto error = MakeError(E_REJECTED, "rejected");
 
         ui64 tabletId = -1;
         TActorId pipeClientId;
         TActorId createSessionActorId;
         ui32 createSessionResponses = 0;
+        bool rescheduled = false;
 
         // 1. intercepting tablet pipe client id to kill it later on
         // 2. injecting an error into the next CreateSessionResponse to trigger
@@ -1586,11 +1586,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     break;
                 }
                 case TEvIndexTablet::EvCreateSessionResponse: {
-                    auto* msg =
-                        event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
-                    *msg->Record.MutableError() = error;
-
                     ++createSessionResponses;
+
+                    if (!rescheduled) {
+                        runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                        rescheduled = true;
+                        return true;
+                    }
 
                     break;
                 }
@@ -1601,13 +1603,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // creating session
         service.SendCreateSessionRequest(headers);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(rescheduled);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
         auto response = service.RecvCreateSessionResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
+            E_TIMEOUT,
             response->GetStatus(),
             response->GetErrorReason());
 
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
 
         // killing pipe client to trigger session recreation by the failed
         // CreateSessionActor if it's still active (it shouldn't be active)
@@ -1622,14 +1627,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ),
             nodeIdx);
 
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
 
         // we should have observed exactly 1 CreateSessionResponse
         // if we observe more than 1 it means that our CreateSessionActor
         // remained active after the first failure
         UNIT_ASSERT_VALUES_EQUAL(1, createSessionResponses);
-
-        error = {};
 
         // this time session creation should be successful
         service.SendCreateSessionRequest(headers);
