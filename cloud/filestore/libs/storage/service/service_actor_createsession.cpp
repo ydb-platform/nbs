@@ -276,6 +276,7 @@ void TCreateSessionActor::HandleConnect(
 
     CreateSession(ctx);
     if (!FirstWakeupScheduled) {
+        // TODO: it should be scheduled after the first successful CreateSessionResponse
         ScheduleWakeup(ctx);
         FirstWakeupScheduled = true;
     }
@@ -632,7 +633,9 @@ void TStorageServiceActor::HandleCreateSession(
     auto reply = [&] (auto* session, auto error) {
         auto response =
             std::make_unique<TEvService::TEvCreateSessionResponse>(error);
-        session->GetInfo(*response->Record.MutableSession(), GetSessionSeqNo(msg->Record));
+        session->GetInfo(
+            *response->Record.MutableSession(),
+            GetSessionSeqNo(msg->Record));
         inflight->Complete(ctx.Now(), std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
     };
@@ -661,7 +664,10 @@ void TStorageServiceActor::HandleCreateSession(
         NCloud::Send(ctx, std::move(actorId), std::move(request));
     };
 
-    if (auto* session = State->FindSession(sessionId, GetSessionSeqNo(msg->Record))) {
+    auto* session =
+        State->FindSession(sessionId, GetSessionSeqNo(msg->Record));
+
+    if (session) {
         if (session->ClientId != clientId) {
             auto error = MakeError(
                 E_FS_INVALID_SESSION,
@@ -672,7 +678,9 @@ void TStorageServiceActor::HandleCreateSession(
             return;
         }
 
-        if (session->CreateDestroyState != ESessionCreateDestroyState::STATE_NONE) {
+        if (session->CreateDestroyState
+                != ESessionCreateDestroyState::STATE_NONE)
+        {
             auto error = MakeError(
                 E_REJECTED,
                 "Another create or destroy request is in progress");
@@ -680,7 +688,8 @@ void TStorageServiceActor::HandleCreateSession(
             return;
         }
 
-        session->CreateDestroyState = ESessionCreateDestroyState::STATE_CREATE_SESSION;
+        session->CreateDestroyState =
+            ESessionCreateDestroyState::STATE_CREATE_SESSION;
 
         if (session->SessionActor) {
             return proceed(session->SessionActor);
@@ -865,9 +874,12 @@ void TStorageServiceActor::HandleSessionCreated(
             return;
         }
 
-        auto response = std::make_unique<TEvService::TEvCreateSessionResponse>(msg->GetError());
+        auto response = std::make_unique<TEvService::TEvCreateSessionResponse>(
+            msg->GetError());
         if (session) {
-            session->GetInfo(*response->Record.MutableSession(), msg->SessionSeqNo);
+            session->GetInfo(
+                *response->Record.MutableSession(),
+                msg->SessionSeqNo);
             response->Record.MutableFileStore()->CopyFrom(msg->FileStore);
         }
 

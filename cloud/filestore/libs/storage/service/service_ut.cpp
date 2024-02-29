@@ -1528,6 +1528,118 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
+    Y_UNIT_TEST(ShouldDestroyUnsuccessfulSessionActor)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+        auto error = MakeError(E_REJECTED, "rejected");
+
+        ui64 tabletId = -1;
+        TActorId pipeClientId;
+        TActorId createSessionActorId;
+        ui32 createSessionResponses = 0;
+
+        // 1. intercepting tablet pipe client id to kill it later on
+        // 2. injecting an error into the next CreateSessionResponse to trigger
+        //  an error notification from CreateSessionActor to ServiceActor
+        //
+        // after this error notification ServiceActor is expected to kill
+        // the failed CreateSessionActor
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvTabletPipe::EvClientConnected: {
+                    const auto* msg =
+                        event->Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->TabletId == tabletId) {
+                        pipeClientId = msg->ClientId;
+                        createSessionActorId = event->Recipient;
+                    }
+
+                    break;
+                }
+                case TEvSSProxy::EvDescribeFileStoreResponse: {
+                    const auto* msg =
+                        event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
+                    const auto& desc =
+                        msg->PathDescription.GetFileStoreDescription();
+                    tabletId = desc.GetIndexTabletId();
+
+                    break;
+                }
+                case TEvIndexTablet::EvCreateSessionResponse: {
+                    auto* msg =
+                        event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                    *msg->Record.MutableError() = error;
+
+                    ++createSessionResponses;
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        auto response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        // killing pipe client to trigger session recreation by the failed
+        // CreateSessionActor if it's still active (it shouldn't be active)
+        auto killer = runtime.AllocateEdgeActor(nodeIdx);
+        runtime.Send(
+            new IEventHandle(
+                pipeClientId,
+                killer,
+                new TEvents::TEvPoisonPill(),
+                0, // flags
+                0  // cookie
+            ),
+            nodeIdx);
+
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        // we should have observed exactly 1 CreateSessionResponse
+        // if we observe more than 1 it means that our CreateSessionActor
+        // remained active after the first failure
+        UNIT_ASSERT_VALUES_EQUAL(1, createSessionResponses);
+
+        error = {};
+
+        // this time session creation should be successful
+        service.SendCreateSessionRequest(headers);
+        response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
     {
         TTestEnv env;
