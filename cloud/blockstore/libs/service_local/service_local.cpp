@@ -451,6 +451,7 @@ public:
 
     BLOCKSTORE_IMPLEMENT_METHOD(CreateCheckpoint)
     BLOCKSTORE_IMPLEMENT_METHOD(DeleteCheckpoint)
+    BLOCKSTORE_IMPLEMENT_METHOD(GetCheckpointStatus)
     BLOCKSTORE_IMPLEMENT_METHOD(UploadClientMetrics)
     BLOCKSTORE_IMPLEMENT_METHOD(QueryAvailableStorage)
 

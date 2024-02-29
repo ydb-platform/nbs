@@ -183,6 +183,13 @@ service TBlockStoreService
         };
     }
 
+    rpc GetCheckpointStatus(TGetCheckpointStatusRequest) returns (TGetCheckpointStatusResponse) {
+        option (google.api.http) = {
+            post: "/get_checkpoint_status"
+            body: "*"
+        };
+    }
+
     //
     // Instance discovery.
     //
