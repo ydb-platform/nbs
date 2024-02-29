@@ -54,6 +54,13 @@ bool CanForwardToPartition<TEvVolume::TDeleteCheckpointDataMethod>(ui32 partitio
     return false;
 }
 
+template <>
+bool CanForwardToPartition<TEvService::TGetCheckpointStatusMethod>(ui32 partitionCount)
+{
+    Y_UNUSED(partitionCount);
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_HAS_MEMBER(SetThrottlerDelay);
@@ -193,6 +200,14 @@ template<>
 bool TVolumeActor::HandleRequest<TEvVolume::TDeleteCheckpointDataMethod>(
     const TActorContext& ctx,
     const TEvVolume::TDeleteCheckpointDataMethod::TRequest::TPtr& ev,
+    ui64 volumeRequestId,
+    bool isTraced,
+    ui64 traceTs);
+
+template<>
+bool TVolumeActor::HandleRequest<TEvService::TGetCheckpointStatusMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetCheckpointStatusMethod::TRequest::TPtr& ev,
     ui64 volumeRequestId,
     bool isTraced,
     ui64 traceTs);
@@ -781,6 +796,7 @@ BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,               TEvService)
 BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,         TEvService)
 BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,         TEvService)
 BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,         TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus,      TEvService)
 BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
 BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
 

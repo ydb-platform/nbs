@@ -75,6 +75,12 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
     FinishMigration(ctx, false);
 }
 
+void TNonreplicatedPartitionMigrationActor::OnMigrationError(
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+}
+
 void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
     const NActors::TActorContext& ctx,
     ui64 migrationIndex)
