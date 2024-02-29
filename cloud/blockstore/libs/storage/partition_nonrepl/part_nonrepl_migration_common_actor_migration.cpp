@@ -158,6 +158,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
 
         if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed();
+            MigrationOwner->OnMigrationError(ctx);
             MigrationInProgress = false;
             return;
         }

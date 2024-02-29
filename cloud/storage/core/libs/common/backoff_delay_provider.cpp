@@ -25,6 +25,13 @@ TDuration TBackoffDelayProvider::GetDelay() const
     return CurrentDelay;
 }
 
+TDuration TBackoffDelayProvider::GetDelayAndIncrease()
+{
+    auto result = GetDelay();
+    IncreaseDelay();
+    return result;
+}
+
 void TBackoffDelayProvider::IncreaseDelay()
 {
     CurrentDelay =
