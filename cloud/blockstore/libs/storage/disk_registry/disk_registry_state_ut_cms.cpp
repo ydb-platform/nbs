@@ -154,7 +154,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDirtyDevices().size());
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
@@ -240,7 +239,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 result.Error.GetCode(),
                 result.Error);
             ASSERT_VECTORS_EQUAL(TVector<TString>{"vol0"}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_UNEQUAL(TDuration {}, result.Timeout);
         });
 
@@ -268,7 +266,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             UNIT_ASSERT_SUCCESS(result.Error);
 
             ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
 
             TVector<NProto::TDeviceConfig> devices;

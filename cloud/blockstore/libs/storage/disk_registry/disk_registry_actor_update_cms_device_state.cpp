@@ -70,7 +70,6 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
 
     args.Error = std::move(result.Error);
     args.AffectedDisks = std::move(result.AffectedDisks);
-    args.DevicesThatNeedToBeCleaned = std::move(result.DevicesThatNeedToBeCleaned);
     args.Timeout = result.Timeout;
 }
 
@@ -91,24 +90,6 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     StartMigration(ctx);
 
     using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
-
-    if (!HasError(args.Error) && !args.DryRun && args.DevicesThatNeedToBeCleaned) {
-        PostponeResponse(
-            ctx,
-            std::move(args.DevicesThatNeedToBeCleaned),
-            args.RequestInfo,
-            [
-                timeout = args.Timeout,
-                affectedDisks = std::move(args.AffectedDisks)
-            ] (const NProto::TError& error) mutable -> NActors::IEventBasePtr {
-                return std::make_unique<TResponse>(
-                    error,
-                    timeout,
-                    std::move(affectedDisks));
-            });
-
-        return;
-    }
 
     auto response = std::make_unique<TResponse>(
         std::move(args.Error),

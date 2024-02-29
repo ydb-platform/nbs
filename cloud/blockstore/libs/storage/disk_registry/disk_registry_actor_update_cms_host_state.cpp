@@ -59,7 +59,6 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
 
     args.TxTs = ctx.Now();
 
-
     args.Error = State->UpdateCmsHostState(
         db,
         args.Host,

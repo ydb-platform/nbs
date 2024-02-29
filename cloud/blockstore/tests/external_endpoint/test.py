@@ -124,6 +124,8 @@ def start_nbs_daemon(ydb, fake_vhost_server):
     server.VhostEnabled = True
     server.VhostServerPath = fake_vhost_server.path
 
+    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
+
     daemon = start_nbs(cfg)
 
     yield daemon
@@ -155,15 +157,13 @@ def setup_env(nbs, disk_agent, data_path):
 
     request = TCmsActionRequest()
 
-    for i in range(2):
-        action = request.Actions.add()
-        action.Type = TAction.ADD_DEVICE
-        action.Host = get_fqdn()
-        action.Device = os.path.join(data_path, f"NVMENBS{i + 1:02}")
+    action = request.Actions.add()
+    action.Type = TAction.ADD_HOST
+    action.Host = get_fqdn()
 
     response = client.cms_action(request)
 
-    assert len(response.ActionResults) == 2
+    assert len(response.ActionResults) == 1
     for r in response.ActionResults:
         assert r.Result.Code == 0, r
 

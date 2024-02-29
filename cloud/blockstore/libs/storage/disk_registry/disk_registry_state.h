@@ -618,7 +618,6 @@ public:
     {
         NProto::TError Error;
         TVector<TDiskId> AffectedDisks;
-        TVector<TDeviceId> DevicesThatNeedToBeCleaned;
         TDuration Timeout;
     };
 
