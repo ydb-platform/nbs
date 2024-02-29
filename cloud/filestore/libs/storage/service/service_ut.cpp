@@ -1551,48 +1551,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         THeaders headers = {"test", "client", "", 0};
 
-        ui64 tabletId = -1;
-        TActorId pipeClientId;
-        TActorId createSessionActorId;
-        ui32 createSessionResponses = 0;
+        ui32 sessionCreated = 0;
         bool rescheduled = false;
 
-        // 1. intercepting tablet pipe client id to kill it later on
-        // 2. injecting an error into the next CreateSessionResponse to trigger
-        //  an error notification from CreateSessionActor to ServiceActor
-        //
-        // after this error notification ServiceActor is expected to kill
-        // the failed CreateSessionActor
         runtime.SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
-                case TEvTabletPipe::EvClientConnected: {
-                    const auto* msg =
-                        event->Get<TEvTabletPipe::TEvClientConnected>();
-                    if (msg->TabletId == tabletId) {
-                        pipeClientId = msg->ClientId;
-                        createSessionActorId = event->Recipient;
-                    }
-
-                    break;
-                }
-                case TEvSSProxy::EvDescribeFileStoreResponse: {
-                    const auto* msg =
-                        event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
-                    const auto& desc =
-                        msg->PathDescription.GetFileStoreDescription();
-                    tabletId = desc.GetIndexTabletId();
-
-                    break;
-                }
                 case TEvIndexTablet::EvCreateSessionResponse: {
-                    ++createSessionResponses;
-
                     if (!rescheduled) {
                         runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
                         rescheduled = true;
                         return true;
                     }
+
+                    break;
+                }
+
+                case TEvServicePrivate::EvSessionCreated: {
+                    ++sessionCreated;
 
                     break;
                 }
@@ -1612,27 +1588,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             response->GetStatus(),
             response->GetErrorReason());
 
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
         runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
-
-        // killing pipe client to trigger session recreation by the failed
-        // CreateSessionActor if it's still active (it shouldn't be active)
-        auto killer = runtime.AllocateEdgeActor(nodeIdx);
-        runtime.Send(
-            new IEventHandle(
-                pipeClientId,
-                killer,
-                new TEvents::TEvPoisonPill(),
-                0, // flags
-                0  // cookie
-            ),
-            nodeIdx);
-
-        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
 
         // we should have observed exactly 1 CreateSessionResponse
         // if we observe more than 1 it means that our CreateSessionActor
         // remained active after the first failure
-        UNIT_ASSERT_VALUES_EQUAL(1, createSessionResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCreated);
 
         // this time session creation should be successful
         service.SendCreateSessionRequest(headers);
@@ -1641,6 +1603,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             S_OK,
             response->GetStatus(),
             response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, sessionCreated);
     }
 
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
