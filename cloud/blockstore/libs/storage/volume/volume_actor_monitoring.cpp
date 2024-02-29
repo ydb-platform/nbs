@@ -100,6 +100,22 @@ IOutputStream& operator <<(
     }
 }
 
+void RenderCheckpointRequest(
+    IOutputStream& out,
+    const TCheckpointRequest& request)
+{
+    if (request.ShadowDiskId.empty()) {
+        return;
+    }
+
+    out << "shadow disk: " << request.ShadowDiskId.Quote()
+        << ", " << ToString(request.ShadowDiskState);
+
+    if (request.ShadowDiskState == EShadowDiskState::Preparing) {
+        out << " processed blocks: " << request.ShadowDiskProcessedBlockCount;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void BuildVolumeRemoveClientButton(
@@ -678,7 +694,10 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                         TABLED() { out << r.RequestId; }
                         TABLED() { out << r.CheckpointId; }
                         if (isDiskRegistryMediaKind) {
-                            TABLED() { out << r.ShadowDiskId; }
+                            TABLED()
+                            {
+                                RenderCheckpointRequest(out, r);
+                            }
                         }
                         TABLED() { out << r.Timestamp; }
                         TABLED() { out << r.State; }

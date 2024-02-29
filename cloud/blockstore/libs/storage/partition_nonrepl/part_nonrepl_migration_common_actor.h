@@ -53,6 +53,10 @@ public:
 
     // Notifies that the data migration was completed successfully.
     virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
+
+    // Notifies that an non-retriable error occurred during the migration.
+    // And the migration was stopped.
+    virtual void OnMigrationError(const NActors::TActorContext& ctx) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
