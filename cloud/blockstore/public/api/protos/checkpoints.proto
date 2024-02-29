@@ -109,3 +109,43 @@ message TGetChangedBlocksResponse
     // Request traces.
     NCloud.NProto.TTraceInfo Trace = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Checkpoint status request/response
+
+enum ECheckpointStatus
+{
+    NOT_READY = 0;  // The checkpoint is in the process of being created.
+                    // Can't read it yet.
+
+    READY = 1;      // The checkpoint is ready and you can read it.
+
+    ERROR = 2;      // An error occurred during the creation of the checkpoint.
+                    // Or the checkpoint data is destroyed.
+                    // It is impossible to read from the checkpoint now and in
+                    // the future.
+}
+
+message TGetCheckpointStatusRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Label of volume to get checkpoint status from.
+    string DiskId = 2;
+
+    // Checkpoint identifier.
+    string CheckpointId = 3;
+}
+
+message TGetCheckpointStatusResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Checkpoint status
+    ECheckpointStatus CheckpointStatus = 2;
+
+    // Request traces.
+    NCloud.NProto.TTraceInfo Trace = 3;
+}

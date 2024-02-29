@@ -872,6 +872,10 @@ private:
         const TEvVolume::TEvDeleteCheckpointDataResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleGetCheckpointStatusResponse(
+        const TEvService::TEvGetCheckpointStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWriteBlocksLocalResponse(
         const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

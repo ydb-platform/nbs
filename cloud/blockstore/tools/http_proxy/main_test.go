@@ -292,6 +292,16 @@ func (s *mockBlockstoreServer) DeleteCheckpoint(
 	return res, args.Error(1)
 }
 
+func (s *mockBlockstoreServer) GetCheckpointStatus(
+	ctx context.Context,
+	req *blockstore_protos.TGetCheckpointStatusRequest,
+) (*blockstore_protos.TGetCheckpointStatusResponse, error) {
+
+	args := s.Called(ctx, req)
+	res, _ := args.Get(0).(*blockstore_protos.TGetCheckpointStatusResponse)
+	return res, args.Error(1)
+}
+
 func (s *mockBlockstoreServer) GetChangedBlocks(
 	ctx context.Context,
 	req *blockstore_protos.TGetChangedBlocksRequest,

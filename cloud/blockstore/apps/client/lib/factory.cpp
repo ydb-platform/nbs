@@ -19,6 +19,7 @@
 #include "discover_instances.h"
 #include "execute_action.h"
 #include "get_changed_blocks.h"
+#include "get_checkpoint_status.h"
 #include "kick_endpoint.h"
 #include "list_endpoints.h"
 #include "list_keyrings.h"
@@ -60,6 +61,7 @@ struct THandlerFactory
         { "createvolume", NewCreateVolumeCommand },
         { "createvolumefromdevice", NewCreateVolumeFromDeviceCommand },
         { "deletecheckpoint", NewDeleteCheckpointCommand },
+        { "getcheckpointstatus", NewGetCheckpointStatusCommand },
         { "describediskregistryconfig", NewDescribeDiskRegistryConfigCommand },
         { "describeendpoint", NewDescribeEndpointCommand },
         { "describeplacementgroup", NewDescribePlacementGroupCommand },

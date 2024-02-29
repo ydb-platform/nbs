@@ -103,6 +103,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
                 EPermission::Read,
                 EPermission::Write});
         case EBlockStoreRequest::GetChangedBlocks:
+        case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
         case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::DescribeVolumeModel:
