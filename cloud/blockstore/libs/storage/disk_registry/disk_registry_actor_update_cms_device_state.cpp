@@ -1,7 +1,5 @@
 #include "disk_registry_actor.h"
 
-#include <util/string/join.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -76,40 +74,6 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
     args.Timeout = result.Timeout;
 }
 
-void TDiskRegistryActor::PostponeUpdateCmsHostDeviceStateResponse(
-    const NActors::TActorContext& ctx,
-    TDuration timeout,
-    TVector<TString> devicesNeedToBeClean,
-    TVector<TString> affectedDisks,
-    TRequestInfoPtr requestInfo)
-{
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Postpone the response until the devices are cleared: %s",
-        JoinSeq(" ", devicesNeedToBeClean).c_str());
-
-    using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
-
-    auto pendingRequest = std::make_shared<TPendingWaitForDeviceCleanupRequest>();
-    pendingRequest->PendingDevices.insert(
-        devicesNeedToBeClean.begin(),
-        devicesNeedToBeClean.end());
-
-    pendingRequest->RequestInfo = std::move(requestInfo);
-    pendingRequest->ResponseFactory = [
-        timeout = timeout,
-        affectedDisks = std::move(affectedDisks)
-    ] (const NProto::TError& error) mutable -> NActors::IEventBasePtr {
-        return std::make_unique<TResponse>(
-            error,
-            timeout,
-            std::move(affectedDisks));
-    };
-
-    for (const auto& id: devicesNeedToBeClean) {
-        PendingWaitForDeviceCleanupRequests[id].push_back(pendingRequest);
-    }
-}
-
 void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateCmsHostDeviceState& args)
@@ -126,18 +90,25 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
+    using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
+
     if (!HasError(args.Error) && !args.DryRun && args.DevicesThatNeedToBeCleaned) {
-        PostponeUpdateCmsHostDeviceStateResponse(
+        PostponeResponse(
             ctx,
-            args.Timeout,
             std::move(args.DevicesThatNeedToBeCleaned),
-            std::move(args.AffectedDisks),
-            args.RequestInfo);
+            args.RequestInfo,
+            [
+                timeout = args.Timeout,
+                affectedDisks = std::move(args.AffectedDisks)
+            ] (const NProto::TError& error) mutable -> NActors::IEventBasePtr {
+                return std::make_unique<TResponse>(
+                    error,
+                    timeout,
+                    std::move(affectedDisks));
+            });
 
         return;
     }
-
-    using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse;
 
     auto response = std::make_unique<TResponse>(
         std::move(args.Error),

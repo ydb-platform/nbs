@@ -4505,11 +4505,19 @@ NProto::TError TDiskRegistryState::CheckAgentStateTransition(
         return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    if (agent->GetState() == newState) {
+    return CheckAgentStateTransition(*agent, newState, timestamp);
+}
+
+NProto::TError TDiskRegistryState::CheckAgentStateTransition(
+    const NProto::TAgentConfig& agent,
+    NProto::EAgentState newState,
+    TInstant timestamp) const
+{
+    if (agent.GetState() == newState) {
         return MakeError(S_ALREADY);
     }
 
-    if (agent->GetStateTs() > timestamp.MicroSeconds()) {
+    if (agent.GetStateTs() > timestamp.MicroSeconds()) {
         return MakeError(E_INVALID_STATE, "out of order");
     }
 
@@ -4804,17 +4812,14 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TVector<TDiskId>& affectedDisks,
     TDuration& timeout)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, now);
-    if (FAILED(error.GetCode())) {
-        return error;
-    }
-
     auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateCmsHostState:AgentId: " << agentId);
+        return MakeError(E_NOT_FOUND, TStringBuilder{}
+            << "agent " << agentId.Quote() << " not found");
+    }
 
-        return MakeError(E_FAIL, agentId);
+    if (auto error = CheckAgentStateTransition(*agent, newState, now); HasError(error)) {
+        return error;
     }
 
     TInstant cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -5108,60 +5113,39 @@ auto TDiskRegistryState::ResolveDevices(
     return { agent, std::move(devices) };
 }
 
-auto TDiskRegistryState::AddNewDevices(
+NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     TDiskRegistryDatabase& db,
-    NProto::TAgentConfig& agent,
-    const TString& path,
-    TInstant now,
-    bool dryRun) -> TUpdateCmsDeviceStateResult
+    const TString& agentId,
+    TInstant now)
 {
-    TVector<TDeviceId> devicesThatNeedToBeCleaned;
-    TVector<NProto::TDeviceConfig*> devices;
-
-    for (auto& device: *agent.MutableUnknownDevices()) {
-        if (device.GetDeviceName() == path) {
-            devices.push_back(&device);
-
-            if (GetDevicePoolKind(device.GetPoolName()) == NProto::DEVICE_POOL_KIND_LOCAL) {
-                devicesThatNeedToBeCleaned.push_back(device.GetDeviceUUID());
-            }
-        }
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, TStringBuilder{}
+            << "agent " << agentId.Quote() << " not found");
     }
 
-    if (devices.empty()) {
-        return {
-            .Error = MakeError(E_NOT_FOUND, TStringBuilder()
-                << "Device not found (" << agent.GetAgentId() << "," << path << ')')
-        };
+    TVector<TDeviceId> ids;
+    for (auto& device: *agent->MutableUnknownDevices()) {
+        ids.push_back(device.GetDeviceUUID());
+
+        device.SetState(NProto::DEVICE_STATE_ONLINE);
+        device.SetStateMessage("New device");
+        device.SetStateTs(now.MicroSeconds());
     }
 
-    if (dryRun) {
-        return {
-            .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
-        };
-    }
-
-    TVector<TString> ids;
-    for (auto* device: devices) {
-        ids.push_back(device->GetDeviceUUID());
-
-        device->SetState(NProto::DEVICE_STATE_ONLINE);
-        device->SetStateMessage("cms add device action");
-        device->SetStateTs(now.MicroSeconds());
-    }
-
-    STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
+    STORAGE_INFO("add new devices: AgentId=" << agent->GetAgentId()
         << " Devices=" << JoinSeq(", ", ids));
 
     auto newConfig = GetConfig();
+
     NProto::TAgentConfig* knownAgent = FindIfPtr(
         *newConfig.MutableKnownAgents(),
         [&] (const auto& x) {
-            return x.GetAgentId() == agent.GetAgentId();
+            return x.GetAgentId() == agent->GetAgentId();
         });
     if (!knownAgent) {
         knownAgent = newConfig.AddKnownAgents();
-        knownAgent->SetAgentId(agent.GetAgentId());
+        knownAgent->SetAgentId(agent->GetAgentId());
     }
 
     for (auto& id: ids) {
@@ -5177,15 +5161,34 @@ auto TDiskRegistryState::AddNewDevices(
 
     if (!affectedDisks.empty()) {
         ReportDiskRegistryUnexpectedAffectedDisks(TStringBuilder()
-            << "AddNewDevices: " << JoinSeq(" ", affectedDisks));
+            << "RegisterUnknownDevices: " << JoinSeq(" ", affectedDisks));
     }
 
     ResumeDevices(now, db, ids);
 
-    return {
-        .Error = std::move(error),
-        .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
-    };
+    return error;
+}
+
+auto TDiskRegistryState::CollectDirtyLocalDevices(const TAgentId& agentId)
+    -> TVector<TDeviceId>
+{
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
+
+    TVector<TDeviceId> ids;
+
+    for (const auto& d: agent->GetDevices()) {
+        const auto& id = d.GetDeviceUUID();
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+            DeviceList.IsDirtyDevice(id))
+        {
+            ids.push_back(id);
+        }
+    }
+
+    return ids;
 }
 
 NProto::TError TDiskRegistryState::CmsAddDevice(
@@ -5326,10 +5329,6 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     }
 
     auto [agent, devices] = ResolveDevices(agentId, path);
-
-    if (agent && devices.empty() && newState == NProto::DEVICE_STATE_ONLINE) {
-        return AddNewDevices(db, *agent, path, now, dryRun);
-    }
 
     if (!agent || devices.empty()) {
         return {

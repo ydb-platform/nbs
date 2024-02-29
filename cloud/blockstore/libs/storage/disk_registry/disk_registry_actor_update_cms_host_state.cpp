@@ -55,12 +55,10 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
     TTransactionContext& tx,
     TTxDiskRegistry::TUpdateCmsHostState& args)
 {
-    Y_UNUSED(ctx);
-    Y_UNUSED(args);
-
     TDiskRegistryDatabase db(tx.DB);
 
     args.TxTs = ctx.Now();
+
 
     args.Error = State->UpdateCmsHostState(
         db,
@@ -70,6 +68,16 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         args.DryRun,
         args.AffectedDisks,
         args.Timeout);
+
+    if (Config->GetNonReplicatedDontSuspendDevices()
+        && args.Error.GetCode() == S_OK
+        && args.State == NProto::AGENT_STATE_ONLINE)
+    {
+        args.Error = State->RegisterUnknownDevices(db, args.Host, args.TxTs);
+        if (!HasError(args.Error)) {
+            args.DevicesThatNeedToBeCleaned = State->CollectDirtyLocalDevices(args.Host);
+        }
+    }
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostState(
@@ -100,6 +108,24 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     StartMigration(ctx);
 
     using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse;
+
+    if (!HasError(args.Error) && !args.DryRun && args.DevicesThatNeedToBeCleaned) {
+        PostponeResponse(
+            ctx,
+            std::move(args.DevicesThatNeedToBeCleaned),
+            args.RequestInfo,
+            [
+                timeout = args.Timeout,
+                affectedDisks = std::move(args.AffectedDisks)
+            ] (const NProto::TError& error) mutable -> NActors::IEventBasePtr {
+                return std::make_unique<TResponse>(
+                    error,
+                    timeout,
+                    std::move(affectedDisks));
+            });
+
+        return;
+    }
 
     auto response = std::make_unique<TResponse>(std::move(args.Error));
     response->Timeout = args.Timeout;

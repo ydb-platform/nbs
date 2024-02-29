@@ -63,11 +63,14 @@ class TDiskRegistryActor final
         NActors::IActor::TReceiveFunc Func;
     };
 
+    using TResponseFactory = std::function<
+        NActors::IEventBasePtr (const NProto::TError&)>;
+
     struct TPendingWaitForDeviceCleanupRequest
     {
         THashSet<TDeviceId> PendingDevices;
         TRequestInfoPtr RequestInfo;
-        std::function<NActors::IEventBasePtr (const NProto::TError&)> ResponseFactory;
+        TResponseFactory ResponseFactory;
 
         void Reply(
             const NActors::TActorContext& ctx,
@@ -260,12 +263,11 @@ private:
         const TDeviceId& id,
         const NProto::TError& error);
 
-    void PostponeUpdateCmsHostDeviceStateResponse(
+    void PostponeResponse(
         const NActors::TActorContext& ctx,
-        TDuration timeout,
         TVector<TString> devicesNeedToBeClean,
-        TVector<TString> affectedDisks,
-        TRequestInfoPtr requestInfo);
+        TRequestInfoPtr requestInfo,
+        TResponseFactory responseFactory);
 
     void ProcessAutomaticallyReplacedDevices(const NActors::TActorContext& ctx);
 

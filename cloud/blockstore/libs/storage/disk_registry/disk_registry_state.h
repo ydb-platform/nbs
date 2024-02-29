@@ -595,6 +595,14 @@ public:
         TVector<TDiskId>& affectedDisks,
         TDuration& timeout);
 
+    // adds all unknown devices from an agent to the DR's config
+    NProto::TError RegisterUnknownDevices(
+        TDiskRegistryDatabase& db,
+        const TString& agentId,
+        TInstant now);
+
+    TVector<TDeviceId> CollectDirtyLocalDevices(const TAgentId& agentId);
+
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;
 
@@ -967,6 +975,11 @@ private:
         NProto::EAgentState newState,
         TInstant timestamp) const;
 
+    NProto::TError CheckAgentStateTransition(
+        const NProto::TAgentConfig& agent,
+        NProto::EAgentState newState,
+        TInstant timestamp) const;
+
     NProto::TError CheckDeviceStateTransition(
         const NProto::TDeviceConfig& device,
         NProto::EDeviceState newState,
@@ -1189,13 +1202,6 @@ private:
         TInstant now,
         bool dryRun,
         TDuration& timeout);
-
-    TUpdateCmsDeviceStateResult AddNewDevices(
-        TDiskRegistryDatabase& db,
-        NProto::TAgentConfig& agent,
-        const TString& path,
-        TInstant now,
-        bool dryRun);
 
     NProto::TError CmsRemoveDevice(
         TDiskRegistryDatabase& db,

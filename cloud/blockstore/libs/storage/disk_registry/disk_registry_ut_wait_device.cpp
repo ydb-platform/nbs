@@ -56,17 +56,16 @@ struct TFixture
         return record.GetAvailableStorage(0);
     }
 
-    void SendAddDevice(const TString& path)
+    void SendAddHost()
     {
         NProto::TAction action;
         action.SetHost(AgentConfig.GetAgentId());
-        action.SetDevice(path);
-        action.SetType(NProto::TAction::ADD_DEVICE);
+        action.SetType(NProto::TAction::ADD_HOST);
 
         DiskRegistryClient->SendCmsActionRequest(TVector { action });
     }
 
-    auto RecvAddDeviceResponse()
+    auto RecvAddHostResponse()
     {
         auto response = DiskRegistryClient->RecvCmsActionResponse();
         return response->Record;
@@ -90,7 +89,13 @@ struct TFixture
             createDevice("uuid-6", "NVMENBS02")
         });
 
-        Runtime = TTestRuntimeBuilder().WithAgents({AgentConfig}).Build();
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetNonReplicatedDontSuspendDevices(true);
+
+        Runtime = TTestRuntimeBuilder()
+            .WithAgents({AgentConfig})
+            .With(config)
+            .Build();
 
         DiskRegistryClient = std::make_unique<TDiskRegistryClient>(*Runtime);
         DiskRegistryClient->SetWritableState(true);
@@ -124,7 +129,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                 case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
                     event->DropRewrite();
                     auto* msg = event->Get<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>();
-                    UNIT_ASSERT_VALUES_EQUAL(3, msg->Devices.size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        AgentConfig.DevicesSize(),
+                        msg->Devices.size());
                     cleanupRequest.reset(event.Release());
                     return TTestActorRuntime::EEventAction::DROP;
                 }
@@ -144,7 +151,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
             UNIT_ASSERT_VALUES_EQUAL_C(0, response.GetChunkCount(), response);
         }
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
 
         UNIT_ASSERT(!cmsActionResponseSeen);
 
@@ -161,7 +168,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
         Runtime->Send(cleanupRequest.release());
 
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -171,12 +178,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
 
         {
             auto response = QueryAvailableStorage();
-            UNIT_ASSERT_VALUES_EQUAL_C(3, response.GetChunkCount(), response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                AgentConfig.DevicesSize(),
+                response.GetChunkCount(), response);
         }
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -202,7 +211,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
 
         Runtime->AdvanceCurrentTime(5min);
 
@@ -216,7 +225,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
         DiskRegistryClient->RebootTablet();
 
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(0, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
@@ -224,10 +233,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                 response);
         }
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
 
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -253,7 +262,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
             return TTestActorRuntime::DefaultObserverFunc(event);
         });
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
 
         Runtime->AdvanceCurrentTime(5min);
 
@@ -273,7 +282,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
         }
 
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,
@@ -281,10 +290,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
                 response);
         }
 
-        SendAddDevice("NVMENBS01");
+        SendAddHost();
 
         {
-            auto response = RecvAddDeviceResponse();
+            auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TRY_AGAIN,

@@ -22,7 +22,7 @@ using namespace NDiskRegistryStateTest;
 
 Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 {
-    Y_UNIT_TEST(ShouldAddNewDevice)
+    Y_UNIT_TEST(ShouldAddNewDevices)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -53,45 +53,43 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
             UNIT_ASSERT_VALUES_EQUAL(agentConfig.GetAgentId(), agent.GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(0, agent.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(4, agent.UnknownDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig.DevicesSize(),
+                agent.UnknownDevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfig().KnownAgentsSize());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetConfigVersion());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto result = state.UpdateCmsDeviceState(
+            UNIT_ASSERT_SUCCESS(state.RegisterUnknownDevices(
                 db,
                 agentConfig.GetAgentId(),
-                "NVMENBS01",
-                NProto::DEVICE_STATE_ONLINE,
-                Now(),
-                false); // dryRun
-
-            UNIT_ASSERT_SUCCESS(result.Error);
+                Now()));
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfig().KnownAgentsSize());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetConfigVersion());
             UNIT_ASSERT_VALUES_EQUAL(
-                1,
+                agentConfig.DevicesSize(),
                 state.GetConfig().GetKnownAgents(0).DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "uuid-1.1",
                 state.GetConfig().GetKnownAgents(0).GetDevices(0).GetDeviceUUID());
 
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration {}, result.Timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetSuspendedDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig.DevicesSize(),
+                state.GetDirtyDevices().size());
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
 
             const auto& agent = state.GetAgents()[0];
 
-            UNIT_ASSERT_VALUES_EQUAL(1, agent.DevicesSize());
-            UNIT_ASSERT_VALUES_EQUAL(3, agent.UnknownDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig.DevicesSize(),
+                agent.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, agent.UnknownDevicesSize());
         });
     }
 

@@ -424,7 +424,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             db.InitSchema();
         });
 
-        const TString testDeviceName = "/dev/disk/by-partlabel/NVMENBS01";
         const TString testDeviceId = "uuid-1";
         const ui64 testDeviceSizeInBytes = 99998498816; // 93.1 GiB
         const ui64 testUnadjustedBlockCount = testDeviceSizeInBytes / DefaultLogicalBlockSize;
@@ -432,7 +431,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
 
         const NProto::TAgentConfig agentConfig = AgentConfig(1, {
             Device(
-                testDeviceName,
+                "/dev/disk/by-partlabel/NVMENBS01",
                 testDeviceId,
                 "rack-1",
                 DefaultLogicalBlockSize,
@@ -459,19 +458,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto r = state.UpdateCmsDeviceState(
+            UNIT_ASSERT_SUCCESS(state.RegisterUnknownDevices(
                 db,
                 agentConfig.GetAgentId(),
-                testDeviceName,
-                NProto::DEVICE_STATE_ONLINE,
-                Now(),
-                false); // dryRun
-
-            UNIT_ASSERT_SUCCESS(r.Error);
-
-            UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesThatNeedToBeCleaned.size());
-            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), r.Timeout);
+                Now()));
 
             const auto d = state.GetDevice(testDeviceId);
 

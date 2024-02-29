@@ -12,6 +12,7 @@
 #include <util/stream/file.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -285,6 +286,42 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
     ctx.Schedule(
         Config->GetAgentListExpiredParamsCleanupInterval(),
         new TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup());
+}
+
+void TDiskRegistryActor::PostponeResponse(
+    const TActorContext& ctx,
+    TVector<TString> devicesNeedToBeClean,
+    TRequestInfoPtr requestInfo,
+    TResponseFactory responseFactory)
+{
+    for (const auto& id: devicesNeedToBeClean) {
+        const auto state = State->GetDeviceState(id);
+        if (state != NProto::DEVICE_STATE_ONLINE) {
+            auto error = MakeError(E_TRY_AGAIN, TStringBuilder()
+                << "device " << id << " has an incompatible state: "
+                << NProto::EDeviceState_Name(state));
+
+            NCloud::Reply(ctx, *requestInfo, responseFactory(std::move(error)));
+
+            return;
+        }
+    }
+
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        "Postpone the response until the devices are cleared: %s",
+        JoinSeq(" ", devicesNeedToBeClean).c_str());
+
+    auto pendingRequest = std::make_shared<TPendingWaitForDeviceCleanupRequest>();
+    pendingRequest->PendingDevices.insert(
+        devicesNeedToBeClean.begin(),
+        devicesNeedToBeClean.end());
+
+    pendingRequest->RequestInfo = std::move(requestInfo);
+    pendingRequest->ResponseFactory = std::move(responseFactory);
+
+    for (const auto& id: devicesNeedToBeClean) {
+        PendingWaitForDeviceCleanupRequests[id].push_back(pendingRequest);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
