@@ -7174,7 +7174,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         ui32 hasUseFastPathCounter = 0;
 
         runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 if (event->Recipient == MakeStorageStatsServiceId() &&
                     event->GetTypeRewrite() ==
@@ -7187,7 +7187,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                         msg->VolumeSelfCounters->Simple.UseFastPath.Value;
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TVolumeClient volume(*runtime);

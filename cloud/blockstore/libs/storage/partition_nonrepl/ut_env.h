@@ -426,7 +426,7 @@ inline void WaitForMigrations(
 inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration timeout)
 {
     ui32 migratedRanges = 0;
-    runtime.SetObserverFunc([&] (auto& event) {
+    runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
         switch (event->GetTypeRewrite()) {
             case TEvNonreplPartitionPrivate::EvRangeMigrated: {
                 auto* msg =
@@ -437,7 +437,7 @@ inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration t
                 break;
             }
         }
-        return NActors::TTestActorRuntime::DefaultObserverFunc(event);
+        return NActors::TTestActorRuntime::DefaultObserverFunc(runtime, event);
     });
 
     NActors::TDispatchOptions options;
