@@ -1528,6 +1528,85 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
+    Y_UNIT_TEST(UnsuccessfulSessionActorShouldStopWorking)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+
+        ui32 sessionCreated = 0;
+        bool rescheduled = false;
+
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvCreateSessionResponse: {
+                    if (!rescheduled) {
+                        runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                        rescheduled = true;
+                        return true;
+                    }
+
+                    break;
+                }
+
+                case TEvServicePrivate::EvSessionCreated: {
+                    ++sessionCreated;
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(rescheduled);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        auto response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_TIMEOUT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // we should have observed exactly 1 CreateSessionResponse
+        // if we observe more than 1 it means that our CreateSessionActor
+        // remained active after the first failure
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCreated);
+
+        // this time session creation should be successful
+        service.SendCreateSessionRequest(headers);
+        response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, sessionCreated);
+    }
+
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
     {
         TTestEnv env;
