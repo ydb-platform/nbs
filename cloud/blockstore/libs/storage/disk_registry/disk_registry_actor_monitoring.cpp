@@ -198,19 +198,14 @@ auto GetSortedDisksView(
     auto sortByFailureThenByPartition =
         [&](const TDiskIterator& d1, const TDiskIterator& d2)
     {
-        bool d1Broken = brokenDisks.contains(d1->GetDiskId());
-        bool d2Broken = brokenDisks.contains(d2->GetDiskId());
-
-        if (d1Broken != d2Broken) {
-            return d1Broken > d2Broken;
-        }
-
-        auto id1 = d1->GetPlacementPartitionIndex();
-        auto id2 = d2->GetPlacementPartitionIndex();
-        if (id1 != id2 && id1 != 0 && id2 != 0) {
-            return id1 < id2;
-        }
-        return d1->GetDiskId() < d2->GetDiskId();
+        auto makeComparableTuple = [&brokenDisks](const TDiskIterator& d){
+            return std::make_tuple(
+                brokenDisks.contains(d->GetDiskId()),
+                d->GetPlacementPartitionIndex(),
+                d->GetDiskId()
+            );
+        };
+        return makeComparableTuple(d1) < makeComparableTuple(d2);
     };
 
     std::sort(diskIndices.begin(), diskIndices.end(), sortByFailureThenByPartition);
@@ -1506,12 +1501,12 @@ void TDiskRegistryActor::RenderPlacementGroupList(
             for (const auto& [groupId, groupInfo]: State->GetPlacementGroups()) {
                 TABLER() {
                     const auto strategy = groupInfo.Config.GetPlacementStrategy();
-                    const bool isPartitionGroup = strategy == NProto::PLACEMENT_STRATEGY_PARTITION;
+                    const bool isPartitionGroup =
+                        strategy == NProto::PLACEMENT_STRATEGY_PARTITION;
 
-                    auto it = brokenGroups.find(groupId);
-                    const size_t brokenPartitionsCount =
-                        it != brokenGroups.end()
-                            ? it->second.Recently.GetBrokenPartitionCount()
+                    auto brokenGroupInfo = brokenGroups.FindPtr(groupId);
+                    const size_t brokenPartitionsCount = brokenGroupInfo
+                            ? brokenGroupInfo->Recently.GetBrokenPartitionCount()
                             : 0;
 
                     TABLED() {
@@ -1525,15 +1520,15 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         DumpPlacementGroupStrategy(out, strategy);
                     }
                     TABLED() {
-                        size_t totalPartitionsCount = isPartitionGroup ?
-                            groupInfo.Config.GetPlacementPartitionCount() :
-                            groupInfo.Config.GetDisks().size();
+                        size_t totalPartitionsCount = isPartitionGroup
+                            ? groupInfo.Config.GetPlacementPartitionCount()
+                            : groupInfo.Config.GetDisks().size();
 
                         out << Sprintf("%s: <font color=green>Fine: %zu</font>, ",
                             isPartitionGroup ? "Partitions" : "Disks",
                             totalPartitionsCount - brokenPartitionsCount);
 
-                        if(brokenPartitionsCount > 0) {
+                        if (brokenPartitionsCount > 0) {
                             out << Sprintf("<font color=%s>Broken: %zu</font>, ",
                             brokenPartitionsCount == 1 ? "orange" : "red",
                             brokenPartitionsCount);
@@ -1554,11 +1549,17 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         TABLE_SORTABLE_CLASS("table table-bordered") {
                             TABLER() {
                                 TABLED() { out << "ConfigVersion"; }
-                                TABLED() { out << groupInfo.Config.GetConfigVersion(); }
+                                TABLED()
+                                {
+                                    out << groupInfo.Config.GetConfigVersion();
+                                }
                             }
                             TABLER() {
-                                TABLED() { out << "Disks count"; }
-                                TABLED() { out << groupInfo.Config.GetDisks().size(); }
+                                TABLED() { out << "Disk count"; }
+                                TABLED()
+                                {
+                                    out << groupInfo.Config.GetDisks().size();
+                                }
                             }
                             TABLER() {
                                 TABLED_ATTRS({{"colspan", "2"}}) {
@@ -1568,29 +1569,42 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                                                 TABLEH() { out << "DiskId"; }
                                                 TABLEH() { out << "Racks"; }
                                                 if (isPartitionGroup) {
-                                                    TABLEH() { out << "Partition"; }
+                                                    TABLEH()
+                                                    {
+                                                        out << "Partition";
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        const auto brokenDisks =
-                                            it != brokenGroups.end()
-                                                ? it->second.Recently.GetBrokenDisks()
-                                                : THashSet<TString>();
+                                        const auto brokenDisks = brokenGroupInfo
+                                            ? brokenGroupInfo->Recently.GetBrokenDisks()
+                                            : THashSet<TString>();
 
-                                        const auto sortedDisks = GetSortedDisksView(
-                                            groupInfo.Config.GetDisks(),
-                                            brokenDisks);
+                                        const auto sortedDisks =
+                                            GetSortedDisksView(
+                                                groupInfo.Config.GetDisks(),
+                                                brokenDisks);
 
                                         for (const auto& d: sortedDisks) {
                                             TABLER() {
                                                 TABLED() {
-                                                    const bool isBroken = brokenDisks.contains(d->GetDiskId());
-                                                    DumpSquare(out, isBroken ? "red" : "green");
-                                                    DumpDiskLink(out, TabletID(), d->GetDiskId());
+                                                    const bool isBroken =
+                                                        brokenDisks.contains(
+                                                            d->GetDiskId());
+                                                    DumpSquare(
+                                                        out,
+                                                        isBroken ? "red"
+                                                                 : "green");
+                                                    DumpDiskLink(
+                                                        out,
+                                                        TabletID(),
+                                                        d->GetDiskId());
                                                 }
                                                 TABLED() {
-                                                    out << JoinSeq(", ", d->GetDeviceRacks());
+                                                    out << JoinSeq(
+                                                        ", ",
+                                                        d->GetDeviceRacks());
                                                 }
                                                 if (isPartitionGroup) {
                                                     TABLED() {
