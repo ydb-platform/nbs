@@ -63,9 +63,7 @@ void TPoisonPillHelper::KillActors(const TActorContext& ctx)
 
 void TPoisonPillHelper::ReplyAndDie(const TActorContext& ctx)
 {
-    Y_DEBUG_ABORT_UNLESS(Poisoner);
-
-    if (!OwnedActors.empty()) {
+    if (!Poisoner || !OwnedActors.empty()) {
         return;
     }
 
