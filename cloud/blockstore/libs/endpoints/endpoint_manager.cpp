@@ -147,6 +147,52 @@ bool CompareRequests(
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
+class TSwitchEndpointRequest
+{
+private:
+    TString DiskId;
+    TString UnixSocketPath;
+    TString Reason;
+
+public:
+    const TString& GetDiskId() const
+    {
+        return DiskId;
+    }
+
+    void SetDiskId(const TString& diskId)
+    {
+        DiskId = diskId;
+    }
+
+    const TString& GetUnixSocketPath() const
+    {
+        return UnixSocketPath;
+    }
+
+    void SetUnixSocketPath(const TString& socketPath)
+    {
+        UnixSocketPath = socketPath;
+    }
+
+    const TString& GetReason() const
+    {
+        return Reason;
+    }
+
+    void SetReason(const TString& reason)
+    {
+        Reason = reason;
+    }
+
+};
+
+struct TSwitchEndpointMethod
+{
+    using TRequest = TSwitchEndpointRequest;
+    using TResponse = NProto::TError;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -174,7 +220,8 @@ private:
     using TRequestStateVariant = std::variant<
         TRequestState<TStartEndpointMethod>,
         TRequestState<TStopEndpointMethod>,
-        TRequestState<TRefreshEndpointMethod>
+        TRequestState<TRefreshEndpointMethod>,
+        TRequestState<TSwitchEndpointMethod>
     >;
     THashMap<TString, TRequestStateVariant> ProcessingSockets;
 
@@ -197,10 +244,10 @@ public:
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
     }
 
-#define ENDPOINT_IMPLEMENT_METHOD(name, ...)                                   \
-    TFuture<NProto::T##name##Response> name(                                   \
+#define ENDPOINT_IMPLEMENT_METHOD(name, specifier, ...)                        \
+    TFuture<T##name##Method::TResponse> name(                                  \
         TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
+        std::shared_ptr<T##name##Method::TRequest> request) specifier          \
     {                                                                          \
         return Executor->Execute([                                             \
             ctx = std::move(callContext),                                      \
@@ -211,20 +258,23 @@ public:
         });                                                                    \
     }                                                                          \
                                                                                \
-    NProto::T##name##Response Do##name(                                        \
+    T##name##Method::TResponse Do##name(                                       \
         TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> req);                        \
+        std::shared_ptr<T##name##Method::TRequest> req);                       \
 // ENDPOINT_IMPLEMENT_METHOD
 
-    ENDPOINT_IMPLEMENT_METHOD(StartEndpoint)
-    ENDPOINT_IMPLEMENT_METHOD(StopEndpoint)
-    ENDPOINT_IMPLEMENT_METHOD(ListEndpoints)
-    ENDPOINT_IMPLEMENT_METHOD(DescribeEndpoint)
-    ENDPOINT_IMPLEMENT_METHOD(RefreshEndpoint)
+    ENDPOINT_IMPLEMENT_METHOD(StartEndpoint, override)
+    ENDPOINT_IMPLEMENT_METHOD(StopEndpoint, override)
+    ENDPOINT_IMPLEMENT_METHOD(ListEndpoints, override)
+    ENDPOINT_IMPLEMENT_METHOD(DescribeEndpoint, override)
+    ENDPOINT_IMPLEMENT_METHOD(RefreshEndpoint, override)
+    ENDPOINT_IMPLEMENT_METHOD(SwitchEndpoint, )
 
 #undef ENDPOINT_IMPLEMENT_METHOD
 
-    void OnVolumeConnectionEstablished(const TString& diskId) override;
+    TFuture<NProto::TError> SwitchEndpointIfNeeded(
+        const TString& diskId,
+        const TString& reason) override;
 
 private:
     NProto::TStartEndpointResponse StartEndpointImpl(
@@ -238,6 +288,10 @@ private:
     NProto::TRefreshEndpointResponse RefreshEndpointImpl(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TRefreshEndpointRequest> request);
+
+    NProto::TError SwitchEndpointImpl(
+        TCallContextPtr ctx,
+        std::shared_ptr<TSwitchEndpointRequest> request);
 
     NProto::TStartEndpointResponse AlterEndpoint(
         TCallContextPtr ctx,
@@ -260,8 +314,6 @@ private:
 
     std::shared_ptr<NProto::TStartEndpointRequest> CreateNbdStartEndpointRequest(
         const NProto::TStartEndpointRequest& request);
-
-    void TrySwitchEndpoint(const TString& diskId);
 
     template <typename TMethod>
     TPromise<typename TMethod::TResponse> AddProcessingSocket(
@@ -295,6 +347,9 @@ private:
             },
             [] (const TRequestState<TRefreshEndpointMethod>&) {
                 return "refreshing";
+            },
+            [] (const TRequestState<TSwitchEndpointMethod>&) {
+                return "switching";
             },
             [](const auto&) {
                 return "busy (undefined process)";
@@ -717,42 +772,82 @@ TStartEndpointRequestPtr TEndpointManager::CreateNbdStartEndpointRequest(
     return nbdRequest;
 }
 
-void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
+NProto::TError TEndpointManager::DoSwitchEndpoint(
+    TCallContextPtr ctx,
+    std::shared_ptr<TSwitchEndpointRequest> request)
 {
-    auto it = FindIf(Requests, [&] (auto& v) {
+    const auto& diskId = request->GetDiskId();
+
+    auto reqIt = FindIf(Requests, [&] (auto& v) {
         const auto& [_, req] = v;
         return req->GetDiskId() == diskId
             && req->GetIpcType() == NProto::IPC_VHOST;
     });
 
-    if (it == Requests.end()) {
-        return;
+    if (reqIt == Requests.end()) {
+        return TErrorResponse(S_OK);
     }
 
-    const auto& req = it->second;
-    auto listenerIt = EndpointListeners.find(req->GetIpcType());
+    const auto& socketPath = reqIt->first;
+
+    auto sockIt = ProcessingSockets.find(socketPath);
+    if (sockIt != ProcessingSockets.end()) {
+        const auto& st = sockIt->second;
+        auto* state = std::get_if<TRequestState<TSwitchEndpointMethod>>(&st);
+        if (!state) {
+            return MakeBusySocketError(socketPath, st);
+        }
+
+        return Executor->WaitFor(state->Result);
+    }
+
+    request->SetUnixSocketPath(socketPath);
+    auto promise = AddProcessingSocket<TSwitchEndpointMethod>(*request);
+
+    auto response = SwitchEndpointImpl(std::move(ctx), std::move(request));
+    promise.SetValue(response);
+
+    RemoveProcessingSocket(socketPath);
+    return response;
+}
+
+NProto::TError TEndpointManager::SwitchEndpointImpl(
+    TCallContextPtr ctx,
+    std::shared_ptr<TSwitchEndpointRequest> request)
+{
+    const auto& socketPath = request->GetUnixSocketPath();
+
+    auto it = Requests.find(socketPath);
+    if (it == Requests.end()) {
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote() << " not started");
+    }
+
+    auto& startRequest = it->second;
+    auto listenerIt = EndpointListeners.find(startRequest->GetIpcType());
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
         TWellKnownEntityTypes::ENDPOINT,
-        req->GetUnixSocketPath());
+        socketPath);
     const auto& listener = listenerIt->second;
 
-    auto ctx = MakeIntrusive<TCallContext>();
     auto future = SessionManager->GetSession(
-        std::move(ctx),
-        req->GetUnixSocketPath(),
-        req->GetHeaders());
+        ctx,
+        startRequest->GetUnixSocketPath(),
+        startRequest->GetHeaders());
     auto [sessionInfo, error] = Executor->WaitFor(future);
     if (HasError(error)) {
-        return;
+        return error;
     }
 
-    STORAGE_INFO("Switching endpoint for volume " << sessionInfo.Volume.GetDiskId()
+    STORAGE_INFO("Switching endpoint"
+        << ", reason=" << request->GetReason()
+        << ", volume=" << sessionInfo.Volume.GetDiskId()
         << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
         << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
 
     auto switchFuture = listener->SwitchEndpoint(
-        *it->second,
+        *startRequest,
         sessionInfo.Volume,
         sessionInfo.Session);
     error = Executor->WaitFor(switchFuture);
@@ -762,16 +857,20 @@ void TEndpointManager::TrySwitchEndpoint(const TString& diskId)
             << sessionInfo.Volume.GetDiskId()
             << ", " << error.GetMessage());
     }
+
+    return TErrorResponse(error);
 }
 
-void TEndpointManager::OnVolumeConnectionEstablished(const TString& diskId)
+TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
+    const TString& diskId,
+    const TString& reason)
 {
-    Y_UNUSED(diskId);
+    auto ctx = MakeIntrusive<TCallContext>();
+    auto request = std::make_shared<TSwitchEndpointRequest>();
+    request->SetDiskId(diskId);
+    request->SetReason(reason);
 
-    // TODO: NBS-312 safely call TrySwitchEndpoint
-    // Executor->ExecuteSimple([this, diskId] () {
-    //     return TrySwitchEndpoint(diskId);
-    // });
+    return SwitchEndpoint(std::move(ctx), std::move(request));
 }
 
 }   // namespace

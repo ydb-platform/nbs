@@ -15,6 +15,10 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetNegativeEntryTimeout(
+        config.GetNegativeEntryTimeout().MilliSeconds());
+    features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +104,8 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,
@@ -237,6 +243,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed (%s)",
         LogTag.c_str(),

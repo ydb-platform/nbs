@@ -78,6 +78,7 @@ test-results
 /contrib/tools/ragel6/all_*.cpp
 /contrib/go/_std_1.21/src/net/_cgo_export.h
 /contrib/go/_std_1.21/src/runtime/cgo/_cgo_export.h
+/contrib/libs/apache/arrow/cpp/src/generated
 /contrib/python/protobuf/py3/google.protobuf.internal._api_implementation.reg3.cpp
 /contrib/python/protobuf/py3/google.protobuf.pyext._message.reg3.cpp
 /contrib/tools/python3/src/Modules/_sqlite/_sqlite3.reg3.cpp

@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(65, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(66, requests.size());
 
 #define TEST_REQUEST_TYPE(index, id, name)                                     \
     UNIT_ASSERT_VALUES_EQUAL(id, requests[index].Id);                          \
@@ -153,24 +153,25 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(48, 48, StopEndpoint);
         TEST_REQUEST_TYPE(49, 49, ListEndpoints);
         TEST_REQUEST_TYPE(50, 50, KickEndpoint);
+        TEST_REQUEST_TYPE(51, 51, DescribeData);
 
         // Fuse
-        TEST_REQUEST_TYPE(51, 1001, Flush);
-        TEST_REQUEST_TYPE(52, 1002, Fsync);
+        TEST_REQUEST_TYPE(52, 1001, Flush);
+        TEST_REQUEST_TYPE(53, 1002, Fsync);
 
         // Tablet
-        TEST_REQUEST_TYPE(53, 10001, Flush);
-        TEST_REQUEST_TYPE(54, 10002, FlushBytes);
-        TEST_REQUEST_TYPE(55, 10003, Compaction);
-        TEST_REQUEST_TYPE(56, 10004, Cleanup);
-        TEST_REQUEST_TYPE(57, 10005, TrimBytes);
-        TEST_REQUEST_TYPE(58, 10006, CollectGarbage);
-        TEST_REQUEST_TYPE(59, 10007, DeleteGarbage);
-        TEST_REQUEST_TYPE(60, 10008, ReadBlob);
-        TEST_REQUEST_TYPE(61, 10009, WriteBlob);
-        TEST_REQUEST_TYPE(62, 10010, AddBlob);
-        TEST_REQUEST_TYPE(63, 10011, TruncateRange);
-        TEST_REQUEST_TYPE(64, 10012, ZeroRange);
+        TEST_REQUEST_TYPE(54, 10001, Flush);
+        TEST_REQUEST_TYPE(55, 10002, FlushBytes);
+        TEST_REQUEST_TYPE(56, 10003, Compaction);
+        TEST_REQUEST_TYPE(57, 10004, Cleanup);
+        TEST_REQUEST_TYPE(58, 10005, TrimBytes);
+        TEST_REQUEST_TYPE(59, 10006, CollectGarbage);
+        TEST_REQUEST_TYPE(60, 10007, DeleteGarbage);
+        TEST_REQUEST_TYPE(61, 10008, ReadBlob);
+        TEST_REQUEST_TYPE(62, 10009, WriteBlob);
+        TEST_REQUEST_TYPE(63, 10010, AddBlob);
+        TEST_REQUEST_TYPE(64, 10011, TruncateRange);
+        TEST_REQUEST_TYPE(65, 10012, ZeroRange);
 
 #undef TEST_REQUEST_TYPE
     }

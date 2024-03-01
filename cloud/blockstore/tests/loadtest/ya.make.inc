@@ -1,7 +1,7 @@
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 
 REQUIREMENTS(
-    container:2185033214  # container with tcp_tw_reuse = 1
+    container:5897560351  # container with tcp_tw_reuse = 1
 )
 
 DEPENDS(

@@ -29,6 +29,53 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         TIndexTabletProxyClient tabletProxy(env.GetRuntime(), nodeIdx);
         tabletProxy.WaitReady("test");
     }
+
+    Y_UNIT_TEST(ShouldDetectRemoteTabletDeath)
+    {
+        TTestEnvConfig cfg {.StaticNodes = 1, .DynamicNodes = 2};
+        TTestEnv env(cfg);
+        env.CreateSubDomain("nfs");
+
+        auto& runtime = env.GetRuntime();
+        ui32 nodeIdx1 = env.CreateNode("nfs");
+
+        TSSProxyClient ssProxy(env.GetStorageConfig(), runtime, nodeIdx1);
+        ssProxy.CreateFileStore("test", 1000);
+
+        auto response = ssProxy.DescribeFileStore("test");
+        auto fsTabletId = response->
+            PathDescription.
+            GetFileStoreDescription().
+            GetIndexTabletId();
+
+        TIndexTabletProxyClient tabletProxy1(env.GetRuntime(), nodeIdx1);
+        tabletProxy1.WaitReady("test");
+
+        ui64 disconnections = 0;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvClientDestroyed: {
+                        auto* msg =
+                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
+                        if (msg->TabletId == fsTabletId) {
+                            ++disconnections;
+                        }
+                    }
+                }
+                return false;
+            });
+
+        ui32 nodeIdx2 = env.CreateNode("nfs");
+
+        TIndexTabletProxyClient tabletProxy2(env.GetRuntime(), nodeIdx2);
+        tabletProxy2.WaitReady("test");
+
+        tabletProxy2.SendWaitReadyRequest("test");
+
+        RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

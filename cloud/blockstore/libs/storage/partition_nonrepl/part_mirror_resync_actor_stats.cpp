@@ -39,12 +39,13 @@ void TMirrorPartitionResyncActor::SendStats(const TActorContext& ctx)
         stats->AggregateWith(*MirrorCounters);
     }
 
-    auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
-        MakeIntrusive<TCallContext>(),
-        std::move(stats));
-
-    request->NetworkBytes = NetworkBytes;
-    request->CpuUsage = CpuUsage;
+    auto request =
+        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
+            MakeIntrusive<TCallContext>(),
+            std::move(stats),
+            PartConfig->GetName(),
+            NetworkBytes,
+            CpuUsage);
 
     NCloud::Send(ctx, StatActorId, std::move(request));
 }

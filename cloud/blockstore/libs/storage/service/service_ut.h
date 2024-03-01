@@ -1,13 +1,13 @@
 #pragma once
 
-#include <cloud/blockstore/config/features.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/public.h>
 
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 
 #include <cloud/blockstore/libs/storage/testlib/service_client.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
+
+#include <cloud/storage/core/config/features.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

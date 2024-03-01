@@ -45,9 +45,7 @@ TRegisterActor::TRegisterActor(
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
-{
-    ActivityType = TBlockStoreActivities::DISK_AGENT_WORKER;
-}
+{}
 
 void TRegisterActor::Bootstrap(const TActorContext& ctx)
 {

@@ -357,7 +357,6 @@ TReadDataActor::TReadDataActor(
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
 {
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
     TABLET_VERIFY(AlignedByteRange.IsAligned());
 }
 
@@ -544,6 +543,8 @@ void TIndexTabletActor::HandleReadData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    AddTransaction<TEvService::TReadDataMethod>(*requestInfo);
+
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
 
@@ -600,6 +601,8 @@ void TIndexTabletActor::HandleDescribeData(
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
+
+    AddTransaction<TEvIndexTablet::TDescribeDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateLazyBlockBuffer(alignedByteRange);
@@ -741,6 +744,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
     const TActorContext& ctx,
     TTxIndexTablet::TReadData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (args.DescribeOnly && !HasError(args.Error)) {
         auto response =
             std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();

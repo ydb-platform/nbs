@@ -165,7 +165,8 @@ void InitTestActorRuntime(
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
 
     NProto::TPartitionConfig partConfig;
@@ -1132,9 +1133,7 @@ TTestVolumeProxyActor::TTestVolumeProxyActor(
     , BasePartitionContent(std::move(basePartitionContent))
     , BlocksCount(blocksCount)
     , BaseBlockSize(baseBlockSize)
-{
-    ActivityType = TBlockStoreActivities::VOLUME_PROXY;
-}
+{}
 
 void TTestVolumeProxyActor::Bootstrap(const TActorContext& ctx)
 {

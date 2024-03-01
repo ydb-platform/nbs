@@ -136,9 +136,7 @@ TReadBlobActor::TReadBlobActor(
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {

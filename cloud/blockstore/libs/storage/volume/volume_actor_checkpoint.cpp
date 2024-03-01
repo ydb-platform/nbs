@@ -36,6 +36,7 @@ using TCreateCheckpointMethod = TEvService::TCreateCheckpointMethod;
 using TDeleteCheckpointMethod = TEvService::TDeleteCheckpointMethod;
 using TDeleteCheckpointDataMethod = TEvVolume::TDeleteCheckpointDataMethod;
 using TGetChangedBlocksMethod = TEvService::TGetChangedBlocksMethod;
+using TGetCheckpointStatusMethod = TEvService::TGetCheckpointStatusMethod;
 
 const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
     switch (reqType) {
@@ -84,6 +85,38 @@ ECheckpointRequestType ProtoCheckpointType2Create(
     }
 
     return proto2enum.Value(checkpointType, ECheckpointRequestType::Create);
+}
+
+NProto::ECheckpointStatus GetCheckpointStatus(const TActiveCheckpointInfo& checkpointInfo)
+{
+    switch (checkpointInfo.Type) {
+        case ECheckpointType::Normal:
+            break;
+        case ECheckpointType::Light:
+            return NProto::ECheckpointStatus::READY;
+    }
+
+    switch (checkpointInfo.Data) {
+        case ECheckpointData::DataPresent:
+            break;
+        case ECheckpointData::DataDeleted:
+            return NProto::ECheckpointStatus::ERROR;
+    }
+
+    if (checkpointInfo.ShadowDiskId.Empty()) {
+        return NProto::ECheckpointStatus::READY;
+    }
+
+    switch (checkpointInfo.ShadowDiskState) {
+        case EShadowDiskState::None:
+        case EShadowDiskState::New:
+        case EShadowDiskState::Preparing:
+            return NProto::ECheckpointStatus::NOT_READY;
+        case EShadowDiskState::Ready:
+            return NProto::ECheckpointStatus::READY;
+        case EShadowDiskState::Error:
+            return NProto::ECheckpointStatus::ERROR;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -206,9 +239,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , TraceInfo(std::move(traceInfo))
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
-{
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
@@ -968,6 +999,49 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
     return true;
 }
 
+template <>
+bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
+    const TActorContext& ctx,
+    const TGetCheckpointStatusMethod::TRequest::TPtr& ev,
+    ui64 volumeRequestId,
+    bool isTraced,
+    ui64 traceTs)
+{
+    Y_UNUSED(volumeRequestId);
+    Y_UNUSED(isTraced);
+    Y_UNUSED(traceTs);
+
+    const auto& msg = *ev->Get();
+    const auto& checkpointId = msg.Record.GetCheckpointId();
+
+    auto reply =
+        [&](const NProto::TError& error, NProto::ECheckpointStatus status)
+    {
+        auto response =
+            std::make_unique<TGetCheckpointStatusMethod::TResponse>(error);
+        response->Record.SetCheckpointStatus(status);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Get checkpoint status for checkpoint %s",
+        TabletID(),
+        checkpointId.Quote().c_str());
+
+    auto checkpoint = State->GetCheckpointStore().GetCheckpoint(checkpointId);
+    if (!checkpoint) {
+        reply(
+            MakeError(E_NOT_FOUND, "Checkpoint not found"),
+            NProto::ECheckpointStatus::ERROR);
+        return true;
+    }
+
+    reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleUpdateCheckpointRequest(
@@ -1352,7 +1426,8 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
-            newState));
+            newState,
+            args.ProcessedBlockCount));
 }
 
 void TVolumeActor::HandleUpdateShadowDiskState(
@@ -1372,7 +1447,9 @@ void TVolumeActor::HandleUpdateShadowDiskState(
     auto reply = [&](EShadowDiskState newState)
     {
         auto response = std::make_unique<
-            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(newState);
+            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
+            newState,
+            msg->ProcessedBlockCount);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 

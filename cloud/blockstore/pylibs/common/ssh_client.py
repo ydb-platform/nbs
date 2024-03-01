@@ -148,6 +148,7 @@ class SshClient:
             'scp',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             f'{self._scp_authorization_string}:{remote_path}',
             local_path,
@@ -217,6 +218,7 @@ class SshClient:
             'scp',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            '-o', 'UserKnownHostsFile=/dev/null',
             *self._key_path_cmd_argument,
             local_path,
             f'{self._scp_authorization_string}:{remote_path}',
@@ -231,6 +233,7 @@ class SshClient:
             'ssh',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             '-T',  # Disable pseudo-terminal allocation.
             self._authorization_string,

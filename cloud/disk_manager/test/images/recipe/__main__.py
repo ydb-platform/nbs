@@ -45,6 +45,13 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_CRC32", "1412309815")
 
+    vhd_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd.img")
+    vhd_image_file_server = ImageFileServerLauncher(vhd_image_file_path)
+    vhd_image_file_server.start()
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT", str(vhd_image_file_server.port))
+    image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
+
     nonexistent_image_file_server = ImageFileServerLauncher("nonexistent")
     nonexistent_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_NON_EXISTENT_IMAGE_FILE_SERVER_PORT", str(nonexistent_image_file_server.port))
@@ -84,6 +91,20 @@ def start(argv):
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_CRC32", "3896929631")
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vmdk_ubuntu2204_image_map.json")
         set_env("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_MAP_FILE", image_map_file_path)
+
+    windows_vmdk_image_file_path = yatest_common.build_path(
+        "cloud/disk_manager/test/images/resources/vmdk_images/windows-vmdk-stream-optimised-multiple-grains.vmdk")
+    if os.path.exists(windows_vmdk_image_file_path):
+        windows_vmdk_image_file_server = ImageFileServerLauncher(
+            windows_vmdk_image_file_path)
+        windows_vmdk_image_file_server.start()
+        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT", str(windows_vmdk_image_file_server.port))
+        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SIZE", "1354152960")
+        # size and crc32 after converting to raw image
+        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE", "8589934592")
+        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32", "2831814743")
+        image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/windows_vmdk_stream_optimised_multiple_grains_image_map.json")
+        set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_MAP_FILE", image_map_file_path)
 
     # reproduces panic issue (NBS-4635)
     qcow2_panic_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/panic.img")

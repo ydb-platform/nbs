@@ -138,9 +138,7 @@ TBootstrapperActor::TBootstrapperActor(
     , Owner(owner)
     , TabletStorageInfo(std::move(tabletStorageInfo))
     , TabletSetupInfo(std::move(tabletSetupInfo))
-{
-    ActivityType = TBlockStoreActivities::BOOTSTRAPPER;
-}
+{}
 
 void TBootstrapperActor::StartTablet(const TActorContext& ctx)
 {

@@ -181,9 +181,7 @@ TCompactionActor::TCompactionActor(
     , BlocksSkipped(blocksSkipped)
     , ReadRequests(std::move(readRequests))
     , WriteRequests(std::move(writeRequests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {

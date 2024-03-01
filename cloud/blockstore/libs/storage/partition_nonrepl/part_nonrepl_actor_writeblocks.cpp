@@ -96,9 +96,7 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
     , AssignIdToWriteAndZeroRequestsEnabled(
           assignIdToWriteAndZeroRequestsEnabled)
     , ReplyLocal(replyLocal)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentWriteActor::Bootstrap(const TActorContext& ctx)
 {

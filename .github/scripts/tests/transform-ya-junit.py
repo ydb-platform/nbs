@@ -70,11 +70,17 @@ class YaMuteCheck:
 
         for line in failure_text_split[1].splitlines():
             line = line.lstrip()
-            if not line.startswith("tests::"):
+            if "::" not in line:
+                continue
+            if "duration:" not in line:
                 continue
             test_case_name = line.replace("::", ".").split()[0]
             failed_by_current_chunk_cases.append(test_case_name)
 
+        if len(failed_by_current_chunk_cases) == 0:
+            log_print(
+                f"Error, no failed subtests found for the failed test case: {suite_name} {test_name}"
+            )
         matched_test_cases = []
         for test_case_name in failed_by_current_chunk_cases:
             for pt in matching_tests_by_suite_regexps:
@@ -162,6 +168,27 @@ class YTestReportTrace:
 
         return result
 
+    def get_log_dir(self, class_event, name) -> str | None:
+        logs_dir = self.traces.get(
+            (class_event, name),
+            {},
+        ).get("logs", {}).get("logsdir")
+
+        if logs_dir is None:
+            return None
+
+        return logs_dir.replace("$(BUILD_ROOT)", '').lstrip('/')
+
+    def get_log_dir_chunk(self, suite, idx, total):
+        logs_dir = self.traces.get(
+            (suite, idx, total), {},
+        ).get("logs", {}).get("logsdir")
+
+        if logs_dir is None:
+            return None
+
+        return logs_dir.replace("$(BUILD_ROOT)", '').lstrip('/')
+
 
 def filter_empty_logs(logs):
     result = {}
@@ -211,6 +238,7 @@ def transform(
     log_out_dir,
     log_trunc_size,
     output,
+    data_url_prefix,
 ):
     tree = ET.parse(fp)
     root = tree.getroot()
@@ -225,16 +253,18 @@ def transform(
             case.set("classname", suite_name)
 
             is_fail = is_faulty_testcase(case)
+            is_mute = False
 
             if mute_check(suite_name, test_name, case):
                 log_print("mute", suite_name, test_name)
                 mute_target(case)
+                is_mute = True
 
             if is_fail:
                 if "." in test_name:
                     test_cls, test_method = test_name.rsplit(".", maxsplit=1)
                     logs = filter_empty_logs(traces.get_logs(test_cls, test_method))
-
+                    logs_directory = traces.get_log_dir(test_cls, test_method)
                 elif "chunk" in test_name:
                     if "sole" in test_name:
                         chunk_idx = 0
@@ -247,8 +277,25 @@ def transform(
                     logs = filter_empty_logs(
                         traces.get_logs_chunks(suite_name, chunk_idx, chunks_total)
                     )
+                    logs_directory = traces.get_log_dir_chunk(
+                        suite_name,
+                        chunk_idx,
+                        chunks_total,
+                    )
                 else:
                     continue
+
+                if logs_directory is not None and not is_mute:
+                    log_print(
+                        f"add {logs_directory} property "
+                        f"for {suite_name}/{test_name}",
+                    )
+                    add_junit_link_property(
+                        case,
+                        'logs_directory',
+                        f'{data_url_prefix}/'
+                        f'{urllib.parse.quote(logs_directory)}',
+                    )
 
                 if logs:
                     log_print(
@@ -290,6 +337,12 @@ def main():
     )
     parser.add_argument("-m", help="muted test list")
     parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")
+    parser.add_argument(
+        "--data-url-prefix",
+        dest='data_url_prefix',
+        default="./",
+        help="Url prefix for test data, which stores all the additional logs",
+    )
     parser.add_argument("--log-out-dir", help="symlink logs to specific directory")
     parser.add_argument(
         "--log-truncate-size",
@@ -319,6 +372,7 @@ def main():
         args.log_out_dir,
         args.log_trunc_size,
         args.output,
+        args.data_url_prefix,
     )
 
 

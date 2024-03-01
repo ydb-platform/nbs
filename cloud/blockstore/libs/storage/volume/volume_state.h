@@ -143,6 +143,7 @@ private:
     bool TrackUsedBlocks = false;
     bool MaskUnusedBlocks = false;
     bool UseRdma = false;
+    bool UseFastPath = false;
     bool UseRdmaForThisVolume = false;
     bool RdmaUnavailable = false;
     TDuration MaxTimedOutDeviceStateDuration;
@@ -566,6 +567,11 @@ public:
     bool GetUseRdmaForThisVolume() const
     {
         return UseRdmaForThisVolume;
+    }
+
+    bool GetUseFastPath() const
+    {
+        return UseFastPath;
     }
 
     void SetRdmaUnavailable()

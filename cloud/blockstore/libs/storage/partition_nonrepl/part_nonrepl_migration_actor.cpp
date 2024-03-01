@@ -11,6 +11,10 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration PrepareMigrationInterval = TDuration::Seconds(5);
+
+////////////////////////////////////////////////////////////////////////////////
+
 TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
         TStorageConfigPtr config,
         IProfileLogPtr profileLog,
@@ -42,7 +46,9 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
     const NActors::TActorContext& ctx)
 {
-    StartWork(ctx, CreateSrcActor(ctx), CreateDstActor(ctx));
+    InitWork(ctx, CreateSrcActor(ctx), CreateDstActor(ctx));
+
+    PrepareForMigration(ctx);
 }
 
 bool TNonreplicatedPartitionMigrationActor::OnMessage(
@@ -52,6 +58,12 @@ bool TNonreplicatedPartitionMigrationActor::OnMessage(
     Y_UNUSED(ctx);
 
     switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvVolume::TEvPreparePartitionMigrationRequest,
+            HandlePreparePartitionMigrationRequest);
+        HFunc(
+            TEvVolume::TEvPreparePartitionMigrationResponse,
+            HandlePreparePartitionMigrationResponse);
         HFunc(TEvVolume::TEvMigrationStateUpdated, HandleMigrationStateUpdated);
         HFunc(
             TEvDiskRegistry::TEvFinishMigrationResponse,
@@ -73,6 +85,12 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
 {
     MigrationFinished = true;
     FinishMigration(ctx, false);
+}
+
+void TNonreplicatedPartitionMigrationActor::OnMigrationError(
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
@@ -235,6 +253,42 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
     if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
         FinishMigration(ctx, true);
     }
+}
+
+void TNonreplicatedPartitionMigrationActor::PrepareForMigration(
+    const NActors::TActorContext& ctx)
+{
+    auto request =
+        std::make_unique<TEvVolume::TEvPreparePartitionMigrationRequest>();
+
+    NCloud::Send(
+        ctx,
+        SrcConfig->GetParentActorId(),
+        std::move(request));
+}
+
+void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationRequest(
+    const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    PrepareForMigration(ctx);
+}
+
+void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationResponse(
+    const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    bool isMigrationAllowed = ev->Get()->IsMigrationAllowed;
+    if (!isMigrationAllowed) {
+        ctx.Schedule(
+            PrepareMigrationInterval,
+            new TEvVolume::TEvPreparePartitionMigrationRequest());
+        return;
+    }
+
+    StartWork(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

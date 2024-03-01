@@ -172,7 +172,8 @@ void TPartitionActor::CompleteLoadState(
         if (!Config->GetMixedIndexCacheV1Enabled() &&
             !Config->IsMixedIndexCacheV1FeatureEnabled(
                 partitionConfig.GetCloudId(),
-                partitionConfig.GetFolderId()))
+                partitionConfig.GetFolderId(),
+                partitionConfig.GetDiskId()))
         {
             // disabled by default & not enabled for cloud
             return 0u;

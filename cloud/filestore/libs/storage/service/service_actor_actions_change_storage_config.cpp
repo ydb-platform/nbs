@@ -60,9 +60,7 @@ TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {

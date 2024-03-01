@@ -77,16 +77,13 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                 _logger.info(
                     f'Waiting until disk <id={disk.id}> will be attached'
                     f' to instance <id={instance.id}> and secondary disk'
-                    f' appears as block device'
-                    f' <name={test_case.block_device}>')
+                    f' appears as block device')
 
-                with self._instance_policy.attach_disk(
-                    disk,
-                    test_case.block_device
-                ):
+                with self._instance_policy.attach_disk(disk) as disk_path:
                     self._perform_verification_write(
                         test_case.verify_write_cmd % (
                             self._remote_verify_test_path,
+                            disk_path,
                             self._iodepth),
                         disk,
                         instance)
@@ -101,16 +98,13 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                     _logger.info(
                         f'Waiting until disk <id={output_disk.id}> will be'
                         f' attached to instance <id={instance.id}> and'
-                        f' secondary disk appears as block device'
-                        f' <name={test_case.block_device}>')
+                        f' secondary disk appears as block device')
 
-                    with self._instance_policy.attach_disk(
-                        output_disk,
-                        test_case.block_device
-                    ):
+                    with self._instance_policy.attach_disk(output_disk) as disk_path:
                         self._perform_verification_read(
                             test_case.verify_read_cmd % (
                                 self._remote_verify_test_path,
+                                disk_path,
                                 self._iodepth),
                             output_disk,
                             instance)

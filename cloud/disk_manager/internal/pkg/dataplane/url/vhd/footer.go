@@ -25,7 +25,7 @@ type footer struct {
 	DiskGeometry       uint32
 	DiskType           uint32
 	Checksum           uint32
-	UniqueId           [16]byte
+	UniqueID           [16]byte
 	SavedState         byte
 	Reserved           [427]byte
 }

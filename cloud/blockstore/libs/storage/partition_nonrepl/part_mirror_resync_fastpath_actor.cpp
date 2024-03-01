@@ -30,9 +30,7 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
     , Replicas(std::move(replicas))
     , ClientId(std::move(clientId))
     , SgList(std::move(sgList))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMirrorPartitionResyncFastPathActor::Bootstrap(const TActorContext& ctx)
 {

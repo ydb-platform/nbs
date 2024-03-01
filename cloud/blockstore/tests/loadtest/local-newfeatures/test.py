@@ -6,10 +6,10 @@ import yatest.common as common
 from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig, CT_LOAD
-from cloud.blockstore.config.features_pb2 import TFeaturesConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test, \
     get_restart_interval
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 

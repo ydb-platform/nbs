@@ -694,6 +694,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1");
 
+        {   // Validate checkpoint state (ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
+
         {
             // Write request rejected
             volume.SendWriteBlocksRequest(
@@ -757,6 +764,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // After checkpoint data deletion
         volume.DeleteCheckpointData("c1");
+
+        {   // Validate checkpoint state (error).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::ERROR,
+                status->Record.GetCheckpointStatus());
+        }
+
         {
             // Read from checkpoint without data failed
             volume.SendReadBlocksRequest(
@@ -1490,7 +1505,20 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1");
 
+        {   // Validate checkpoint state (ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
+
         volume.DeleteCheckpoint("c1");
+
+        {   // Checkpoint state not found for deleted checkpoint.
+            volume.SendGetCheckpointStatusRequest("c1");
+            auto response = volume.RecvGetCheckpointStatusResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+        }
 
         for (ui32 i = 0; i < 21; ++i) {
             volume.SendReadBlocksRequest(
@@ -1681,6 +1709,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.CreateCheckpoint("c1");
 
+        {   // Validate checkpoint state (ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
+
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
@@ -1724,6 +1759,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WaitReady();
 
         volume.DeleteCheckpoint("c1");
+
+        {   // Checkpoint state not found for deleted checkpoint.
+            volume.SendGetCheckpointStatusRequest("c1");
+            auto response = volume.RecvGetCheckpointStatusResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+        }
 
         {
             auto stat = volume.StatVolume();
@@ -3067,6 +3108,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         const TString checkpointId = "c1";
         volume.CreateCheckpoint(checkpointId, true);
 
+        {   // Validate checkpoint state (ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
+
         volume.WriteBlocks(
             TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),
@@ -3157,18 +3205,28 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             GetBlockContent(2));
 
-        // TODO(drbasic) check checkpoint state (not ready).
+        {   // Validate checkpoint state (not ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::NOT_READY,
+                status->Record.GetCheckpointStatus());
+        }
 
         using EReason =
             TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
-        // Set Checkpoint ready.
+        // Set Checkpoint fill in progress.
         volume.UpdateShadowDiskState(
             "c1",
             EReason::FillProgressUpdate,
             10,
             expectedBlockCount);
 
-        // TODO(drbasic) check checkpoint state (not ready).
+        {   // Validate checkpoint state (not ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::NOT_READY,
+                status->Record.GetCheckpointStatus());
+        }
 
         volume.UpdateShadowDiskState(
             "c1",
@@ -3176,7 +3234,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             expectedBlockCount,
             expectedBlockCount);
 
-        // TODO(drbasic) check checkpoint state (ready).
+        {   // Validate checkpoint state (ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                status->Record.GetCheckpointStatus());
+        }
 
         // Writes to the disk are not blocked.
         volume.WriteBlocks(
@@ -3191,12 +3254,23 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(1, deallocateRequestCount);
 
-        // TODO(drbasic) read from checkpoint (fail).
+        {   // Validate checkpoint state (error).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::ERROR,
+                status->Record.GetCheckpointStatus());
+        }
 
         // Delete checkpoint.
         volume.DeleteCheckpoint("c1");
         UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
         UNIT_ASSERT_VALUES_EQUAL(2, deallocateRequestCount);
+
+        {   // Checkpoint state not found for deleted checkpoint.
+            volume.SendGetCheckpointStatusRequest("c1");
+            auto response = volume.RecvGetCheckpointStatusResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+        }
     }
 }
 

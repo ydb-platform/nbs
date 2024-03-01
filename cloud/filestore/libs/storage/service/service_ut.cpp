@@ -1528,6 +1528,176 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
+    Y_UNIT_TEST(ShouldProperlyProcessSlowSessionCreation)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+
+        // delaying session creation response
+        bool rescheduled = false;
+        ui32 createSessionResponses = 0;
+        TActorId createSessionActor;
+
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        createSessionActor = event->Recipient;
+
+                        break;
+                    }
+                    case TEvIndexTablet::EvCreateSessionResponse: {
+                        ++createSessionResponses;
+
+                        if (!rescheduled) {
+                            runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                            rescheduled = true;
+                            return true;
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        auto response = service.RecvCreateSessionResponse();
+        headers.SessionId = response->Record.GetSession().GetSessionId();
+        // immediately pinging session to signal that it's not idle
+        service.PingSession(headers);
+
+        // just checking that we observed the events that we are expecting
+        UNIT_ASSERT(rescheduled);
+        UNIT_ASSERT_VALUES_EQUAL(1, createSessionResponses);
+
+        // can't call RebootTablet here because it resets our registration
+        // observer and thus disables wakeup event scheduling
+        auto msg = std::make_unique<TEvTabletPipe::TEvClientDestroyed>(
+            static_cast<ui64>(0),
+            TActorId(),
+            TActorId());
+
+        runtime.Send(
+            new IEventHandle(
+                createSessionActor,
+                runtime.AllocateEdgeActor(nodeIdx),
+                msg.release(),
+                0, // flags
+                0),
+            nodeIdx);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // checking that session was recreated
+        UNIT_ASSERT_VALUES_EQUAL(2, createSessionResponses);
+
+        service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(UnsuccessfulSessionActorShouldStopWorking)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+
+        ui32 sessionCreated = 0;
+        bool rescheduled = false;
+
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvCreateSessionResponse: {
+                    if (!rescheduled) {
+                        auto* msg = event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                        *msg->Record.MutableError() = MakeError(E_TIMEOUT, "timeout");
+
+                        runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                        rescheduled = true;
+                        return true;
+                    }
+
+                    break;
+                }
+
+                case TEvServicePrivate::EvSessionCreated: {
+                    ++sessionCreated;
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(rescheduled);
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        auto response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_TIMEOUT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // we should have observed exactly 1 CreateSessionResponse
+        // if we observe more than 1 it means that our CreateSessionActor
+        // remained active after the first failure
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCreated);
+
+        // this time session creation should be successful
+        service.SendCreateSessionRequest(headers);
+        response = service.RecvCreateSessionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, sessionCreated);
+    }
+
     Y_UNIT_TEST(ShouldFillOriginFqdnWhenCreatingSession)
     {
         TTestEnv env;
@@ -1627,11 +1797,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             ->FindSubgroup("component", "service_fs")
                             ->FindSubgroup("host", "cluster")
                             ->FindSubgroup("filesystem", fs)
-                            ->FindSubgroup("client", "client")
-                            ->FindSubgroup("request", "ReadData");
-        UNIT_ASSERT(counters);
-
-        UNIT_ASSERT_EQUAL(4, counters->GetCounter("Count")->GetAtomic());
+                            ->FindSubgroup("client", "client");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)

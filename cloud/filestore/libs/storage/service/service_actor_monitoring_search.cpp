@@ -28,9 +28,7 @@ public:
             TString fileSystemId)
         : ActorID(actorID)
         , FileSystemId(std::move(fileSystemId))
-    {
-        ActivityType = TFileStoreActivities::SERVICE;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

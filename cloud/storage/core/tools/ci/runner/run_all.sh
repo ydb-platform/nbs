@@ -27,7 +27,9 @@ fi
 
 cd $nbspath &&
 git reset --hard &&
-git pull
+git pull &&
+git submodule update --init --recursive ||
+(echo "failed to fetch changes from git repository"; exit)
 
 "${nbspath}/ya" gc cache
 

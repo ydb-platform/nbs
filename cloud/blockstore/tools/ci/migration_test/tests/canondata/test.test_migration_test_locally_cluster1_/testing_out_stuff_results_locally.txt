@@ -1,0 +1,31 @@
+EXECUTE ACTION endpoint=localhost:9766 action=DescribeVolume input=b'{"DiskId":"fake-disk-id"}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=diskregistrychangestate input=b'{"Message": "start migration test (id=fake-disk-id)", "ChangeAgentState": {"AgentId": "sas-ct7-20-9", "State": 1}}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+RESIZE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id block_count=100500 channels_count=0 config_version=None performance_profile=MaxPostponedWeight: 10000
+
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+EXECUTE ACTION endpoint=localhost:9766 action=killtablet input=b'{"TabletId": 42000000100500}'
+DESCRIBE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id
+DESCRIBE VOLUME RESPONSE: {'DiskId': 'fmalfamflakdmflad', 'Devices': [{'AgentId': 'sas-ct7-20-9'}], 'Migrations': [{'TargetDevice': {'BlockCount': 24414062, 'AgentId': 'sas09-ct7-26.cloud.yandex.net', 'DeviceUUID': '6ed17b82b9ea3a54d5f5e2f9c2bef8a3', 'DeviceName': '/dev/nvme3n2'}, 'SourceDeviceId': '77a871d4453143a8d72e803aa17ecdb6'}], 'BlocksCount': 100500, 'ConfigVersion': 1, 'PerformanceProfile': {'MaxPostponedWeight': 9999}}
+RESIZE VOLUME REQUEST endpoint=localhost:9766 disk_id=fake-disk-id block_count=100500 channels_count=0 config_version=None performance_profile=MaxPostponedWeight: 134217728
+
+EXECUTE ACTION endpoint=localhost:9766 action=diskregistrychangestate input=b'{"Message": "finish migration test (id=fake-disk-id)", "ChangeAgentState": {"AgentId": "sas-ct7-20-9", "State": 0}}'

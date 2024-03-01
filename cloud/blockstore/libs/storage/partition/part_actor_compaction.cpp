@@ -252,9 +252,7 @@ TCompactionActor::TCompactionActor(
     , CommitId(commitId)
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -1263,7 +1261,8 @@ void TPartitionActor::HandleCompaction(
         const bool batchCompactionEnabledForCloud =
             Config->IsBatchCompactionFeatureEnabled(
                 PartitionConfig.GetCloudId(),
-                PartitionConfig.GetFolderId());
+                PartitionConfig.GetFolderId(),
+                PartitionConfig.GetDiskId());
         const bool batchCompactionEnabled =
             Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
 
@@ -1444,6 +1443,7 @@ void PrepareRangeCompaction(
     const TStorageConfig& config,
     const TString& cloudId,
     const TString& folderId,
+    const TString& diskId,
     const ui64 commitId,
     const bool forceFullCompaction,
     const TActorContext& ctx,
@@ -1455,7 +1455,7 @@ void PrepareRangeCompaction(
     TTxPartition::TRangeCompaction& args)
 {
     const bool incrementalCompactionEnabledForCloud =
-        config.IsIncrementalCompactionFeatureEnabled(cloudId, folderId);
+        config.IsIncrementalCompactionFeatureEnabled(cloudId, folderId, diskId);
     const bool incrementalCompactionEnabled =
         config.GetIncrementalCompactionEnabled()
         || incrementalCompactionEnabledForCloud;
@@ -1870,6 +1870,7 @@ bool TPartitionActor::PrepareCompaction(
             *Config,
             PartitionConfig.GetCloudId(),
             PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId(),
             args.CommitId,
             args.ForceFullCompaction,
             ctx,
@@ -1911,7 +1912,8 @@ void TPartitionActor::CompleteCompaction(
     const bool blobPatchingEnabledForCloud =
         Config->IsBlobPatchingFeatureEnabled(
             PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId());
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
     const bool blobPatchingEnabled =
         Config->GetBlobPatchingEnabled() || blobPatchingEnabledForCloud;
 

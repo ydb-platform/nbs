@@ -94,9 +94,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentChecksumActor::Bootstrap(const TActorContext& ctx)
 {

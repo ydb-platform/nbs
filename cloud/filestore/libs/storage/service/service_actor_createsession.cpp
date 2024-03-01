@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -67,7 +68,6 @@ private:
     google::protobuf::RepeatedPtrField<NProto::TSessionEvent> StoredEvents;
     TActorId EventListener;
 
-    bool Shutdown = false;
     bool FirstWakeupScheduled = false;
 
     TActorId Owner;
@@ -91,6 +91,7 @@ public:
 private:
     STFUNC(StateResolve);
     STFUNC(StateWork);
+    STFUNC(StateShutdown);
 
     void DescribeFileStore(const TActorContext& ctx);
     void HandleDescribeFileStoreResponse(
@@ -116,6 +117,10 @@ private:
         const TEvServicePrivate::TEvCreateSession::TPtr& ev,
         const TActorContext& ctx);
 
+    void RejectCreateSession(
+        const TEvServicePrivate::TEvCreateSession::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePingSession(
         const TEvServicePrivate::TEvPingSession::TPtr& ev,
         const TActorContext& ctx);
@@ -134,17 +139,16 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
+    void OnDisconnect(const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
-
     void Notify(
         const TActorContext& ctx,
-        const NProto::TError& error);
+        const NProto::TError& error,
+        bool shutdown);
 
     void CancelPendingRequests(
         const TActorContext& ctx,
@@ -187,9 +191,7 @@ TCreateSessionActor::TCreateSessionActor(
     , ReadOnly(readOnly)
     , SessionId(std::move(sessionId))
     , Owner(owner)
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TCreateSessionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -213,7 +215,12 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        return ReplyAndDie(ctx, msg->GetError());
+        ReportDescribeFileStoreError();
+
+        Notify(ctx, msg->GetError(), false);
+        Die(ctx);
+
+        return;
     }
 
     const auto& pathDescr = msg->PathDescription;
@@ -256,14 +263,7 @@ void TCreateSessionActor::HandleConnect(
             TabletId,
             NKikimrProto::EReplyStatus_Name(msg->Status).data());
 
-        NTabletPipe::CloseClient(ctx, PipeClient);
-        PipeClient = {};
-
-        if (!FirstWakeupScheduled) {
-            // Wakeup cycle is inactive => reconnect won't be initiated
-            // if we don't initiate it here
-            CreatePipe(ctx);
-        }
+        OnDisconnect(ctx);
 
         return;
     }
@@ -277,10 +277,6 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
-    if (!FirstWakeupScheduled) {
-        ScheduleWakeup(ctx);
-        FirstWakeupScheduled = true;
-    }
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -292,42 +288,34 @@ void TCreateSessionActor::HandleDisconnect(
         LogTag().c_str(),
         TabletId);
 
+    OnDisconnect(ctx);
+}
+
+void TCreateSessionActor::OnDisconnect(const TActorContext& ctx)
+{
     NTabletPipe::CloseClient(ctx, PipeClient);
     PipeClient = {};
+
+    if (!FirstWakeupScheduled) {
+        // Wakeup cycle is inactive => reconnect won't be initiated
+        // if we don't initiate it here
+        CreatePipe(ctx);
+    }
 }
 
 void TCreateSessionActor::HandleCreateSession(
     const TEvServicePrivate::TEvCreateSession::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s got create session: seqno %lu ro %u",
         LogTag().c_str(),
-        ev->Get()->SessionSeqNo,
-        ev->Get()->ReadOnly);
+        msg->SessionSeqNo,
+        msg->ReadOnly);
 
-    auto* msg = ev->Get();
     LastPing = ctx.Now();
-
-    if (Shutdown) {
-        auto error = MakeError(E_REJECTED, "TCreateSessionActor: shutting down");
-
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
-            "%s reject create session - TCreateSessionActor is shutting down %lu (%s)",
-            LogTag().c_str(),
-            msg->SessionSeqNo,
-            FormatError(error).c_str());
-
-        auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
-        response->ClientId = msg->ClientId;
-        response->SessionId = msg->SessionId;
-        response->SessionSeqNo = msg->SessionSeqNo;
-        response->ReadOnly = msg->ReadOnly;
-        response->RequestInfo = std::move(msg->RequestInfo);
-
-        NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));
-        return;
-    }
 
     ClientId = msg->ClientId;
     FileSystemId = msg->FileSystemId;
@@ -339,6 +327,30 @@ void TCreateSessionActor::HandleCreateSession(
     RequestInfo = std::move(msg->RequestInfo);
 
     CreateSession(ctx);
+}
+
+void TCreateSessionActor::RejectCreateSession(
+    const TEvServicePrivate::TEvCreateSession::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto error = MakeError(E_REJECTED, "TCreateSessionActor: shutting down");
+
+    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        "%s reject create session: seqno %lu error %s",
+        LogTag().c_str(),
+        msg->SessionSeqNo,
+        FormatError(error).c_str());
+
+    auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
+    response->ClientId = msg->ClientId;
+    response->SessionId = msg->SessionId;
+    response->SessionSeqNo = msg->SessionSeqNo;
+    response->ReadOnly = msg->ReadOnly;
+    response->RequestInfo = std::move(msg->RequestInfo);
+
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));
 }
 
 void TCreateSessionActor::CreateSession(const TActorContext& ctx)
@@ -372,11 +384,21 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {
-        return Notify(ctx, msg->GetError());
-    } else if (!sessionId) {
-        auto error = MakeError(E_FAIL, "empty session id");
-        return Notify(ctx, std::move(error));
-    } else if (sessionId != SessionId) {
+        ReportCreateSessionError();
+
+        return Notify(ctx, msg->GetError(), false);
+    }
+
+    if (!sessionId) {
+        ReportMissingSessionId();
+
+        return Notify(
+            ctx,
+            MakeError(E_FAIL, "empty session id"),
+            false);
+    }
+
+    if (sessionId != SessionId) {
         LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
             "%s restored session id: actual id %s, state(%lu)",
             LogTag().c_str(),
@@ -395,7 +417,12 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     SessionState = msg->Record.GetSessionState();
     FileStore = msg->Record.GetFileStore();
 
-    Notify(ctx, {});
+    Notify(ctx, {}, false);
+
+    if (!FirstWakeupScheduled) {
+        ScheduleWakeup(ctx);
+        FirstWakeupScheduled = true;
+    }
 }
 
 void TCreateSessionActor::HandlePingSession(
@@ -483,8 +510,8 @@ void TCreateSessionActor::HandleWakeup(
             "%s closing idle session, last ping at %s",
             LogTag().c_str(),
             LastPing.ToStringUpToSeconds().c_str());
-        Shutdown = true;
-        return Notify(ctx, MakeError(E_TIMEOUT, "closed idle session"));
+        Become(&TThis::StateShutdown);
+        return Notify(ctx, MakeError(E_TIMEOUT, "closed idle session"), true);
     }
 
     auto connectTimeout = Config->GetEstablishSessionTimeout();
@@ -493,8 +520,8 @@ void TCreateSessionActor::HandleWakeup(
             "%s create timeouted, couldn't connect from %s",
             LogTag().c_str(),
             LastPipeResetTime.ToStringUpToSeconds().c_str());
-        Shutdown = true;
-        return Notify(ctx, MakeError(E_TIMEOUT, "failed to connect to fs"));
+        Become(&TThis::StateShutdown);
+        return Notify(ctx, MakeError(E_TIMEOUT, "failed to connect to fs"), true);
     }
 
     if (!PipeClient) {
@@ -517,24 +544,17 @@ void TCreateSessionActor::HandlePoisonPill(
         ToString(SelfId()).c_str());
 
     if (ev->Sender != Owner) {
-        Shutdown = true;
-        Notify(ctx, MakeError(E_REJECTED, "request cancelled"));
+        Become(&TThis::StateShutdown);
+        Notify(ctx, MakeError(E_REJECTED, "request cancelled"), true);
     } else {
         Die(ctx);
     }
 }
 
-void TCreateSessionActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    Notify(ctx, error);
-    Die(ctx);
-}
-
 void TCreateSessionActor::Notify(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    bool shutdown)
 {
     Y_ABORT_UNLESS(SessionId);
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
@@ -552,9 +572,7 @@ void TCreateSessionActor::Notify(
     response->TabletId = TabletId;
     response->FileStore = FileStore;
     response->RequestInfo = std::move(RequestInfo);
-    if (Shutdown) {
-        response->Shutdown = true;
-    }
+    response->Shutdown = shutdown;
 
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(response));
 }
@@ -603,6 +621,26 @@ STFUNC(TCreateSessionActor::StateWork)
     }
 }
 
+STFUNC(TCreateSessionActor::StateShutdown)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvServicePrivate::TEvCreateSession, RejectCreateSession);
+
+        IgnoreFunc(TEvents::TEvWakeup);
+        IgnoreFunc(TEvTabletPipe::TEvClientConnected);
+        IgnoreFunc(TEvTabletPipe::TEvClientDestroyed);
+        IgnoreFunc(TEvIndexTablet::TEvCreateSessionResponse);
+        IgnoreFunc(TEvServicePrivate::TEvPingSession);
+        IgnoreFunc(TEvService::TEvGetSessionEventsRequest);
+        IgnoreFunc(TEvService::TEvGetSessionEventsResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+            break;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -634,7 +672,9 @@ void TStorageServiceActor::HandleCreateSession(
     auto reply = [&] (auto* session, auto error) {
         auto response =
             std::make_unique<TEvService::TEvCreateSessionResponse>(error);
-        session->GetInfo(*response->Record.MutableSession(), GetSessionSeqNo(msg->Record));
+        session->GetInfo(
+            *response->Record.MutableSession(),
+            GetSessionSeqNo(msg->Record));
         inflight->Complete(ctx.Now(), std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
     };
@@ -663,7 +703,10 @@ void TStorageServiceActor::HandleCreateSession(
         NCloud::Send(ctx, std::move(actorId), std::move(request));
     };
 
-    if (auto* session = State->FindSession(sessionId, GetSessionSeqNo(msg->Record))) {
+    auto* session =
+        State->FindSession(sessionId, GetSessionSeqNo(msg->Record));
+
+    if (session) {
         if (session->ClientId != clientId) {
             auto error = MakeError(
                 E_FS_INVALID_SESSION,
@@ -674,7 +717,9 @@ void TStorageServiceActor::HandleCreateSession(
             return;
         }
 
-        if (session->CreateDestroyState != ESessionCreateDestroyState::STATE_NONE) {
+        if (session->CreateDestroyState
+                != ESessionCreateDestroyState::STATE_NONE)
+        {
             auto error = MakeError(
                 E_REJECTED,
                 "Another create or destroy request is in progress");
@@ -682,7 +727,8 @@ void TStorageServiceActor::HandleCreateSession(
             return;
         }
 
-        session->CreateDestroyState = ESessionCreateDestroyState::STATE_CREATE_SESSION;
+        session->CreateDestroyState =
+            ESessionCreateDestroyState::STATE_CREATE_SESSION;
 
         if (session->SessionActor) {
             return proceed(session->SessionActor);
@@ -847,6 +893,10 @@ void TStorageServiceActor::HandleSessionCreated(
                 msg->SessionId,
                 msg->SessionSeqNo).c_str(),
             FormatError(msg->GetError()).c_str());
+
+        if (msg->Shutdown) {
+            ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
+        }
     }
 
     if (session) {
@@ -867,9 +917,12 @@ void TStorageServiceActor::HandleSessionCreated(
             return;
         }
 
-        auto response = std::make_unique<TEvService::TEvCreateSessionResponse>(msg->GetError());
+        auto response = std::make_unique<TEvService::TEvCreateSessionResponse>(
+            msg->GetError());
         if (session) {
-            session->GetInfo(*response->Record.MutableSession(), msg->SessionSeqNo);
+            session->GetInfo(
+                *response->Record.MutableSession(),
+                msg->SessionSeqNo);
             response->Record.MutableFileStore()->CopyFrom(msg->FileStore);
         }
 

@@ -19,6 +19,7 @@
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -743,10 +744,16 @@ public:
             std::move(devices));
     }
 
-    auto CreateRemoveDiskSessionRequest(TString diskId, TString clientId)
+    auto CreateRemoveDiskSessionRequest(
+        TString diskId,
+        TString clientId,
+        TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
     {
-        return std::make_unique<TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
-            std::move(diskId), std::move(clientId));
+        return std::make_unique<
+            TEvDiskRegistryPrivate::TEvRemoveDiskSessionRequest>(
+            std::move(diskId),
+            std::move(clientId),
+            std::move(sentRequests));
     }
 
     auto CreateUpdateAgentStatsRequest(NProto::TAgentStats stats)

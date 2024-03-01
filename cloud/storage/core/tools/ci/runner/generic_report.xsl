@@ -29,7 +29,12 @@
             <xsl:attribute name="style">
                 <xsl:choose>
                     <xsl:when test="@error">background-color: mistyrose</xsl:when>
-                    <xsl:otherwise>background-color: #c0f08d</xsl:otherwise>
+                    <xsl:otherwise>
+                        <xsl:choose>
+                            <xsl:when test="@highlight_color">background-color: <xsl:value-of select="@highlight_color"/></xsl:when>
+                            <xsl:otherwise>background-color: #c0f08d</xsl:otherwise>
+                        </xsl:choose>
+                    </xsl:otherwise>
                 </xsl:choose>
             </xsl:attribute>
             <div>

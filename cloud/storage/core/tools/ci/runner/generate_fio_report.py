@@ -273,37 +273,38 @@ def generate_history(fio_results_path, test_tag, history):
     plt.close(fig)
 
 
-xsl_filename = sys.argv[1]
-suite_kind = sys.argv[2]
+if __name__ == "__main__":
+    xsl_filename = sys.argv[1]
+    suite_kind = sys.argv[2]
 
-xslt = etree.parse(xsl_filename)
+    xslt = etree.parse(xsl_filename)
 
-fio_results_path = os.path.join(report_common.ROOT_DIR, "results", suite_kind)
-xml_output_path = fio_results_path + ".xml"
-html_output_path = fio_results_path + ".html"
+    fio_results_path = os.path.join(report_common.ROOT_DIR, "results", suite_kind)
+    xml_output_path = fio_results_path + ".xml"
+    html_output_path = fio_results_path + ".html"
 
-by_all_time = {}
+    by_all_time = {}
 
-new_report = report_common.build_report(
-    suite_kind,
-    partial(on_test_case_result_impl, by_all_time=by_all_time),
-    fio_results_path)
+    new_report = report_common.build_report(
+        suite_kind,
+        partial(on_test_case_result_impl, by_all_time=by_all_time),
+        fio_results_path)
 
-for test_tag, history in by_all_time.items():
-    generate_history(fio_results_path, test_tag, history)
+    for test_tag, history in by_all_time.items():
+        generate_history(fio_results_path, test_tag, history)
 
-report_common.generate_report_files(
-    new_report,
-    xslt,
-    xml_output_path,
-    html_output_path)
-
-for suite in new_report:
-    suite_report = etree.Element("report")
-    suite_report.append(suite)
-    suite_path = os.path.join(fio_results_path, suite.get("name"))
     report_common.generate_report_files(
-        suite_report,
+        new_report,
         xslt,
-        suite_path + ".xml",
-        suite_path + ".html")
+        xml_output_path,
+        html_output_path)
+
+    for suite in new_report:
+        suite_report = etree.Element("report")
+        suite_report.append(suite)
+        suite_path = os.path.join(fio_results_path, suite.get("name"))
+        report_common.generate_report_files(
+            suite_report,
+            xslt,
+            suite_path + ".xml",
+            suite_path + ".html")

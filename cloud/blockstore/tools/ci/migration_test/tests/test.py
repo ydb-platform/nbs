@@ -23,9 +23,38 @@ def test_migration_test(cluster):
                 '--kill-period', '0',
                 '--cluster', cluster,
                 '--cluster-config-path', f'{common.source_path()}/cloud/blockstore/tools/ci/migration_test/tests/test-configs',
+                '--zone', 'fake-zone',
                 '--nbs-port', '1234',
                 '--no-generate-ycp-config',
                 '--ycp-requests-template-path', '/does/not/matter'
+            ],
+            stdout=out
+        )
+
+        assert result == 0
+
+    ret = common.canonical_file(results_path, local=True)
+
+    return ret
+
+
+@pytest.mark.parametrize('cluster', ['cluster1'])
+def test_migration_test_locally(cluster):
+    binary = common.binary_path(
+        'cloud/blockstore/tools/ci/migration_test/yc-nbs-ci-migration-test')
+
+    results_path = '%s_results_locally.txt' % common.output_path()
+
+    with open(results_path, 'w') as out:
+        result = subprocess.call(
+            [
+                binary,
+                '--dry-run',
+                '--teamcity',
+                '--disk-id', 'fake-disk-id',
+                '--kill-tablet',
+                '--kill-period', '0',
+                '--run-locally',
             ],
             stdout=out
         )

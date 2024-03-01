@@ -38,6 +38,8 @@ void TIndexTabletActor::HandleListNodeXAttr(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TListNodeXAttrMethod>(*requestInfo);
+
     ExecuteTx<TListNodeXAttr>(
         ctx,
         std::move(requestInfo),
@@ -106,6 +108,8 @@ void TIndexTabletActor::CompleteTx_ListNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodeXAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvListNodeXAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         response->Record.MutableNames()->Reserve(args.Attrs.size());

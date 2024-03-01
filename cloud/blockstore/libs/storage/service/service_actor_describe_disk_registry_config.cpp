@@ -45,9 +45,7 @@ private:
 TDescribeDiskRegistryConfigActor::TDescribeDiskRegistryConfigActor(
         TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDescribeDiskRegistryConfigActor::Bootstrap(const TActorContext& ctx)
 {

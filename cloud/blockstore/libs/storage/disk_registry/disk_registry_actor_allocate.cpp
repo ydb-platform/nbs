@@ -318,6 +318,8 @@ void TDiskRegistryActor::CompleteRemoveDisk(
             "RemoveDisk error: %s. DiskId=%s",
             FormatError(args.Error).c_str(),
             args.DiskId.Quote().c_str());
+    } else {
+        OnDiskDeallocated(args.DiskId);
     }
 
     auto response = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>();

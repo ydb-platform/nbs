@@ -190,6 +190,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -349,6 +350,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode);
     ~TVolumeActor() override;
 
@@ -752,6 +754,10 @@ private:
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePreparePartitionMigration(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateResyncState(
         const TEvVolume::TEvUpdateResyncState::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -870,6 +876,10 @@ private:
 
     void HandleDeleteCheckpointDataResponse(
         const TEvVolume::TEvDeleteCheckpointDataResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetCheckpointStatusResponse(
+        const TEvService::TEvGetCheckpointStatusResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteBlocksLocalResponse(

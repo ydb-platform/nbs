@@ -61,6 +61,9 @@ def build_report(test_kind, on_test_case_result, results_dir):
                             test_case.set("error", error)
                         i += 1
 
+                        if (color := test_case_result.get("highlight_color")) is not None:
+                            test_case.set("highlight_color", color)
+
                         on_test_case_result(
                             suite_type,
                             suite_date_str,

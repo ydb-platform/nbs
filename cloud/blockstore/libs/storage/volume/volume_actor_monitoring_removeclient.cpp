@@ -56,9 +56,7 @@ THttpRemoveClientActor::THttpRemoveClientActor(
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
     , TabletId(tabletId)
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 void THttpRemoveClientActor::Bootstrap(const TActorContext& ctx)
 {

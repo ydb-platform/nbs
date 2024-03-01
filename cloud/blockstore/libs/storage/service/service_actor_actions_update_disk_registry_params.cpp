@@ -55,9 +55,7 @@ TUpdateDiskRegistryAgentListParamsActor::TUpdateDiskRegistryAgentListParamsActor
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdateDiskRegistryAgentListParamsActor::Bootstrap(const TActorContext& ctx)
 {

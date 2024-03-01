@@ -183,7 +183,9 @@ void TVolumeState::Reset()
     UseRdma = StorageConfig->GetUseRdma()
         || StorageConfig->IsUseRdmaFeatureEnabled(
             Meta.GetConfig().GetCloudId(),
-            Meta.GetConfig().GetFolderId());
+            Meta.GetConfig().GetFolderId(),
+            Meta.GetConfig().GetDiskId());
+    UseFastPath = false;
     UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
 
@@ -236,6 +238,8 @@ void TVolumeState::Reset()
             UseRdmaForThisVolume = true;
         } else if (tag == "max-timed-out-device-state-duration") {
             TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
+        } else if (tag == "use-fastpath") {
+            UseFastPath = true;
         }
     }
 

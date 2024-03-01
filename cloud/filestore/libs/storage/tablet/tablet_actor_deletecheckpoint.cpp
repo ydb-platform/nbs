@@ -31,6 +31,8 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(*requestInfo);
+
     ExecuteTx<TDeleteCheckpoint>(
         ctx,
         std::move(requestInfo),
@@ -235,6 +237,8 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteCheckpoint& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint completed (%s)",
         LogTag.c_str(),

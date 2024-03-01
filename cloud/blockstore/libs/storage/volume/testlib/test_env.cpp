@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -408,6 +409,15 @@ TVolumeClient::CreateDeleteCheckpointDataRequest(
     return request;
 }
 
+std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+TVolumeClient::CreateGetCheckpointStatusRequest(const TString& checkpointId)
+{
+    auto request =
+        std::make_unique<TEvService::TEvGetCheckpointStatusRequest>();
+    request->Record.SetCheckpointId(checkpointId);
+    return request;
+}
+
 std::unique_ptr<TEvPartition::TEvBackpressureReport>
 TVolumeClient::CreateBackpressureReport(
     const TBackpressureReport& report)
@@ -691,7 +701,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
-            rdmaClient
+            rdmaClient,
+            NServer::CreateEndpointEventProxy()
         );
         return tablet.release();
     };

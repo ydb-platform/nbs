@@ -18,6 +18,8 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestInfo
+    : public TAtomicRefCount<TRequestInfo>
+    , public TIntrusiveListItem<TRequestInfo>
 {
     using TCancelRoutine = void(
         const NActors::TActorContext& ctx,
@@ -45,14 +47,6 @@ struct TRequestInfo
         , Cookie(cookie)
         , CallContext(std::move(callContext))
     {}
-
-    TRequestInfo(TRequestInfo&& other) = default;
-
-    void CancelRequest(const NActors::TActorContext& ctx)
-    {
-        Y_ABORT_UNLESS(CancelRoutine);
-        CancelRoutine(ctx, *this);
-    }
 
     void AddExecCycles(ui64 cycles)
     {
@@ -105,7 +99,7 @@ inline TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    return std::make_shared<TRequestInfo>(
+    return MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
         std::move(callContext));
@@ -117,7 +111,7 @@ TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    auto requestInfo = std::make_shared<TRequestInfo>(
+    auto requestInfo = MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
         std::move(callContext));

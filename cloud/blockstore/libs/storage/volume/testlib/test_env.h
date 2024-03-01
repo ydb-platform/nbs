@@ -406,6 +406,9 @@ public:
     std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest> CreateDeleteCheckpointDataRequest(
         const TString& checkpointId);
 
+    std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+    CreateGetCheckpointStatusRequest(const TString& checkpointId);
+
     std::unique_ptr<TEvPartition::TEvBackpressureReport> CreateBackpressureReport(
         const TBackpressureReport& report);
 
