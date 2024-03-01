@@ -13,6 +13,9 @@ namespace NCloud::NFileStore{
     xxx(TabletBSFailure)                                                       \
     xxx(TabletCommitIdOverflow)                                                \
     xxx(VfsQueueRunningError)                                                  \
+    xxx(MissingSessionId)                                                      \
+    xxx(CreateSessionError)                                                    \
+    xxx(DescribeFileStoreError)                                                \
 // FILESTORE_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
