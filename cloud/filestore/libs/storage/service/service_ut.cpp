@@ -1647,6 +1647,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             switch (event->GetTypeRewrite()) {
                 case TEvIndexTablet::EvCreateSessionResponse: {
                     if (!rescheduled) {
+                        auto* msg = event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                        *msg->Record.MutableError() = MakeError(E_TIMEOUT, "timeout");
+
                         runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
                         rescheduled = true;
                         return true;
