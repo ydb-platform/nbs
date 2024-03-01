@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -138,13 +139,11 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
+    void OnDisconnect(const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
 
     void Notify(
         const TActorContext& ctx,
@@ -216,7 +215,12 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        return ReplyAndDie(ctx, msg->GetError());
+        ReportDescribeFileStoreError();
+
+        Notify(ctx, msg->GetError(), false);
+        Die(ctx);
+
+        return;
     }
 
     const auto& pathDescr = msg->PathDescription;
@@ -259,14 +263,7 @@ void TCreateSessionActor::HandleConnect(
             TabletId,
             NKikimrProto::EReplyStatus_Name(msg->Status).data());
 
-        NTabletPipe::CloseClient(ctx, PipeClient);
-        PipeClient = {};
-
-        if (!FirstWakeupScheduled) {
-            // Wakeup cycle is inactive => reconnect won't be initiated
-            // if we don't initiate it here
-            CreatePipe(ctx);
-        }
+        OnDisconnect(ctx);
 
         return;
     }
@@ -280,11 +277,6 @@ void TCreateSessionActor::HandleConnect(
     LastPing = ctx.Now();
 
     CreateSession(ctx);
-    if (!FirstWakeupScheduled) {
-        // TODO: it should be scheduled after the first successful CreateSessionResponse
-        ScheduleWakeup(ctx);
-        FirstWakeupScheduled = true;
-    }
 }
 
 void TCreateSessionActor::HandleDisconnect(
@@ -296,8 +288,19 @@ void TCreateSessionActor::HandleDisconnect(
         LogTag().c_str(),
         TabletId);
 
+    OnDisconnect(ctx);
+}
+
+void TCreateSessionActor::OnDisconnect(const TActorContext& ctx)
+{
     NTabletPipe::CloseClient(ctx, PipeClient);
     PipeClient = {};
+
+    if (!FirstWakeupScheduled) {
+        // Wakeup cycle is inactive => reconnect won't be initiated
+        // if we don't initiate it here
+        CreatePipe(ctx);
+    }
 }
 
 void TCreateSessionActor::HandleCreateSession(
@@ -381,13 +384,21 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
     const auto& sessionId = msg->Record.GetSessionId();
     if (FAILED(msg->GetStatus())) {
+        ReportCreateSessionError();
+
         return Notify(ctx, msg->GetError(), false);
-    } else if (!sessionId) {
+    }
+
+    if (!sessionId) {
+        ReportMissingSessionId();
+
         return Notify(
             ctx,
             MakeError(E_FAIL, "empty session id"),
             false);
-    } else if (sessionId != SessionId) {
+    }
+
+    if (sessionId != SessionId) {
         LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
             "%s restored session id: actual id %s, state(%lu)",
             LogTag().c_str(),
@@ -407,6 +418,11 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     FileStore = msg->Record.GetFileStore();
 
     Notify(ctx, {}, false);
+
+    if (!FirstWakeupScheduled) {
+        ScheduleWakeup(ctx);
+        FirstWakeupScheduled = true;
+    }
 }
 
 void TCreateSessionActor::HandlePingSession(
@@ -533,14 +549,6 @@ void TCreateSessionActor::HandlePoisonPill(
     } else {
         Die(ctx);
     }
-}
-
-void TCreateSessionActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    Notify(ctx, error, false);
-    Die(ctx);
 }
 
 void TCreateSessionActor::Notify(
