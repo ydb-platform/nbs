@@ -411,7 +411,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         });
 
         Tablet->RebootTablet();
-        Tablet->AdvanceTime(TDuration::Minutes(1));
+        Tablet->AdvanceTime(TDuration::Minutes(10));
         Tablet->CleanupSessions();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
