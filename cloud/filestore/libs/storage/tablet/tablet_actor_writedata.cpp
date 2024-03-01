@@ -359,9 +359,11 @@ void TIndexTabletActor::HandleWriteData(
             range,
             std::move(blockBuffer));
 
-        EnqueueWriteBatch(ctx, std::move(request));
+        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
         return;
     }
+
+    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,
@@ -546,6 +548,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto reply = [&] (
         const TActorContext& ctx,
         TTxIndexTablet::TWriteData& args)
