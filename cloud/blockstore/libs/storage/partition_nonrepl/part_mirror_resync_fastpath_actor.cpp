@@ -22,7 +22,7 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
-        TVector<TReplicaId> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString clientId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)

@@ -21,7 +21,7 @@ TResyncRangeActor::TResyncRangeActor(
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         TBlockRange64 range,
-        TVector<TReplicaId> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator)
     : RequestInfo(std::move(requestInfo))
@@ -44,38 +44,23 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         "ResyncRange",
         RequestInfo->CallContext->RequestId);
 
-    ChecksumBlocks(ctx);
+    ChecksumRangeActorCompanion.ChecksumBlocks(ctx);
+    ChecksumStartTs = ctx.Now();
 }
 
-void TResyncRangeActor::ChecksumBlocks(const TActorContext& ctx) {
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
-
-    NCloud::Register<TChecksumRangeActor>(
-        ctx,
-        std::move(requestInfo),
-        Range,
-        Replicas
-    );
-}
-
-void TResyncRangeActor::CompareChecksums(
-    const TActorContext& ctx,
-    const THashMap<int, ui64>& checksums)
+void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
 {
     THashMap<ui64, ui32> checksumCount;
     ui32 majorCount = 0;
     ui64 majorChecksum = 0;
     int majorIdx = 0;
 
-    for (const auto& [idx, checksum]: checksums) {
+    for (size_t i = 0; i < Checksums.size(); i++) {
+        ui64 checksum = Checksums[i];
         if (++checksumCount[checksum] > majorCount) {
             majorCount = checksumCount[checksum];
             majorChecksum = checksum;
-            majorIdx = idx;
+            majorIdx = i;
         }
     }
 
@@ -94,17 +79,18 @@ void TResyncRangeActor::CompareChecksums(
         majorCount,
         Replicas.size());
 
-    for (const auto& [idx, checksum]: checksums) {
+    for (size_t i = 0; i < Checksums.size(); i++) {
+        ui64 checksum = Checksums[i];
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
                 Replicas[0].Name.c_str(),
-                idx,
+                i,
                 DescribeRange(Range).c_str(),
                 checksum,
                 majorChecksum);
 
-            ActorsToResync.push_back(idx);
+            ActorsToResync.push_back(i);
         }
     }
 
@@ -224,27 +210,39 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TResyncRangeActor::HandleChecksumRangeCompleted(
-    const TEvNonreplPartitionPrivate::TEvChecksumRangeCompleted::TPtr& ev,
+void TResyncRangeActor::HandleChecksumUndelivery(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    ChecksumDuration = ctx.Now() - ChecksumStartTs;
 
-    Error = msg->Error;
+    Y_UNUSED(ev);
+
+    Error = MakeError(E_REJECTED, "ChecksumBlocks request undelivered");
+
+    Done(ctx);
+}
+
+void TResyncRangeActor::HandleChecksumResponse(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ChecksumRangeActorCompanion.HandleChecksumResponse(ev, ctx);
+
+    if (!ChecksumRangeActorCompanion.IsFinished()) {
+        return;
+    }
+
+    Error = ChecksumRangeActorCompanion.GetError();
 
     if (HasError(Error)) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Checksum error %s",
-            Replicas[0].Name.c_str(),
-            FormatError(Error).c_str());
-
         Done(ctx);
         return;
     }
 
-    ChecksumStartTs = msg->ChecksumStartTs;
-    ChecksumDuration = msg->ChecksumDuration;
-    CompareChecksums(ctx, std::move(msg->Checksums));
+    ChecksumDuration = ctx.Now() - ChecksumStartTs;
+    Checksums = ChecksumRangeActorCompanion.GetChecksums();
+    CompareChecksums(ctx);
 }
 
 void TResyncRangeActor::HandleReadUndelivery(
@@ -328,7 +326,12 @@ STFUNC(TResyncRangeActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumRangeCompleted, HandleChecksumRangeCompleted);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumUndelivery);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
+            HandleChecksumResponse);
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);

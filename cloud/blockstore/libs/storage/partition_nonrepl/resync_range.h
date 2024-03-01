@@ -25,7 +25,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
-    const TVector<TReplicaId> Replicas;
+    const TVector<TReplicaDescriptor> Replicas;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
@@ -35,6 +35,7 @@ private:
     TGuardedSgList SgList;
     NProto::TError Error;
 
+    TVector<ui64> Checksums;
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
     TInstant ReadStartTs;
@@ -43,22 +44,23 @@ private:
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{
+        Range,
+        Replicas};
+
 public:
     TResyncRangeActor(
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         TBlockRange64 range,
-        TVector<TReplicaId> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void ChecksumBlocks(const NActors::TActorContext& ctx);
-    void CompareChecksums(
-        const NActors::TActorContext& ctx,
-        const THashMap<int, ui64>& checksums);
+    void CompareChecksums(const NActors::TActorContext& ctx);
     void ReadBlocks(const NActors::TActorContext& ctx, int idx);
     void WriteBlocks(const NActors::TActorContext& ctx);
     void WriteReplicaBlocks(const NActors::TActorContext& ctx, int idx);
@@ -67,9 +69,13 @@ private:
 private:
     STFUNC(StateWork);
 
-    void HandleChecksumRangeCompleted(
-            const TEvNonreplPartitionPrivate::TEvChecksumRangeCompleted::TPtr& ev,
-            const NActors::TActorContext& ctx);
+    void HandleChecksumResponse(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleChecksumUndelivery(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleReadResponse(
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,

@@ -3,49 +3,42 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
 
+#include <contrib/ydb/library/actors/core/log.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
-
 ////////////////////////////////////////////////////////////////////////////////
 
-TChecksumRangeActor::TChecksumRangeActor(
-        TRequestInfoPtr requestInfo,
+TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
         TBlockRange64 range,
-        TVector<TReplicaId> replicas)
-    : RequestInfo(std::move(requestInfo))
-    , Range(range)
+        TVector<TReplicaDescriptor> replicas)
+    : Range(range)
     , Replicas(std::move(replicas))
 {
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
+    Checksums.resize(Replicas.size());
 }
 
-void TChecksumRangeActor::Bootstrap(const TActorContext& ctx)
-{
-    TRequestScope timer(*RequestInfo);
-
-    Become(&TThis::StateWork);
-
-    LWTRACK(
-        RequestReceived_PartitionWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "ChecksumRange",
-        RequestInfo->CallContext->RequestId);
-
-    ChecksumBlocks(ctx);
+bool TChecksumRangeActorCompanion::IsFinished() {
+    return Finished;
 }
 
-void TChecksumRangeActor::ChecksumBlocks(const TActorContext& ctx) {
+TVector<ui64> TChecksumRangeActorCompanion::GetChecksums() {
+    return Checksums;
+}
+
+NProto::TError TChecksumRangeActorCompanion::GetError() {
+    return Error;
+}
+
+void TChecksumRangeActorCompanion::ChecksumBlocks(const TActorContext& ctx) {
     for (size_t i = 0; i < Replicas.size(); ++i) {
         ChecksumReplicaBlocks(ctx, i);
     }
-
-    ChecksumStartTs = ctx.Now();
 }
 
-void TChecksumRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
+void TChecksumRangeActorCompanion::ChecksumReplicaBlocks(const TActorContext& ctx, int idx)
 {
     auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
@@ -67,48 +60,12 @@ void TChecksumRangeActor::ChecksumReplicaBlocks(const TActorContext& ctx, int id
     ctx.Send(event.release());
 }
 
-void TChecksumRangeActor::Done(const TActorContext& ctx)
-{
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumRangeCompleted>(
-        std::move(Error),
-        Range,
-        ChecksumStartTs,
-        ChecksumDuration,
-        std::move(Checksums)
-    );
-
-    LWTRACK(
-        ResponseSent_PartitionWorker,
-        RequestInfo->CallContext->LWOrbit,
-        "ChecksumRange",
-        RequestInfo->CallContext->RequestId);
-
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
-
-    Die(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-void TChecksumRangeActor::HandleChecksumUndelivery(
-    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    ChecksumDuration = ctx.Now() - ChecksumStartTs;
-
-    Y_UNUSED(ev);
-
-    Error = MakeError(E_REJECTED, "ChecksumBlocks request undelivered");
-
-    Done(ctx);
-}
-
-void TChecksumRangeActor::HandleChecksumResponse(
+void TChecksumRangeActorCompanion::HandleChecksumResponse(
     const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    ChecksumDuration = ctx.Now() - ChecksumStartTs;
-
     auto* msg = ev->Get();
 
     Error = msg->Record.GetError();
@@ -119,41 +76,13 @@ void TChecksumRangeActor::HandleChecksumResponse(
             Replicas[0].Name.c_str(),
             FormatError(Error).c_str());
 
-        Done(ctx);
+        Finished = true;
         return;
     }
 
-    Checksums.insert({ev->Cookie, msg->Record.GetChecksum()});
-    if (Checksums.size() == Replicas.size()) {
-        Done(ctx);
-    }
-}
-
-void TChecksumRangeActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    Error = MakeError(E_REJECTED, "Dead");
-    Done(ctx);
-}
-
-STFUNC(TChecksumRangeActor::StateWork)
-{
-    TRequestScope timer(*RequestInfo);
-
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumUndelivery);
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse, HandleChecksumResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::PARTITION_WORKER);
-            break;
+    Checksums[ev->Cookie] = msg->Record.GetChecksum();
+    if (++ChecksumsCount == Replicas.size()) {
+        Finished = true;
     }
 }
 

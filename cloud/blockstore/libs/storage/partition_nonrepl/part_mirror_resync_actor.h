@@ -48,7 +48,7 @@ private:
     TMirrorPartitionResyncState State;
 
     NActors::TActorId MirrorActorId;
-    TVector<TReplicaId> Replicas;
+    TVector<TReplicaDescriptor> Replicas;
 
     TPartitionDiskCountersPtr MirrorCounters;
     bool UpdateCountersScheduled = false;
@@ -175,13 +175,13 @@ private:
 
     void ProcessReadRequestFastPath(
         const TEvService::TEvReadBlocksRequest::TPtr& ev,
-        TVector<TReplicaId>&& replicas,
+        TVector<TReplicaDescriptor>&& replicas,
         TBlockRange64 range,
         const NActors::TActorContext& ctx);
 
     void ProcessReadRequestFastPath(
         const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
-        TVector<TReplicaId>&& replicas,
+        TVector<TReplicaDescriptor>&& replicas,
         TBlockRange64 range,
         const NActors::TActorContext& ctx);
 

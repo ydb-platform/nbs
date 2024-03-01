@@ -135,30 +135,6 @@ struct TEvNonreplPartitionPrivate
     };
 
     //
-    // ChecksumRangeCompleted
-    //
-
-    struct TChecksumRangeCompleted
-    {
-        TBlockRange64 Range;
-        TInstant ChecksumStartTs;
-        TDuration ChecksumDuration;
-        THashMap<int, ui64> Checksums;
-
-        TChecksumRangeCompleted(
-                TBlockRange64 range,
-                TInstant checksumStartTs,
-                TDuration checksumDuration,
-                THashMap<int, ui64> checksums)
-            : Range(range)
-            , ChecksumStartTs(checksumStartTs)
-            , ChecksumDuration(checksumDuration)
-            , Checksums(checksums)
-        {
-        }
-    };
-
-    //
     // ReadResyncFastPathResponse
     //
 
@@ -202,7 +178,6 @@ struct TEvNonreplPartitionPrivate
         EvChecksumBlocksCompleted,
         EvResyncNextRange,
         EvRangeResynced,
-        EvChecksumRangeCompleted,
         EvReadResyncFastPathResponse,
 
         BLOCKSTORE_PARTITION_NONREPL_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENT_IDS)
@@ -242,11 +217,6 @@ struct TEvNonreplPartitionPrivate
     using TEvRangeResynced = TResponseEvent<
         TRangeResynced,
         EvRangeResynced
-    >;
-
-    using TEvChecksumRangeCompleted = TResponseEvent<
-        TChecksumRangeCompleted,
-        EvChecksumRangeCompleted
     >;
 
     using TEvReadResyncFastPathResponse = TResponseEvent<

@@ -36,7 +36,7 @@ namespace {
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
-    TVector<TReplicaId> Replicas;
+    TVector<TReplicaDescriptor> Replicas;
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
@@ -237,7 +237,7 @@ struct TTestEnv
             MakeIntrusive<TCallContext>()
         );
 
-        TVector<TReplicaId> replicas;
+        TVector<TReplicaDescriptor> replicas;
         for (int idx: idxs) {
             replicas.push_back(Replicas[idx]);
         }

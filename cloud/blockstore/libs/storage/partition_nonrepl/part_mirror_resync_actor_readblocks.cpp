@@ -37,7 +37,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
         return;
     }
 
-    TVector<TReplicaId> replicas;
+    TVector<TReplicaDescriptor> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
         if (State.GetReplicaInfos()[i].Config->DevicesReadyForReading(range)) {
@@ -50,7 +50,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
 
 void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     const TEvService::TEvReadBlocksRequest::TPtr& ev,
-    TVector<TReplicaId>&& replicas,
+    TVector<TReplicaDescriptor>&& replicas,
     TBlockRange64 range,
     const TActorContext& ctx)
 {
@@ -95,7 +95,7 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
 
 void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
-    TVector<TReplicaId>&& replicas,
+    TVector<TReplicaDescriptor>&& replicas,
     TBlockRange64 range,
     const TActorContext& ctx)
 {
