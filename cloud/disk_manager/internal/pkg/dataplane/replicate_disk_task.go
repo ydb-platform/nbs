@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -24,6 +25,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type replicateDiskTask struct {
+	disksConfig       *disks_config.DisksConfig
 	nbsFactory        nbs_client.Factory
 	config            *config.DataplaneConfig
 	request           *protos.ReplicateDiskTaskRequest
@@ -136,6 +138,10 @@ func (t *replicateDiskTask) createProxyOverlayDisk(
 	client nbs_client.Client,
 	currentCheckpointID string,
 ) (string, error) {
+
+	if !t.disksConfig.GetUseProxyOverlayDisksInRelocation() {
+		return "", nil
+	}
 
 	diskID := t.request.SrcDisk.DiskId
 	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
