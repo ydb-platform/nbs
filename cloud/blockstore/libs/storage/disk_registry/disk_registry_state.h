@@ -135,7 +135,7 @@ public:
         }
     }
 
-    [[nodiscard]] auto GetBrokenDisks() const
+    [[nodiscard]] const THashSet<TString>& GetBrokenDisks() const
     {
         return BrokenDisks;
     }

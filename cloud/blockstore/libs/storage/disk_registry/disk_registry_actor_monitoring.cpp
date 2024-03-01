@@ -1509,36 +1509,37 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                     const bool isPartitionGroup = strategy == NProto::PLACEMENT_STRATEGY_PARTITION;
 
                     auto it = brokenGroups.find(groupId);
-                    const size_t brokenCount =
-                        it == brokenGroups.end()
-                            ? 0
-                            : it->second.Recently.GetBrokenPartitionCount();
+                    const size_t brokenPartitionsCount =
+                        it != brokenGroups.end()
+                            ? it->second.Recently.GetBrokenPartitionCount()
+                            : 0;
 
                     TABLED() {
-                        if (brokenCount > 0) {
-                            DumpSquare(out, brokenCount == 1 ? "orange" : "red");
-                        }
+                        const auto* color = brokenPartitionsCount == 0
+                                ? "green"
+                                : (brokenPartitionsCount == 1 ? "orange" : "red");
+                        DumpSquare(out, color);
                         out << groupId;
                     }
                     TABLED() {
                         DumpPlacementGroupStrategy(out, strategy);
                     }
                     TABLED() {
-                        size_t totalCount = isPartitionGroup ?
+                        size_t totalPartitionsCount = isPartitionGroup ?
                             groupInfo.Config.GetPlacementPartitionCount() :
                             groupInfo.Config.GetDisks().size();
 
                         out << Sprintf("%s: <font color=green>Fine: %zu</font>, ",
                             isPartitionGroup ? "Partitions" : "Disks",
-                            totalCount - brokenCount);
+                            totalPartitionsCount - brokenPartitionsCount);
 
-                        if(brokenCount > 0) {
+                        if(brokenPartitionsCount > 0) {
                             out << Sprintf("<font color=%s>Broken: %zu</font>, ",
-                            brokenCount == 1 ? "orange" : "red",
-                            brokenCount);
+                            brokenPartitionsCount == 1 ? "orange" : "red",
+                            brokenPartitionsCount);
                         }
 
-                        out << Sprintf("Total: %zu<br>", totalCount);
+                        out << Sprintf("Total: %zu<br>", totalPartitionsCount);
                     }
                     TABLED() {
                         if (groupInfo.Full) {
@@ -1573,7 +1574,7 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                                         }
 
                                         const auto brokenDisks =
-                                            it == brokenGroups.end()
+                                            it != brokenGroups.end()
                                                 ? it->second.Recently.GetBrokenDisks()
                                                 : THashSet<TString>();
 
@@ -1584,8 +1585,8 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                                         for (const auto& d: sortedDisks) {
                                             TABLER() {
                                                 TABLED() {
-                                                    const bool broken = brokenDisks.contains(d->GetDiskId());
-                                                    DumpSquare(out, broken ? "red" : "green");
+                                                    const bool isBroken = brokenDisks.contains(d->GetDiskId());
+                                                    DumpSquare(out, isBroken ? "red" : "green");
                                                     DumpDiskLink(out, TabletID(), d->GetDiskId());
                                                 }
                                                 TABLED() {
