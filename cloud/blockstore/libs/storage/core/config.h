@@ -544,6 +544,8 @@ public:
     bool GetConfigsDispatcherServiceEnabled() const;
 
     TDuration GetCachedAcquireRequestLifetime() const;
+
+    ui32 GetUnconfirmedBlobCountHardLimit() const;
 };
 
 ui64 GetAllocationUnit(

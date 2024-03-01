@@ -9712,6 +9712,43 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldLimitUnconfirmedBlobCount)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        config.SetUnconfirmedBlobCountHardLimit(1);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        runtime->SetObserverFunc([&] (auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(10, 1);
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(10);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        // but next blob should be added bypassing 'unconfirmed blobs' feature
+        partition.WriteBlocks(11, 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(11))
+        );
+    }
+
     void DoTestCompression(
         ui32 writeBlobThreshold,
         ui32 uncompressedExpected,
