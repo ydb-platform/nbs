@@ -174,17 +174,6 @@ void DumpSquare(IOutputStream& out, const TStringBuf& color)
         << "</font>";
 }
 
-void DumpPlacementGroupStrategy(
-    IOutputStream& out,
-    NProto::EPlacementStrategy strategy)
-{
-    const TString prefix = "PLACEMENT_STRATEGY_";
-    const TString strategyName = EPlacementStrategy_Name(strategy);
-    out << (strategyName.length() > prefix.length()
-        ? strategyName.substr(prefix.length())
-        : strategyName);
-}
-
 using DiskInfoArray = ::google::protobuf::RepeatedPtrField<NProto::TPlacementGroupConfig_TDiskInfo>;
 auto GetSortedDisksView(
     const DiskInfoArray& disks,
@@ -1517,7 +1506,9 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         out << groupId;
                     }
                     TABLED() {
-                        DumpPlacementGroupStrategy(out, strategy);
+                        TStringBuf name = EPlacementStrategy_Name(strategy);
+                        name.AfterPrefix("PLACEMENT_STRATEGY_", name);
+                        out << name;
                     }
                     TABLED() {
                         size_t totalPartitionsCount = isPartitionGroup
