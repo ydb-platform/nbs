@@ -165,7 +165,7 @@ class TestSummary:
 
     def render(self, add_footnote=False):
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-        repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/ydb")
+        repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
 
         footnote_url = f"{github_srv}/{repo}/tree/main/.github/config"
 
