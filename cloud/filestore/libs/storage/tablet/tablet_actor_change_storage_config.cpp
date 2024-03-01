@@ -59,12 +59,12 @@ void TIndexTabletActor::HandleChangeStorageConfig(
     const TEvIndexTablet::TEvChangeStorageConfigRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TChangeStorageConfigMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         MakeIntrusive<TCallContext>());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvIndexTablet::TChangeStorageConfigMethod>(*requestInfo);
 
     const auto* msg = ev->Get();
     ExecuteTx(ctx, CreateTx<TChangeStorageConfig>(

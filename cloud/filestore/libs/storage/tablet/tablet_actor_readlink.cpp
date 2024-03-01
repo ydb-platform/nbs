@@ -33,12 +33,12 @@ void TIndexTabletActor::HandleReadLink(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TReadLinkMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TReadLinkMethod>(*requestInfo);
 
     ExecuteTx<TReadLink>(
         ctx,

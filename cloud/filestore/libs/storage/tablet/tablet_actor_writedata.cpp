@@ -346,7 +346,7 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo<TEvService::TWriteDataMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -360,11 +360,11 @@ void TIndexTabletActor::HandleWriteData(
             range,
             std::move(blockBuffer));
 
-        EnqueueWriteBatch(ctx, std::move(request));
+        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
         return;
     }
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,

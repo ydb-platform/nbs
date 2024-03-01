@@ -96,12 +96,12 @@ void TIndexTabletActor::HandleCreateSession(
         LogTag.c_str(),
         DumpMessage(msg->Record).c_str());
 
-    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TCreateSessionMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,

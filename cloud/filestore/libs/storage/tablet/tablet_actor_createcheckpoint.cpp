@@ -24,12 +24,12 @@ void TIndexTabletActor::HandleCreateCheckpoint(
         checkpointId.c_str(),
         nodeId);
 
-    auto requestInfo = CreateRequestInfo<TEvService::TCreateCheckpointMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
     ExecuteTx<TCreateCheckpoint>(
         ctx,

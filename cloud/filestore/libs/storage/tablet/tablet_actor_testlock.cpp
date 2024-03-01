@@ -50,12 +50,12 @@ void TIndexTabletActor::HandleTestLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TTestLockMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TTestLockMethod>(*requestInfo);
 
     ExecuteTx<TTestLock>(
         ctx,

@@ -59,7 +59,9 @@ TIndexTabletActor::TIndexTabletActor(
 }
 
 TIndexTabletActor::~TIndexTabletActor()
-{}
+{
+    ReleaseTransactions();
+}
 
 TString TIndexTabletActor::GetStateName(ui32 state)
 {
@@ -229,6 +231,12 @@ void TIndexTabletActor::OnTabletDead(
         ctx.Send(actor, new TEvents::TEvPoisonPill());
     }
 
+    auto writeBatch = DequeueWriteBatch();
+    for (const auto& request: writeBatch) {
+        TRequestInfo& requestInfo = *request.RequestInfo;
+        requestInfo.CancelRoutine(ctx, requestInfo);
+    }
+
     WorkerActors.clear();
     UnregisterFileStore(ctx);
 
@@ -237,20 +245,24 @@ void TIndexTabletActor::OnTabletDead(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::AddTransaction(TRequestInfo& requestInfo)
+void TIndexTabletActor::AddTransaction(
+    TRequestInfo& transaction,
+    TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    requestInfo.Ref();
+    transaction.CancelRoutine = cancelRoutine;
 
-    Y_ABORT_UNLESS(requestInfo.Empty());
-    ActiveTransactions.PushBack(&requestInfo);
+    transaction.Ref();
+
+    TABLET_VERIFY(transaction.Empty());
+    ActiveTransactions.PushBack(&transaction);
 }
 
 void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
 {
-    Y_ABORT_UNLESS(!requestInfo.Empty());
+    TABLET_VERIFY(!requestInfo.Empty());
     requestInfo.Unlink();
 
-    Y_ABORT_UNLESS(requestInfo.RefCount() > 1);
+    TABLET_VERIFY(requestInfo.RefCount() > 1);
     requestInfo.UnRef();
 }
 
@@ -258,9 +270,18 @@ void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
 {
     while (ActiveTransactions) {
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
-        requestInfo->CancelRequest(ctx);
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
 
-        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
+        requestInfo->CancelRoutine(ctx, *requestInfo);
+        requestInfo->UnRef();
+    }
+}
+
+void TIndexTabletActor::ReleaseTransactions()
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
         requestInfo->UnRef();
     }
 }

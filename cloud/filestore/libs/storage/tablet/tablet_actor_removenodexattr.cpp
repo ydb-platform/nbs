@@ -37,12 +37,12 @@ void TIndexTabletActor::HandleRemoveNodeXAttr(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TRemoveNodeXAttrMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TRemoveNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TRemoveNodeXAttr>(
         ctx,

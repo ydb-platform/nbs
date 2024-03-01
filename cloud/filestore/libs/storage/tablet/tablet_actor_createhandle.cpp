@@ -55,12 +55,12 @@ void TIndexTabletActor::HandleCreateHandle(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    auto requestInfo = CreateRequestInfo<TEvService::TCreateHandleMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
 
     ExecuteTx<TCreateHandle>(
         ctx,

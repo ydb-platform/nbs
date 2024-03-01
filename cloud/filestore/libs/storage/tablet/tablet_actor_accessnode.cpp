@@ -33,12 +33,12 @@ void TIndexTabletActor::HandleAccessNode(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TAccessNodeMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
 
     ExecuteTx<TAccessNode>(
         ctx,

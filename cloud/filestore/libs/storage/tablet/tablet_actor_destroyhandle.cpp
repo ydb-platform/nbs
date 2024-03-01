@@ -28,12 +28,12 @@ void TIndexTabletActor::HandleDestroyHandle(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo<TEvService::TDestroyHandleMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,

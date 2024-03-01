@@ -38,12 +38,12 @@ void TIndexTabletActor::HandleResolvePath(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TResolvePathMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TResolvePathMethod>(*requestInfo);
 
     ExecuteTx<TResolvePath>(
         ctx,

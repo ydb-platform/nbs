@@ -37,12 +37,12 @@ void TIndexTabletActor::HandleGetNodeXAttr(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TGetNodeXAttrMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TGetNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeXAttr>(
         ctx,

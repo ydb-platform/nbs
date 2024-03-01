@@ -9,8 +9,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/base/logoblob.h>
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/logoblob.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <util/generic/size_literals.h>

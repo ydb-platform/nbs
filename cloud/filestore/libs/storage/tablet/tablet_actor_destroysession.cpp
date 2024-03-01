@@ -42,12 +42,12 @@ void TIndexTabletActor::HandleDestroySession(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TDestroySessionMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvIndexTablet::TDestroySessionMethod>(*requestInfo);
 
     ExecuteTx<TDestroySession>(
         ctx,

@@ -48,12 +48,6 @@ struct TRequestInfo
         , CallContext(std::move(callContext))
     {}
 
-    void CancelRequest(const NActors::TActorContext& ctx)
-    {
-        Y_ABORT_UNLESS(CancelRoutine);
-        CancelRoutine(ctx, *this);
-    }
-
     void AddExecCycles(ui64 cycles)
     {
         AtomicAdd(ExecCycles, cycles);

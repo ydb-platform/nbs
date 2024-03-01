@@ -46,12 +46,12 @@ void TIndexTabletActor::HandleAcquireLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TAcquireLockMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TAcquireLockMethod>(*requestInfo);
 
     ExecuteTx<TAcquireLock>(
         ctx,

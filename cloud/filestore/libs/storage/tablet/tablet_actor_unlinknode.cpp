@@ -44,12 +44,12 @@ void TIndexTabletActor::HandleUnlinkNode(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
-    auto requestInfo = CreateRequestInfo<TEvService::TUnlinkNodeMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
     ExecuteTx<TUnlinkNode>(
         ctx,

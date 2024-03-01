@@ -82,12 +82,12 @@ void TIndexTabletActor::HandleCreateNode(
     NProto::TNode attrs;
     InitAttrs(attrs, msg->Record);
 
-    auto requestInfo = CreateRequestInfo<TEvService::TCreateNodeMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
 
     ExecuteTx<TCreateNode>(
         ctx,

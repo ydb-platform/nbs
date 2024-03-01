@@ -45,12 +45,12 @@ void TIndexTabletActor::HandleListNodes(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TListNodesMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
     auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
     if (auto bytes = msg->Record.GetMaxBytes()) {

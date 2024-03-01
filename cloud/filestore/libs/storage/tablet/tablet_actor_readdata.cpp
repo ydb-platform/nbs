@@ -560,13 +560,13 @@ void TIndexTabletActor::HandleReadData(
         GetBlockSize()
     );
 
-    auto requestInfo = CreateRequestInfo<TEvService::TReadDataMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TReadDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     auto blockBuffer = CreateBlockBuffer(alignedByteRange);
@@ -619,13 +619,13 @@ void TIndexTabletActor::HandleDescribeData(
         GetBlockSize()
     );
 
-    auto requestInfo = CreateRequestInfo<TEvIndexTablet::TDescribeDataMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvIndexTablet::TDescribeDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
     // TODO: implement a block buffer with lazy block allocation and use it

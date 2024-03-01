@@ -69,12 +69,12 @@ void TIndexTabletActor::HandleAllocateData(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TAllocateDataMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TAllocateDataMethod>(*requestInfo);
 
     ExecuteTx<TAllocateData>(
         ctx,

@@ -18,12 +18,12 @@ void TIndexTabletActor::HandleReleaseLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo<TEvService::TReleaseLockMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TReleaseLockMethod>(*requestInfo);
 
     ExecuteTx<TReleaseLock>(
         ctx,

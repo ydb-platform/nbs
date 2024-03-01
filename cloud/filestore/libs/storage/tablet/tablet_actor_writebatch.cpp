@@ -225,19 +225,6 @@ STFUNC(TWriteBatchActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueWriteBatch(
-    const TActorContext& ctx,
-    std::unique_ptr<TWriteRequest> request)
-{
-    if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
-        if (auto timeout = Config->GetWriteBatchTimeout()) {
-            ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-        } else {
-            ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-        }
-    }
-}
-
 void TIndexTabletActor::HandleWriteBatch(
     const TEvIndexTabletPrivate::TEvWriteBatchRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -258,8 +245,8 @@ void TIndexTabletActor::HandleWriteBatch(
         return;
     }
 
-    for (const auto& batch: writeBatch) {
-        AddTransaction(*batch.RequestInfo);
+    for (const auto& request: writeBatch) {
+        AddTransaction(*request.RequestInfo, request.RequestInfo->CancelRoutine);
     }
 
     auto batchInfo = GetBatchInfo(writeBatch);
@@ -503,8 +490,8 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteBatch& args)
 {
-    for (const auto& batch: args.WriteBatch) {
-        RemoveTransaction(*batch.RequestInfo);
+    for (const auto& request: args.WriteBatch) {
+        RemoveTransaction(*request.RequestInfo);
     }
 
     auto reply = [] (

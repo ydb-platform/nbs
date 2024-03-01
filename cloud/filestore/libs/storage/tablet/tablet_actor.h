@@ -163,7 +163,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
-    TIntrusiveList<TRequestInfo> ActiveTransactions;    
+    TIntrusiveList<TRequestInfo> ActiveTransactions;
 
     TInstant ReassignRequestSentTs;
 
@@ -234,9 +234,29 @@ private:
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
+    template <typename TMethod>
     void EnqueueWriteBatch(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request);
+        std::unique_ptr<TWriteRequest> request)
+    {
+        request->RequestInfo->CancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "request cancelled"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
+            if (auto timeout = Config->GetWriteBatchTimeout()) {
+                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            } else {
+                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            }
+        }
+    }
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
@@ -245,9 +265,29 @@ private:
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
 
-    void AddTransaction(TRequestInfo& transaction);
+    void AddTransaction(
+        TRequestInfo& transaction,
+        TRequestInfo::TCancelRoutine cancelRoutine);
+
+    template <typename TMethod>
+    void AddTransaction(TRequestInfo& transaction)
+    {
+        auto cancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "request cancelled"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        AddTransaction(transaction, cancelRoutine);
+    }
+
     void RemoveTransaction(TRequestInfo& transaction);
     void TerminateTransactions(const NActors::TActorContext& ctx);
+    void ReleaseTransactions();
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,
