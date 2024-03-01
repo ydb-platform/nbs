@@ -10,7 +10,7 @@ rm cmd/nbs-csi-driver/nbs-csi-driver
 cp $DRIVER_PATH cmd/nbs-csi-driver/
 
 echo "=== upload driver ==="
-docker build -t ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1 .
-docker push ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker build -t cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1 .
+docker push cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 
 echo "=== done ==="

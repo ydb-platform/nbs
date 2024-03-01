@@ -1,8 +1,9 @@
-kind: DaemonSet
+---
 apiVersion: apps/v1
+kind: DaemonSet
 metadata:
   name: nbs-csi-driver-node
-  namespace: nbs-csi-driver
+  namespace: nbs-csi-ns
 spec:
   selector:
     matchLabels:
@@ -13,12 +14,18 @@ spec:
         app: "nbs-csi-driver"
     spec:
       hostNetwork: true
-      serviceAccountName: csi-nbs-node-sa
+      serviceAccountName: nbs-csi-node-sa
       nodeSelector:
         kubernetes.io/os: linux
-        # nebius.ai/nbs-csi-driver-node: "true"
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: node-role.kubernetes.io/control-plane
+      #           operator: DoesNotExist
       containers:
-        - name: csi-driver-registrar
+        - name: csi-node-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.2
           imagePullPolicy: IfNotPresent
           args:
@@ -30,6 +37,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -38,8 +52,8 @@ spec:
         - name: csi-nbs-driver
           securityContext:
             privileged: true
-          image: ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
-          imagePullPolicy: IfNotPresent
+          image: cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
+          imagePullPolicy: Always
           args:
             - "--endpoint=/csi/csi.sock"
             - "--node-id=$(KUBE_NODE_NAME)"
@@ -49,6 +63,13 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -74,8 +95,5 @@ spec:
           hostPath:
             path: /home/nbsd/endpoints/
             type: DirectoryOrCreate
-      # https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
-      # See "special case". This will tolerate everything. Node component should
-      # be scheduled on all nodes.
       tolerations:
       - operator: Exists

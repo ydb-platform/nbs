@@ -1,8 +1,9 @@
-kind: Deployment  # TODO: use StatefulSet
+---
 apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: nbs-csi-driver-controller
-  namespace: nbs-csi-driver
+  namespace: nbs-csi-ns
 spec:
   replicas: 1
   selector:
@@ -14,11 +15,17 @@ spec:
         app: "nbs-csi-driver"
     spec:
       hostNetwork: true
-      serviceAccountName: csi-nbs-controller-sa
+      serviceAccountName: nbs-csi-controller-sa
       nodeSelector:
         kubernetes.io/os: linux
-        # nebius.ai/nbs-csi-driver-controller: "true"
-      priorityClassName: csi-nbs-controller
+      priorityClassName: nbs-csi-controller
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: node-role.kubernetes.io/control-plane
+      #           operator: DoesNotExist
       containers:
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.2
@@ -48,6 +55,13 @@ spec:
             initialDelaySeconds: 10
             timeoutSeconds: 10
             periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -78,12 +92,19 @@ spec:
             initialDelaySeconds: 10
             timeoutSeconds: 10
             periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
         - name: csi-nbs-driver
-          image: ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
-          imagePullPolicy: IfNotPresent
+          image: cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
+          imagePullPolicy: Always
           args:
             - "--endpoint=/csi/csi.sock"
             - "--node-id=$(KUBE_NODE_NAME)"
@@ -93,6 +114,13 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi

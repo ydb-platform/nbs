@@ -11,4 +11,4 @@ spec:
       storage: 1Gi
     limits:
       storage: 1Gi
-  storageClassName: csi-nbs
+  storageClassName: nbs-csi-sc

@@ -69,7 +69,7 @@ func (s *nodeService) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	endpointDir := filepath.Join(podEndpointsDir, req.VolumeId)
 	log.Printf("Creating folder for socket: %q", endpointDir)
-	if err := os.MkdirAll(endpointDir, 0750); err != nil {
+	if err := os.MkdirAll(endpointDir, 0777); err != nil {
 		return nil, err
 	}
 

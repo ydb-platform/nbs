@@ -40,7 +40,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	}
 
 	//TODO: remove
-	log.Print("Ping nbs")
+	log.Print("NBS CSI Driver. Ping nbs")
 	ctx := context.Background()
 	_, err = nbsClient.Ping(ctx, &nbsblockstorepublicapi.TPingRequest{})
 	if err != nil {

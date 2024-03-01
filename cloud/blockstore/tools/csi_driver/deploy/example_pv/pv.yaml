@@ -9,9 +9,9 @@ spec:
   accessModes:
    - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: csi-nbs
+  storageClassName: nbs-csi-sc
   claimRef:
-    namespace: nbs-csi-driver
+    namespace: nbs-csi-ns
     name: my-pvc
   csi:
     driver: nbs.csi.nebius.ai

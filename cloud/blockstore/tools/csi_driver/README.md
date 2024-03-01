@@ -54,19 +54,20 @@ minikube start
 
 ```bash
 minikube ssh
-docker login ghcr.io -u $GITHUB_USER
-docker pull ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 exit
 ```
 
 # Setup k8s cluster
 
 ```bash
-kubectl apply -f ./deploy/controller/cluster_setup.yaml
-kubectl apply -f ./deploy/controller/csi_driver.yaml
-kubectl apply -f ./deploy/controller/storage.yaml
-kubectl apply -f ./deploy/controller/controller.yaml
-kubectl apply -f ./deploy/node/node.yaml
+kubectl apply -f ./deploy/manifests/0-ns.yaml
+kubectl apply -f ./deploy/manifests/1-priorityclass.yaml
+kubectl apply -f ./deploy/manifests/2-rbac.yaml
+kubectl apply -f ./deploy/manifests/3-csidriver.yaml
+kubectl apply -f ./deploy/manifests/4-storageclass.yaml
+kubectl apply -f ./deploy/manifests/5-deployment.yaml
+kubectl apply -f ./deploy/manifests/6-daemonset.yaml
 ```
 
 # copy nbsd and blockstore-nbd to minikube and run them
@@ -80,11 +81,11 @@ sudo ./blockstore-nbd --device-mode endpoint --disk-id my-disk --access-mode rw 
 # - CSI mounts pv on node.
 
 ```bash
-kubectl -n nbs-csi-driver apply -f ./deploy/example/pvc-fs.yaml
-kubectl -n nbs-csi-driver apply -f ./deploy/example/pod-fs.yaml
+kubectl apply -f ./deploy/example/pvc-fs.yaml
+kubectl apply -f ./deploy/example/pod-fs.yaml
 
-kubectl -n nbs-csi-driver apply -f ./deploy/example/pvc-blk.yaml
-kubectl -n nbs-csi-driver apply -f ./deploy/example/pod-blk.yaml
+kubectl apply -f ./deploy/example/pvc-blk.yaml
+kubectl apply -f ./deploy/example/pod-blk.yaml
 ```
 
 # Create test pod (2nd way)
@@ -94,9 +95,9 @@ kubectl -n nbs-csi-driver apply -f ./deploy/example/pod-blk.yaml
 # Also Compute-API can pass any arguments to volumeAttributes of pv.yaml.
 
 ```bash
-kubectl -n nbs-csi-driver apply -f ./deploy/example_pv/pvc.yaml
-kubectl -n nbs-csi-driver apply -f ./deploy/example_pv/pv.yaml
-kubectl -n nbs-csi-driver apply -f ./deploy/example_pv/pod.yaml
+kubectl apply -f ./deploy/example_pv/pvc.yaml
+kubectl apply -f ./deploy/example_pv/pv.yaml
+kubectl apply -f ./deploy/example_pv/pod.yaml
 ```
 
 ===========================================
@@ -106,18 +107,17 @@ kubectl -n nbs-csi-driver apply -f ./deploy/example_pv/pod.yaml
 ```bash
 # Build docker image
 ya make -r ./cmd/nbs-csi-driver
-docker login ghcr.io -u $GITHUB_USER
-docker build -t ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1 .
-docker push ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker build -t cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1 .
+docker push cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 
 # Check docker image
-docker pull ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 mkdir /tmp/csi
-docker run --net host -v /tmp/csi:/csi ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker run --net host -v /tmp/csi:/csi cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 
 # Update docker image on the node
 minikube ssh
-docker pull ghcr.io/ydb-platform/nbs/nbs-csi-driver:v0.1
+docker pull cr.ai.nebius.cloud/crn0l5t3qnnlbpi8de6q/nbs-csi-driver:v0.1
 exit
 ```
 
@@ -125,12 +125,12 @@ exit
 
 ```bash
 kubectl get nodes
-kubectl get all -n nbs-csi-driver
-kubectl get pods -n nbs-csi-driver
-kubectl describe node -n nbs-csi-driver
-kubectl describe pod/nbs-csi-driver-node-xxxxx -n nbs-csi-driver
-kubectl logs     pod/nbs-csi-driver-node-xxxxx -n nbs-csi-driver
-kubectl delete deployment.apps/nbs-csi-driver-controller -n nbs-csi-driver
+kubectl -n nbs-csi-ns get all
+kubectl -n nbs-csi-ns get pods
+kubectl -n nbs-csi-ns describe node
+kubectl -n nbs-csi-ns describe pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs-csi-ns logs     pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs-csi-ns delete deployment.apps/nbs-csi-driver-controller
 kubectl get CSIDriver
 minikube ssh
   docker ps
