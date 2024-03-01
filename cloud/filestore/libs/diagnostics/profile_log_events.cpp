@@ -3,6 +3,7 @@
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 #include <cloud/filestore/public/api/protos/checkpoint.pb.h>
 #include <cloud/filestore/public/api/protos/cluster.pb.h>
@@ -170,6 +171,18 @@ template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TReadDataRequest& request)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(request.GetLength());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TDescribeDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
     rangeInfo->SetNodeId(request.GetNodeId());
@@ -383,57 +396,58 @@ void InitProfileLogRequestInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define IMPLEMENT_DEFAULT_METHOD(name)                                         \
+#define IMPLEMENT_DEFAULT_METHOD(name, ns)                                     \
     template <>                                                                \
     void FinalizeProfileLogRequestInfo(                                        \
         NProto::TProfileLogRequestInfo& profileLogRequest,                     \
-        const NProto::T##name##Response& response)                             \
+        const ns::T##name##Response& response)                                 \
     {                                                                          \
         Y_UNUSED(profileLogRequest, response);                                 \
     }                                                                          \
 // IMPLEMENT_DEFAULT_METHOD
 
-    IMPLEMENT_DEFAULT_METHOD(Ping)
-    IMPLEMENT_DEFAULT_METHOD(CreateFileStore)
-    IMPLEMENT_DEFAULT_METHOD(DestroyFileStore)
-    IMPLEMENT_DEFAULT_METHOD(AlterFileStore)
-    IMPLEMENT_DEFAULT_METHOD(ResizeFileStore)
-    IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel)
-    IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo)
-    IMPLEMENT_DEFAULT_METHOD(ListFileStores)
-    IMPLEMENT_DEFAULT_METHOD(CreateSession)
-    IMPLEMENT_DEFAULT_METHOD(DestroySession)
-    IMPLEMENT_DEFAULT_METHOD(PingSession)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterNode)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterNodes)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(UpdateCluster)
-    IMPLEMENT_DEFAULT_METHOD(StatFileStore)
-    IMPLEMENT_DEFAULT_METHOD(SubscribeSession)
-    IMPLEMENT_DEFAULT_METHOD(GetSessionEvents)
-    IMPLEMENT_DEFAULT_METHOD(ResetSession)
-    IMPLEMENT_DEFAULT_METHOD(CreateCheckpoint)
-    IMPLEMENT_DEFAULT_METHOD(DestroyCheckpoint)
-    IMPLEMENT_DEFAULT_METHOD(ResolvePath)
-    IMPLEMENT_DEFAULT_METHOD(UnlinkNode)
-    IMPLEMENT_DEFAULT_METHOD(RenameNode)
-    IMPLEMENT_DEFAULT_METHOD(AccessNode)
-    IMPLEMENT_DEFAULT_METHOD(ReadLink)
-    IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr)
-    IMPLEMENT_DEFAULT_METHOD(DestroyHandle)
-    IMPLEMENT_DEFAULT_METHOD(AcquireLock)
-    IMPLEMENT_DEFAULT_METHOD(ReleaseLock)
-    IMPLEMENT_DEFAULT_METHOD(ReadData)
-    IMPLEMENT_DEFAULT_METHOD(WriteData)
-    IMPLEMENT_DEFAULT_METHOD(AllocateData)
-    IMPLEMENT_DEFAULT_METHOD(StartEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(StopEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
-    IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
+    IMPLEMENT_DEFAULT_METHOD(Ping, NProto)
+    IMPLEMENT_DEFAULT_METHOD(CreateFileStore, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DestroyFileStore, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AlterFileStore, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ResizeFileStore, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel, NProto)
+    IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ListFileStores, NProto)
+    IMPLEMENT_DEFAULT_METHOD(CreateSession, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DestroySession, NProto)
+    IMPLEMENT_DEFAULT_METHOD(PingSession, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AddClusterNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ListClusterNodes, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AddClusterClients, NProto)
+    IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ListClusterClients, NProto)
+    IMPLEMENT_DEFAULT_METHOD(UpdateCluster, NProto)
+    IMPLEMENT_DEFAULT_METHOD(StatFileStore, NProto)
+    IMPLEMENT_DEFAULT_METHOD(SubscribeSession, NProto)
+    IMPLEMENT_DEFAULT_METHOD(GetSessionEvents, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ResetSession, NProto)
+    IMPLEMENT_DEFAULT_METHOD(CreateCheckpoint, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DestroyCheckpoint, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ResolvePath, NProto)
+    IMPLEMENT_DEFAULT_METHOD(UnlinkNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(RenameNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
+    IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ReadData, NProto)
+    IMPLEMENT_DEFAULT_METHOD(WriteData, NProto)
+    IMPLEMENT_DEFAULT_METHOD(AllocateData, NProto)
+    IMPLEMENT_DEFAULT_METHOD(StartEndpoint, NProto)
+    IMPLEMENT_DEFAULT_METHOD(StopEndpoint, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ListEndpoints, NProto)
+    IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
+    IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
+    IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
