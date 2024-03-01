@@ -133,14 +133,20 @@ struct TEvVolume
     struct TDiskRegistryBasedPartitionCounters
     {
         TPartitionDiskCountersPtr DiskCounters;
+        TString DiskId;
         ui64 NetworkBytes = 0;
         TDuration CpuUsage;
 
         TDiskRegistryBasedPartitionCounters(
-                TPartitionDiskCountersPtr diskCounters)
+                TPartitionDiskCountersPtr diskCounters,
+                TString diskId,
+                ui64 networkBytes,
+                TDuration cpuUsage)
             : DiskCounters(std::move(diskCounters))
-        {
-        }
+            , DiskId(std::move(diskId))
+            , NetworkBytes(networkBytes)
+            , CpuUsage(cpuUsage)
+        {}
     };
 
     //
