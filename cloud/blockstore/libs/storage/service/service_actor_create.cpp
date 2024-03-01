@@ -175,6 +175,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
                 *Config,
                 Request.GetCloudId(),
                 Request.GetFolderId(),
+                Request.GetDiskId(),
                 GetStorageMediaKind(),
                 Request.GetBlocksCount(),
                 volumeParams.BlockSize,
@@ -479,7 +480,8 @@ void TServiceActor::HandleCreateVolume(
     const bool useNonReplicatedHdd =
         Config->IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
             request.GetCloudId(),
-            request.GetFolderId());
+            request.GetFolderId(),
+            request.GetDiskId());
 
     if (useNonReplicatedHdd) {
         switch (request.GetStorageMediaKind()) {

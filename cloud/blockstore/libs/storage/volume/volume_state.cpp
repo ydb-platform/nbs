@@ -183,7 +183,8 @@ void TVolumeState::Reset()
     UseRdma = StorageConfig->GetUseRdma()
         || StorageConfig->IsUseRdmaFeatureEnabled(
             Meta.GetConfig().GetCloudId(),
-            Meta.GetConfig().GetFolderId());
+            Meta.GetConfig().GetFolderId(),
+            Meta.GetConfig().GetDiskId());
     UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
 
