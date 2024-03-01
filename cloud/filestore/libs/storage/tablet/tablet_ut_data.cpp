@@ -3763,7 +3763,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             return false;
         });
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         UNIT_ASSERT(putSeen);
 
