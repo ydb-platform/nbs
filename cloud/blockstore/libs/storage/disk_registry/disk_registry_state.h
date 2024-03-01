@@ -111,9 +111,9 @@ public:
         : Strategy(strategy)
     {}
 
-    void Increment(ui32 partitionIndex)
+    void Increment(const TString& diskId, ui32 partitionIndex)
     {
-        ++BrokenDiskCount;
+        BrokenDisks.insert(diskId);
         if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
             BrokenPartitions.insert(partitionIndex);
         }
@@ -123,7 +123,7 @@ public:
     {
         switch (Strategy) {
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
-                return BrokenDiskCount;
+                return BrokenDisks.size();
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
                 return BrokenPartitions.size();
             default:
@@ -135,9 +135,14 @@ public:
         }
     }
 
+    [[nodiscard]] auto GetBrokenDisks() const
+    {
+        return BrokenDisks;
+    }
+
 private:
     NProto::EPlacementStrategy Strategy;
-    ui32 BrokenDiskCount = 0;
+    THashSet<TString> BrokenDisks;
     THashSet<ui32> BrokenPartitions;
 };
 
