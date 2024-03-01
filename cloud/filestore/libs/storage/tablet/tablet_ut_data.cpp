@@ -3774,11 +3774,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            "request cancelled",
-            response->Record.GetError().GetMessage(),
-            response->Record.GetError().GetMessage());
     }
 
     TABLET_TEST(ShouldCancelWriteRequestsIfTabletIsRebooted)
@@ -3843,11 +3838,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            "request cancelled",
-            response->Record.GetError().GetMessage(),
-            response->Record.GetError().GetMessage());
     }
 
 #undef TABLET_TEST

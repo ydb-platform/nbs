@@ -121,7 +121,7 @@ TRequestInfoPtr CreateRequestInfo(
         TRequestInfo& requestInfo)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "request cancelled"));
+            MakeError(E_REJECTED, "tablet is dead"));
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
