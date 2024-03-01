@@ -200,7 +200,7 @@ auto GetSortedDisksView(
     {
         auto makeComparableTuple = [&brokenDisks](const TDiskIterator& d){
             return std::make_tuple(
-                brokenDisks.contains(d->GetDiskId()),
+                !brokenDisks.contains(d->GetDiskId()),
                 d->GetPlacementPartitionIndex(),
                 d->GetDiskId()
             );
