@@ -40,6 +40,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::AcquireLock:
         case EFileStoreRequest::ReleaseLock:
         case EFileStoreRequest::TestLock:
+        case EFileStoreRequest::DescribeData:
             return CreatePermissionList({});
 
         case EFileStoreRequest::AddClusterNode:
