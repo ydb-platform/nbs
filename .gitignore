@@ -11,6 +11,7 @@ cmake.*
 __pycache__
 *.py[cod]
 *$py.class
+/list_result.log
 
 # distclang
 .distclang*
@@ -90,9 +91,9 @@ test-results
 
 # IDE files
 *.swp
-.vscode/*
-*.code-workspace
-*.code-workspace.bak
+/.vscode/*
+/*.code-workspace
+/*.code-workspace.bak
 
 # act files
 .input
