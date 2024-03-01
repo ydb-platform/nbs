@@ -213,7 +213,8 @@ TPoolKinds GetPoolKinds(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind,
     const TString& cloudId,
-    const TString& folderId)
+    const TString& folderId,
+    const TString& diskId)
 {
     switch (mediaKind) {
         case NCloud::NProto::STORAGE_MEDIA_HDD: {
@@ -230,24 +231,25 @@ TPoolKinds GetPoolKinds(
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
             auto systemChannelPoolKind =
                 config.GetSSDSystemChannelPoolKindFeatureValue(
-                    cloudId, folderId);
+                    cloudId, folderId, diskId);
             if (systemChannelPoolKind.Empty()) {
                 systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
             }
             auto logChannelPoolKind =
-                config.GetSSDLogChannelPoolKindFeatureValue(cloudId, folderId);
+                config.GetSSDLogChannelPoolKindFeatureValue(
+                    cloudId, folderId, diskId);
             if (logChannelPoolKind.Empty()) {
                 logChannelPoolKind = config.GetSSDLogChannelPoolKind();
             }
             auto indexChannelPoolKind =
                 config.GetSSDIndexChannelPoolKindFeatureValue(
-                    cloudId, folderId);
+                    cloudId, folderId, diskId);
             if (indexChannelPoolKind.Empty()) {
                 indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
             }
             auto freshChannelPoolKind =
                 config.GetSSDFreshChannelPoolKindFeatureValue(
-                    cloudId, folderId);
+                    cloudId, folderId, diskId);
             if (freshChannelPoolKind.Empty()) {
                 freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
             }
@@ -287,7 +289,11 @@ void SetExplicitChannelProfiles(
 {
     const auto unit = GetAllocationUnit(config, mediaKind);
     const auto poolKinds = GetPoolKinds(
-        config, mediaKind, volumeConfig.GetCloudId(), volumeConfig.GetFolderId());
+        config,
+        mediaKind,
+        volumeConfig.GetCloudId(),
+        volumeConfig.GetFolderId(),
+        volumeConfig.GetDiskId());
     const ui64 freshChannelSize = 128_MB;
 
     AddOrModifyChannel(
@@ -412,7 +418,8 @@ void SetVolumeExplicitChannelProfiles(
         config,
         NCloud::NProto::STORAGE_MEDIA_SSD,
         volumeConfig.GetCloudId(),
-        volumeConfig.GetFolderId());
+        volumeConfig.GetFolderId(),
+        volumeConfig.GetDiskId());
 
     SetupVolumeChannel(
         poolKinds.System,
@@ -511,7 +518,8 @@ void SetupChannels(
     const bool isFreshChannelEnabled =
         config.IsAllocateFreshChannelFeatureEnabled(
             volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId());
+            volumeConfig.GetFolderId(),
+            volumeConfig.GetDiskId());
 
     if (isFreshChannelEnabled || volumeConfig.GetTabletVersion() == 2) {
         freshChannelCount = 1;
@@ -575,6 +583,7 @@ TPartitionsInfo ComputePartitionsInfo(
     const TStorageConfig& config,
     const TString& cloudId,
     const TString& folderId,
+    const TString& diskId,
     NCloud::NProto::EStorageMediaKind mediaKind,
     ui64 blocksCount,
     ui32 blockSize,
@@ -584,7 +593,7 @@ TPartitionsInfo ComputePartitionsInfo(
     TPartitionsInfo info;
 
     const bool enabledForCloud =
-        config.IsMultipartitionVolumesFeatureEnabled(cloudId, folderId);
+        config.IsMultipartitionVolumesFeatureEnabled(cloudId, folderId, diskId);
     const ui64 bytesPerPartition = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
         ? config.GetBytesPerPartitionSSD() : config.GetBytesPerPartition();
     const bool enabled = (enabledForCloud

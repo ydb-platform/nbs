@@ -18,6 +18,7 @@ class TFeaturesConfig
     {
         THashSet<TString> CloudIds;
         THashSet<TString> FolderIds;
+        THashSet<TString> EntityIds;   // DiskIds or FsIds
         bool IsBlacklist = false;
         double CloudProbability = 0;
         double FolderProbability = 0;
@@ -37,11 +38,13 @@ public:
     bool IsFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
+        const TString& entityId,
         const TString& featureName) const;
 
     TString GetFeatureValue(
         const TString& cloudId,
         const TString& folderId,
+        const TString& entityId,
         const TString& featureName) const;
 
     TVector<TString> CollectAllFeatures() const;
@@ -50,6 +53,7 @@ private:
     bool GetFeature(
         const TString& cloudId,
         const TString& folderId,
+        const TString& entityId,
         const TString& featureName,
         TString* value) const;
 };

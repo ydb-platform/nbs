@@ -302,57 +302,74 @@ public:
 
     bool IsBalancerFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsIncrementalCompactionFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsMultipartitionVolumesFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsAllocateFreshChannelFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsFreshChannelWriteRequestsFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsMixedIndexCacheV1FeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsBatchCompactionFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsBlobPatchingFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsUseRdmaFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsChangeThrottlingPolicyFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsReplaceDeviceFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
 
     TString GetSSDSystemChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDLogChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDIndexChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDFreshChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
 
     ui32 GetDefaultTabletVersion() const;
 

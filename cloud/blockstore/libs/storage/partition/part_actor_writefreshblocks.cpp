@@ -428,7 +428,8 @@ void TPartitionActor::WriteFreshBlocks(
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
             PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId());
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
 
     if (freshChannelWriteRequestsEnabled && State->GetFreshChannelCount() > 0) {
         TVector<TWriteFreshBlocksActor::TRequest> requests;

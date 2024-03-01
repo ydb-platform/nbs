@@ -28,6 +28,7 @@ void TServiceActor::HandleDescribeVolumeModel(
         *Config,
         {}, // cloudId
         {}, // folderId
+        {}, // diskId
         request.GetStorageMediaKind(),
         request.GetBlocksCount(),
         request.GetBlockSize(),
