@@ -502,7 +502,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         const bool replaceDeviceAllowed = Config->IsReplaceDeviceFeatureEnabled(
             info.CloudId,
             info.FolderId,
-            info.MasterDiskId);
+            info.MasterDiskId ? info.MasterDiskId : id);
 
         TAG(TH3) {
             out << "Disk " << id.Quote();
