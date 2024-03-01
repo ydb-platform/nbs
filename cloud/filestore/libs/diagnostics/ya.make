@@ -18,6 +18,8 @@ PEERDIR(
     cloud/filestore/libs/service
     # FIXME use public api protos
     cloud/filestore/libs/storage/tablet/protos
+    cloud/filestore/private/api/protos
+    cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/user_stats

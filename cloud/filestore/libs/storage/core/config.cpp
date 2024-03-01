@@ -20,7 +20,7 @@ namespace {
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
-    xxx(IdleSessionTimeout,            TDuration, TDuration::Seconds(30)      )\
+    xxx(IdleSessionTimeout,            TDuration, TDuration::Minutes(5)       )\
                                                                                \
     xxx(WriteBatchEnabled,             bool,      false                       )\
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
@@ -33,7 +33,7 @@ namespace {
     xxx(CollectGarbageThreshold,       ui32,      4_MB                        )\
     xxx(FlushBytesThreshold,           ui32,      4_MB                        )\
     xxx(MaxDeleteGarbageBlobsPerTx,    ui32,      16384                       )\
-    xxx(LoadedCompactionRangesPerTx,   ui32,      1048576                     )\
+    xxx(LoadedCompactionRangesPerTx,   ui32,      10 * 1024 * 1024            )\
     xxx(MaxBlocksPerTruncateTx,        ui32,      0 /*TODO: 8388608 32gb/4kb*/)\
     xxx(MaxTruncateTxInflight,         ui32,      10                          )\
     xxx(CompactionRetryTimeout,        TDuration, TDuration::Seconds(1)       )\
