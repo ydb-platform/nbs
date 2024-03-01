@@ -1528,6 +1528,94 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroySession(headers);
     }
 
+    Y_UNIT_TEST(ShouldProperlyProcessSlowSessionCreation)
+    {
+        NProto::TStorageConfig config;
+        config.SetIdleSessionTimeout(5'000); // 5s
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        auto& runtime = env.GetRuntime();
+
+        // enabling scheduling for all actors
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId) {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        THeaders headers = {"test", "client", "", 0};
+
+        // delaying session creation response
+        bool rescheduled = false;
+        ui32 createSessionResponses = 0;
+        TActorId createSessionActor;
+
+        runtime.SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeFileStoreResponse: {
+                        createSessionActor = event->Recipient;
+
+                        break;
+                    }
+                    case TEvIndexTablet::EvCreateSessionResponse: {
+                        ++createSessionResponses;
+
+                        if (!rescheduled) {
+                            runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
+                            rescheduled = true;
+                            return true;
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        // creating session
+        service.SendCreateSessionRequest(headers);
+        auto response = service.RecvCreateSessionResponse();
+        headers.SessionId = response->Record.GetSession().GetSessionId();
+        // immediately pinging session to signal that it's not idle
+        service.PingSession(headers);
+
+        // just checking that we observed the events that we are expecting
+        UNIT_ASSERT(rescheduled);
+        UNIT_ASSERT_VALUES_EQUAL(1, createSessionResponses);
+
+        // can't call RebootTablet here because it resets our registration
+        // observer and thus disables wakeup event scheduling
+        auto msg = std::make_unique<TEvTabletPipe::TEvClientDestroyed>(
+            static_cast<ui64>(0),
+            TActorId(),
+            TActorId());
+
+        runtime.Send(
+            new IEventHandle(
+                createSessionActor,
+                runtime.AllocateEdgeActor(nodeIdx),
+                msg.release(),
+                0, // flags
+                0),
+            nodeIdx);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        // checking that session was recreated
+        UNIT_ASSERT_VALUES_EQUAL(2, createSessionResponses);
+
+        service.DestroySession(headers);
+    }
+
     Y_UNIT_TEST(UnsuccessfulSessionActorShouldStopWorking)
     {
         NProto::TStorageConfig config;
@@ -1559,6 +1647,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             switch (event->GetTypeRewrite()) {
                 case TEvIndexTablet::EvCreateSessionResponse: {
                     if (!rescheduled) {
+                        auto* msg = event->Get<TEvIndexTablet::TEvCreateSessionResponse>();
+                        *msg->Record.MutableError() = MakeError(E_TIMEOUT, "timeout");
+
                         runtime.Schedule(event, TDuration::Seconds(10), nodeIdx);
                         rescheduled = true;
                         return true;
