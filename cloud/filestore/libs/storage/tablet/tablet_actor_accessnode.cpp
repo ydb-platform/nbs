@@ -38,6 +38,8 @@ void TIndexTabletActor::HandleAccessNode(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
+
     ExecuteTx<TAccessNode>(
         ctx,
         std::move(requestInfo),
@@ -104,6 +106,8 @@ void TIndexTabletActor::CompleteTx_AccessNode(
     const TActorContext& ctx,
     TTxIndexTablet::TAccessNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvAccessNodeResponse>(args.Error);
     CompleteResponse<TEvService::TAccessNodeMethod>(
         response->Record,

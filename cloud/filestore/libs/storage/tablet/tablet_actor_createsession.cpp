@@ -105,6 +105,8 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
+
     ExecuteTx<TCreateSession>(
         ctx,
         std::move(requestInfo),
@@ -241,6 +243,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed (%s)",
         LogTag.c_str(),

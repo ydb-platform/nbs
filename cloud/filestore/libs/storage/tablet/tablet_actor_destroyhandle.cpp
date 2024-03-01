@@ -33,6 +33,8 @@ void TIndexTabletActor::HandleDestroyHandle(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
+
     ExecuteTx<TDestroyHandle>(
         ctx,
         std::move(requestInfo),
@@ -106,6 +108,8 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(args.Error);
     CompleteResponse<TEvService::TDestroyHandleMethod>(
         response->Record,

@@ -116,7 +116,7 @@ private:
         const NActors::TActorContext& ctx);
 
     std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
-        TRequestInfo&& info,
+        const TRequestInfo& info,
         NProto::EStorageMediaKind media,
         IRequestStatsPtr requestStats,
         TInstant currentTs);

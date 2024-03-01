@@ -29,6 +29,8 @@ void TIndexTabletActor::HandleCreateCheckpoint(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
+
     ExecuteTx<TCreateCheckpoint>(
         ctx,
         std::move(requestInfo),
@@ -76,6 +78,8 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateCheckpoint& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
     CompleteResponse<TEvService::TCreateCheckpointMethod>(
         response->Record,

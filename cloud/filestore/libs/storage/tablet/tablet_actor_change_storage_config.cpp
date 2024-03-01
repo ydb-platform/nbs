@@ -43,6 +43,8 @@ void TIndexTabletActor::CompleteTx_ChangeStorageConfig(
     const TActorContext& ctx,
     TTxIndexTablet::TChangeStorageConfig& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response =
         std::make_unique<TEvIndexTablet::TEvChangeStorageConfigResponse>();
     *response->Record.MutableStorageConfig() =
@@ -61,6 +63,8 @@ void TIndexTabletActor::HandleChangeStorageConfig(
         ev->Sender,
         ev->Cookie,
         MakeIntrusive<TCallContext>());
+
+    AddTransaction<TEvIndexTablet::TChangeStorageConfigMethod>(*requestInfo);
 
     const auto* msg = ev->Get();
     ExecuteTx(ctx, CreateTx<TChangeStorageConfig>(
