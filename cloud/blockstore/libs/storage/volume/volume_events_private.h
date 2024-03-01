@@ -252,8 +252,8 @@ struct TEvVolumePrivate
         TUpdateShadowDiskStateResponse() = default;
 
         TUpdateShadowDiskStateResponse(
-            EShadowDiskState newState,
-            ui64 processedBlockCount)
+                EShadowDiskState newState,
+                ui64 processedBlockCount)
             : NewState(newState)
             , ProcessedBlockCount(processedBlockCount)
         {}

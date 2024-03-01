@@ -127,14 +127,14 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         msg->CallContext
     );
 
-    const bool isPartitionBelongsToDisk =
+    const bool doesPartitionBelongToDisk =
         State->GetDiskRegistryBasedPartitionActor() == ev->Sender ||
         State->GetDiskId() == msg->DiskId;
-    if (!isPartitionBelongsToDisk) {
+    if (!doesPartitionBelongToDisk) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Counters from partition %s (%s) not belongs to disk %s",
+            "Counters from partition %s (%s) do not belong to disk %s",
             ToString(ev->Sender).c_str(),
             msg->DiskId.Quote().c_str(),
             State->GetDiskId().Quote().c_str());
