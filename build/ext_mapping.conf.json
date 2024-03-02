@@ -17,7 +17,7 @@
         "4915490540": "https://storage.ai.nebius.cloud/nbs-oss-resources/root.squashfs",
         "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs",
         "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz",
-        "2831814743": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk"
+        "5922914799": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",

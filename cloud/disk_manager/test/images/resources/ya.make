@@ -30,7 +30,7 @@ FROM_SANDBOX(
 
 FROM_SANDBOX(
     FILE
-    2831814743
+    5922914799
     RENAME RESOURCE
     OUT_NOAUTO vmdk_images/windows-vmdk-stream-optimised-multiple-grains.vmdk
 )
