@@ -146,8 +146,8 @@ func (c *httpClient) Body(
 	return body, newErrorWithURLReplaced(err, getParametersFromURL(c.url))
 }
 
-func (h *httpClient) RequestsCount() uint64 {
-	return h.requestsCount
+func (c *httpClient) RequestsCount() uint64 {
+	return c.requestsCount
 }
 
 ////////////////////////////////////////////////////////////////////////////////
