@@ -5,9 +5,9 @@ import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/ur
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
-	footerCookie               = "conectix"
-	supportedFileFormatVersion = uint32(0x00010000)
-	dynamicHardDiskType        = uint32(3)
+	footerCookie        = "conectix"
+	fileFormatVersion   = uint32(0x00010000)
+	dynamicHardDiskType = uint32(3)
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,7 +19,7 @@ type footer struct {
 	FileFormatVersion  uint32    // This field is divided into a major/minor version and matches the version of the specification used in creating the file.
 	DataOffset         uint64    // This field holds the absolute byte offset, from the beginning of the file, to the next structure.
 	Timestamp          uint32    // This field stores the creation time of a hard disk image.
-	CreatorApplication uint32    // This field is used to document which application created the hard disk.
+	CreatorApplication [4]byte   // This field is used to document which application created the hard disk.
 	CreatorVersion     uint32    // This field holds the major/minor version of the application that created the hard disk image.
 	CreatorHostOS      uint32    // This field stores the type of host operating system this disk image is created on.
 	OriginalSize       uint64    // Stores the size of the hard disk in bytes at creation time.
@@ -41,18 +41,10 @@ func (f footer) validate() error {
 		)
 	}
 
-	if f.FileFormatVersion != supportedFileFormatVersion {
+	if f.FileFormatVersion != fileFormatVersion {
 		return common.NewSourceInvalidError(
 			"Failed to check vhd file format version: expected - %v, actual - %v",
-			supportedFileFormatVersion,
-			f.FileFormatVersion,
-		)
-	}
-
-	if f.FileFormatVersion != supportedFileFormatVersion {
-		return common.NewSourceInvalidError(
-			"Failed to check vhd file format version: expected - %v, actual - %v",
-			supportedFileFormatVersion,
+			fileFormatVersion,
 			f.FileFormatVersion,
 		)
 	}
