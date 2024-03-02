@@ -3642,9 +3642,9 @@ THashMap<TString, TBrokenGroupInfo> TDiskRegistryState::GatherBrokenGroupsInfo(
         auto res = groups.try_emplace(groupId, pg->Config.GetPlacementStrategy());
         TBrokenGroupInfo& info = res.first->second;
 
-        info.Total.Increment(disk.PlacementPartitionIndex);
+        info.Total.Increment(diskId, disk.PlacementPartitionIndex);
         if (now - period < disk.StateTs) {
-            info.Recently.Increment(disk.PlacementPartitionIndex);
+            info.Recently.Increment(diskId, disk.PlacementPartitionIndex);
         }
     }
 
