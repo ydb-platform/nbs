@@ -917,4 +917,7 @@ message TStorageServiceConfig
     // Note: it should be larger than ClientRemountPeriod, otherwise it's
     // useless.
     optional uint32 CachedAcquireRequestLifetime = 348;
+
+    // Limits unconfirmed (and confirmed but not added to the index) blob count.
+    optional uint32 UnconfirmedBlobCountHardLimit = 349;
 }
