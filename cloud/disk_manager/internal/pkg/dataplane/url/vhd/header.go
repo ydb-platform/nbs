@@ -32,7 +32,7 @@ type header struct {
 func (h header) validate() error {
 	if string(h.Cookie[:]) != headerCookie {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd header cookie: expected - %s, actual - %s",
+			"failed to check vhd header cookie: expected %s, actual %s",
 			headerCookie,
 			h.Cookie,
 		)
@@ -40,7 +40,7 @@ func (h header) validate() error {
 
 	if h.TableOffset != batOffset {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd header cookie: expected - %v, actual - %v",
+			"failed to check vhd header cookie: expected %v, actual %v",
 			batOffset,
 			h.TableOffset,
 		)
@@ -48,7 +48,7 @@ func (h header) validate() error {
 
 	if h.HeaderVersion != headerVersion {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd header version: expected - %v, actual - %v",
+			"failed to check vhd header version: expected %v, actual %v",
 			headerVersion,
 			h.HeaderVersion,
 		)

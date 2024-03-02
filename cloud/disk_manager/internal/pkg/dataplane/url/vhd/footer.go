@@ -35,7 +35,7 @@ type footer struct {
 func (f footer) validate() error {
 	if string(f.Cookie[:]) != footerCookie {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd footer cookie: expected - %s, actual - %s",
+			"failed to check vhd footer cookie: expected %s, actual %s",
 			footerCookie,
 			f.Cookie,
 		)
@@ -43,7 +43,7 @@ func (f footer) validate() error {
 
 	if f.FileFormatVersion != fileFormatVersion {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd file format version: expected - %v, actual - %v",
+			"failed to check vhd file format version: expected %v, actual %v",
 			fileFormatVersion,
 			f.FileFormatVersion,
 		)
@@ -51,7 +51,7 @@ func (f footer) validate() error {
 
 	if f.DiskType != dynamicHardDiskType {
 		return common.NewSourceInvalidError(
-			"Failed to check vhd disk type: expected - %v, actual - %v",
+			"failed to check vhd disk type: expected %v, actual %v",
 			dynamicHardDiskType,
 			f.DiskType,
 		)
