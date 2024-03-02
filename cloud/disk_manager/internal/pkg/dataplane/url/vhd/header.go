@@ -8,7 +8,7 @@ const (
 	// The dynamic disk header should appear on a sector (512-byte) boundary.
 	headerOffset  = uint64(512)
 	headerCookie  = "cxsparse"
-	batOffset     = uint64(1536)
+	batOffset     = uint64(1536) // Block allocation table offset.
 	headerVersion = uint32(0x00010000)
 )
 
