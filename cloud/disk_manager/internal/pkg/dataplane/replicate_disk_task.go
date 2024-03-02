@@ -170,6 +170,10 @@ func (t *replicateDiskTask) deleteProxyOverlayDisk(
 	checkpointID string,
 ) error {
 
+	if !t.request.UseProxyOverlayDisk {
+		return nil
+	}
+
 	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
 	if err != nil {
 		return err
