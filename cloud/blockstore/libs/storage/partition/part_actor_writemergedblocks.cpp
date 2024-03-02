@@ -58,7 +58,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     TVector<TWriteBlobRequest> WriteBlobRequests;
     const bool ReplyLocal;
-    const bool AddingUnconfirmedBlobsEnabled = false;
+    const bool ShouldAddUnconfirmedBlobs = false;
     const IWriteBlocksHandlerPtr WriteHandler;
     const bool ChecksumsEnabled;
 
@@ -78,7 +78,7 @@ public:
         TRequestInfoPtr requestInfo,
         TVector<TWriteBlobRequest> writeBlobRequests,
         bool replyLocal,
-        bool addingUnconfirmedBlobsEnabled,
+        bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
         bool checksumsEnabled);
 
@@ -129,7 +129,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
         TRequestInfoPtr requestInfo,
         TVector<TWriteBlobRequest> writeBlobRequests,
         bool replyLocal,
-        bool addingUnconfirmedBlobsEnabled,
+        bool shouldAddUnconfirmedBlobs,
         IWriteBlocksHandlerPtr writeHandler,
         bool checksumsEnabled)
     : Tablet(tablet)
@@ -138,7 +138,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , RequestInfo(std::move(requestInfo))
     , WriteBlobRequests(std::move(writeBlobRequests))
     , ReplyLocal(replyLocal)
-    , AddingUnconfirmedBlobsEnabled(addingUnconfirmedBlobsEnabled)
+    , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
     , WriteHandler(std::move(writeHandler))
     , ChecksumsEnabled(checksumsEnabled)
 {
@@ -158,7 +158,7 @@ void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 
     WriteBlobs(ctx);
-    if (AddingUnconfirmedBlobsEnabled) {
+    if (ShouldAddUnconfirmedBlobs) {
         AddBlobs(ctx, false /* confirmed */);
     }
 }
@@ -366,7 +366,7 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
         RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
 
-    if (AddingUnconfirmedBlobsEnabled) {
+    if (ShouldAddUnconfirmedBlobs) {
         if (UnconfirmedBlobsAdded) {
             ReplyAndDie(ctx, MakeError(S_OK));
         }
@@ -501,6 +501,17 @@ void TPartitionActor::WriteMergedBlocks(
         / State->GetBlockSize();
     const bool checksumsEnabled = writeRange.Start < checksumBoundary;
 
+    bool shouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled();
+    if (shouldAddUnconfirmedBlobs) {
+        // we take confirmed blobs into account because they have not yet been
+        // added to the index, so we treat them as unconfirmed while counting
+        // the limit
+        const ui32 blobCount =
+            State->GetUnconfirmedBlobs().size() + State->GetConfirmedBlobs().size();
+        shouldAddUnconfirmedBlobs =
+            blobCount < Config->GetUnconfirmedBlobCountHardLimit();
+    }
+
     auto actor = NCloud::Register<TWriteMergedBlocksActor>(
         ctx,
         SelfId(),
@@ -509,7 +520,7 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.RequestInfo,
         std::move(requests),
         requestInBuffer.Data.ReplyLocal,
-        Config->GetAddingUnconfirmedBlobsEnabled(),
+        shouldAddUnconfirmedBlobs,
         std::move(requestInBuffer.Data.Handler),
         checksumsEnabled
     );
