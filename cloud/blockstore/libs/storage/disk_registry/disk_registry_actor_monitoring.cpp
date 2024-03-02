@@ -8,6 +8,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/stream/str.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -159,6 +160,45 @@ void DumpDeviceLink(IOutputStream& out, ui64 tabletId, TStringBuf uuid)
         << "'>"
         << uuid
         << "</a>";
+}
+
+void DumpSquare(IOutputStream& out, const TStringBuf& color)
+{
+    const char* utfBlackSquare = "&#9632";
+    const char* nonBreakingSpace = "&nbsp";
+    out << "<font color="
+        << color
+        << ">"
+        << utfBlackSquare
+        << nonBreakingSpace
+        << "</font>";
+}
+
+using DiskInfoArray = ::google::protobuf::RepeatedPtrField<NProto::TPlacementGroupConfig_TDiskInfo>;
+auto GetSortedDisksView(
+    const DiskInfoArray& disks,
+    const THashSet<TString>& brokenDisks)
+{
+    using TDiskIterator = decltype(disks.begin());
+
+    TVector<TDiskIterator> diskIndices(disks.size());
+    std::iota(diskIndices.begin(), diskIndices.end(), disks.begin());
+
+    auto sortByFailureThenByPartition =
+        [&](const TDiskIterator& d1, const TDiskIterator& d2)
+    {
+        auto makeComparableTuple = [&brokenDisks](const TDiskIterator& d){
+            return std::make_tuple(
+                !brokenDisks.contains(d->GetDiskId()),
+                d->GetPlacementPartitionIndex(),
+                d->GetDiskId()
+            );
+        };
+        return makeComparableTuple(d1) < makeComparableTuple(d2);
+    };
+
+    std::sort(diskIndices.begin(), diskIndices.end(), sortByFailureThenByPartition);
+    return diskIndices;
 }
 
 }   // namespace
@@ -1441,65 +1481,126 @@ void TDiskRegistryActor::RenderPlacementGroupList(
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "GroupId"; }
+                    TABLEH() { out << "Strategy"; }
+                    TABLEH() { out << "State"; }
                     TABLEH() { out << "Stats"; }
                     TABLEH() { out << "Disks"; }
                 }
             }
 
-            for (const auto& x: State->GetPlacementGroups()) {
+            for (const auto& [groupId, groupInfo]: State->GetPlacementGroups()) {
                 TABLER() {
+                    const auto strategy = groupInfo.Config.GetPlacementStrategy();
+                    const bool isPartitionGroup =
+                        strategy == NProto::PLACEMENT_STRATEGY_PARTITION;
+
+                    auto brokenGroupInfo = brokenGroups.FindPtr(groupId);
+                    const size_t brokenPartitionsCount = brokenGroupInfo
+                            ? brokenGroupInfo->Recently.GetBrokenPartitionCount()
+                            : 0;
+
                     TABLED() {
-                        auto it = brokenGroups.find(x.first);
-
-                        if (it != brokenGroups.end()) {
-                            if (it->second.Recently.GetBrokenPartitionCount() == 1) {
-                                out << "<font color=yellow>&#9632;&nbsp;</font>";
-                            }
-
-                            if (it->second.Recently.GetBrokenPartitionCount() > 1) {
-                                out << "<font color=red>&#9632;&nbsp;</font>";
-                            }
-                        }
-
-                        out << x.first;
+                        const auto* color = brokenPartitionsCount == 0
+                                ? "green"
+                                : (brokenPartitionsCount == 1 ? "orange" : "red");
+                        DumpSquare(out, color);
+                        out << groupId;
                     }
                     TABLED() {
-                        if (x.second.Full) {
-                            out << "<font color=red>GROUP IS FULL</font>, ";
+                        TStringBuf name = EPlacementStrategy_Name(strategy);
+                        name.AfterPrefix("PLACEMENT_STRATEGY_", name);
+                        out << name;
+                    }
+                    TABLED() {
+                        size_t totalPartitionsCount = isPartitionGroup
+                            ? groupInfo.Config.GetPlacementPartitionCount()
+                            : groupInfo.Config.GetDisks().size();
+
+                        out << Sprintf("%s: <font color=green>Fine: %zu</font>, ",
+                            isPartitionGroup ? "Partitions" : "Disks",
+                            totalPartitionsCount - brokenPartitionsCount);
+
+                        if (brokenPartitionsCount > 0) {
+                            out << Sprintf("<font color=%s>Broken: %zu</font>, ",
+                            brokenPartitionsCount == 1 ? "orange" : "red",
+                            brokenPartitionsCount);
                         }
 
-                        out << "BiggestDisk: " << x.second.BiggestDiskId
+                        out << Sprintf("Total: %zu<br>", totalPartitionsCount);
+                    }
+                    TABLED() {
+                        if (groupInfo.Full) {
+                            out << "<font color=red>GROUP IS FULL</font><br>";
+                        }
+
+                        out << "BiggestDisk: " << groupInfo.BiggestDiskId
                             << " ("
-                            << FormatByteSize(x.second.BiggestDiskSize) << ")";
+                            << FormatByteSize(groupInfo.BiggestDiskSize) << ")";
                     }
                     TABLED() {
                         TABLE_SORTABLE_CLASS("table table-bordered") {
                             TABLER() {
                                 TABLED() { out << "ConfigVersion"; }
-                                TABLED() { out << x.second.Config.GetConfigVersion(); }
+                                TABLED()
+                                {
+                                    out << groupInfo.Config.GetConfigVersion();
+                                }
                             }
-
                             TABLER() {
-                                TABLED() { out << "Disks"; }
-                                TABLED() {
+                                TABLED() { out << "Disk count"; }
+                                TABLED()
+                                {
+                                    out << groupInfo.Config.GetDisks().size();
+                                }
+                            }
+                            TABLER() {
+                                TABLED_ATTRS({{"colspan", "2"}}) {
                                     TABLE_SORTABLE_CLASS("table table-bordered") {
                                         TABLEHEAD() {
                                             TABLER() {
                                                 TABLEH() { out << "DiskId"; }
                                                 TABLEH() { out << "Racks"; }
+                                                if (isPartitionGroup) {
+                                                    TABLEH()
+                                                    {
+                                                        out << "Partition";
+                                                    }
+                                                }
                                             }
                                         }
-                                        for (const auto& d: x.second.Config.GetDisks()) {
-                                            TABLER() {
-                                                TABLED() { DumpDiskLink(out, TabletID(), d.GetDiskId()); }
-                                                TABLED() {
-                                                    for (ui32 i = 0; i < d.DeviceRacksSize(); ++i) {
-                                                        const auto& rack = d.GetDeviceRacks(i);
-                                                        if (i) {
-                                                            out << ", ";
-                                                        }
 
-                                                        out << rack;
+                                        const auto brokenDisks = brokenGroupInfo
+                                            ? brokenGroupInfo->Recently.GetBrokenDisks()
+                                            : THashSet<TString>();
+
+                                        const auto sortedDisks =
+                                            GetSortedDisksView(
+                                                groupInfo.Config.GetDisks(),
+                                                brokenDisks);
+
+                                        for (const auto& d: sortedDisks) {
+                                            TABLER() {
+                                                TABLED() {
+                                                    const bool isBroken =
+                                                        brokenDisks.contains(
+                                                            d->GetDiskId());
+                                                    DumpSquare(
+                                                        out,
+                                                        isBroken ? "red"
+                                                                 : "green");
+                                                    DumpDiskLink(
+                                                        out,
+                                                        TabletID(),
+                                                        d->GetDiskId());
+                                                }
+                                                TABLED() {
+                                                    out << JoinSeq(
+                                                        ", ",
+                                                        d->GetDeviceRacks());
+                                                }
+                                                if (isPartitionGroup) {
+                                                    TABLED() {
+                                                        out << d->GetPlacementPartitionIndex();
                                                     }
                                                 }
                                             }
