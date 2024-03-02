@@ -108,8 +108,8 @@ func TestLogTrace(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
@@ -126,8 +126,8 @@ func TestLogDebug(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
@@ -144,8 +144,8 @@ func TestLogInfo(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
@@ -162,8 +162,8 @@ func TestLogWarn(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
@@ -180,8 +180,8 @@ func TestLogError(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
@@ -198,8 +198,8 @@ func TestLogFatal(t *testing.T) {
 		"Stuff happened",
 		[]log.Field{
 			log.String(idempotencyKeyKey, "idempID"),
-			log.String(requestIdKey, "reqID"),
-			log.String(operationIdKey, "opID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
 			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
