@@ -89,12 +89,12 @@ func WithCommonFields(ctx context.Context) context.Context {
 
 	requestID := headers.GetRequestID(ctx)
 	if len(requestID) != 0 {
-		fields = append(fields, log.String(requestIdKey, requestID))
+		fields = append(fields, log.String(requestIDKey, requestID))
 	}
 
 	operationID := headers.GetOperationID(ctx)
 	if len(operationID) != 0 {
-		fields = append(fields, log.String(operationIdKey, operationID))
+		fields = append(fields, log.String(operationIDKey, operationID))
 	}
 
 	fields = append(fields, log.String(syslogIdentifierKey, "disk-manager"))

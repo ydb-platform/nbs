@@ -20,8 +20,8 @@ import (
 const callerSkipOffset = 4
 
 const idempotencyKeyKey = "IDEMPOTENCY_KEY"
-const requestIdKey = "REQUEST_ID"
-const operationIdKey = "OPERATION_ID"
+const requestIDKey = "REQUEST_ID"
+const operationIDKey = "OPERATION_ID"
 const syslogIdentifierKey = "SYSLOG_IDENTIFIER"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,8 +124,8 @@ func newJournaldLoggerFileds(fields ...log.Field) (ff journaldLoggerFileds) {
 
 	journaldFieldsKeys := map[string]struct{}{
 		idempotencyKeyKey:   {},
-		requestIdKey:        {},
-		operationIdKey:      {},
+		requestIDKey:        {},
+		operationIDKey:      {},
 		syslogIdentifierKey: {},
 	}
 
