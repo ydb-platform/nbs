@@ -98,6 +98,10 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 	return items, nil
 }
 
+func (r *ImageMapReader) ReadFooter(ctx context.Context) error {
+	return r.readFooter(ctx)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (r *ImageMapReader) readFooter(ctx context.Context) error {

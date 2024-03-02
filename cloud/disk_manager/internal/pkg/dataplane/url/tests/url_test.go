@@ -43,6 +43,14 @@ func parseUint64(t *testing.T, str string) uint64 {
 	return value
 }
 
+func getExpectedChunkCount(imageSize uint64) uint32 {
+	if imageSize%chunkSize == 0 {
+		return uint32(imageSize / chunkSize)
+	}
+
+	return uint32(imageSize/chunkSize) + 1
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -143,6 +151,12 @@ func TestImageReading(t *testing.T) {
 			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_IMAGE_CRC32")),
 		},
 		{
+			name:       "vhd image",
+			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT")),
+			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE")),
+			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32")),
+		},
+		{
 			name:       "vmdk stream optimized image",
 			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_FILE_SERVER_PORT")),
 			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_SIZE")),
@@ -188,7 +202,7 @@ func TestImageReading(t *testing.T) {
 
 			chunkCount, err := source.ChunkCount(ctx)
 			require.NoError(t, err)
-			expectedChunkCount := uint32(testCase.imageSize / chunkSize)
+			expectedChunkCount := getExpectedChunkCount(testCase.imageSize)
 			require.Equal(t, expectedChunkCount, chunkCount)
 
 			checkChunks(t, ctx, testCase.imageCRC32, chunkCount, source)
