@@ -827,7 +827,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
         config.SetTwoStageReadEnabled(true);
+        config.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
+        config.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
+        config.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
         features.SetTwoStageReadEnabled(true);
+        features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
+        features.SetNegativeEntryTimeout(TDuration::Seconds(1).MilliSeconds());
+        features.SetAttrTimeout(TDuration::Seconds(20).MilliSeconds());
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
 }
