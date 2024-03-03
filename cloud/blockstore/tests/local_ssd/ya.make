@@ -2,8 +2,6 @@ PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
-TIMEOUT(60)
-
 TEST_SRCS(test.py)
 
 DEPENDS(
