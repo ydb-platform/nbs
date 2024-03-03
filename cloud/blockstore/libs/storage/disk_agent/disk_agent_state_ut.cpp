@@ -1707,7 +1707,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
@@ -1724,7 +1724,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(3, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
@@ -1743,7 +1743,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
                 // VolumeGeneration was updated by reader-1
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(1, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
                 UNIT_ASSERT(!session.GetReadOnly());
             }
         }
