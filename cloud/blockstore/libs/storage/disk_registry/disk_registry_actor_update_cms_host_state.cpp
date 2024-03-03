@@ -68,15 +68,24 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         args.AffectedDisks,
         args.Timeout);
 
-    if (Config->GetNonReplicatedDontSuspendDevices()
-        && args.Error.GetCode() == S_OK
-        && args.State == NProto::AGENT_STATE_ONLINE)
-    {
-        args.Error = State->RegisterUnknownDevices(db, args.Host, args.TxTs);
-        if (!HasError(args.Error)) {
-            args.DevicesThatNeedToBeCleaned = State->CollectDirtyLocalDevices(args.Host);
-        }
+    if (HasError(args.Error) || args.State != NProto::AGENT_STATE_ONLINE) {
+        return;
     }
+
+    args.Error = State->RegisterUnknownDevices(db, args.Host, args.TxTs);
+    if (HasError(args.Error) || !Config->GetNonReplicatedDontSuspendDevices()) {
+        return;
+    }
+
+    args.Error = State->ResumeLocalDevices(db, args.Host, args.TxTs);
+    if (HasError(args.Error)) {
+        return;
+    }
+
+    auto [ids, error] = State->CollectDirtyLocalDevices(args.Host);
+
+    args.Error = std::move(error);
+    args.DevicesThatNeedToBeCleaned = std::move(ids);
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostState(

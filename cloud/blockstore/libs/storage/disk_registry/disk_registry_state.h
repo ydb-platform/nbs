@@ -601,7 +601,13 @@ public:
         const TString& agentId,
         TInstant now);
 
-    TVector<TDeviceId> CollectDirtyLocalDevices(const TAgentId& agentId);
+    TResultOrError<TVector<TDeviceId>> CollectDirtyLocalDevices(
+        const TAgentId& agentId);
+
+    NProto::TError ResumeLocalDevices(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        TInstant now);
 
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;

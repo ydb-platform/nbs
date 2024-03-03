@@ -931,6 +931,10 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                     && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
                     && r.NewDevices.contains(uuid))
             {
+                STORAGE_INFO(
+                    "Suspend the new local device %s (%s)",
+                    uuid.c_str(),
+                    d.GetDeviceName().c_str());
                 SuspendDevice(db, uuid);
             }
         }
@@ -4890,7 +4894,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
-    if (newState != NProto::AGENT_STATE_ONLINE) {
+    if (newState != NProto::AGENT_STATE_ONLINE && result.GetCode() == S_OK) {
         SuspendLocalDevices(db, *agent);
     }
 
@@ -4903,6 +4907,11 @@ void TDiskRegistryState::SuspendLocalDevices(
 {
     for (const auto& d: agent.GetDevices()) {
         if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+            STORAGE_INFO(
+                "Suspend the local device %s (%s)",
+                d.GetDeviceUUID().c_str(),
+                d.GetDeviceName().c_str());
+
             SuspendDevice(db, d.GetDeviceUUID());
         }
     }
@@ -5164,17 +5173,16 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
             << "RegisterUnknownDevices: " << JoinSeq(" ", affectedDisks));
     }
 
-    ResumeDevices(now, db, ids);
-
     return error;
 }
 
 auto TDiskRegistryState::CollectDirtyLocalDevices(const TAgentId& agentId)
-    -> TVector<TDeviceId>
+    -> TResultOrError<TVector<TDeviceId>>
 {
     auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
-        return {};
+        return MakeError(E_NOT_FOUND, TStringBuilder{} <<
+            "agent " << agentId.Quote() << " not found");
     }
 
     TVector<TDeviceId> ids;
@@ -5234,10 +5242,6 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
     TDiskId affectedDisk;
     ApplyDeviceStateChange(db, agent, device, now, affectedDisk);
     Y_UNUSED(affectedDisk);
-
-    if (!HasError(error)) {
-        ResumeDevice(now, db, device.GetDeviceUUID());
-    }
 
     return error;
 }
@@ -6490,6 +6494,33 @@ void TDiskRegistryState::ResumeDevices(
     for (const auto& id: ids) {
         ResumeDevice(now, db, id);
     }
+}
+
+NProto::TError TDiskRegistryState::ResumeLocalDevices(
+    TDiskRegistryDatabase& db,
+    const TAgentId& agentId,
+    TInstant now)
+{
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, TStringBuilder{}
+            << "agent " << agentId.Quote() << " not found");
+    }
+
+    for (const auto& device: agent->GetDevices()) {
+        if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
+            && DeviceList.IsSuspendedDevice(device.GetDeviceUUID()))
+        {
+            STORAGE_INFO(
+                "Resume the local device %s (%s)",
+                device.GetDeviceUUID().c_str(),
+                device.GetDeviceName().c_str());
+
+            ResumeDevice(now, db, device.GetDeviceUUID());
+        }
+    }
+
+    return {};
 }
 
 bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
