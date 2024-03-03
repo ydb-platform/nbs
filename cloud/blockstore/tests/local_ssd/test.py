@@ -3,6 +3,7 @@ import pytest
 import time
 import json
 
+from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.client import CreateClient
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_POOL_KIND_GLOBAL, STORAGE_MEDIA_SSD_LOCAL
@@ -38,6 +39,15 @@ def _add_host(client, agent_id):
     action.Host = agent_id
 
     return client.cms_action(request)
+
+
+def _remove_host(client, agent_id):
+    request = TCmsActionRequest()
+    action = request.Actions.add()
+    action.Type = TAction.REMOVE_HOST
+    action.Host = agent_id
+
+    return client.cms_action(request).ActionResults
 
 
 def _backup(client):
@@ -154,7 +164,7 @@ def test_add_host_with_legacy_local_ssd(
 
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
-    assert storage[0].ChunkCount == 6, storage
+    assert storage[0].ChunkCount == 6
     assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
 
     # we can't see the local devices
@@ -236,6 +246,63 @@ def test_add_host_with_legacy_local_ssd(
     assert vol1.Devices[0].AgentId == agent_id
     assert vol1.Devices[0].DeviceName == os.path.join(data_path, "NVMECOMPUTE02")
 
+    # let's try to remove agent
+    action_results = _remove_host(client, agent_id)
+    assert len(action_results) == 1
+    assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value
+    assert sorted(action_results[0].DependentDisks) == ["vol0", "vol1"]
+
+    client.destroy_volume("vol0", sync=True)
+    client.destroy_volume("vol1", sync=True)
+
+    action_results = _remove_host(client, agent_id)
+    assert len(action_results) == 1
+    assert action_results[0].Result.Code == EResult.S_OK.value
+
+    bkp = _backup(client)
+
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp["SuspendedDevices"]) == 4
+
+    disk_agent.kill()
+
+    # wait for DR to mark the agent as unavailable
+    while True:
+        bkp = _backup(client)
+        if bkp["Agents"][0].get("State") == 'AGENT_STATE_UNAVAILABLE':
+            break
+        time.sleep(1)
+
+    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent.wait_for_registration()
+
+    bkp = _backup(client)
+    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING'
+    assert len(bkp.get("SuspendedDevices", [])) == 4
+
+    # put the agent back
+    _add_host(client, agent_id)
+
+    # all devices are available
+    bkp = _backup(client)
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp.get("SuspendedDevices", [])) == 4
+
+    storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 0
+
+    storage = client.query_available_storage(
+        [agent_id],
+        storage_pool_name="1Mb",
+        storage_pool_kind=STORAGE_POOL_KIND_GLOBAL)
+
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
+
     disk_agent.kill()
     nbs.kill()
 
@@ -281,7 +348,7 @@ def test_add_host(
 
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id
-    assert storage[0].ChunkCount == 6, storage
+    assert storage[0].ChunkCount == 6
     assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
 
     # wait for all devices
@@ -299,6 +366,80 @@ def test_add_host(
         block_size=512,
         blocks_count=4*LOCAL_DEVICE_SIZE//512,
         storage_media_kind=STORAGE_MEDIA_SSD_LOCAL)
+
+    vol0 = client.stat_volume("vol0")["Volume"]
+
+    assert vol0.DiskId == "vol0"
+    assert vol0.BlockSize == 512
+    assert vol0.BlockSize * vol0.BlocksCount == 4 * LOCAL_DEVICE_SIZE
+    assert len(vol0.Devices) == 4
+
+    for i, d in enumerate(sorted(vol0.Devices, key=lambda d: d.DeviceName)):
+        assert d.BlockCount == LOCAL_DEVICE_SIZE // 512
+        assert d.AgentId == agent_id
+        assert d.DeviceName == os.path.join(data_path, f"NVMECOMPUTE0{i+1}")
+
+    # let's try to remove agent
+    action_results = _remove_host(client, agent_id)
+    assert len(action_results) == 1
+    assert action_results[0].Result.Code == EResult.E_TRY_AGAIN.value
+    assert action_results[0].DependentDisks == ["vol0"]
+
+    bkp = _backup(client)
+
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp.get("SuspendedDevices", [])) == 0
+
+    client.destroy_volume("vol0", sync=True)
+
+    action_results = _remove_host(client, agent_id)
+    assert len(action_results) == 1
+    assert action_results[0].Result.Code == EResult.S_OK.value
+
+    bkp = _backup(client)
+
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp["SuspendedDevices"]) == 4
+
+    disk_agent.kill()
+
+    # wait for DR to mark the agent as unavailable
+    while True:
+        bkp = _backup(client)
+        if bkp["Agents"][0].get("State") == 'AGENT_STATE_UNAVAILABLE':
+            break
+        time.sleep(1)
+
+    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent.wait_for_registration()
+
+    bkp = _backup(client)
+    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING'
+    assert len(bkp.get("SuspendedDevices", [])) == 4
+
+    # put the agent back
+    _add_host(client, agent_id)
+
+    # all devices are available
+    bkp = _backup(client)
+    assert len(bkp.get("DirtyDevices", [])) == 0
+    assert len(bkp.get("SuspendedDevices", [])) == 0
+
+    storage = client.query_available_storage([agent_id])
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 4
+    assert storage[0].ChunkSize == LOCAL_DEVICE_SIZE
+
+    storage = client.query_available_storage(
+        [agent_id],
+        storage_pool_name="1Mb",
+        storage_pool_kind=STORAGE_POOL_KIND_GLOBAL)
+
+    assert len(storage) == 1
+    assert storage[0].AgentId == agent_id
+    assert storage[0].ChunkCount == 6
+    assert storage[0].ChunkSize == DEFAULT_DEVICE_SIZE
 
     disk_agent.kill()
     nbs.kill()
