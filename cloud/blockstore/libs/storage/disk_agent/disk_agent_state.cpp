@@ -765,16 +765,20 @@ void TDiskAgentState::AcquireDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    CheckError(DeviceClient->AcquireDevices(
+    auto [updated, error] = DeviceClient->AcquireDevices(
         uuids,
         clientId,
         now,
         accessMode,
         mountSeqNumber,
         diskId,
-        volumeGeneration));
+        volumeGeneration);
 
-    UpdateSessionCache(*DeviceClient);
+    CheckError(error);
+
+    if (updated) {
+        UpdateSessionCache(*DeviceClient);
+    }
 }
 
 void TDiskAgentState::ReleaseDevices(
@@ -887,7 +891,7 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
                 std::make_move_iterator(session.MutableDeviceIds()->end()));
 
-            const auto error = client.AcquireDevices(
+            const auto [_, error] = client.AcquireDevices(
                 uuids,
                 session.GetClientId(),
                 TInstant::MicroSeconds(session.GetLastActivityTs()),
