@@ -290,7 +290,7 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
 
 void TDiskRegistryActor::PostponeResponse(
     const TActorContext& ctx,
-    TVector<TString> devicesNeedToBeClean,
+    const TVector<TString>& devicesNeedToBeClean,
     TRequestInfoPtr requestInfo,
     TResponseFactory responseFactory)
 {

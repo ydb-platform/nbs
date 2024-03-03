@@ -265,7 +265,7 @@ private:
 
     void PostponeResponse(
         const NActors::TActorContext& ctx,
-        TVector<TString> devicesNeedToBeClean,
+        const TVector<TString>& devicesNeedToBeClean,
         TRequestInfoPtr requestInfo,
         TResponseFactory responseFactory);
 
