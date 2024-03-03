@@ -15,6 +15,7 @@ RECURSE(
     infra-cms
     loadtest
     loadtest/remote
+    local_ssd
     monitoring
     mount
     notify

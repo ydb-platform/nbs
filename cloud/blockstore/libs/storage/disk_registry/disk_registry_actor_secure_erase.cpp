@@ -311,9 +311,10 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
     EraseIf(dirtyDevices, [&] (auto& d) {
         if (d.GetState() == NProto::DEVICE_STATE_ERROR) {
             LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Skip SecureErase for device '%s'. Device in error state",
+                "[%lu] Skip SecureErase for device '%s'. Device in error state: %s",
                 TabletID(),
-                d.GetDeviceUUID().c_str());
+                d.GetDeviceUUID().c_str(),
+                d.GetStateMessage().c_str());
 
             return true;
         }
