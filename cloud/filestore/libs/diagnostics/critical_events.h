@@ -13,6 +13,7 @@ namespace NCloud::NFileStore{
     xxx(TabletBSFailure)                                                       \
     xxx(TabletCommitIdOverflow)                                                \
     xxx(VfsQueueRunningError)                                                  \
+    xxx(EndpointStartingError)                                                 \
     xxx(MissingSessionId)                                                      \
     xxx(CreateSessionError)                                                    \
     xxx(DescribeFileStoreError)                                                \
