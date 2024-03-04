@@ -26,10 +26,18 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 }
 
 #define FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                          \
-    void Report##name()                                                        \
+    TString Report##name(const TString& message)                               \
     {                                                                          \
-        ReportCriticalEvent("AppCriticalEvents/"#name, "", false);             \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            message,                                                           \
+            false);                                                            \
     }                                                                          \
+                                                                               \
+    const TString GetCriticalEventFor##name()                                  \
+    {                                                                          \
+        return "AppCriticalEvents/"#name;                                      \
+    }                                                                        \
 // FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
     FILESTORE_CRITICAL_EVENTS(FILESTORE_DEFINE_CRITICAL_EVENT_ROUTINE)

@@ -27,7 +27,8 @@ namespace NCloud::NFileStore{
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 #define FILESTORE_DECLARE_CRITICAL_EVENT_ROUTINE(name)                         \
-    void Report##name();                                                       \
+    TString Report##name(const TString& message = "");                         \
+    const TString GetCriticalEventFor##name();                                 \
 // FILESTORE_DECLARE_CRITICAL_EVENT_ROUTINE
 
     FILESTORE_CRITICAL_EVENTS(FILESTORE_DECLARE_CRITICAL_EVENT_ROUTINE)
