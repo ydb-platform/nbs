@@ -284,6 +284,9 @@ struct TDiskRegistryStateBuilder
     TDiskRegistryStateBuilder& WithPlacementGroups(
         TVector<NProto::TPlacementGroupConfig> groups);
 
+    TDiskRegistryStateBuilder& WithErrorNotifications(
+        TVector<TString> notifications);
+
     TDiskRegistryStateBuilder& AddDevicePoolConfig(
         TString name,
         ui64 allocationUnit,

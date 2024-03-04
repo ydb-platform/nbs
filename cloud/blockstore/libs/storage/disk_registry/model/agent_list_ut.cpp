@@ -1143,6 +1143,84 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         agentList.PublishCounters(now);
         UNIT_ASSERT_VALUES_EQUAL(30'000, c->Val());
     }
+
+    Y_UNIT_TEST_F(ShouldPreserveDeviceErrorState, TFixture)
+    {
+        const TString errorMessage = "broken device";
+
+        NProto::TAgentConfig agentConfig;
+        agentConfig.SetAgentId("foo-1");
+        agentConfig.SetNodeId(1000);
+        *agentConfig.AddDevices() = CreateDevice("uuid-1", 1_GB, "rack-1");
+
+        TAgentList agentList = CreateAgentList();
+
+        const TKnownAgent knownAgent {
+            .Devices = {{ "uuid-1", CreateDevice("uuid-1", 0) }}
+        };
+
+        {
+            const auto timestamp = TInstant::FromValue(100000);
+
+            auto r = agentList.RegisterAgent(
+                agentConfig,
+                timestamp,
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(1, r.NewDevices.size());
+
+            const auto& d = agent.GetDevices(0);
+
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(timestamp.MicroSeconds(), d.GetStateTs());
+        }
+
+        agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
+        agentConfig.MutableDevices(0)->SetStateMessage(errorMessage);
+
+        const auto errorTs = TInstant::FromValue(200000);
+
+        {
+            auto r = agentList.RegisterAgent(
+                agentConfig,
+                errorTs,
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
+
+            const auto& d = agent.GetDevices(0);
+
+            UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
+        }
+
+        agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ONLINE);
+        agentConfig.MutableDevices(0)->SetStateMessage("");
+
+        {
+            const auto timestamp = TInstant::FromValue(300000);
+
+            auto r = agentList.RegisterAgent(
+                agentConfig,
+                timestamp,
+                knownAgent);
+
+            NProto::TAgentConfig& agent = r.Agent;
+
+            UNIT_ASSERT_VALUES_EQUAL(0, r.NewDevices.size());
+
+            const auto& d = agent.GetDevices(0);
+
+            UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -238,9 +238,14 @@ void TAgentList::UpdateDevice(
     TInstant timestamp,
     const NProto::TDeviceConfig& oldConfig)
 {
-    device.SetState(oldConfig.GetState());
-    device.SetStateTs(oldConfig.GetStateTs());
-    device.SetStateMessage(oldConfig.GetStateMessage());
+    if (device.GetState() > oldConfig.GetState()) {
+        device.SetStateTs(timestamp.MicroSeconds());
+    } else {
+        device.SetState(oldConfig.GetState());
+        device.SetStateTs(oldConfig.GetStateTs());
+        device.SetStateMessage(oldConfig.GetStateMessage());
+    }
+
     device.SetCmsTs(oldConfig.GetCmsTs());
     device.SetNodeId(agent.GetNodeId());
     device.SetAgentId(agent.GetAgentId());
