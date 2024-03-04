@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 
@@ -47,6 +48,16 @@ struct TRequestInfo
         , Cookie(cookie)
         , CallContext(std::move(callContext))
     {}
+
+    void CancelRequest(const NActors::TActorContext& ctx)
+    {
+        if (!CancelRoutine) {
+            ReportCancelRoutineIsNotSet(
+                "Cancel routine is not set for request info, but called");
+            return;
+        };
+        CancelRoutine(ctx, *this);
+    }
 
     void AddExecCycles(ui64 cycles)
     {

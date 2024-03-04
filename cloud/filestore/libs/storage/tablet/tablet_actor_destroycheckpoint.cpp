@@ -158,7 +158,7 @@ void TDestroyCheckpointActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is dead"));
 }
 
 void TDestroyCheckpointActor::ReplyAndDie(
