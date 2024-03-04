@@ -122,6 +122,9 @@ def storage_config_with_mixed_index_cache_enabled():
 def storage_config_with_adding_unconfirmed_blobs_enabled():
     storage = default_storage_config()
     storage.AddingUnconfirmedBlobsEnabled = True
+    # checksums are currently not supported for unconfirmed blobs
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
+    storage.CheckBlockChecksumsInBlobsUponRead = False
 
     return storage
 
