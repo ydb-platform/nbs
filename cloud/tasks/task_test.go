@@ -36,10 +36,9 @@ func (t *TaskMock) Cancel(ctx context.Context, execCtx ExecutionContext) error {
 
 func (t *TaskMock) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
-	args := t.Called(ctx, taskID)
+	args := t.Called(ctx)
 	res, _ := args.Get(0).(proto.Message)
 	return res, args.Error(1)
 }

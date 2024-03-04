@@ -303,7 +303,7 @@ func TestSchedulerGetTaskMetadata(t *testing.T) {
 		Request:  []byte{1, 2, 3},
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	metadata, err := scheduler.GetTaskMetadata(ctx, taskID)
 	mock.AssertExpectationsForObjects(t, task, storage)
@@ -343,7 +343,7 @@ func TestSchedulerGetOperationReadyToRun(t *testing.T) {
 		Status:      tasks_storage.TaskStatusReadyToRun,
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
@@ -399,7 +399,7 @@ func TestSchedulerGetOperationRunning(t *testing.T) {
 		Status:      tasks_storage.TaskStatusRunning,
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
@@ -455,7 +455,7 @@ func TestSchedulerGetOperationFinished(t *testing.T) {
 		Status:      tasks_storage.TaskStatusFinished,
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 	task.On("GetResponse").Return(&empty.Empty{})
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
@@ -519,7 +519,7 @@ func TestSchedulerGetOperationReadyToCancel(t *testing.T) {
 		ErrorMessage: taskError.Message(),
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
@@ -581,7 +581,7 @@ func TestSchedulerGetOperationCancelling(t *testing.T) {
 		ErrorMessage: taskError.Message(),
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
@@ -643,7 +643,7 @@ func TestSchedulerGetOperationCancelled(t *testing.T) {
 		ErrorMessage: taskError.Message(),
 	}, nil)
 	task.On("Load", []byte{1, 2, 3}, []byte(nil)).Return(nil)
-	task.On("GetMetadata", ctx, taskID).Return(&empty.Empty{}, nil)
+	task.On("GetMetadata", ctx).Return(&empty.Empty{}, nil)
 
 	expectedMetadata, _ := ptypes.MarshalAny(&empty.Empty{})
 
