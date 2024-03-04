@@ -207,6 +207,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvService::TWriteBlocksMethod>(
+        *msg,
         ctx,
         *requestInfo,
         blockRange,
@@ -350,6 +351,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvService::TWriteBlocksLocalMethod>(
+        *msg,
         ctx,
         *requestInfo,
         blockRange,
