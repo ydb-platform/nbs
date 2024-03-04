@@ -100,7 +100,6 @@ func (t *createSnapshotFromSnapshotTask) Cancel(
 
 func (t *createSnapshotFromSnapshotTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &protos.CreateSnapshotFromSnapshotMetadata{

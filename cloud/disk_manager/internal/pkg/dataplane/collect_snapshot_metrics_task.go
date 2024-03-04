@@ -75,7 +75,6 @@ func (c collectSnapshotMetricsTask) Cancel(
 
 func (c collectSnapshotMetricsTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

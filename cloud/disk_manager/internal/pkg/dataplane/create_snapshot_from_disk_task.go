@@ -67,7 +67,6 @@ func (t *createSnapshotFromDiskTask) Cancel(
 
 func (t *createSnapshotFromDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &protos.CreateSnapshotFromDiskMetadata{

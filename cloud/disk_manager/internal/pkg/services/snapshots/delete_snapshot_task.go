@@ -149,7 +149,6 @@ func (t *deleteSnapshotTask) Cancel(
 
 func (t *deleteSnapshotTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.DeleteSnapshotMetadata{

@@ -118,7 +118,6 @@ func (t *retireBaseDiskTask) Cancel(
 
 func (t *retireBaseDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

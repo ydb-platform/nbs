@@ -107,7 +107,6 @@ func (c collectListerMetricsTask) Cancel(
 
 func (c collectListerMetricsTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

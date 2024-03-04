@@ -67,7 +67,6 @@ func (t *alterPlacementGroupMembershipTask) Cancel(
 
 func (t *alterPlacementGroupMembershipTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

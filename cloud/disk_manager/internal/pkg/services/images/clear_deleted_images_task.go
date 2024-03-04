@@ -45,7 +45,6 @@ func (t *clearDeletedImagesTask) Cancel(
 
 func (t *clearDeletedImagesTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

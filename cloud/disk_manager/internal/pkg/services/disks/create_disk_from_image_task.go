@@ -241,7 +241,6 @@ func (t *createDiskFromImageTask) Cancel(
 
 func (t *createDiskFromImageTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	metadata := &disk_manager.CreateDiskMetadata{}

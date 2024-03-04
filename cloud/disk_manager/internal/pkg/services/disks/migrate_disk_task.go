@@ -151,7 +151,6 @@ func (t *migrateDiskTask) Cancel(
 
 func (t *migrateDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	status, err := t.getStatusForAPI(ctx)

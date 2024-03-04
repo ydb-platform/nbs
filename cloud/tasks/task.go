@@ -22,7 +22,7 @@ type Task interface {
 	// Synchronously cancel the task.
 	Cancel(ctx context.Context, execCtx ExecutionContext) error
 
-	GetMetadata(ctx context.Context, taskID string) (proto.Message, error)
+	GetMetadata(ctx context.Context) (proto.Message, error)
 
 	// It only makes sense after Run has completed successfully.
 	// But in that case it must not return nil.

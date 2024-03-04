@@ -133,7 +133,6 @@ func (t *transferFromDiskToDiskTask) Cancel(
 
 func (t *transferFromDiskToDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &protos.TransferFromDiskToDiskMetadata{

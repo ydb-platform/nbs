@@ -78,7 +78,6 @@ func (t *deleteImageTask) Cancel(
 
 func (t *deleteImageTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.DeleteImageMetadata{
