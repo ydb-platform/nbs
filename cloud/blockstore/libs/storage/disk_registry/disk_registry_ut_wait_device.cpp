@@ -296,7 +296,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWaitDeviceTest)
             auto response = RecvAddHostResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(1, response.ActionResultsSize(), response);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
+                E_INVALID_STATE,
                 response.GetActionResults(0).GetResult().GetCode(),
                 response);
         }
