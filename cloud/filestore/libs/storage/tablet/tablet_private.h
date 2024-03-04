@@ -6,9 +6,10 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
+#include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -241,6 +242,14 @@ struct TEvIndexTabletPrivate
         };
 
         TVector<TWriteRequestResult> Results;
+    };
+
+    //
+    // ReadWrite completion
+    //
+
+    struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
+    {
     };
 
     //
@@ -600,8 +609,8 @@ struct TEvIndexTabletPrivate
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
 
-    using TEvReadDataCompleted = TResponseEvent<TOperationCompleted, EvReadDataCompleted>;
-    using TEvWriteDataCompleted = TResponseEvent<TOperationCompleted, EvWriteDataCompleted>;
+    using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
+    using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

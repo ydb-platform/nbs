@@ -334,8 +334,9 @@ void TActorSystem::Init()
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
-    servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
+    servicesMask.EnableConfigsDispatcher =
+        Args.StorageConfig->GetConfigsDispatcherServiceEnabled();
 
     if (Args.AppConfig->HasAuthConfig()) {
         servicesMask.EnableSecurityServices = 1;

@@ -1,0 +1,2 @@
+[{"NodeId": 1, "Host": "localhost", "ResolveHost": "localhost", "Location": "DC=1/R=1/U=1/", "Port": "<static_node_port>", "IsStatic": true}]
+[{"NodeId": 1, "Host": "localhost", "ResolveHost": "localhost", "Location": "DC=1/R=1/U=1/", "Port": "<static_node_port>", "IsStatic": true}]

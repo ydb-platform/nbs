@@ -27,6 +27,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
     const TActorId& partActorId,
     const ui64 volumeRequestId)
 {
+    static_assert(IsReadMethod<TMethod> || IsWriteMethod<TMethod>);
+
     const auto* msg = ev->Get();
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
@@ -73,7 +75,11 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                         == msg->Record.GetBlocksCount()
                 : false;
 
-            if (overlayDiskRegistryBasedDisk && !isOnlyOverlayDisk) {
+            if (isOnlyOverlayDisk) {
+                return false;
+            }
+
+            if (overlayDiskRegistryBasedDisk) {
                 NCloud::Register<TReadDiskRegistryBasedOverlayActor<TMethod>>(
                     ctx,
                     CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
@@ -94,53 +100,65 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
                 return true;
             }
 
-            if (!isOnlyOverlayDisk) {
-                NCloud::Register<TReadMarkedActor<TMethod>>(
-                    ctx,
-                    CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-                    std::move(msg->Record),
-                    State->GetUsedBlocks(),
-                    State->GetMaskUnusedBlocks(),
-                    encryptedDiskRegistryBasedDisk,
-                    partActorId,
-                    TabletID(),
-                    SelfId());
+            NCloud::Register<TReadMarkedActor<TMethod>>(
+                ctx,
+                CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                std::move(msg->Record),
+                State->GetUsedBlocks(),
+                State->GetMaskUnusedBlocks(),
+                encryptedDiskRegistryBasedDisk,
+                partActorId,
+                TabletID(),
+                SelfId());
 
-                return true;
-            }
+            return true;
         }
     }
+    return false;
+}
 
-    if constexpr (std::is_same_v<TMethod, TEvService::TGetChangedBlocksMethod>) {
-        const auto highCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+template <>
+bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
+    TEvService::TGetChangedBlocksMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetChangedBlocksMethod::TRequest::TPtr& ev,
+    const TActorId& partActorId,
+    const ui64 volumeRequestId)
+{
+    Y_UNUSED(partActorId);
+    Y_UNUSED(volumeRequestId);
+
+    const auto* msg = ev->Get();
+
+    const auto highCheckpointType =
+        State->GetCheckpointStore().GetCheckpointType(
             msg->Record.GetHighCheckpointId());
-        const auto lowCheckpointType = State->GetCheckpointStore().GetCheckpointType(
+    const auto lowCheckpointType =
+        State->GetCheckpointStore().GetCheckpointType(
             msg->Record.GetLowCheckpointId());
 
-        if (highCheckpointType && *highCheckpointType == ECheckpointType::Light
-                || lowCheckpointType && *lowCheckpointType == ECheckpointType::Light)
-        {
-            GetChangedBlocksForLightCheckpoints(ev, ctx);
-            return true;
-        }
-
-        // TODO: NBS-3228: remove checks for disk registry based disks after normal checkpoints
-        // for disk registry based disks are implemented completely.
-        if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())
-                && msg->Record.GetHighCheckpointId() == ""
-                && msg->Record.GetLowCheckpointId() == "")
-        {
-            GetChangedBlocksForLightCheckpoints(ev, ctx);
-            return true;
-        }
-
-        if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
-            ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(ev, ctx);
-            return true;
-        }
+    if (highCheckpointType && *highCheckpointType == ECheckpointType::Light ||
+        lowCheckpointType && *lowCheckpointType == ECheckpointType::Light)
+    {
+        GetChangedBlocksForLightCheckpoints(ev, ctx);
+        return true;
     }
 
-    return false;
+    // TODO: NBS-3228: remove checks for disk registry based disks after normal
+    // checkpoints for disk registry based disks are implemented completely.
+    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+        return false;
+    }
+
+    if (msg->Record.GetHighCheckpointId() == "" &&
+        msg->Record.GetLowCheckpointId() == "")
+    {
+        GetChangedBlocksForLightCheckpoints(ev, ctx);
+        return true;
+    }
+
+    ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(ev, ctx);
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,25 +172,43 @@ template bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<       \
         const ui64 volumeRequestId);                                           \
 // GENERATE_IMPL
 
+#define GENERATE_NO_IMPL(name, ns)                                           \
+    template <>                                                              \
+    bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<          \
+        ns::T##name##Method>(                                                \
+        const TActorContext& ctx,                                            \
+        const ns::T##name##Method::TRequest::TPtr& ev,                       \
+        const TActorId& partActorId,                                         \
+        const ui64 volumeRequestId)                                          \
+    {                                                                        \
+        Y_UNUSED(ctx);                                                       \
+        Y_UNUSED(ev);                                                        \
+        Y_UNUSED(partActorId);                                               \
+        Y_UNUSED(volumeRequestId);                                           \
+        return false;                                                        \
+    }                                                                        \
+// GENERATE_NO_IMPL
+
 GENERATE_IMPL(ReadBlocks,         TEvService)
 GENERATE_IMPL(WriteBlocks,        TEvService)
 GENERATE_IMPL(ZeroBlocks,         TEvService)
-GENERATE_IMPL(CreateCheckpoint,   TEvService)
-GENERATE_IMPL(DeleteCheckpoint,   TEvService)
-GENERATE_IMPL(GetChangedBlocks,   TEvService)
 GENERATE_IMPL(ReadBlocksLocal,    TEvService)
 GENERATE_IMPL(WriteBlocksLocal,   TEvService)
 
-GENERATE_IMPL(DescribeBlocks,           TEvVolume)
-GENERATE_IMPL(GetUsedBlocks,            TEvVolume)
-GENERATE_IMPL(GetPartitionInfo,         TEvVolume)
-GENERATE_IMPL(CompactRange,             TEvVolume)
-GENERATE_IMPL(GetCompactionStatus,      TEvVolume)
-GENERATE_IMPL(DeleteCheckpointData,     TEvVolume)
-GENERATE_IMPL(RebuildMetadata,          TEvVolume)
-GENERATE_IMPL(GetRebuildMetadataStatus, TEvVolume)
-GENERATE_IMPL(ScanDisk,                 TEvVolume)
-GENERATE_IMPL(GetScanDiskStatus,        TEvVolume)
+GENERATE_NO_IMPL(CreateCheckpoint,    TEvService)
+GENERATE_NO_IMPL(DeleteCheckpoint,    TEvService)
+GENERATE_NO_IMPL(GetCheckpointStatus, TEvService)
+
+GENERATE_NO_IMPL(DescribeBlocks,           TEvVolume)
+GENERATE_NO_IMPL(GetUsedBlocks,            TEvVolume)
+GENERATE_NO_IMPL(GetPartitionInfo,         TEvVolume)
+GENERATE_NO_IMPL(CompactRange,             TEvVolume)
+GENERATE_NO_IMPL(GetCompactionStatus,      TEvVolume)
+GENERATE_NO_IMPL(DeleteCheckpointData,     TEvVolume)
+GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
+GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
+GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
+GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
 
 #undef GENERATE_IMPL
 

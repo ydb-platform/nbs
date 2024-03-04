@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     helpers.cpp
+    poison_pill_helper.cpp
 )
 
 PEERDIR(
@@ -9,3 +10,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

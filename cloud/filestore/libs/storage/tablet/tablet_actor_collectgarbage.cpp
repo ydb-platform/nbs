@@ -130,9 +130,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , CollectCounter(collectCounter)
     , CleanupWholeHistory(cleanupWholeHistory)
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TCollectGarbageActor::Bootstrap(const TActorContext& ctx)
 {

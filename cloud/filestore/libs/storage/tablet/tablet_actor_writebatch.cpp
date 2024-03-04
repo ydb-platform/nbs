@@ -112,9 +112,7 @@ TWriteBatchActor::TWriteBatchActor(
     , WriteBatch(std::move(writeBatch))
     , Blobs(std::move(blobs))
     , WriteRanges(std::move(writeRanges))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TWriteBatchActor::Bootstrap(const TActorContext& ctx)
 {
@@ -225,19 +223,6 @@ STFUNC(TWriteBatchActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueWriteBatch(
-    const TActorContext& ctx,
-    std::unique_ptr<TWriteRequest> request)
-{
-    if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
-        if (auto timeout = Config->GetWriteBatchTimeout()) {
-            ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-        } else {
-            ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
-        }
-    }
-}
-
 void TIndexTabletActor::HandleWriteBatch(
     const TEvIndexTabletPrivate::TEvWriteBatchRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -256,6 +241,10 @@ void TIndexTabletActor::HandleWriteBatch(
             NCloud::Reply(ctx, *ev, std::move(response));
         }
         return;
+    }
+
+    for (const auto& request: writeBatch) {
+        AddTransaction(*request.RequestInfo, request.RequestInfo->CancelRoutine);
     }
 
     auto batchInfo = GetBatchInfo(writeBatch);
@@ -499,6 +488,10 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteBatch& args)
 {
+    for (const auto& request: args.WriteBatch) {
+        RemoveTransaction(*request.RequestInfo);
+    }
+
     auto reply = [] (
         const TActorContext& ctx,
         TTxIndexTablet::TWriteBatch& args)

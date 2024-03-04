@@ -33,9 +33,7 @@ TTrimFreshLogActor::TTrimFreshLogActor(
     , RecordGeneration(recordGeneration)
     , CollectCounter(collectCounter)
     , FreshChannels(std::move(freshChannels))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
 {

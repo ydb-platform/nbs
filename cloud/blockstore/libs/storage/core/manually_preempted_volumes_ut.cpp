@@ -85,7 +85,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             std::move(config),
-            std::make_shared<TFeaturesConfig>());
+            std::make_shared<NFeatures::TFeaturesConfig>());
 
         TLog log;
         TVector<TString> criticalEvents;
@@ -130,7 +130,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             std::move(config),
-            std::make_shared<TFeaturesConfig>());
+            std::make_shared<NFeatures::TFeaturesConfig>());
 
         TLog log;
         TVector<TString> criticalEvents;
@@ -163,7 +163,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             std::move(config),
-            std::make_shared<TFeaturesConfig>());
+            std::make_shared<NFeatures::TFeaturesConfig>());
 
         TLog log;
         TVector<TString> criticalEvents;
@@ -186,7 +186,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             std::move(config),
-            std::make_shared<TFeaturesConfig>());
+            std::make_shared<NFeatures::TFeaturesConfig>());
 
         TLog log;
         TVector<TString> criticalEvents;
@@ -213,7 +213,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto storageConfig = std::make_shared<TStorageConfig>(
             std::move(config),
-            std::make_shared<TFeaturesConfig>());
+            std::make_shared<NFeatures::TFeaturesConfig>());
 
         TLog log;
         TVector<TString> criticalEvents;

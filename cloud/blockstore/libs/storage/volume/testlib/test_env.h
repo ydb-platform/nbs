@@ -406,6 +406,9 @@ public:
     std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest> CreateDeleteCheckpointDataRequest(
         const TString& checkpointId);
 
+    std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+    CreateGetCheckpointStatusRequest(const TString& checkpointId);
+
     std::unique_ptr<TEvPartition::TEvBackpressureReport> CreateBackpressureReport(
         const TBackpressureReport& report);
 
@@ -441,6 +444,12 @@ public:
 
     std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> CreateChangeStorageConfigRequest(
         NProto::TStorageServiceConfig patch);
+
+    std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
+        TString checkpointId,
+        TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
+        ui64 processedBlockCount,
+        ui64 totalBlockCount);
 
     void SendRemoteHttpInfo(
         const TString& params,

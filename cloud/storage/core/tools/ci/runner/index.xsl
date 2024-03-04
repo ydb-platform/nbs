@@ -164,6 +164,13 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="degradation_tests" mode="detailed">
+    <xsl:call-template name="detailed">
+        <xsl:with-param name="suite-kind">degradation_tests</xsl:with-param>
+        <xsl:with-param name="show-all-testsuites" select="false()" />
+    </xsl:call-template>
+</xsl:template>
+
 <xsl:template match="disk_manager_acceptance" mode="detailed">
     <xsl:call-template name="detailed">
         <xsl:with-param name="suite-kind">disk_manager_acceptance</xsl:with-param>
@@ -219,6 +226,12 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="degradation_tests" mode="brief">
+    <xsl:call-template name="brief">
+        <xsl:with-param name="suite-kind">degradation_tests</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
+
 <xsl:template match="disk_manager_acceptance" mode="brief">
     <xsl:call-template name="brief">
         <xsl:with-param name="suite-kind">disk_manager_acceptance</xsl:with-param>
@@ -269,6 +282,12 @@
                 </div>
             </div>
             <div style="border-top: 1px dashed black; margin-bottom: 20px">
+                <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
+                    <h3>Fio+Eternal Degradation Test</h3>
+                    <xsl:apply-templates select="degradation_tests" mode="brief"/>
+                </div>
+            </div>
+            <div style="border-top: 1px dashed black; margin-bottom: 20px">
                 <h3>e2e detailed</h3>
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>NBS</h3>
@@ -288,6 +307,10 @@
                     <xsl:apply-templates select="disk_manager_acceptance" mode="detailed"/>
                     <xsl:apply-templates select="disk_manager_eternal" mode="detailed"/>
                     <xsl:apply-templates select="disk_manager_sync" mode="detailed"/>
+                </div>
+                <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
+                    <h3>Fio+Eternal Degradation Test</h3>
+                    <xsl:apply-templates select="degradation_tests" mode="detailed"/>
                 </div>
             </div>
         </body>

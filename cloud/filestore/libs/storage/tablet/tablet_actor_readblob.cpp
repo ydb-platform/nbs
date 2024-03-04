@@ -136,9 +136,7 @@ TReadBlobActor::TReadBlobActor(
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -181,7 +179,7 @@ void TReadBlobActor::HandleGetResult(
 
     const auto& request = Requests[requestIndex];
 
-    auto rangeIt = request.Ranges.begin();
+    const auto* rangeIt = request.Ranges.begin();
     TABLET_VERIFY(rangeIt != request.Ranges.end());
 
     for (size_t i = 0; i < msg->ResponseSz; ++i) {

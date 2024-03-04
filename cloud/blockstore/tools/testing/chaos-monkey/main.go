@@ -32,11 +32,16 @@ type options struct {
 	WaitForReplicationFinish  bool
 	Cleanup                   bool
 	Heal                      bool
+	LogDateTime               bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func run(ctx context.Context, opts *options) error {
+	if opts.LogDateTime {
+		log.SetFlags(log.Ldate | log.Ltime)
+	}
+
 	var stateJSON []byte
 	var err error
 
@@ -93,7 +98,7 @@ func run(ctx context.Context, opts *options) error {
 		}
 
 		for _, o := range outputs {
-			fmt.Printf("cleanup: %v\n", o)
+			log.Printf("cleanup: %v", o)
 		}
 
 		return nil
@@ -104,8 +109,8 @@ func run(ctx context.Context, opts *options) error {
 	}
 
 	var diskInfo *DiskInfo
+	log.Printf("Requesting DiskInfo...")
 	diskInfo, err = describeDisk(state, opts.DiskID)
-	fmt.Println("DiskInfo:")
 	if err != nil {
 		return err
 	}
@@ -113,27 +118,27 @@ func run(ctx context.Context, opts *options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(output))
+	log.Printf("DiskInfo:\n%v", string(output))
 
+	log.Printf("Detecting targets to curse...")
 	targetsToCurse := findAllTargetsToCurse(diskInfo, opts.MaxTargets,
 		opts.CanBreakTwoDevicesInCell,
 		opts.PreferFreshDevices,
 		opts.PreferMinusOneCells,
 		opts.DeviceID)
-	fmt.Println("Targets to curse:")
 	output, err = json.MarshalIndent(targetsToCurse, "", "    ")
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(output))
+	log.Printf("Targets to curse:\n%v", string(output))
 
+	log.Printf("Detecting targets to heal...")
 	targetsToHeal := findTargetsToHeal(diskInfo, opts.MaxTargets, opts.DeviceID)
-	fmt.Println("Targets to heal:")
 	output, err = json.MarshalIndent(targetsToHeal, "", "    ")
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(output))
+	log.Printf("Targets to heal:\n%v", string(output))
 
 	if opts.Heal {
 		outputs, err := heal(ctx, targetsToHeal, client)
@@ -142,7 +147,7 @@ func run(ctx context.Context, opts *options) error {
 		}
 
 		for _, o := range outputs {
-			fmt.Printf("cleanup: %v\n", o)
+			log.Printf("cleanup: %v", o)
 		}
 
 		return nil
@@ -156,7 +161,7 @@ func run(ctx context.Context, opts *options) error {
 		}
 
 		for _, o := range outputs {
-			fmt.Printf("apply: %v\n", o)
+			log.Printf("apply: %v", o)
 		}
 	}
 
@@ -168,7 +173,7 @@ func run(ctx context.Context, opts *options) error {
 		}
 
 		for _, o := range outputs {
-			fmt.Printf("wait for replication start: %v\n", o)
+			log.Printf("Replication started: %v", o)
 		}
 	}
 
@@ -180,7 +185,7 @@ func run(ctx context.Context, opts *options) error {
 		}
 
 		for _, o := range outputs {
-			fmt.Printf("wait for replication finish: %v\n", o)
+			log.Printf("Replication finished: %v", o)
 		}
 	}
 
@@ -189,6 +194,8 @@ func run(ctx context.Context, opts *options) error {
 
 func main() {
 	var opts options
+	log.SetFlags(0)
+	log.SetOutput(os.Stdout)
 
 	var rootCmd = &cobra.Command{
 		Use:   "blockstore-chaos-monkey",
@@ -306,6 +313,13 @@ func main() {
 		"heal",
 		false,
 		"restores state to DEVICE_STATE_ONLINE for the replaced devices for disk",
+	)
+
+	rootCmd.Flags().BoolVar(
+		&opts.LogDateTime,
+		"log-datetime",
+		false,
+		"adds date and time to log output",
 	)
 
 	opts.NbsToken, _ = os.LookupEnv("NBS_TOKEN")

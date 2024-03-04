@@ -17,6 +17,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/init/disk_agent
 
+    cloud/storage/core/config
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics

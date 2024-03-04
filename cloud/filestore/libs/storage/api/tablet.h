@@ -23,6 +23,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
     xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
     xxx(DescribeData,               __VA_ARGS__)                               \
+    xxx(DescribeSessions,           __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -60,6 +61,9 @@ struct TEvIndexTablet
 
         EvDescribeDataRequest = EvBegin + 15,
         EvDescribeDataResponse,
+
+        EvDescribeSessionsRequest = EvBegin + 17,
+        EvDescribeSessionsResponse,
 
         EvEnd
     };

@@ -184,6 +184,7 @@ void TIndexTabletActor::CompleteTx_LoadState(
     TTxIndexTablet::TLoadState& args)
 {
     if (args.StorageConfig.Defined()) {
+        StorageConfigOverride = *args.StorageConfig;
         Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
         LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
@@ -413,14 +414,7 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkCompleted(
     s.LoadQueue.pop_front();
     s.LoadChunkInProgress = false;
 
-    if (s.LoadQueue) {
-        // We still have more loading to do - sending the next load request
-        ctx.Send(
-            SelfId(),
-            new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
-                s.LoadQueue.front())
-        );
-    }
+    LoadNextCompactionMapChunkIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -107,10 +107,10 @@ func TestLogTrace(t *testing.T) {
 		"Trace",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 
@@ -125,10 +125,10 @@ func TestLogDebug(t *testing.T) {
 		"Debug",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 
@@ -143,10 +143,10 @@ func TestLogInfo(t *testing.T) {
 		"Info",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 
@@ -161,10 +161,10 @@ func TestLogWarn(t *testing.T) {
 		"Warn",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 
@@ -179,10 +179,10 @@ func TestLogError(t *testing.T) {
 		"Error",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 
@@ -197,10 +197,10 @@ func TestLogFatal(t *testing.T) {
 		"Fatal",
 		"Stuff happened",
 		[]log.Field{
-			log.String("IDEMPOTENCY_KEY", "idempID"),
-			log.String("REQUEST_ID", "reqID"),
-			log.String("OPERATION_ID", "opID"),
-			log.String("SYSLOG_IDENTIFIER", "disk-manager"),
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
 		},
 	)
 

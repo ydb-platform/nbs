@@ -59,6 +59,9 @@ private:
     TPromise<TResponse> Response;
 
 public:
+    static constexpr const char ActorName[] = "NCloud::NFileStore::TRequestActor<T>";
+
+public:
     TRequestActor(
             TCallContextPtr callContext,
             std::shared_ptr<TRequest> request,
@@ -66,9 +69,7 @@ public:
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(std::move(response))
-    {
-        TThis::ActivityType = TFileStoreActivities::SERVICE_PROXY;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -151,9 +152,7 @@ public:
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , ResponseHandler(std::move(responseHandler))
-    {
-        TThis::ActivityType = TFileStoreActivities::SERVICE_PROXY;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

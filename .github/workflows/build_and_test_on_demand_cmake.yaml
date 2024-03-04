@@ -81,10 +81,19 @@ jobs:
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha != ''
         with:
+          submodules: true
           ref: ${{ github.event.pull_request.head.sha }}
+      - name: Rebase PR
+        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+        shell: bash
+        run: |
+          git fetch origin stable-23-3
+          git rebase origin/stable-23-3
       - name: Checkout
         uses: actions/checkout@v4
         if: github.event.pull_request.head.sha == ''
+        with:
+          submodules: true
       - id: configure-ncp
         name: Configure NCP
         uses: ./.github/actions/ncp
@@ -118,19 +127,28 @@ jobs:
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
     secrets: inherit
 
-  release-runner:
-    name: Release self-hosted runner
+  sleep-if-needed:
+    name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed
+    if: ${{ !cancelled() }}
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
     runs-on: ubuntu-latest
-    if: always()
     steps:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed
         shell: bash
         if: ${{ needs.build-and-test.outputs.sleep_after_tests && needs.build-and-test.outputs.sleep_after_tests != '0'  }}
         run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
+  release-runner:
+    name: Release self-hosted runner ${{ needs.provide-runner.outputs.instance-id }}
+    needs:
+      - provide-runner  # required to get output from the start-runner job
+      - build-and-test  # required to wait when the main job is done
+      - sleep-if-needed # required to wait until all debug is done
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
       - name: Stop YC runner
         uses: librarian/yc-github-runner@0.0.15
         if: always()

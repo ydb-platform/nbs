@@ -111,9 +111,9 @@ public:
         : Strategy(strategy)
     {}
 
-    void Increment(ui32 partitionIndex)
+    void Increment(const TString& diskId, ui32 partitionIndex)
     {
-        ++BrokenDiskCount;
+        BrokenDisks.insert(diskId);
         if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
             BrokenPartitions.insert(partitionIndex);
         }
@@ -123,7 +123,7 @@ public:
     {
         switch (Strategy) {
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
-                return BrokenDiskCount;
+                return BrokenDisks.size();
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
                 return BrokenPartitions.size();
             default:
@@ -135,9 +135,14 @@ public:
         }
     }
 
+    [[nodiscard]] const THashSet<TString>& GetBrokenDisks() const
+    {
+        return BrokenDisks;
+    }
+
 private:
     NProto::EPlacementStrategy Strategy;
-    ui32 BrokenDiskCount = 0;
+    THashSet<TString> BrokenDisks;
     THashSet<ui32> BrokenPartitions;
 };
 
@@ -326,6 +331,8 @@ private:
     NProto::TMeanTimeBetweenFailures TimeBetweenFailures;
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
+
+    THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
 
 public:
     TDiskRegistryState(
@@ -790,6 +797,11 @@ public:
         return ReplicaTable;
     }
 
+    THashMap<TString, TCachedAcquireRequests>& GetAcquireCacheByAgentId()
+    {
+        return AcquireCacheByAgentId;
+    }
+
     TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const
     {
         return AgentList.GetRejectAgentTimeout(now, agentId);
@@ -1197,6 +1209,8 @@ private:
     NProto::TError CheckDestructiveConfigurationChange(
         const NProto::TDeviceConfig& device,
         const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
+
+    void ResetMigrationStartTsIfNeeded(TDiskState& disk);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

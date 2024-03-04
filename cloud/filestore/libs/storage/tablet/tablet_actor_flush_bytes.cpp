@@ -2,8 +2,8 @@
 
 #include "profile_log_events.h"
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
-#include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -193,9 +193,7 @@ TFlushBytesActor::TFlushBytesActor(
     , SrcBlobOffsets(std::move(srcBlobOffsets))
     , DstBlobs(std::move(dstBlobs))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TFlushBytesActor::Bootstrap(const TActorContext& ctx)
 {
@@ -492,6 +490,12 @@ void TIndexTabletActor::HandleFlushBytes(
     if (!CompactionStateLoadStatus.Finished) {
         if (BlobIndexOpState.GetOperationState() == EOperationState::Enqueued) {
             BlobIndexOpState.Complete();
+        }
+
+        // Flush may have been enqueued if FlushBytes was enqueued by the
+        // tablet (via EnqueueBlobIndexOpIfNeeded).
+        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
+            FlushState.Complete();
         }
 
         replyError(

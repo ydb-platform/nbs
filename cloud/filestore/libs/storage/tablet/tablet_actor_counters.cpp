@@ -92,13 +92,17 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
 
-    REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-
-    REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(DeletionMarkersCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(GarbageQueueSize, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(GarbageBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -161,6 +165,45 @@ void TIndexTabletActor::TMetrics::Register(
         AggregatableFsRegistry,
         {CreateLabel("request", "PatchBlob"), CreateLabel("histogram", "Time")});
 
+    REGISTER_AGGREGATABLE_SUM(
+        ReadData.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        ReadData.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    ReadData.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "ReadData"), CreateLabel("histogram", "Time")});
+
+    REGISTER_AGGREGATABLE_SUM(
+        DescribeData.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        DescribeData.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    DescribeData.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "DescribeData"), CreateLabel("histogram", "Time")});
+
+    REGISTER_AGGREGATABLE_SUM(
+        WriteData.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        WriteData.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    WriteData.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "WriteData"), CreateLabel("histogram", "Time")});
+
+    REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
+
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER
@@ -174,7 +217,8 @@ void TIndexTabletActor::TMetrics::Update(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& stats,
     const NProto::TFileStorePerformanceProfile& performanceProfile,
-    const TCompactionMapStats& compactionStats)
+    const TCompactionMapStats& compactionStats,
+    const TSessionsStats& sessionsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -188,9 +232,13 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
-    Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
+    Store(MixedBlobsCount, stats.GetMixedBlobsCount());
+    Store(DeletionMarkersCount, stats.GetDeletionMarkersCount());
     Store(GarbageQueueSize, stats.GetGarbageQueueSize());
+    Store(GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
+    Store(FreshBlocksCount, stats.GetFreshBlocksCount());
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());
@@ -199,6 +247,26 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(AllocatedCompactionRangesCount, compactionStats.AllocatedRangesCount);
     Store(UsedCompactionRangesCount, compactionStats.UsedRangesCount);
+
+    if (compactionStats.TopRangesByCompactionScore.empty()) {
+        Store(MaxBlobsInRange, 0);
+    } else {
+        Store(
+            MaxBlobsInRange,
+            compactionStats.TopRangesByCompactionScore.front()
+                .Stats.BlobsCount);
+    }
+    if (compactionStats.TopRangesByCleanupScore.empty()) {
+        Store(MaxDeletionsInRange, 0);
+    } else {
+        Store(
+            MaxDeletionsInRange,
+            compactionStats.TopRangesByCleanupScore.front()
+                .Stats.DeletionsCount);
+    }
+
+    Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
+    Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
 
     BusyIdleCalc.OnUpdateStats();
 }
@@ -236,14 +304,15 @@ void TIndexTabletActor::RegisterStatCounters()
     TABLET_VERIFY(!storageMediaKind.empty());
 
     // Update should be called before Register, because we want to write
-    // correct values to solomon. If we reorder this two actions, we can
+    // correct values to solomon. If we reorder these two actions, we can
     // aggregate zero values, in the middle of the registration (or right after
     // registration, before update).
     Metrics.Update(
         fs,
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(0));
+        GetCompactionMapStats(1),
+        CalculateSessionsStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -274,7 +343,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetFileSystem(),
         GetFileSystemStats(),
         GetPerformanceProfile(),
-        GetCompactionMapStats(0));
+        GetCompactionMapStats(1),
+        CalculateSessionsStats());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);

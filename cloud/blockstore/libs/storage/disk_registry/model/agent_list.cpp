@@ -249,10 +249,11 @@ void TAgentList::UpdateDevice(
         device.SetUnadjustedBlockCount(device.GetBlocksCount());
     }
 
-    if (device.GetBlockSize() == oldConfig.GetBlockSize() &&
-        device.GetUnadjustedBlockCount() == oldConfig.GetUnadjustedBlockCount())
-    {
-        // if the device hasn't changed, we can adjust BlocksCount
+    // Keep the old blocks count. The device may be used.
+    // Zero check is for tests only. Since a lot of them create new devices with
+    // disks and |TDiskRegistryState::AdjustDeviceIfNeeded| can't restore
+    // BlocksCount to a proper value.
+    if (oldConfig.GetBlocksCount()) {
         device.SetBlocksCount(oldConfig.GetBlocksCount());
     }
 

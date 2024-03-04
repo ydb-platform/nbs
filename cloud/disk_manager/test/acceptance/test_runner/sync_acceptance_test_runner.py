@@ -1,9 +1,11 @@
+import argparse
 import datetime
 import logging
 import re
 
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
-    BaseTestBinaryExecutor
+    BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     size_prettifier,
     Error,
@@ -19,7 +21,34 @@ class SyncTestBinaryExecutor(BaseTestBinaryExecutor):
     _entity_suffix = 'sync'
 
 
+class SyncTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(SyncTestCleaner, self).__init__(ycp, args)
+        test_type = args.test_type
+        disk_name_string = (
+            fr'^acceptance-test-{test_type}-'
+            fr'{self._disk_size}-'
+            fr'{self._disk_blocksize}-[0-9]+'
+        )
+        disk_name_pattern = re.compile(fr'{disk_name_string}$')
+        secondary_disk_name_pattern = re.compile(
+            fr'{disk_name_string}-from-snapshot$',
+        )
+        self._entity_ttls = self._entity_ttls | {
+            'disk': datetime.timedelta(days=5),
+            'snapshot': datetime.timedelta(days=5),
+        }
+        self._patterns = {
+            **self._patterns,
+            'disk': [disk_name_pattern, secondary_disk_name_pattern],
+            'snapshot': [re.compile(r'^sync-acceptance-test-snapshot-.*$')]
+        }
+
+
 class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
+
+    _cleaner_type = SyncTestCleaner
+    _single_disk_test_ttl = datetime.timedelta(days=5)
 
     def _get_test_suite(self):
         return (
@@ -55,16 +84,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     f'-{size_prettifier(self._args.disk_blocksize)}').lower()
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
-                block_device_1 = '/dev/vdb'
                 _logger.info(
                     f'Waiting until disk <id={disk.id}> will be attached '
-                    f' to instance <id={instance.id}> and appears as block device '
-                    f'<name={block_device_1}>')
+                    f' to instance <id={instance.id}> and appears as block device')
 
-                with self._instance_policy.attach_disk(
-                    disk,
-                    block_device_1
-                ):
+                with self._instance_policy.attach_disk(disk) as block_device_1:
                     self._create_ext4_filesystem(block_device_1, instance)
                     folder_1 = '/tmp/sync_acceptance_test'
                     self._mount_block_device(folder_1, block_device_1, instance)
@@ -82,16 +106,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     ) as disk_copy:
                         _logger.info('Created disk from snapshot')
 
-                        block_device_2 = '/dev/vdc'
                         _logger.info(
                             f'Waiting until disk copy <id={disk_copy.id}> will be '
-                            f'attached to instance <id={instance.id}> and appears '
-                            f'as block device <name={block_device_2}>')
+                            f'attached to instance <id={instance.id}> and appears as a block device')
 
-                        with self._instance_policy.attach_disk(
-                                disk_copy,
-                                block_device_2
-                        ):
+                        with self._instance_policy.attach_disk(disk_copy) as block_device_2:
                             _logger.info('Attached disk copy to device')
 
                             folder_2 = '/tmp/sync_acceptance_test_copy'

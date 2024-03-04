@@ -61,9 +61,7 @@ TSetupChannelsActionActor::TSetupChannelsActionActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TSetupChannelsActionActor::Bootstrap(const TActorContext& ctx)
 {

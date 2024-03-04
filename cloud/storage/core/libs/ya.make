@@ -7,6 +7,7 @@ RECURSE(
     coroutine
     daemon
     diagnostics
+    features
     grpc
     hive_proxy
     keyring

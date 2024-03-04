@@ -705,11 +705,11 @@ func (s *storageYDB) createRegularTasks(
 	shouldSchedule := false
 
 	if schedule.UseCrontab {
-		year, month, day := state.CreatedAt.Date()
-		hour, min, _ := state.CreatedAt.Clock()
+		year, month, day := state.CreatedAt.UTC().Date()
+		hour, min, _ := state.CreatedAt.UTC().Clock()
 
 		if found {
-			lastRunYear, lastRunMonth, lastRunDay := schState.scheduledAt.Date()
+			lastRunYear, lastRunMonth, lastRunDay := schState.scheduledAt.UTC().Date()
 
 			if year >= lastRunYear && month >= lastRunMonth && day > lastRunDay {
 				if hour >= schedule.Hour && min >= schedule.Min {

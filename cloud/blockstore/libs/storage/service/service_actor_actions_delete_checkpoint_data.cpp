@@ -65,9 +65,7 @@ TDeleteCheckpointDataActionActor::TDeleteCheckpointDataActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDeleteCheckpointDataActionActor::Bootstrap(const TActorContext& ctx)
 {

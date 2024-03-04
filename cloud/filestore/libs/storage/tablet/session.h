@@ -71,6 +71,15 @@ using TDupCacheEntryMap = THashMap<ui64, TDupCacheEntry*>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TMonSessionInfo
+{
+    TString ClientId;
+    NProto::TSession ProtoInfo;
+    TVector<TSubSession> SubSessions;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TSession
     : public TIntrusiveListItem<TSession>
     , public NProto::TSession
@@ -261,5 +270,11 @@ using TSessionMap = THashMap<TString, TSession*>;
 using TSessionOwnerMap = THashMap<NActors::TActorId, TSession*>;
 using TSessionClientMap = THashMap<TString, TSession*>;
 using TSessionHistoryList = TDeque<TSessionHistoryEntry>;
+
+struct TSessionsStats
+{
+    ui32 StatefulSessionsCount = 0;
+    ui32 StatelessSessionsCount = 0;
+};
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -93,9 +93,7 @@ TFlushActor::TFlushActor(
     , BlockDigestGenerator(blockDigestGenerator)
     , Tablet(tablet)
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {

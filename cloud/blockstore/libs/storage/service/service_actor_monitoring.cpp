@@ -181,9 +181,9 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
                 }
             }
 
-            auto addVolumeRow = [&](const TVolumeInfo& volume)
+            auto addVolumeRow =
+                [&](const TString& diskId, const TVolumeInfo& volume)
             {
-                const TString& diskId = volume.VolumeInfo->GetDiskId();
                 auto history = VolumeStats->GetDowntimeHistory(diskId);
                 bool hasDowntimes = false;
                 for (const auto& [_, state]: history) {
@@ -211,7 +211,7 @@ void TServiceActor::RenderDownDisks(IOutputStream& out) const
             };
 
             for (const auto& p: State.GetVolumes()) {
-                addVolumeRow(*p.second);
+                addVolumeRow(p.first, *p.second);
             }
         }
     }

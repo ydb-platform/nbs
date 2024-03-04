@@ -222,14 +222,15 @@ template NProto::TError TVolumeActor::Throttle<                                \
         bool throttlingDisabled);                                              \
 // GENERATE_IMPL
 
-GENERATE_IMPL(ReadBlocks,         TEvService)
-GENERATE_IMPL(WriteBlocks,        TEvService)
-GENERATE_IMPL(ZeroBlocks,         TEvService)
-GENERATE_IMPL(CreateCheckpoint,   TEvService)
-GENERATE_IMPL(DeleteCheckpoint,   TEvService)
-GENERATE_IMPL(GetChangedBlocks,   TEvService)
-GENERATE_IMPL(ReadBlocksLocal,    TEvService)
-GENERATE_IMPL(WriteBlocksLocal,   TEvService)
+GENERATE_IMPL(ReadBlocks,            TEvService)
+GENERATE_IMPL(WriteBlocks,           TEvService)
+GENERATE_IMPL(ZeroBlocks,            TEvService)
+GENERATE_IMPL(CreateCheckpoint,      TEvService)
+GENERATE_IMPL(DeleteCheckpoint,      TEvService)
+GENERATE_IMPL(GetChangedBlocks,      TEvService)
+GENERATE_IMPL(GetCheckpointStatus,   TEvService)
+GENERATE_IMPL(ReadBlocksLocal,       TEvService)
+GENERATE_IMPL(WriteBlocksLocal,      TEvService)
 
 GENERATE_IMPL(DescribeBlocks,           TEvVolume)
 GENERATE_IMPL(GetUsedBlocks,            TEvVolume)

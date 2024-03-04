@@ -74,6 +74,10 @@ private:
     bool RequestCompleted = false;
 
 public:
+    static constexpr const char ActorName[] =
+        "NCloud::NBlockStore::NServer::TRequestActor<T>";
+
+public:
     TRequestActor(
             std::shared_ptr<TRequestProto> request,
             TPromise<TResponseProto> response,
@@ -84,9 +88,7 @@ public:
         , CallContext(std::move(callContext))
         , RequestTimeout(requestTimeout)
         , DiskId(GetDiskId(*Request))
-    {
-        TThis::ActivityType = TBlockStoreActivities::SERVICE_PROXY;
-    }
+    {}
 
     ~TRequestActor() override
     {

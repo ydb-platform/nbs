@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
@@ -30,6 +31,7 @@ NActors::IActorPtr CreateVolumeTablet(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode = EVolumeStartMode::ONLINE);
 
 }   // namespace NCloud::NBlockStore::NStorage

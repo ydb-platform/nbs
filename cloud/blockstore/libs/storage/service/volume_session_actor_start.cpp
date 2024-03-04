@@ -175,9 +175,7 @@ TStartVolumeActor::TStartVolumeActor(
     , RdmaClient(std::move(rdmaClient))
     , DiskId(std::move(diskId))
     , VolumeTabletId(volumeTabletId)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TStartVolumeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -453,6 +451,7 @@ void TStartVolumeActor::StartTablet(const TActorContext& ctx)
             blockDigestGenerator,
             traceSerializer,
             rdmaClient,
+            endpointEventHandler,
             EVolumeStartMode::MOUNTED);
         return actor.release();
     };

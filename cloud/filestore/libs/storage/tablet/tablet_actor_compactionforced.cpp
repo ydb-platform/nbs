@@ -1,8 +1,8 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
-#include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -92,9 +92,7 @@ TForcedOperationActor<TResponseType, TRequestConstructor>::
     , RetryTimeout(retry)
     , State(std::move(state))
     , RequestInfo(std::move(requestInfo))
-{
-    TBase::ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(

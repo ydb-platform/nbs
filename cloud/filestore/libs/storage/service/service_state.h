@@ -41,11 +41,11 @@ private:
 
 public:
     TInFlightRequest(
-            TRequestInfo&& info,
+            const TRequestInfo& info,
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             IRequestStatsPtr requestStats)
-        : TRequestInfo(std::move(info))
+        : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
         , MediaKind(mediaKind)
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
@@ -77,7 +77,7 @@ struct TSessionInfo
     : public TIntrusiveListItem<TSessionInfo>
 {
     TString ClientId;
-    TString FileSystemId;
+    NProto::TFileStore FileStore;
     TString SessionId;
     TString SessionState;
     NCloud::NProto::EStorageMediaKind MediaKind;
@@ -87,7 +87,8 @@ struct TSessionInfo
     ui64 TabletId = 0;
 
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
-    ESessionCreateDestroyState CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
+    ESessionCreateDestroyState CreateDestroyState =
+        ESessionCreateDestroyState::STATE_NONE;
 
     bool ShouldStop = false;
 
@@ -102,9 +103,10 @@ struct TSessionInfo
         }
     }
 
-    void UpdateSessionState(TString state)
+    void UpdateSessionState(TString state, NProto::TFileStore fileStore)
     {
         SessionState = std::move(state);
+        FileStore = std::move(fileStore);
     }
 
     void AddSubSession(ui64 seqNo, bool readOnly)
@@ -172,7 +174,7 @@ private:
 public:
     TSessionInfo* CreateSession(
         TString clientId,
-        TString fileSystemId,
+        NProto::TFileStore fileStore,
         TString sessionId,
         TString sessionState,
         ui64 seqNo,

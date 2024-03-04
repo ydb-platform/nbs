@@ -11,7 +11,7 @@
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
-#include <cloud/filestore/libs/storage/core/utils.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -116,7 +116,7 @@ private:
         const NActors::TActorContext& ctx);
 
     std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
-        TRequestInfo&& info,
+        const TRequestInfo& info,
         NProto::EStorageMediaKind media,
         IRequestStatsPtr requestStats,
         TInstant currentTs);
@@ -143,6 +143,10 @@ private:
         TString input);
 
     NActors::IActorPtr CreateChangeStorageConfigActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDescribeSessionsActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

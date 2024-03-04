@@ -74,6 +74,7 @@ TPartitionsInfo ComputePartitionsInfo(
     const TStorageConfig& config,
     const TString& cloudId,
     const TString& folderId,
+    const TString& diskId,
     NCloud::NProto::EStorageMediaKind mediaKind,
     ui64 blocksCount,
     ui32 blockSize,

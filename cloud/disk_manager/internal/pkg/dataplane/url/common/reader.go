@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"io"
@@ -30,6 +31,8 @@ type Reader interface {
 		byteOrder binary.ByteOrder,
 		data interface{},
 	) error
+
+	CacheMissedRequestsCount() uint64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,7 +87,7 @@ func NewURLReader(
 
 func (r *urlReader) EnableCache() {
 	if r.cache == nil {
-		r.cache = cache.NewCache()
+		r.cache = cache.NewCache(r.read)
 	}
 }
 
@@ -94,6 +97,10 @@ func (r *urlReader) Size() uint64 {
 
 func (r *urlReader) ETag() string {
 	return r.etag
+}
+
+func (r *urlReader) CacheMissedRequestsCount() uint64 {
+	return r.httpClient.RequestsCount()
 }
 
 func (r *urlReader) validateRange(
@@ -134,12 +141,7 @@ func (r *urlReader) read(
 		return err
 	}
 
-	reader, err := r.httpClient.Body(
-		ctx,
-		start,
-		end,
-		r.etag,
-	)
+	reader, err := r.httpClient.Body(ctx, start, end, r.etag)
 	if err != nil {
 		return err
 	}
@@ -171,13 +173,7 @@ func (r *urlReader) Read(
 		return size, nil
 	}
 
-	err := r.cache.Read(
-		start,
-		data,
-		func(start uint64, data []byte) error {
-			return r.read(ctx, start, data)
-		},
-	)
+	err := r.cache.Read(ctx, start, data)
 	if err != nil {
 		return 0, err
 	}
@@ -200,18 +196,14 @@ func (r *urlReader) ReadBinary(
 		return err
 	}
 
-	reader, err := r.httpClient.Body(
-		ctx,
-		start,
-		end,
-		r.etag,
-	)
+	byteData := make([]byte, size)
+
+	_, err = r.Read(ctx, start, byteData)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
 
-	err = binary.Read(reader, byteOrder, data)
+	err = binary.Read(bytes.NewReader(byteData), byteOrder, data)
 	// NBS-3324: interpret all errors as retriable.
 	if err != nil {
 		return errors.NewRetriableError(err)

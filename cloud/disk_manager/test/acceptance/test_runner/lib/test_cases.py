@@ -25,10 +25,6 @@ class TestCase:
         return hash(self.name)
 
     @property
-    def block_device(self) -> str:
-        return '/dev/vdb'
-
-    @property
     def disk_blocksize_formatted(self) -> str:
         return size_prettifier(self.disk_blocksize)
 
@@ -42,14 +38,14 @@ class TestCase:
 
     @property
     def verify_write_cmd(self) -> str:
-        return (f'%s --file {self.block_device}'
+        return (f'%s --file %s'
                 f' --filesize {self.disk_size * 1024 ** 3} --offset 0'
                 f' --step {self.step} --blocksize {self.verify_blocksize}'
                 f' --iodepth %s')
 
     @property
     def verify_read_cmd(self) -> str:
-        return (f'%s --file {self.block_device}'
+        return (f'%s --file %s'
                 f' --filesize {self.disk_size * 1024 ** 3} --offset 0'
                 f' --step {self.step} --blocksize {self.verify_blocksize}'
                 f' --iodepth %s --read-only')

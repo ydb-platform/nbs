@@ -63,9 +63,7 @@ THttpFindVolumeActor::THttpFindVolumeActor(
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientCount(clientCount)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void THttpFindVolumeActor::Bootstrap(const TActorContext& ctx)
 {

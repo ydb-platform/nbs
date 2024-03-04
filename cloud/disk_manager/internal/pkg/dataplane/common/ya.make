@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     chunk.go
     transfer.go
+    util.go
 )
 
 GO_TEST_SRCS(

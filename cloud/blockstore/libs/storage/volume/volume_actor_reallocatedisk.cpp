@@ -62,9 +62,7 @@ TReallocateActor::TReallocateActor(
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
     , Record(std::move(record))
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 void TReallocateActor::Bootstrap(const TActorContext& ctx)
 {

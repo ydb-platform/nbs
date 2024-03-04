@@ -190,6 +190,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -349,6 +350,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode);
     ~TVolumeActor() override;
 
@@ -454,6 +456,7 @@ private:
     static TString GetVolumeStatusString(EStatus status);
     EStatus GetVolumeStatus() const;
 
+    NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -751,6 +754,10 @@ private:
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePreparePartitionMigration(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateResyncState(
         const TEvVolume::TEvUpdateResyncState::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -774,11 +781,7 @@ private:
         ui64 traceTs);
 
     template <typename TMethod>
-    NProto::TError ProcessAndValidateReadRequest(
-        typename TMethod::TRequest::ProtoRecordType& record) const;
-
-    template <typename TMethod>
-    NProto::TError ProcessAndValidateRequest(
+    NProto::TError ProcessAndValidateReadFromCheckpoint(
         typename TMethod::TRequest::ProtoRecordType& record) const;
 
     template <typename TMethod>
@@ -873,6 +876,10 @@ private:
 
     void HandleDeleteCheckpointDataResponse(
         const TEvVolume::TEvDeleteCheckpointDataResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetCheckpointStatusResponse(
+        const TEvService::TEvGetCheckpointStatusResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteBlocksLocalResponse(

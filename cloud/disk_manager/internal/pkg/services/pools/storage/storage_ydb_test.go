@@ -1305,6 +1305,17 @@ func TestStorageYDBRelocateOverlayDiskWithoutPool(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, baseDisks[0].ID, relocateInfo.TargetBaseDiskID)
 
+	// Check idempotency.
+	relocateInfo, err = relocateOverlayDisk(
+		ctx,
+		db,
+		storage,
+		slot.OverlayDisk,
+		"other",
+	)
+	require.NoError(t, err)
+	require.Contains(t, baseDisks[0].ID, relocateInfo.TargetBaseDiskID)
+
 	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
 		OverlayDisk:      relocateInfo.OverlayDisk,
 		TargetZoneID:     relocateInfo.TargetZoneID,

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -140,7 +139,8 @@ func waitForReplicationStart(
 				break
 			}
 
-			time.Sleep(time.Second)
+			log.Printf("Waiting for replication to start (no fresh devices)")
+			time.Sleep(5 * time.Second)
 
 			// TODO: limit maximum waiting time
 		}
@@ -158,8 +158,6 @@ func waitForReplicationFinish(
 	targets []Target,
 	client *nbs.Client,
 ) ([]string, error) {
-	logger := log.New(os.Stderr, "REPLICATION_FINISH ", 0)
-
 	var responses []string
 
 	for _, target := range targets {
@@ -178,15 +176,16 @@ func waitForReplicationFinish(
 
 			if lastFreshDeviceCount != len(volume.FreshDeviceIds) {
 				lastFreshDeviceCount = len(volume.FreshDeviceIds)
-				logger.Printf(
-					"Disk %v, remaining fresh devices: %v / %v",
+				log.Printf(
+					"Waiting for %v disk replication to finish, "+
+						"remaining fresh devices: %v, total devices: %v",
 					target.DiskID,
 					len(volume.FreshDeviceIds),
 					len(volume.Devices),
 				)
 			}
 
-			time.Sleep(time.Second)
+			time.Sleep(5 * time.Second)
 
 			// TODO: limit maximum waiting time
 		}

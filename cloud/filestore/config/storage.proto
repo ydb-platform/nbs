@@ -196,4 +196,24 @@ message TStorageConfig
     // Max number of compaction ranges loaded per 1 compaction state load
     // iteration.
     optional uint32 LoadedCompactionRangesPerTx = 330;
+
+    // Enables DescribeData + ReadBlob instead of ReadData for reading.
+    optional bool TwoStageReadEnabled = 331;
+
+    // Enables runtime config update tool.
+    optional bool ConfigsDispatcherServiceEnabled = 332;
+
+    // Max inflight for out of order compaction map load requests.
+    optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 333;
+
+    // IndexTabletActor will suicide (and thus reboot) after observing this
+    // number of backpressure errors. Needed to automatically recover after
+    // various races that may happen during index tablet startup due to bugs.
+    optional uint32 MaxBackpressureErrorsBeforeSuicide = 334;
+
+    // Params that are passed to filestore-vhost via TCreateSessionResponse via
+    // TFilestore::Features. They do not have any effect on the tablet itself.
+    optional uint32 EntryTimeout = 335;
+    optional uint32 NegativeEntryTimeout = 336;
+    optional uint32 AttrTimeout = 337;
 }

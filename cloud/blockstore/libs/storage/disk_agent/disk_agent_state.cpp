@@ -673,22 +673,26 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
-    auto onDeviceSecureErased =
+    auto onDeviceSecureEraseFinish =
         [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
          uuid](const TFuture<NProto::TError>& future)
     {
-        if (HasError(future.GetValue())) {
-            return;
-        }
         // The device has been secure erased and now a new client can use it.
         if (auto rdmaTarget = weakRdmaTarget.lock()) {
-            rdmaTarget->DeviceSecureErased(uuid);
+            rdmaTarget->DeviceSecureEraseFinish(uuid, future.GetValue());
         }
     };
 
+    if (RdmaTarget) {
+        auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
+        if (HasError(error)) {
+            return MakeFuture(std::move(error));
+        }
+    }
+
     return device.StorageAdapter
         ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
-        .Subscribe(std::move(onDeviceSecureErased));
+        .Subscribe(std::move(onDeviceSecureEraseFinish));
 }
 
 TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
@@ -761,16 +765,20 @@ void TDiskAgentState::AcquireDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    CheckError(DeviceClient->AcquireDevices(
+    auto [updated, error] = DeviceClient->AcquireDevices(
         uuids,
         clientId,
         now,
         accessMode,
         mountSeqNumber,
         diskId,
-        volumeGeneration));
+        volumeGeneration);
 
-    UpdateSessionCache(*DeviceClient);
+    CheckError(error);
+
+    if (updated) {
+        UpdateSessionCache(*DeviceClient);
+    }
 }
 
 void TDiskAgentState::ReleaseDevices(
@@ -884,7 +892,7 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
                 std::make_move_iterator(session.MutableDeviceIds()->end()));
 
-            const auto error = client.AcquireDevices(
+            const auto [_, error] = client.AcquireDevices(
                 uuids,
                 session.GetClientId(),
                 TInstant::MicroSeconds(session.GetLastActivityTs()),

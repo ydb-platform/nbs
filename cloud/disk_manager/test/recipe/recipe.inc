@@ -12,10 +12,18 @@ DEPENDS(
     cloud/disk_manager/test/mocks/metadata
     cloud/disk_manager/test/recipe
     cloud/tasks/test/nemesis
-
     contrib/python/moto/bin
-    contrib/ydb/apps/ydbd
 )
+
+IF (OPENSOURCE)
+    DEPENDS(
+        cloud/storage/core/tools/testing/ydb/bin
+    )
+ELSE()
+    DEPENDS(
+        contrib/ydb/apps/ydbd
+    )
+ENDIF()
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt

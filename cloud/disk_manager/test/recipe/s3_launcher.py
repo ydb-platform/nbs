@@ -21,7 +21,8 @@ class S3Service(Daemon):
         ]
         super(S3Service, self).__init__(
             commands=[command],
-            cwd=working_dir)
+            cwd=working_dir,
+            service_name=SERVICE_NAME)
 
 
 class S3Launcher:

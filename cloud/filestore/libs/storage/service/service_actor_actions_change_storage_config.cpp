@@ -41,7 +41,7 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProtoPrivate::TChangeStorageConfigResponse response);
+        const NProtoPrivate::TChangeStorageConfigResponse& response);
 
 private:
     STFUNC(StateWork);
@@ -60,9 +60,7 @@ TChangeStorageConfigActionActor::TChangeStorageConfigActionActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -85,9 +83,9 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
         "Start to change storage config of %s",
         request.GetFileSystemId().Quote().c_str());
 
-    auto requestToTablets =
+    auto requestToTablet =
         std::make_unique<TEvIndexTablet::TEvChangeStorageConfigRequest>();
-    auto& record = requestToTablets->Record;
+    auto& record = requestToTablet->Record;
     record.SetFileSystemId(request.GetFileSystemId());
     *record.MutableStorageConfig() = request.GetStorageConfig();
     record.SetMergeWithStorageConfigFromTabletDB(
@@ -96,20 +94,20 @@ void TChangeStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
     NCloud::Send(
         ctx,
         MakeIndexTabletProxyServiceId(),
-        std::move(requestToTablets));
+        std::move(requestToTablet));
 
     Become(&TThis::StateWork);
 }
 
 void TChangeStorageConfigActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    NProtoPrivate::TChangeStorageConfigResponse response)
+    const NProtoPrivate::TChangeStorageConfigResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
 
     google::protobuf::util::MessageToJsonString(
-        std::move(response),
+        response,
         msg->Record.MutableOutput());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(msg));
@@ -122,14 +120,14 @@ void TChangeStorageConfigActionActor::HandleChangeStorageConfigResponse(
     const TEvIndexTablet::TEvChangeStorageConfigResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
     if (SUCCEEDED(msg->GetStatus())) {
         NCloud::Send(
             ctx,
             ev->Sender,
             std::make_unique<TEvents::TEvPoisonPill>());
     }
-    ReplyAndDie(ctx, std::move(msg->Record));
+    ReplyAndDie(ctx, msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

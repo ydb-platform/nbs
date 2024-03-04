@@ -88,9 +88,7 @@ TFlushActor::TFlushActor(
     , ProfileLog(std::move(profileLog))
     , Blobs(std::move(blobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {

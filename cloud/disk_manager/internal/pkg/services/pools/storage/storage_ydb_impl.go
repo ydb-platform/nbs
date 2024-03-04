@@ -1358,15 +1358,20 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		return RebaseInfo{}, err
 	}
 
-	// If pool is configured baseDisks will be eventually created.
+	// If pool is configured (alive) suitable base disk will be eventually
+	// created.
 	// Else we should create it manually.
 	if len(freeBaseDisks) == 0 && !isPoolConfigured {
-		acquiredBaseDisk, err := s.findBaseDisk(ctx, tx, acquiredSlot.baseDiskID)
+		acquiredBaseDisk, err := s.getBaseDisk(
+			ctx,
+			tx,
+			acquiredSlot.baseDiskID,
+		)
 		if err != nil {
 			return RebaseInfo{}, err
 		}
 
-		baseDisk := s.generateBaseDisk(
+		targetBaseDisk := s.generateBaseDisk(
 			imageID,
 			targetZoneID,
 			acquiredBaseDisk.imageSize,
@@ -1375,13 +1380,9 @@ func (s *storageYDB) relocateOverlayDiskTx(
 				DiskId: acquiredBaseDisk.id,
 			},
 		)
-		logging.Info(
-			ctx,
-			"generated base disk: %+v",
-			baseDisk,
-		)
+		logging.Info(ctx, "generated base disk: %+v", targetBaseDisk)
 
-		err = acquireTargetUnitsAndSlots(ctx, tx, &baseDisk, acquiredSlot)
+		err = acquireTargetUnitsAndSlots(ctx, tx, &targetBaseDisk, acquiredSlot)
 		if err != nil {
 			return RebaseInfo{}, err
 		}
@@ -1389,15 +1390,15 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		acquiredSlotOldState := *acquiredSlot
 
 		acquiredSlot.generation += 1
-		acquiredSlot.targetZoneID = baseDisk.zoneID
-		acquiredSlot.targetBaseDiskID = baseDisk.id
+		acquiredSlot.targetZoneID = targetBaseDisk.zoneID
+		acquiredSlot.targetBaseDiskID = targetBaseDisk.id
 
 		err = s.updateBaseDiskAndSlot(
 			ctx,
 			tx,
 			baseDiskTransition{
 				oldState: nil,
-				state:    &baseDisk,
+				state:    &targetBaseDisk,
 			},
 			slotTransition{
 				oldState: &acquiredSlotOldState,

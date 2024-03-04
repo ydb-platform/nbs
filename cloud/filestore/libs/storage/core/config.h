@@ -174,8 +174,20 @@ public:
     TString GetFolderId() const;
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
+    bool GetTwoStageReadEnabled() const;
+    TDuration GetEntryTimeout() const;
+    TDuration GetNegativeEntryTimeout() const;
+    TDuration GetAttrTimeout() const;
+
+    ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
+
+    bool GetConfigsDispatcherServiceEnabled() const;
+
+    ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
+    void DumpOverridesHtml(IOutputStream& out) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

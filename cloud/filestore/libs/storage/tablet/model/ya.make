@@ -1,6 +1,6 @@
 LIBRARY()
 
-#INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+#INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(alloc.h)
 
@@ -11,7 +11,6 @@ SRCS(
     blob.cpp
     blob_builder.cpp
     block.cpp
-    block_buffer.cpp
     block_list.cpp
     block_list_decode.cpp
     block_list_encode.cpp
@@ -25,7 +24,6 @@ SRCS(
     group_by.cpp
     mixed_blocks.cpp
     operation.cpp
-    range.cpp
     range_locks.cpp
     split_range.cpp
     throttler_logger.cpp

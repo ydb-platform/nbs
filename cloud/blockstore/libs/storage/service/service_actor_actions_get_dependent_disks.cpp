@@ -65,9 +65,7 @@ TGetDependentDisksActor::TGetDependentDisksActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TGetDependentDisksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -151,7 +149,7 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
     auto* msg = ev->Get();
 
     const auto& error = msg->GetError();
-    if (HasError(error)) {
+    if (HasError(error) && error.GetCode() != E_NOT_FOUND) {
         HandleError(ctx, error);
         return;
     }

@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -408,6 +409,15 @@ TVolumeClient::CreateDeleteCheckpointDataRequest(
     return request;
 }
 
+std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+TVolumeClient::CreateGetCheckpointStatusRequest(const TString& checkpointId)
+{
+    auto request =
+        std::make_unique<TEvService::TEvGetCheckpointStatusRequest>();
+    request->Record.SetCheckpointId(checkpointId);
+    return request;
+}
+
 std::unique_ptr<TEvPartition::TEvBackpressureReport>
 TVolumeClient::CreateBackpressureReport(
     const TBackpressureReport& report)
@@ -509,6 +519,20 @@ std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> TVolumeClient::CreateC
     auto request = std::make_unique<TEvVolume::TEvChangeStorageConfigRequest>();
     *request->Record.MutableStorageConfig() = std::move(patch);
     return request;
+}
+
+std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
+TVolumeClient::CreateUpdateShadowDiskStateRequest(
+    TString checkpointId,
+    TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
+    ui64 processedBlockCount,
+    ui64 totalBlockCount)
+{
+    return make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
+        std::move(checkpointId),
+        reason,
+        processedBlockCount,
+        totalBlockCount);
 }
 
 void TVolumeClient::SendRemoteHttpInfo(
@@ -677,7 +701,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
-            rdmaClient
+            rdmaClient,
+            NServer::CreateEndpointEventProxy()
         );
         return tablet.release();
     };

@@ -1,3 +1,4 @@
+Requesting DiskInfo...
 DiskInfo:
 {
     "DiskId": "fsa0uap9g03n6o91mjnl",
@@ -423,6 +424,7 @@ DiskInfo:
         }
     ]
 }
+Detecting targets to curse...
 Targets to curse:
 [
     {
@@ -434,5 +436,6 @@ Targets to curse:
         "Reason": "OneDeviceForAllFine"
     }
 ]
+Detecting targets to heal...
 Targets to heal:
 null

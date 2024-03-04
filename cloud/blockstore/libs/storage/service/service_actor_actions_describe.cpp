@@ -60,9 +60,7 @@ TDescribeVolumeActionsActor::TDescribeVolumeActionsActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDescribeVolumeActionsActor::Bootstrap(const TActorContext& ctx)
 {

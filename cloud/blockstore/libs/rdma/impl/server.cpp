@@ -292,6 +292,7 @@ private:
     TLockFreeList<TRequest> InputRequests;
     TSimpleList<TRequest> QueuedRequests;
     TEventHandle RequestEvent;
+    bool FlushStarted = false;
 
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
@@ -314,19 +315,21 @@ public:
     // called from CM thread
     void Start();
     void Stop() noexcept;
+    void Flush();
 
     // called from external thread
     void EnqueueRequest(TRequestPtr req) noexcept;
 
     // called from CQ thread
+    void HandleCompletionEvent(ibv_wc* wc) override;
     bool HandleInputRequests();
     bool HandleCompletionEvents();
+    bool IsFlushed();
 
 private:
-    // called inderectly from CQ by 2 previous functions
+    // called from CQ thread
     void HandleQueuedRequests();
     bool IsWorkRequestValid(const TWorkRequestId& id) const;
-    void HandleCompletionEvent(ibv_wc* wc) override;
     void RecvRequest(TRecvWr* recv);
     void RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status);
     void ReadRequestData(TRequestPtr req, TSendWr* send);
@@ -338,6 +341,7 @@ private:
     void SendResponseCompleted(TSendWr* send, ibv_wc_status status);
     void FreeRequest(TRequestPtr req, TSendWr* send) noexcept;
     void RejectRequest(TRequestPtr req, ui32 status, TStringBuf message);
+    void HandleFlush(const TWorkRequestId& id) noexcept;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -361,7 +365,7 @@ TServerSession::TServerSession(
 {
     Connection->context = this;
 
-    STORAGE_INFO("start new session [send_magic=%X recv_magic=%X]",
+    STORAGE_INFO("new session [send_magic=%X recv_magic=%X]",
         SendMagic, RecvMagic);
 
     CompletionChannel = Verbs->CreateCompletionChannel(Connection->verbs);
@@ -447,8 +451,10 @@ TServerSession::TServerSession(
 
 TServerSession::~TServerSession()
 {
-    STORAGE_INFO("close session to "
-        << NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get())));
+    STORAGE_INFO("close session [send_magic=%X recv_magic=%X] to %s",
+        SendMagic,
+        RecvMagic,
+        NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get())).c_str());
 
     Verbs->DestroyQP(Connection.get());
 
@@ -563,6 +569,36 @@ bool TServerSession::HandleCompletionEvents()
     return hasWork;
 }
 
+void TServerSession::Flush()
+{
+    STORAGE_INFO("flush session [send_magic=%X recv_magic=%X]",
+        SendMagic, RecvMagic);
+
+    struct ibv_qp_attr attr = {.qp_state = IBV_QPS_ERR};
+    Verbs->ModifyQP(Connection->qp, &attr, IBV_QP_STATE);
+    FlushStarted = true;
+}
+
+bool TServerSession::IsFlushed()
+{
+    return FlushStarted
+        && SendQueue.Size() == Config->QueueSize
+        && RecvQueue.Size() == Config->QueueSize;
+}
+
+void TServerSession::HandleFlush(const TWorkRequestId& id) noexcept
+{
+    // flush WRs have opcode=0
+    if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
+        SendQueue.Push(&SendWrs[id.Index]);
+        return;
+    }
+    if (id.Magic == RecvMagic && id.Index < RecvWrs.size()) {
+        RecvQueue.Push(&RecvWrs[id.Index]);
+        return;
+    }
+}
+
 bool TServerSession::IsWorkRequestValid(const TWorkRequestId& id) const
 {
     if (id.Magic == SendMagic && id.Index < SendWrs.size()) {
@@ -574,6 +610,7 @@ bool TServerSession::IsWorkRequestValid(const TWorkRequestId& id) const
     return false;
 }
 
+// implements NVerbs::ICompletionHandler
 void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
@@ -591,6 +628,7 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 
     // session is closing
     if (wc->status == IBV_WC_WR_FLUSH_ERR) {
+        HandleFlush(id);
         return;
     }
 
@@ -640,11 +678,6 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 
 void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
 {
-    if (status == IBV_WC_WR_FLUSH_ERR) {
-        RecvQueue.Push(recv);;
-        return;
-    }
-
     if (status != IBV_WC_SUCCESS) {
         STORAGE_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id) << ": "
             << NVerbs::GetStatusString(status));
@@ -945,11 +978,6 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send)
 
 void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
 {
-    if (status == IBV_WC_WR_FLUSH_ERR) {
-        SendQueue.Push(send);
-        return;
-    }
-
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
@@ -1327,6 +1355,17 @@ private:
         return hasWork;
     }
 
+    void DisconnectFlushed()
+    {
+        auto sessions = Sessions.Get();
+
+        for (const auto& session: *sessions) {
+            if (session->IsFlushed()) {
+                session->CompletionPoller->Release(session.get());
+            }
+        }
+    }
+
     template <EWaitMode WaitMode>
     void Execute()
     {
@@ -1351,6 +1390,8 @@ private:
                         aw.Sleep();
                     }
             }
+
+            DisconnectFlushed();
         }
     }
 };
@@ -1387,13 +1428,13 @@ public:
     // called from external thread
     void Start() override;
     void Stop() override;
-
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
 
 private:
+    // called from external thread
     void Listen(TServerEndpoint* endpoint);
 
     // called from CM thread
@@ -1401,12 +1442,9 @@ private:
     void HandleConnectRequest(
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
-
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
-
     void Reject(rdma_cm_id* id, int status) noexcept;
-
     TCompletionPoller* PickPoller() noexcept;
 };
 
@@ -1473,6 +1511,7 @@ void TServer::Stop()
     CompletionPollers.clear();
 }
 
+// implements IServer
 IServerEndpointPtr TServer::StartEndpoint(
     TString host,
     ui32 port,
@@ -1527,6 +1566,7 @@ void TServer::Listen(TServerEndpoint* endpoint)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// implements IConnectionEventHandler
 void TServer::HandleConnectionEvent(rdma_cm_event* event) noexcept
 {
     STORAGE_INFO(NVerbs::GetEventName(event->event) << " received");
@@ -1658,7 +1698,7 @@ void TServer::HandleConnected(TServerSession* session) noexcept
 
 void TServer::HandleDisconnected(TServerSession* session) noexcept
 {
-    session->CompletionPoller->Release(session);
+    session->Flush();
 }
 
 void TServer::Reject(rdma_cm_id* id, int status) noexcept

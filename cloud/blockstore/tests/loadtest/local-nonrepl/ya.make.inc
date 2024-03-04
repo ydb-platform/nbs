@@ -39,7 +39,7 @@ REQUIREMENTS(
     ram_disk:32
     cpu:16
     ram:96
-    container:2185033214  # container with tcp_tw_reuse = 1
+    container:5897560351  # container with tcp_tw_reuse = 1
 )
 
 FORK_SUBTESTS()

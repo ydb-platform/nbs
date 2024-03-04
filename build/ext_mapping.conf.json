@@ -16,7 +16,8 @@
         "4709742882": "https://storage.ai.nebius.cloud/nbs-oss-resources/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk",
         "4915490540": "https://storage.ai.nebius.cloud/nbs-oss-resources/root.squashfs",
         "1268336763": "https://storage.ai.nebius.cloud/nbs-oss-resources/1268336763.rootfs.squashfs",
-        "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz"
+        "5734000725": "https://storage.ai.nebius.cloud/nbs-oss-resources/ydbd.tar.gz",
+        "5922914799": "https://storage.ai.nebius.cloud/nbs-oss-resources/windows-vmdk-stream-optimised-multiple-grains.vmdk"
     },
     "resources_descriptions": {
         "4081472014": "cloud/blockstore/tests/loadtest/selftest",
@@ -34,7 +35,8 @@
         "5274078903": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/facade/image_service_test|cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test",
         "4709742882": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests",
         "4915490540": "cloud/disk_manager/internal/pkg/facade/image_service_test|cloud/disk_manager/internal/pkg/facade/image_service_nemesis_test",
-        "1268336763": "cloud/disk_manager/internal/pkg/logging/journald_tests"
+        "1268336763": "cloud/disk_manager/internal/pkg/logging/journald_tests",
+        "2831814743": "cloud/disk_manager/internal/pkg/dataplane/url/tests|cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests"
     },
     "tasks": {}
 }

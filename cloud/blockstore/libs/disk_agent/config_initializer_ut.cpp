@@ -6,9 +6,9 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -73,7 +73,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
             "yc.disk-manager.cloud",
-            "yc.disk-manager.folder"));
+            "yc.disk-manager.folder",
+            ""));
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
@@ -83,9 +84,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitStorageConfig();
 
         {
-            NProto::TFeaturesConfig config;
+            NCloud::NProto::TFeaturesConfig config;
             ci.FeaturesConfig =
-                std::make_shared<NStorage::TFeaturesConfig>(config);
+                std::make_shared<NFeatures::TFeaturesConfig>(config);
 
             auto storageConfigStr = R"(MultipartitionVolumesEnabled: true)";
             NProto::TStorageServiceConfig storageConfig;
@@ -110,7 +111,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
             "yc.disk-manager.cloud",
-            "yc.disk-manager.folder"));
+            "yc.disk-manager.folder",
+            ""));
         UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 }

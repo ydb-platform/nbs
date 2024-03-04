@@ -50,7 +50,8 @@ class YcpNewDiskPolicy(DiskPolicy):
             ) as disk:
                 yield disk
         except Exception as e:
-            _logger.info(f'Error: {e}')
+            _logger.error(
+                "Error while creating a disk %s", self._name, exc_info=e)
             raise ResourceExhaustedError(f'Cannot create disk in zone'
                                          f' {self._zone_id}')
 
@@ -62,7 +63,11 @@ class YcpFindDiskPolicy(DiskPolicy):
         self._name_regex = name_regex
 
     def obtain(self) -> Ycp.Disk:
-        disks = self._ycp.list_disks()
+        disks = sorted(
+            self._ycp.list_disks(),
+            key=lambda disk: disk.created_at,
+            reverse=True,
+        )
         for disk in disks:
             if re.match(self._name_regex, disk.name) and disk.zone_id == self._zone_id:
                 return disk

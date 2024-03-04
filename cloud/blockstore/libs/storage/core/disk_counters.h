@@ -122,6 +122,7 @@ enum class EPublishingPolicy
     xxx(HasStorageConfigPatch,      Generic, Permanent,            __VA_ARGS__)\
     xxx(LongRunningReadBlob,        Generic, Expiring,             __VA_ARGS__)\
     xxx(LongRunningWriteBlob,       Generic, Expiring,             __VA_ARGS__)\
+    xxx(UseFastPath,                Generic, Permanent,            __VA_ARGS__)\
 
 
 #define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \

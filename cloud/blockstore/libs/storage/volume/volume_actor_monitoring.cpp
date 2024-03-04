@@ -32,8 +32,6 @@ IOutputStream& operator <<(
             return out << "<font color=green>data present</font>";
         case ECheckpointData::DataDeleted:
             return out << "<font color=red>data deleted</font>";
-        case ECheckpointData::DataPreparing:
-            return out << "<font color=blue>data preparing</font>";
         default:
             return out
                 << "(Unknown value "
@@ -44,18 +42,24 @@ IOutputStream& operator <<(
 
 IOutputStream& operator<<(
     IOutputStream& out,
-    const TActiveCheckpointsType& checkpointType)
+    const TActiveCheckpointInfo& checkpointInfo)
 {
-    switch (checkpointType.Type) {
+    switch (checkpointInfo.Type) {
         case ECheckpointType::Light: {
             out << "no data (is light)";
         } break;
         case ECheckpointType::Normal: {
-            out << "normal (" << checkpointType.Data << ")";
+            out << "normal (" << checkpointInfo.Data << ")";
         } break;
     }
-    if (checkpointType.ShadowDiskId) {
-        out << " disk:" << checkpointType.ShadowDiskId.Quote();
+    if (checkpointInfo.ShadowDiskId) {
+        out << "<br/>";
+        out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
+        out << " state: " << ToString(checkpointInfo.ShadowDiskState);
+        if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
+            out << " blocks: " << checkpointInfo.ProcessedBlockCount << "/"
+                << checkpointInfo.TotalBlockCount;
+        }
     }
     return out;
 }
@@ -93,6 +97,22 @@ IOutputStream& operator <<(
         default:
             Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", accessMode);
             return out << "Undefined";
+    }
+}
+
+void RenderCheckpointRequest(
+    IOutputStream& out,
+    const TCheckpointRequest& request)
+{
+    if (request.ShadowDiskId.empty()) {
+        return;
+    }
+
+    out << "shadow disk: " << request.ShadowDiskId.Quote()
+        << ", " << ToString(request.ShadowDiskState);
+
+    if (request.ShadowDiskState == EShadowDiskState::Preparing) {
+        out << " processed blocks: " << request.ShadowDiskProcessedBlockCount;
     }
 }
 
@@ -320,7 +340,8 @@ bool TVolumeActor::CanChangeThrottlingPolicy() const
     const auto& volumeConfig = GetNewestConfig();
     return Config->IsChangeThrottlingPolicyFeatureEnabled(
         volumeConfig.GetCloudId(),
-        volumeConfig.GetFolderId());
+        volumeConfig.GetFolderId(),
+        volumeConfig.GetDiskId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -674,7 +695,10 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                         TABLED() { out << r.RequestId; }
                         TABLED() { out << r.CheckpointId; }
                         if (isDiskRegistryMediaKind) {
-                            TABLED() { out << r.ShadowDiskId; }
+                            TABLED()
+                            {
+                                RenderCheckpointRequest(out, r);
+                            }
                         }
                         TABLED() { out << r.Timestamp; }
                         TABLED() { out << r.State; }
@@ -1067,6 +1091,13 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                     TABLED() { out << "UseRdma"; }
                     TABLED() {
                         out << State->GetUseRdma();
+                    }
+                }
+
+                TABLER() {
+                    TABLED() { out << "UseFastPath"; }
+                    TABLED() {
+                        out << State->GetUseFastPath();
                     }
                 }
 

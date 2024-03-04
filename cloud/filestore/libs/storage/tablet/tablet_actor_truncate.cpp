@@ -51,9 +51,7 @@ public:
         , Stripe(maxBlocks * range.BlockSize)
         , MaxInflight(inflight)
         , LastOffset(TotalRange.Offset)
-    {
-        ActivityType = TFileStoreActivities::TABLET_WORKER;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

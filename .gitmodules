@@ -1,0 +1,3 @@
+[submodule "cloud/contrib/vhost"]
+	path = cloud/contrib/vhost
+	url = https://github.com/yandex-cloud/yc-libvhost-server

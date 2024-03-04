@@ -25,7 +25,7 @@ class Daemon(object):
     def __init__(self, commands, cwd, restart_allowed=False,
                  restart_interval=None, ping_port=None, ping_path=None,
                  ping_success_codes=None, ping_timeout=2,
-                 ping_attempts=0, core_pattern=None):
+                 ping_attempts=0, core_pattern=None, service_name=None):
 
         self.__commands = commands
         self.__cwd = cwd
@@ -38,9 +38,17 @@ class Daemon(object):
         self.__ping_attempts = ping_attempts
         self.__core_pattern = core_pattern
 
-        self.__stdin_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix="stdin_", delete=False)
-        self.__stdout_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix="stdout_", delete=False)
-        self.__stderr_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix="stderr_", delete=False)
+        stdin_prefix = "stdin_"
+        stdout_prefix = "stdout_"
+        stderr_prefix = "stderr_"
+        if service_name is not None:
+            stdin_prefix = "{}_{}".format(service_name, stdin_prefix)
+            stdout_prefix = "{}_{}".format(service_name, stdout_prefix)
+            stderr_prefix = "{}_{}".format(service_name, stderr_prefix)
+
+        self.__stdin_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdin_prefix, delete=False)
+        self.__stdout_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stdout_prefix, delete=False)
+        self.__stderr_file = tempfile.NamedTemporaryFile(dir=self.__cwd, prefix=stderr_prefix, delete=False)
 
         self.__lock = threading.Lock()
         self.__process = None

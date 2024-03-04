@@ -1,6 +1,6 @@
 LIBRARY()
 
-#INCLUDE(${ARCADIA_ROOT}/cloud/deny_ydb_dependency.inc)
+#INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(mixed_index_cache.h)
 GENERATE_ENUM_SERIALIZATION(operation_status.h)
@@ -8,6 +8,7 @@ GENERATE_ENUM_SERIALIZATION(operation_status.h)
 SRCS(
     barrier.cpp
     blob_index.cpp
+    blob_unique_id_with_range.cpp
     block.cpp
     block_index.cpp
     block_mask.cpp
@@ -18,17 +19,16 @@ SRCS(
     garbage_queue.cpp
     mixed_index_cache.cpp
     operation_status.cpp
-    unconfirmed_blob.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
-    
+
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
-    
+
     library/cpp/protobuf/json
 )
 

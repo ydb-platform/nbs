@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/service.h>
 
+#include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/keyring/public.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -32,6 +33,7 @@ IEndpointServicePtr CreateMultipleEndpointService(
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
+    TExecutorPtr executor,
     IEndpointStoragePtr endpointStorage,
     IEndpointManagerPtr endpointManager,
     NProto::TClientConfig clientConfig);

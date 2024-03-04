@@ -294,7 +294,7 @@ message TDescribeDataRequest
 // blobs yet.
 message TFreshDataRange
 {
-    // This offset is relative to the beginning of the inode.
+    // This offset is relative to the beginning of the inode. Measured in bytes.
     uint64 Offset = 1;
     // Data bytes.
     bytes Content = 2;
@@ -303,7 +303,7 @@ message TFreshDataRange
 // Represents a range of consecutive bytes inside some blob.
 message TRangeInBlob
 {
-    // This offset is relative to the beginning of the inode.
+    // This offset is relative to the beginning of the inode. Measured in bytes.
     uint64 Offset = 1;
     // This offset is relative to the beginning of the blob. Measured in bytes.
     uint32 BlobOffset = 2;
@@ -331,6 +331,40 @@ message TDescribeDataResponse
     repeated TFreshDataRange FreshDataRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
 
+    // File size.
+    uint64 FileSize = 4;
+
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeSessions request/response.
+
+message TDescribeSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TTabletSessionInfo
+{
+    // A subset of the params stored in TSession in the IndexTablet's DB.
+    string SessionId = 1;
+    string ClientId = 2;
+    bytes SessionState = 3;
+    uint64 MaxSeqNo = 4;
+    uint64 MaxRwSeqNo = 5;
+}
+
+message TDescribeSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // All tablet sessions.
+    repeated TTabletSessionInfo Sessions = 2;
 }

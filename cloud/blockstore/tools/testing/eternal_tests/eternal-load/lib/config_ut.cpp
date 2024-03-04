@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         "TestId":13930160852258120406
         }
     )";
-    
+
     Y_UNIT_TEST(ConfigParserWorksAsExpected)
     {
         auto filename = MakeTempName();
@@ -176,7 +176,7 @@ Y_UNIT_TEST_SUITE(ConfigTest)
         UNIT_ASSERT_EQUAL(config.GetRanges(11).GetNumberToWrite(), 0);
         UNIT_ASSERT_EQUAL(config.GetRanges(11).GetWriteParts(), 1);
     }
-    
+
     Y_UNIT_TEST(ConfigGenerationWorksAsExpected)
     {
         NJson::TJsonValue expectedConfigJson;

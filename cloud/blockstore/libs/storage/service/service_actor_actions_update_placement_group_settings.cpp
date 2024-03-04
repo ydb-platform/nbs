@@ -59,9 +59,7 @@ TUpdatePlacementGroupSettingsActor::TUpdatePlacementGroupSettingsActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdatePlacementGroupSettingsActor::Bootstrap(const TActorContext& ctx)
 {

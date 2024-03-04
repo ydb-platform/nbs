@@ -54,6 +54,13 @@ bool CanForwardToPartition<TEvVolume::TDeleteCheckpointDataMethod>(ui32 partitio
     return false;
 }
 
+template <>
+bool CanForwardToPartition<TEvService::TGetCheckpointStatusMethod>(ui32 partitionCount)
+{
+    Y_UNUSED(partitionCount);
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_HAS_MEMBER(SetThrottlerDelay);
@@ -197,6 +204,14 @@ bool TVolumeActor::HandleRequest<TEvVolume::TDeleteCheckpointDataMethod>(
     bool isTraced,
     ui64 traceTs);
 
+template<>
+bool TVolumeActor::HandleRequest<TEvService::TGetCheckpointStatusMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetCheckpointStatusMethod::TRequest::TPtr& ev,
+    ui64 volumeRequestId,
+    bool isTraced,
+    ui64 traceTs);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -238,7 +253,6 @@ void TVolumeActor::SendRequestToPartition(
 
     auto* msg = ev->Get();
 
-    auto selfId = SelfId();
     auto callContext = msg->CallContext;
     msg->CallContext = MakeIntrusive<TCallContext>(callContext->RequestId);
 
@@ -246,6 +260,7 @@ void TVolumeActor::SendRequestToPartition(
         LWTRACK(ForkFailed, callContext->LWOrbit, TMethod::Name, callContext->RequestId);
     }
 
+    auto selfId = SelfId();
     auto event = std::make_unique<IEventHandle>(
         partActorId,
         selfId,
@@ -297,7 +312,7 @@ void TVolumeActor::FillResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
+NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
     typename TMethod::TRequest::ProtoRecordType& record) const
 {
     if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
@@ -309,57 +324,47 @@ NProto::TError TVolumeActor::ProcessAndValidateReadRequest(
         return {};
     }
 
-    const auto checkpointType =
-        State->GetCheckpointStore().GetCheckpointType(checkpointId);
+    const auto checkpointInfo =
+        State->GetCheckpointStore().GetCheckpoint(checkpointId);
 
-    if (!checkpointType) {
+    auto makeError = [](TString message)
+    {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
-        return MakeError(
-            E_NOT_FOUND,
+        return MakeError(E_NOT_FOUND, std::move(message), flags);
+    };
+
+    if (!checkpointInfo) {
+        return makeError(
             TStringBuilder()
-                << "Checkpoint id=" << checkpointId.Quote() << " not found",
-            flags);
+            << "Checkpoint id=" << checkpointId.Quote() << " not found");
     }
 
-    const bool checkpointValid =
-        *checkpointType == ECheckpointType::Light ||
-        State->GetCheckpointStore().DoesCheckpointHaveData(checkpointId);
-
-    if (checkpointValid) {
+    // For light checkpoints read from the disk itself.
+    if (checkpointInfo->Type == ECheckpointType::Light) {
         record.ClearCheckpointId();
         return {};
     }
 
-    ui32 flags = 0;
-    SetProtoFlag(flags, NProto::EF_SILENT);
-    return MakeError(
-        E_NOT_FOUND,
-        TStringBuilder() << "Not found data for checkpoint id="
-                         << checkpointId.Quote(), flags);
-}
+    switch (checkpointInfo->Data) {
+        case ECheckpointData::DataDeleted: {
+            // Return error when reading from deleted checkpoint.
+            return makeError(
+                TStringBuilder() << "Data for checkpoint id="
+                                 << checkpointId.Quote() << " deleted");
+        } break;
+        case ECheckpointData::DataPresent: {
+            if (checkpointInfo->ShadowDiskId.empty()) {
+                // For write blocking checkpoint clear the checkpoint ID to
+                // read data from the disk itself.
+                record.ClearCheckpointId();
+                return {};
+            }
+        } break;
+    }
 
-template <typename TMethod>
-NProto::TError TVolumeActor::ProcessAndValidateRequest(
-    typename TMethod::TRequest::ProtoRecordType& record) const
-{
-    Y_UNUSED(record);
-
+    // Will read checkpoint data from shadow disk.
     return {};
-}
-
-template <>
-NProto::TError TVolumeActor::ProcessAndValidateRequest<TEvService::TReadBlocksMethod>(
-    typename TEvService::TReadBlocksMethod::TRequest::ProtoRecordType& record) const
-{
-    return ProcessAndValidateReadRequest<TEvService::TReadBlocksMethod>(record);
-}
-
-template <>
-NProto::TError TVolumeActor::ProcessAndValidateRequest<TEvService::TReadBlocksLocalMethod>(
-    typename TEvService::TReadBlocksLocalMethod::TRequest::ProtoRecordType& record) const
-{
-    return ProcessAndValidateReadRequest<TEvService::TReadBlocksLocalMethod>(record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -692,13 +697,16 @@ void TVolumeActor::ForwardRequest(
     }
 
     /*
-     *  Other validation.
+     *  Read from checkpoint processing and validation.
      */
-    if (auto error = ProcessAndValidateRequest<TMethod>(msg->Record);
+    if constexpr (IsReadMethod<TMethod>) {
+        if (auto error =
+                ProcessAndValidateReadFromCheckpoint<TMethod>(msg->Record);
             HasError(error))
-    {
-        replyError(std::move(error));
-        return;
+        {
+            replyError(std::move(error));
+            return;
+        }
     }
 
     /*
@@ -788,6 +796,7 @@ BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,               TEvService)
 BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,         TEvService)
 BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,         TEvService)
 BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,         TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus,      TEvService)
 BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
 BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
 

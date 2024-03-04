@@ -135,6 +135,10 @@ private:
                 TEvDiskRegistry::TEvDeallocateCheckpointRequest,
                 HandleDeallocateCheckpoint);
 
+            HFunc(
+                TEvService::TEvCmsActionRequest,
+                HandleCmsAction);
+
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
@@ -179,31 +183,28 @@ private:
         const TEvDiskRegistry::TEvAllocateDiskRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        const auto* msg = ev->Get();
-        auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
+        NCloud::Reply(ctx, *ev, DoHandleAllocateDisk(ev->Get()));
+    }
 
+    std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse> DoHandleAllocateDisk(
+        const TEvDiskRegistry::TEvAllocateDiskRequest* msg)
+    {
         TDiskRegistryState::TPlacementGroup* group = nullptr;
         if (msg->Record.GetPlacementGroupId()) {
-            group = State->PlacementGroups.FindPtr(msg->Record.GetPlacementGroupId());
+            group = State->PlacementGroups.FindPtr(
+                msg->Record.GetPlacementGroupId());
             if (!group) {
-                response->Record.MutableError()->CopyFrom(
-                    MakeError(E_NOT_FOUND, "no such group")
-                );
+                return std::make_unique<
+                    TEvDiskRegistry::TEvAllocateDiskResponse>(
+                    MakeError(E_NOT_FOUND, "no such group"));
             }
         }
 
-        if (response->Record.HasError()) {
-            NCloud::Reply(ctx, *ev, std::move(response));
-            return;
-        }
-
         if (FAILED(State->CurrentErrorCode)) {
-            response->Record.MutableError()->CopyFrom(
-                MakeError(State->CurrentErrorCode, "disk allocation has failed")
-            );
-
-            NCloud::Reply(ctx, *ev, std::move(response));
-            return;
+            return std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>(
+                MakeError(
+                    State->CurrentErrorCode,
+                    "disk allocation has failed"));
         }
 
         const auto& diskId = msg->Record.GetDiskId();
@@ -269,6 +270,12 @@ private:
             ++i;
         }
 
+        auto response = std::make_unique<TEvDiskRegistry::TEvAllocateDiskResponse>();
+
+        for (const auto& deviceId: State->DeviceReplacementUUIDs) {
+            *response->Record.AddDeviceReplacementUUIDs() = deviceId;
+        }
+
         if (bytes) {
             response->Record.MutableError()->CopyFrom(
                 MakeError(E_BS_OUT_OF_SPACE, "not enough available devices")
@@ -285,11 +292,7 @@ private:
             response->Record.SetMuteIOErrors(disk.MuteIOErrors);
         }
 
-        for (const auto& deviceId: State->DeviceReplacementUUIDs) {
-            *response->Record.AddDeviceReplacementUUIDs() = deviceId;
-        }
-
-        NCloud::Reply(ctx, *ev, std::move(response));
+       return response;
     }
 
     void HandleDeallocateDisk(
@@ -902,12 +905,44 @@ private:
         const TEvDiskRegistry::TEvAllocateCheckpointRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        auto response =
-            std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointResponse>();
-        response->Record.SetCheckpointDiskId(
-            ev->Get()->Record.GetSourceDiskId() +
-            ev->Get()->Record.GetCheckpointId());
-        NCloud::Reply(ctx, *ev, std::move(response));
+        auto reply =
+            [&](const NProto::TError& error, const TString& shadowDiskId)
+        {
+            auto response = std::make_unique<
+                TEvDiskRegistry::TEvAllocateCheckpointResponse>(error);
+
+            if (!HasError(response->GetError())) {
+                response->Record.SetCheckpointDiskId(shadowDiskId);
+            }
+
+            NCloud::Reply(ctx, *ev, std::move(response));
+        };
+
+        auto& record = ev->Get()->Record;
+        const auto* srcDisk = State->Disks.FindPtr(record.GetSourceDiskId());
+        if (!srcDisk) {
+            reply(MakeError(E_NOT_FOUND, "Src disk not found"), TString());
+            return;
+        }
+
+        auto shadowDiskId = record.GetSourceDiskId() + record.GetCheckpointId();
+
+        auto allocateDiskRequest =
+            std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
+        allocateDiskRequest->Record.SetDiskId(shadowDiskId);
+        allocateDiskRequest->Record.SetBlockSize(srcDisk->BlockSize);
+        ui64 srcDiskBytes = srcDisk->Devices.size() *
+                            srcDisk->Devices[0].GetBlocksCount() *
+                            srcDisk->Devices[0].GetBlockSize();
+        allocateDiskRequest->Record.SetBlocksCount(
+            srcDiskBytes / srcDisk->BlockSize);
+        allocateDiskRequest->Record.SetPoolName(srcDisk->PoolName);
+        allocateDiskRequest->Record.SetStorageMediaKind(srcDisk->MediaKind);
+
+        auto allocateShadowDiskResponse =
+            DoHandleAllocateDisk(allocateDiskRequest.get());
+
+        reply(allocateShadowDiskResponse->GetError(), shadowDiskId);
     }
 
     void HandleDeallocateCheckpoint(
@@ -919,6 +954,17 @@ private:
             *ev,
             std::make_unique<
                 TEvDiskRegistry::TEvDeallocateCheckpointResponse>());
+    }
+
+    void HandleCmsAction(
+        const TEvService::TEvCmsActionRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvService::TEvCmsActionResponse>());
     }
 };
 

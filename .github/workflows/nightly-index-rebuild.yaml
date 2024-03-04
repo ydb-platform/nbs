@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout PR
       uses: actions/checkout@v4
+      with:
+        submodules: true
     - name: Prepare VM
       uses: ./.github/actions/prepare
     - name: Prepare s3cmd
@@ -25,32 +27,23 @@ jobs:
         folder_prefix: nebius-
         build_preset: "release"
         user: runner
-    - name: Create objects lifecycle main repo
+    - name: Create indices for main repo
       if: ${{ github.repository == 'ydb-platform/nbs'}}
       shell: bash
       run: |
         set -x
-        echo "::group::set-up-objects-life-cycle"
-        python3 .github/scripts/ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ -vv --apply
+        echo "::group::generate-listing"
+        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --generate-indexes --remove-expired --apply
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
-    - name: Create objects lifecycle non-main repo
+    - name: Create indices for non-main repo
       if: ${{ github.repository != 'ydb-platform/nbs'}}
       shell: bash
       run: |
         set -x
-        echo "::group::set-up-objects-life-cycle"
-        python3 .github/scripts/ttl-watcher.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d -vv --apply
-        echo "::endgroup::"
-      env:
-        S3_BUCKET: ${{ vars.AWS_BUCKET }}
-    - name: Create indices for repo
-      shell: bash
-      run: |
-        set -x
         echo "::group::generate-listing"
-        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/
+        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d --generate-indexes --remove-expired --apply
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}

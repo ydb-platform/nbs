@@ -8,19 +8,19 @@
     "tests.tests.TestStateAnalysis": {
         "uri": "file://tests.tests.TestStateAnalysis/test.golden"
     },
+    "tests.tests.TestStateAnalysisBreakDevice": {
+        "uri": "file://tests.tests.TestStateAnalysisBreakDevice/test.golden"
+    },
+    "tests.tests.TestStateAnalysisBreakTwo": {
+        "uri": "file://tests.tests.TestStateAnalysisBreakTwo/test.golden"
+    },
+    "tests.tests.TestStateAnalysisHealDevice": {
+        "uri": "file://tests.tests.TestStateAnalysisHealDevice/test.golden"
+    },
     "tests.tests.TestStateAnalysisPreferFresh": {
         "uri": "file://tests.tests.TestStateAnalysisPreferFresh/test.golden"
     },
     "tests.tests.TestStateAnalysisPreferMinusOne": {
         "uri": "file://tests.tests.TestStateAnalysisPreferMinusOne/test.golden"
-    },
-    "tests.tests.TestStateAnalysisBreakTwo": {
-        "uri": "file://tests.tests.TestStateAnalysisBreakTwo/test.golden"
-    },
-    "tests.tests.TestStateAnalysisBreakDevice": {
-        "uri": "file://tests.tests.TestStateAnalysisBreakDevice/test.golden"
-    },
-    "tests.tests.TestStateAnalysisHealDevice": {
-        "uri": "file://tests.tests.TestStateAnalysisHealDevice/test.golden"
     }
 }

@@ -76,7 +76,7 @@ auto AcquireDevices(TDeviceClient& client, const TAcquireParamsBuilder& builder)
         builder.AccessMode,
         builder.MountSeqNumber,
         builder.DiskId,
-        builder.VolumeGeneration);
+        builder.VolumeGeneration).GetError();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -618,9 +618,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
             UNIT_ASSERT_VALUES_EQUAL(1, session.GetVolumeGeneration());
             UNIT_ASSERT(!session.GetReadOnly());
-            UNIT_ASSERT_VALUES_EQUAL(
-                TInstant::Seconds(42),
-                TInstant::MicroSeconds(session.GetLastActivityTs()));
+            UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
             UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
             UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
             UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
@@ -644,9 +642,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 UNIT_ASSERT_VALUES_EQUAL("reader", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
                 UNIT_ASSERT(session.GetReadOnly());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    TInstant::Seconds(100),
-                    TInstant::MicroSeconds(session.GetLastActivityTs()));
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
                 UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
                 UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
@@ -657,13 +653,95 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
                 UNIT_ASSERT(!session.GetReadOnly());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    TInstant::Seconds(42),
-                    TInstant::MicroSeconds(session.GetLastActivityTs()));
+                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
                 UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
                 UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
             }
+        }
+    }
+
+    Y_UNIT_TEST_F(TestShouldAcquire, TFixture)
+    {
+        auto client = CreateClient({
+            .Devices = {"uuid1", "uuid2"}
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},     // uuids
+                "writer",               // ClientId
+                TInstant::Seconds(10),  // now
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                1,                      // MountSeqNumber
+                "vol0",                 // DiskId
+                1                       // VolumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(updated);   // new write session
+        }
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},      // uuids
+                "writer",                // ClientId
+                TInstant::Seconds(100),  // now
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                1,                       // MountSeqNumber
+                "vol0",                  // DiskId
+                1                        // VolumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(!updated);
+        }
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},      // uuids
+                "writer",                // ClientId
+                TInstant::Seconds(200),   // now
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                1,                       // MountSeqNumber
+                "vol0",                  // DiskId
+                2                        // volumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(updated);   // new volumeGeneration
+        }
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},      // uuids
+                "reader",                // ClientId
+                TInstant::Seconds(300),  // now
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                1,                       // MountSeqNumber
+                "vol0",                  // DiskId
+                3                        // VolumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(updated);   // new read session
+        }
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},      // uuids
+                "reader2",               // ClientId
+                TInstant::Seconds(300),  // now
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                1,                       // MountSeqNumber
+                "vol0",                  // DiskId
+                3                        // VolumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(updated);   // new read session
         }
     }
 }

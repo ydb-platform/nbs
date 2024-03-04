@@ -29,6 +29,8 @@ TCommandPtr NewStopEndpointCommand();
 TCommandPtr NewTouchCommand();
 TCommandPtr NewWriteCommand();
 TCommandPtr NewExecuteActionCommand();
+TCommandPtr NewCreateSessionCommand();
+TCommandPtr NewResetSessionCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -56,6 +58,8 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
     { "executeaction", NewExecuteActionCommand },
+    { "createsession", NewCreateSessionCommand },
+    { "resetsession", NewResetSessionCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -58,9 +58,7 @@ TPartitionActor::TPartitionActor(
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TPartitionActor::~TPartitionActor()
 {

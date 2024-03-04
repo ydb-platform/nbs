@@ -62,9 +62,7 @@ TDescribeBlocksActionActor::TDescribeBlocksActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
 {

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_validation.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -269,20 +270,10 @@ TString TCheckpointInfo::MakeCheckpointDiskId(
 ui64 TDiskInfo::GetBlocksCount() const
 {
     ui64 result = 0;
-    if (MasterDiskId) {
-        for (const auto& replica: Replicas) {
-            for (const auto& device: replica) {
-                result += device.GetBlocksCount();
-            }
-            break;
-        }
-    } else {
-        for (const auto& device: Devices) {
-            const ui64 logicalBlockCount = device.GetBlockSize() *
-                                           device.GetBlocksCount() /
-                                           LogicalBlockSize;
-            result += logicalBlockCount;
-        }
+    for (const auto& device: Devices) {
+        const ui64 logicalBlockCount =
+            device.GetBlockSize() * device.GetBlocksCount() / LogicalBlockSize;
+        result += logicalBlockCount;
     }
     return result;
 }
@@ -800,7 +791,8 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
         return;
     }
 
-    const auto deviceSize = device.GetBlockSize() * device.GetBlocksCount();
+    const auto deviceSize =
+        device.GetBlockSize() * device.GetUnadjustedBlockCount();
 
     if (deviceSize < unit) {
         SetDeviceErrorState(device, timestamp, TStringBuilder()
@@ -2031,10 +2023,7 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
 
     auto checkpointDiskId =
         TCheckpointInfo::MakeCheckpointDiskId(sourceDiskId, checkpointId);
-    auto checkpointMediaKind =
-        diskInfo.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-            ? NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-            : NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+    auto checkpointMediaKind = GetCheckpointShadowDiskType(diskInfo.MediaKind);
 
     TAllocateDiskParams diskParams{
         checkpointDiskId,
@@ -3139,6 +3128,7 @@ NProto::TError TDiskRegistryState::GetDiskInfo(
     diskInfo.CheckpointId = disk.CheckpointReplica.GetCheckpointId();
     diskInfo.SourceDiskId = disk.CheckpointReplica.GetSourceDiskId();
     diskInfo.History = disk.History;
+    diskInfo.MigrationStartTs = disk.MigrationStartTs;
 
     auto error = FillAllDiskDevices(diskId, disk, diskInfo);
 
@@ -3652,9 +3642,9 @@ THashMap<TString, TBrokenGroupInfo> TDiskRegistryState::GatherBrokenGroupsInfo(
         auto res = groups.try_emplace(groupId, pg->Config.GetPlacementStrategy());
         TBrokenGroupInfo& info = res.first->second;
 
-        info.Total.Increment(disk.PlacementPartitionIndex);
+        info.Total.Increment(diskId, disk.PlacementPartitionIndex);
         if (now - period < disk.StateTs) {
-            info.Recently.Increment(disk.PlacementPartitionIndex);
+            info.Recently.Increment(diskId, disk.PlacementPartitionIndex);
         }
     }
 
@@ -3965,6 +3955,14 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.PlacementGroupsWithBrokenTwoOrMorePartitions->Set(
         placementGroupsWithBrokenTwoOrMorePartitions);
+
+    size_t cachedAcquireDevicesRequestAmount = Accumulate(
+        AcquireCacheByAgentId.begin(),
+        AcquireCacheByAgentId.end(),
+        0,
+        [](size_t sum, const auto& item) { return sum + item.second.size(); });
+    SelfCounters.CachedAcquireDevicesRequestAmount->Set(
+        cachedAcquireDevicesRequestAmount);
 
     auto replicaCountStats = ReplicaTable.CalculateReplicaCountStats();
     SelfCounters.Mirror2Disks->Set(replicaCountStats.Mirror2DiskMinus0);
@@ -5519,6 +5517,8 @@ void TDiskRegistryState::CancelDeviceMigration(
     disk.MigrationTarget2Source.erase(targetId);
     disk.MigrationSource2Target.erase(it);
 
+    ResetMigrationStartTsIfNeeded(disk);
+
     // searching in all pools - in theory pool name might change between
     // the start/cancel/finish events
     for (auto& x: SourceDeviceMigrationsInProgress) {
@@ -5532,10 +5532,6 @@ void TDiskRegistryState::CancelDeviceMigration(
         .SeqNo = seqNo
     });
 
-    if (disk.MigrationSource2Target.empty()) {
-        disk.MigrationStartTs = {};
-    }
-
     NProto::TDiskHistoryItem historyItem;
     historyItem.SetTimestamp(now.MicroSeconds());
     historyItem.SetMessage(TStringBuilder() << "cancelled migration: "
@@ -5545,6 +5541,13 @@ void TDiskRegistryState::CancelDeviceMigration(
     db.UpdateDisk(BuildDiskConfig(diskId, disk));
 
     UpdatePlacementGroup(db, diskId, disk, "CancelDeviceMigration");
+}
+
+void TDiskRegistryState::ResetMigrationStartTsIfNeeded(TDiskState& disk)
+{
+    if (disk.MigrationSource2Target.empty()) {
+        disk.MigrationStartTs = {};
+    }
 }
 
 NProto::TError TDiskRegistryState::FinishDeviceMigration(
@@ -5577,6 +5580,9 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
     } else {
         disk.MigrationTarget2Source.erase(it);
         disk.MigrationSource2Target.erase(sourceId);
+
+        ResetMigrationStartTsIfNeeded(disk);
+
         // searching in all pools - in theory pool name might change between
         // the start/cancel/finish events
         for (auto& x: SourceDeviceMigrationsInProgress) {

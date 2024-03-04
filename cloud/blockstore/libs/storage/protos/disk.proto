@@ -742,6 +742,7 @@ message TAcquireDiskResponse
     NCloud.NProto.TError Error = 1;
 
     // List of devices that make up the disk.
+    // Note. Contains only the devices located at available agents.
     repeated TDeviceConfig Devices = 2;
 
     // Migration configuration.

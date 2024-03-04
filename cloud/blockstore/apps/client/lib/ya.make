@@ -26,6 +26,7 @@ SRCS(
     execute_action.cpp
     factory.cpp
     get_changed_blocks.cpp
+    get_checkpoint_status.cpp
     kick_endpoint.cpp
     list_endpoints.cpp
     list_keyrings.cpp
@@ -63,7 +64,7 @@ PEERDIR(
     library/cpp/lwtrace/mon
     library/cpp/protobuf/util
     library/cpp/threading/blocking_queue
-    
+
     contrib/ydb/library/actors/util
 )
 

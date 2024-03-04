@@ -130,12 +130,12 @@ def get_clat_mean_from_fio_report(x):
     return x['clat_ns']['mean'] / 1000  # fio-3
 
 
-def add_common_parser_arguments(parser):
+def add_common_parser_arguments(parser, cluster_required=True):
     parser.add_argument(
         '-c',
         '--cluster',
         type=str,
-        required=True,
+        required=cluster_required,
         help='run test on the specified cluster')
     parser.add_argument(
         '--cluster-config-path',

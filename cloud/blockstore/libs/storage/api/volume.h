@@ -38,15 +38,16 @@ namespace NCloud::NBlockStore::NStorage {
 
 // requests forwarded from service to volume
 #define BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(xxx, ...)                       \
-    xxx(ReadBlocks,         __VA_ARGS__)                                       \
-    xxx(WriteBlocks,        __VA_ARGS__)                                       \
-    xxx(ZeroBlocks,         __VA_ARGS__)                                       \
-    xxx(StatVolume,         __VA_ARGS__)                                       \
-    xxx(CreateCheckpoint,   __VA_ARGS__)                                       \
-    xxx(DeleteCheckpoint,   __VA_ARGS__)                                       \
-    xxx(GetChangedBlocks,   __VA_ARGS__)                                       \
-    xxx(ReadBlocksLocal,    __VA_ARGS__)                                       \
-    xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
+    xxx(ReadBlocks,           __VA_ARGS__)                                     \
+    xxx(WriteBlocks,          __VA_ARGS__)                                     \
+    xxx(ZeroBlocks,           __VA_ARGS__)                                     \
+    xxx(StatVolume,           __VA_ARGS__)                                     \
+    xxx(CreateCheckpoint,     __VA_ARGS__)                                     \
+    xxx(DeleteCheckpoint,     __VA_ARGS__)                                     \
+    xxx(GetChangedBlocks,     __VA_ARGS__)                                     \
+    xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
+    xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
+    xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
 // BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE
 
 // responses which are forwarded back via volume (volume has handlers for these)
@@ -66,14 +67,15 @@ namespace NCloud::NBlockStore::NStorage {
 // responses for the requests forwarded from service which are forwarded back
 // via volume (volume has handlers for these)
 #define BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(xxx, ...)              \
-    xxx(ReadBlocks,         __VA_ARGS__)                                       \
-    xxx(WriteBlocks,        __VA_ARGS__)                                       \
-    xxx(ZeroBlocks,         __VA_ARGS__)                                       \
-    xxx(CreateCheckpoint,   __VA_ARGS__)                                       \
-    xxx(DeleteCheckpoint,   __VA_ARGS__)                                       \
-    xxx(GetChangedBlocks,   __VA_ARGS__)                                       \
-    xxx(ReadBlocksLocal,    __VA_ARGS__)                                       \
-    xxx(WriteBlocksLocal,   __VA_ARGS__)                                       \
+    xxx(ReadBlocks,           __VA_ARGS__)                                     \
+    xxx(WriteBlocks,          __VA_ARGS__)                                     \
+    xxx(ZeroBlocks,           __VA_ARGS__)                                     \
+    xxx(CreateCheckpoint,     __VA_ARGS__)                                     \
+    xxx(DeleteCheckpoint,     __VA_ARGS__)                                     \
+    xxx(GetChangedBlocks,     __VA_ARGS__)                                     \
+    xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
+    xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
+    xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,14 +133,20 @@ struct TEvVolume
     struct TDiskRegistryBasedPartitionCounters
     {
         TPartitionDiskCountersPtr DiskCounters;
+        TString DiskId;
         ui64 NetworkBytes = 0;
         TDuration CpuUsage;
 
         TDiskRegistryBasedPartitionCounters(
-                TPartitionDiskCountersPtr diskCounters)
+                TPartitionDiskCountersPtr diskCounters,
+                TString diskId,
+                ui64 networkBytes,
+                TDuration cpuUsage)
             : DiskCounters(std::move(diskCounters))
-        {
-        }
+            , DiskId(std::move(diskId))
+            , NetworkBytes(networkBytes)
+            , CpuUsage(cpuUsage)
+        {}
     };
 
     //
@@ -202,6 +210,25 @@ struct TEvVolume
 
         explicit TClearBaseDiskIdToTabletIdMapping(TString baseDiskId)
             : BaseDiskId(std::move(baseDiskId))
+        {}
+    };
+
+    //
+    // PreparePartitionMigrationRequest
+    //
+    struct TPreparePartitionMigrationRequest
+    {
+    };
+
+    //
+    // PreparePartitionMigrationResponse
+    //
+    struct TPreparePartitionMigrationResponse
+    {
+        bool IsMigrationAllowed;
+
+        explicit TPreparePartitionMigrationResponse(bool isMigrationAllowed)
+            : IsMigrationAllowed(isMigrationAllowed)
         {}
     };
 
@@ -293,6 +320,9 @@ struct TEvVolume
         EvChangeStorageConfigRequest = EvBegin + 54,
         EvChangeStorageConfigResponse = EvBegin + 55,
 
+        EvPreparePartitionMigrationRequest = EvBegin + 56,
+        EvPreparePartitionMigrationResponse = EvBegin + 57,
+
         EvEnd
     };
 
@@ -354,6 +384,16 @@ struct TEvVolume
     using TEvClearBaseDiskIdToTabletIdMapping = TRequestEvent<
         TClearBaseDiskIdToTabletIdMapping,
         EvClearBaseDiskIdToTabletIdMapping
+    >;
+
+    using TEvPreparePartitionMigrationRequest = TRequestEvent<
+        TPreparePartitionMigrationRequest,
+        EvPreparePartitionMigrationRequest
+    >;
+
+    using TEvPreparePartitionMigrationResponse = TRequestEvent<
+        TPreparePartitionMigrationResponse,
+        EvPreparePartitionMigrationResponse
     >;
 };
 

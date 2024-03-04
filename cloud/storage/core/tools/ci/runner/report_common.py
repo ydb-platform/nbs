@@ -44,7 +44,12 @@ def build_report(test_kind, on_test_case_result, results_dir):
                 run_path = os.path.join(root, f)
                 print("processing run %s" % run_path, file=sys.stderr)
                 with open(run_path) as data:
-                    test_case_results = json.load(data)
+                    try:
+                        test_case_results = json.load(data)
+                    except Exception as e:
+                        test_case_results = [{
+                            "error_message": "result parsing error: %s" % e
+                        }]
 
                     i = 0
                     for test_case_result in test_case_results:
@@ -55,6 +60,9 @@ def build_report(test_kind, on_test_case_result, results_dir):
                         if error is not None:
                             test_case.set("error", error)
                         i += 1
+
+                        if (color := test_case_result.get("highlight_color")) is not None:
+                            test_case.set("highlight_color", color)
 
                         on_test_case_result(
                             suite_type,

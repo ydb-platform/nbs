@@ -5,6 +5,7 @@ SRCS(
     service.cpp
     service_actor.cpp
     service_actor_actions_change_storage_config.cpp
+    service_actor_actions_describe_sessions.cpp
     service_actor_actions_drain_tablets.cpp
     service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions.cpp
@@ -23,6 +24,7 @@ SRCS(
     service_actor_monitoring_search.cpp
     service_actor_ping.cpp
     service_actor_pingsession.cpp
+    service_actor_readdata.cpp
     service_actor_statfs.cpp
     service_actor_update_stats.cpp
     service_state.cpp

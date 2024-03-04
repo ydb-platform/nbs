@@ -35,9 +35,8 @@ TNonreplicatedPartitionMigrationCommonActor::
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , StatActorId(statActorId)
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+    , PoisonPillHelper(this)
+{}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;
@@ -48,6 +47,8 @@ void TNonreplicatedPartitionMigrationCommonActor::Bootstrap(
     ScheduleCountersUpdate(ctx);
 
     Become(&TThis::StateWork);
+
+    MigrationOwner->OnBootstrap(ctx);
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::MarkMigratedBlocks(
@@ -62,23 +63,6 @@ TBlockRange64 TNonreplicatedPartitionMigrationCommonActor::
     return ProcessingBlocks.BuildProcessingRange();
 }
 
-void TNonreplicatedPartitionMigrationCommonActor::KillActors(
-    const TActorContext& ctx)
-{
-    NCloud::Send<TEvents::TEvPoisonPill>(ctx, SrcActorId);
-
-    if (DstActorId) {
-        NCloud::Send<TEvents::TEvPoisonPill>(ctx, DstActorId);
-    }
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::ReplyAndDie(
-    const TActorContext& ctx)
-{
-    NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
-    Die(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(
@@ -86,40 +70,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Become(&TThis::StateZombie);
-
-    KillActors(ctx);
-
-    Poisoner = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        MakeIntrusive<TCallContext>());
-
-    Y_DEBUG_ABORT_UNLESS(SrcActorId || DstActorId);
-
-    if (SrcActorId || DstActorId) {
-        return;
-    }
-
-    ReplyAndDie(ctx);
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonTaken(
-    const TEvents::TEvPoisonTaken::TPtr& ev,
-    const TActorContext& ctx)
-{
-    if (SrcActorId == ev->Sender) {
-        SrcActorId = {};
-    }
-
-    if (DstActorId == ev->Sender) {
-        DstActorId = {};
-    }
-
-    if (SrcActorId || DstActorId) {
-        return;
-    }
-
-    ReplyAndDie(ctx);
+    PoisonPillHelper.HandlePoisonPill(ev, ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,6 +122,11 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
 
 STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
 {
+    // Give the inheritor the opportunity to process the message first.
+    if (MigrationOwner->OnMessage(this->ActorContext(), ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(
             TEvNonreplPartitionPrivate::TEvUpdateCounters,
@@ -216,14 +172,18 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
-            // Give the inheritor a chance to process the message.
-            MigrationOwner->OnMessage(ev);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }
 
 STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
 {
+    // Give the inheritor the opportunity to process the message first.
+    if (MigrationOwner->OnMessage(this->ActorContext(), ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
 
@@ -257,11 +217,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
 
         IgnoreFunc(TEvents::TEvPoisonPill);
-        HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
+        HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
 
         default:
-            // Give the inheritor a chance to process the message.
-            MigrationOwner->OnMessage(ev);
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
             break;
     }
 }

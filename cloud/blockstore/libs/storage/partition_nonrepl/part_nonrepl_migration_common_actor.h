@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
+#include <cloud/storage/core/libs/actors/poison_pill_helper.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -32,8 +33,14 @@ class IMigrationOwner
 public:
     virtual ~IMigrationOwner() = default;
 
-    // Delegates the processing of unknown messages to the owner.
-    virtual void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) = 0;
+    // Bootstrap for migration owner.
+    virtual void OnBootstrap(const NActors::TActorContext& ctx) = 0;
+
+    // Delegates the processing of messages to the owner first.
+    // If true is returned, then the message has been processed.
+    virtual bool OnMessage(
+        const NActors::TActorContext& ctx,
+        TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
     // Calculates the time during which a 4MB block should migrate.
     [[nodiscard]] virtual TDuration CalculateMigrationTimeout() = 0;
@@ -46,13 +53,17 @@ public:
 
     // Notifies that the data migration was completed successfully.
     virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
+
+    // Notifies that an non-retriable error occurred during the migration.
+    // And the migration was stopped.
+    virtual void OnMigrationError(const NActors::TActorContext& ctx) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // To migrate data, it is necessary to inherit from this class. To get started,
-// you need to call the StartWork() method and pass the source and destination
-// actors to it.
+// you need to call the InitWork() method and pass the source and destination
+// actors to it. Then when you ready to run migration call StartWork()
 
 // About error handling. If migration errors occur, they cannot be fixed, on the
 // VolumeActor/PartitionActor side since DiskRegistry manages the allocation of
@@ -64,8 +75,12 @@ public:
 class TNonreplicatedPartitionMigrationCommonActor
     : public NActors::TActorBootstrapped<
           TNonreplicatedPartitionMigrationCommonActor>
+    , IPoisonPillHelperOwner
 {
 private:
+    using TBase = NActors::TActorBootstrapped<
+        TNonreplicatedPartitionMigrationCommonActor>;
+
     IMigrationOwner* const MigrationOwner = nullptr;
     const TStorageConfigPtr Config;
     const IProfileLogPtr ProfileLog;
@@ -79,6 +94,7 @@ private:
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationInProgress = false;
+    bool MigrationStarted = false;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
         EAllowedRequests::WriteOnly};
@@ -94,12 +110,13 @@ private:
     TPartitionDiskCountersPtr SrcCounters;
     TPartitionDiskCountersPtr DstCounters;
 
-    // PoisonPill
-    TRequestInfoPtr Poisoner;
-
     // Usage statistics
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
+
+protected:
+    // PoisonPill
+    TPoisonPillHelper PoisonPillHelper;
 
 public:
     TNonreplicatedPartitionMigrationCommonActor(
@@ -118,28 +135,35 @@ public:
 
     virtual void Bootstrap(const NActors::TActorContext& ctx);
 
-    // Called from the inheritor to get started.
-    void StartWork(
+    // Called from the inheritor to initialize migration.
+    void InitWork(
         const NActors::TActorContext& ctx,
         NActors::TActorId srcActorId,
         NActors::TActorId dstActorId);
 
-    // Called from the inheritor to mark ranges that do not need to be processed.
+    // Called from the inheritor to start migration.
+    void StartWork(const NActors::TActorContext& ctx);
+
+    // Called from the inheritor to mark ranges that do not need to be
+    // processed.
     void MarkMigratedBlocks(TBlockRange64 range);
 
     // Called from the inheritor to get the next processing range.
     TBlockRange64 GetNextProcessingRange() const;
 
+    // IPoisonPillHelperOwner implementation
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        TBase::Die(ctx);
+    }
+
 private:
-    void KillActors(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
     void ScheduleMigrateNextRange(const NActors::TActorContext& ctx);
     void MigrateNextRange(const NActors::TActorContext& ctx);
     void ContinueMigrationIfNeeded(const NActors::TActorContext& ctx);
-
-    void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
@@ -171,10 +195,6 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandlePoisonTaken(
-        const NActors::TEvents::TEvPoisonTaken::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

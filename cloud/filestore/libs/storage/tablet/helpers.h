@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/core/model.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
+#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>

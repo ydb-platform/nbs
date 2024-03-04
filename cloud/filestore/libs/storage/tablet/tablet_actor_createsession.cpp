@@ -11,6 +11,18 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
+{
+    auto* features = fileStore.MutableFeatures();
+    features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetNegativeEntryTimeout(
+        config.GetNegativeEntryTimeout().MilliSeconds());
+    features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TActorId DoRecoverSession(
     TIndexTabletDatabase& db,
     TIndexTabletState& state,
@@ -92,6 +104,8 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,
@@ -193,12 +207,12 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
 
             return;
-        } else {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s CreateSession: no session available for client c: %s",
-                LogTag.c_str(),
-                clientId.c_str());
         }
+
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession: no session available for client c: %s",
+            LogTag.c_str(),
+            clientId.c_str());
     }
 
     if (!sessionId) {
@@ -229,6 +243,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed (%s)",
         LogTag.c_str(),
@@ -240,13 +256,15 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         return;
     }
 
-    auto session = FindSession(args.SessionId);
+    auto* session = FindSession(args.SessionId);
     TABLET_VERIFY(session);
 
     auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
-    Convert(GetFileSystem(), *response->Record.MutableFileStore());
+    auto& fileStore = *response->Record.MutableFileStore();
+    Convert(GetFileSystem(), fileStore);
+    FillFeatures(*Config, fileStore);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

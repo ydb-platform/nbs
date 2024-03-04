@@ -1,2 +1,3 @@
 ydb/apps/ydbd/ydbd
 ydb/apps/ydb/ydb
+python/moto/bin/moto_server

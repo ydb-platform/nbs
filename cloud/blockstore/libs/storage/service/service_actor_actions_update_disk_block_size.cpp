@@ -61,9 +61,7 @@ TUpdateDiskBlockSizeActionActor::TUpdateDiskBlockSizeActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdateDiskBlockSizeActionActor::Bootstrap(const TActorContext& ctx)
 {

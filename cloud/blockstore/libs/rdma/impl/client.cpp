@@ -19,6 +19,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/history.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -52,6 +53,8 @@ constexpr TDuration MIN_CONNECT_TIMEOUT = TDuration::Seconds(1);
 constexpr TDuration FLUSH_TIMEOUT = TDuration::Seconds(10);
 constexpr TDuration LOG_THROTTLER_PERIOD = TDuration::Seconds(60);
 constexpr TDuration MIN_RECONNECT_DELAY = TDuration::MilliSeconds(10);
+
+constexpr size_t REQUEST_HISTORY_SIZE = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,7 +107,8 @@ class TActiveRequests
 {
 private:
     THashMap<ui32, TRequestPtr> Requests;
-    THashSet<TRequest*> Pointers;
+    THistory<ui32> CompletedRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
+    THistory<ui32> TimedOutRequests = THistory<ui32>(REQUEST_HISTORY_SIZE);
 
 public:
     ui32 CreateId()
@@ -120,7 +124,6 @@ public:
 
     void Push(TRequestPtr req)
     {
-        Y_ABORT_UNLESS(Pointers.emplace(req.get()).second);
         Y_ABORT_UNLESS(Requests.emplace(req->ReqId, std::move(req)).second);
     }
 
@@ -129,7 +132,7 @@ public:
         auto it = Requests.find(reqId);
         if (it != Requests.end()) {
             TRequestPtr req = std::move(it->second);
-            Pointers.erase(req.get());
+            CompletedRequests.Put(it->first);
             Requests.erase(it);
             return req;
         }
@@ -143,14 +146,28 @@ public:
         }
         auto it = std::begin(Requests);
         TRequestPtr req = std::move(it->second);
-        Pointers.erase(req.get());
+        CompletedRequests.Put(it->first);
         Requests.erase(it);
         return req;
     }
 
-    bool Contains(TRequest* ptr)
+    TRequest* Get(ui32 reqId)
     {
-        return Pointers.contains(ptr);
+        auto it = Requests.find(reqId);
+        if (it != Requests.end()) {
+            return it->second.get();
+        }
+        return nullptr;
+    }
+
+    bool TimedOut(ui32 reqId) const
+    {
+        return TimedOutRequests.Contains(reqId);
+    }
+
+    bool Completed(ui32 reqId) const
+    {
+        return CompletedRequests.Contains(reqId);
     }
 
     TVector<TRequestPtr> PopTimedOutRequests(ui64 timeoutCycles)
@@ -166,9 +183,7 @@ public:
         }
 
         for (const auto& x: requests) {
-            // TODO: keep tombstones to distinguish between timed out requests
-            // and unknown reqIds
-            Pointers.erase(x.get());
+            TimedOutRequests.Put(x->ReqId);
             Requests.erase(x->ReqId);
         }
 
@@ -447,18 +462,18 @@ public:
     TString PeerAddress() const;
     int ReconnectTimerHandle() const;
 
-    // called from client thread
+    // called from external thread
     TResultOrError<TClientRequestPtr> AllocateRequest(
         IClientHandlerPtr handler,
         std::unique_ptr<TNullContext> context,
         size_t requestBytes,
         size_t responseBytes) noexcept override;
-
     void SendRequest(
         TClientRequestPtr creq,
         TCallContextPtr callContext) noexcept override;
 
     // called from CQ thread
+    void HandleCompletionEvent(ibv_wc* wc) override;
     bool HandleInputRequests();
     bool HandleCompletionEvents();
     bool AbortRequests() noexcept;
@@ -466,18 +481,15 @@ public:
     bool FlushHanging() const;
 
 private:
+    // called from CQ thread
     void HandleQueuedRequests();
     bool IsWorkRequestValid(const TWorkRequestId& id) const;
     void HandleFlush(const TWorkRequestId& id) noexcept;
-    void HandleCompletionEvent(ibv_wc* wc) override;
-
     void SendRequest(TRequestPtr req, TSendWr* send);
     void SendRequestCompleted(
         TSendWr* send, ibv_wc_status status) noexcept;
-
     void RecvResponse(TRecvWr* recv);
     void RecvResponseCompleted(TRecvWr* recv, ibv_wc_status status);
-
     void AbortRequest(TRequestPtr req, ui32 err, const TString& msg) noexcept;
     void FreeRequest(TRequest* creq) noexcept;
 };
@@ -683,6 +695,7 @@ void TClientEndpoint::StartReceive()
     }
 }
 
+// implements IClientEndpoint
 TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     IClientHandlerPtr handler,
     std::unique_ptr<TNullContext> context,
@@ -731,6 +744,7 @@ TResultOrError<TClientRequestPtr> TClientEndpoint::AllocateRequest(
     return TClientRequestPtr(std::move(req));
 }
 
+// implements IClientEndpoint
 void TClientEndpoint::SendRequest(
     TClientRequestPtr creq,
     TCallContextPtr callContext) noexcept
@@ -879,12 +893,13 @@ void TClientEndpoint::HandleFlush(const TWorkRequestId& id) noexcept
     }
 }
 
+// implements NVerbs::ICompletionHandler
 void TClientEndpoint::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
 
     RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " " << NVerbs::GetStatusString(wc->status));
+        << " completed with " << NVerbs::GetStatusString(wc->status));
 
     if (!IsWorkRequestValid(id)) {
         RDMA_ERROR(LogThrottler.Unexpected, Log,
@@ -939,7 +954,7 @@ void TClientEndpoint::SendRequest(TRequestPtr req, TSendWr* send)
 
     Counters->SendRequestStarted();
 
-    send->context = req.get();
+    send->context = reinterpret_cast<void*>(static_cast<uintptr_t>(req->ReqId));
     ActiveRequests.Push(std::move(req));
 }
 
@@ -954,7 +969,7 @@ void TClientEndpoint::SendRequestCompleted(
 
     if (status != IBV_WC_SUCCESS) {
         RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
-            << " error: " << NVerbs::GetStatusString(status));
+            << ": " << NVerbs::GetStatusString(status));
 
         Counters->SendRequestError();
         ReportRdmaError();
@@ -962,20 +977,27 @@ void TClientEndpoint::SendRequestCompleted(
         return;
     }
 
-    auto* req = static_cast<TRequest*>(send->context);
+    auto reqId = SafeCast<ui32>(reinterpret_cast<uintptr_t>(send->context));
 
-    if (!ActiveRequests.Contains(req)) {
-        RDMA_WARN("SEND " << TWorkRequestId(send->wr.wr_id) << " error: "
-            << "request " << reinterpret_cast<void*>(req) << " not found")
+    if (auto* req = ActiveRequests.Get(reqId)) {
+        LWTRACK(
+            SendRequestCompleted,
+            req->CallContext->LWOrbit,
+            req->CallContext->RequestId);
 
+    } else if (ActiveRequests.TimedOut(reqId)) {
+        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request has timed out before receiving send wc");
+
+    } else if (ActiveRequests.Completed(reqId)) {
+        RDMA_INFO("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request has been completed before receiving send wc");
+
+    } else {
+        RDMA_ERROR("SEND " << TWorkRequestId(send->wr.wr_id)
+            << ": request not found")
         Counters->UnknownRequest();
-        return;
     }
-
-    LWTRACK(
-        SendRequestCompleted,
-        req->CallContext->LWOrbit,
-        req->CallContext->RequestId);
 }
 
 void TClientEndpoint::RecvResponse(TRecvWr* recv)
@@ -995,7 +1017,7 @@ void TClientEndpoint::RecvResponseCompleted(
 {
     if (wc_status != IBV_WC_SUCCESS) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: " << NVerbs::GetStatusString(wc_status));
+            << ": " << NVerbs::GetStatusString(wc_status));
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -1008,7 +1030,7 @@ void TClientEndpoint::RecvResponseCompleted(
     int version = ParseMessageHeader(msg);
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: unrecognized protocol version")
+            << ": unrecognized protocol version")
 
         Counters->RecvResponseError();
         RecvResponse(recv);
@@ -1024,7 +1046,7 @@ void TClientEndpoint::RecvResponseCompleted(
     auto req = ActiveRequests.Pop(reqId);
     if (!req) {
         RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << " error: request " << reqId << " not found");
+            << ": request not found");
 
         Counters->UnknownRequest();
         return;
@@ -1323,15 +1345,6 @@ public:
         Endpoints.Add(std::move(endpoint));
     }
 
-    void Delete(TClientEndpoint* endpoint)
-    {
-        endpoint->Poller = nullptr;
-
-        Endpoints.Delete([=](auto other) {
-            return endpoint == other.get();
-        });
-    }
-
     void Attach(TClientEndpoint* endpoint)
     {
         if (Config->WaitMode == EWaitMode::Poll) {
@@ -1555,31 +1568,30 @@ public:
         IMonitoringServicePtr monitoring,
         TClientConfigPtr config);
 
+    // called from external thread
     void Start() noexcept override;
     void Stop() noexcept override;
-
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) noexcept override;
 
 private:
+    // called from external thread
     void HandleConnectionEvent(
         NVerbs::TConnectionEventPtr event) noexcept override;
 
+    // called from CM thread
     void Reconnect(TClientEndpoint* endpont) noexcept override;
     void BeginResolveAddress(TClientEndpoint* endpoint) noexcept;
     void BeginResolveRoute(TClientEndpoint* endpoint) noexcept;
     void BeginConnect(TClientEndpoint* endpoint) noexcept;
     void HandleDisconnected(TClientEndpoint* endpoint) noexcept;
-
     void HandleConnected(
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
-
     void HandleRejected(
         TClientEndpoint* endpoint,
         NVerbs::TConnectionEventPtr event) noexcept;
-
     TCompletionPoller& PickPoller() noexcept;
 };
 
@@ -1645,6 +1657,7 @@ void TClient::Stop() noexcept
     CompletionPollers.clear();
 }
 
+// implements IClient
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port) noexcept
@@ -1683,6 +1696,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// implements IConnectionEventHandler
 void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
 {
     TClientEndpoint* endpoint = TClientEndpoint::FromEvent(event.get());
@@ -1738,6 +1752,7 @@ void TClient::HandleConnectionEvent(NVerbs::TConnectionEventPtr event) noexcept
     }
 }
 
+// implements IConnectionEventHandler
 void TClient::Reconnect(TClientEndpoint* endpoint) noexcept
 {
     if (endpoint->Reconnect.Hanging()) {

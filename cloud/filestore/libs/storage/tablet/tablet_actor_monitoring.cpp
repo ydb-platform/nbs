@@ -682,6 +682,39 @@ void DumpSessionHistory(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * @brief Display sessions the tablet knows
+ */
+void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
+{
+    HTML(out) {
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "ClientId";}
+                    TABLEH() { out << "SessionId"; }
+                    TABLEH() { out << "SeqNo"; }
+                    TABLEH() { out << "ReadOnly"; }
+                    TABLEH() { out << "Owner"; }
+                }
+            }
+            for (const auto& session: sessions) {
+                for (const auto& ss: session.SubSessions) {
+                    TABLER() {
+                        TABLED() { out << session.ProtoInfo.GetClientId(); }
+                        TABLED() { out << session.ProtoInfo.GetSessionId(); }
+                        TABLED() { out << ss.SeqNo; }
+                        TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
+                        TABLED() { out << ToString(ss.Owner); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void GenerateActionsJS(IOutputStream& out)
 {
     out << R"___(
@@ -724,9 +757,7 @@ struct TIndexTabletMonitoringActor
         , Owner(owner)
         , TabletId(tablet)
         , Request(std::move(request))
-    {
-        TThis::ActivityType = TFileStoreComponents::TABLET_WORKER;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -961,7 +992,6 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), out);
 
         TAG(TH3) { out << "Blob index stats"; }
-        ;
 
         const auto storageThrottlingEnabled = Config->GetThrottlingEnabled();
 
@@ -970,8 +1000,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         DumpPerformanceProfile(storageThrottlingEnabled, fsPerfProfile, out);
 
         const auto& usedPerfProfile = GetPerformanceProfile();
-        if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile))
-        {
+        if (!NProtoBuf::IsEqual(fsPerfProfile, usedPerfProfile)) {
             TAG(TH3) { out << "Used performance profile"; }
             DumpPerformanceProfile(
                 storageThrottlingEnabled,
@@ -982,6 +1011,18 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         TAG(TH3) { out << "Throttler state"; }
         DumpThrottlingState(Throttler.get(), GetThrottlingPolicy(), out);
+
+        if (StorageConfigOverride.ByteSize()) {
+            TAG(TH3) { out << "StorageConfig overrides"; }
+            TStorageConfig config(StorageConfigOverride);
+            config.DumpOverridesHtml(out);
+        }
+
+        TAG(TH3)
+        {
+            out << "Active Sessions";
+        }
+        DumpSessions(out, GetActiveSessions());
 
         TAG(TH3)
         {

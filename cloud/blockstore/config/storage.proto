@@ -908,4 +908,16 @@ message TStorageServiceConfig
     // IMPORTANT: Compaction verifies block checksums for the blocks affected by
     // it regardless of this flag!
     optional bool CheckBlockChecksumsInBlobsUponRead = 346;
+
+    // Enables runtime config update tool.
+    optional bool ConfigsDispatcherServiceEnabled = 347;
+
+    // Amount of time after which the disk registry will not send cached disk
+    // acquire request on the disk agent restart (ms).
+    // Note: it should be larger than ClientRemountPeriod, otherwise it's
+    // useless.
+    optional uint32 CachedAcquireRequestLifetime = 348;
+
+    // Limits unconfirmed (and confirmed but not added to the index) blob count.
+    optional uint32 UnconfirmedBlobCountHardLimit = 349;
 }

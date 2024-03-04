@@ -1,8 +1,8 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
-#include <cloud/filestore/libs/storage/tablet/model/block_buffer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -111,9 +111,7 @@ TCompactionActor::TCompactionActor(
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {

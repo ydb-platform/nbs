@@ -242,7 +242,8 @@ ui32 TTestEnv::CreateBlockStoreNode(
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             TraceSerializer,
-            nullptr // RdmaClient
+            nullptr, // RdmaClient
+            NServer::CreateEndpointEventProxy()
         );
         return actor.release();
     };

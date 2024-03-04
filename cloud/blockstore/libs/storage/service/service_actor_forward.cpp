@@ -209,15 +209,16 @@ void TServiceActor::ForwardRequest(
     }                                                                          \
 // BLOCKSTORE_FORWARD_REQUEST
 
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocks,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocks,        TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(StatVolume,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,   TEvService)
-BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,   TEvService)
-BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,   TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,    TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,   TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocks,          TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocks,         TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,          TEvService)
+BLOCKSTORE_FORWARD_REQUEST(StatVolume,          TEvService)
+BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,    TEvService)
+BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,    TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,    TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,     TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,    TEvService)
 
 #undef BLOCKSTORE_FORWARD_REQUEST
 

@@ -16,8 +16,9 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
-#include <cloud/filestore/libs/storage/core/utils.h>
-#include <cloud/filestore/libs/storage/tablet/model/range.h>
+#include <cloud/filestore/libs/storage/model/public.h>
+#include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
@@ -35,6 +36,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 
 #include <atomic>
@@ -48,7 +50,7 @@ class TIndexTabletActor final
     , public TTabletBase<TIndexTabletActor>
     , public TIndexTabletState
 {
-    static constexpr size_t MaxBlobStorageBlobSize = 40 * 1024 * 1024;
+    static constexpr size_t MaxBlobStorageBlobSize = 40_MB;
 
     enum EState
     {
@@ -80,13 +82,21 @@ private:
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+        std::atomic<i64> StatefulSessionsCount{0};
+        std::atomic<i64> StatelessSessionsCount{0};
+        std::atomic<i64> SessionTimeouts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
 
-        std::atomic<i64> MixedBytesCount{0};
+        // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> MixedBytesCount{0};
+        std::atomic<i64> MixedBlobsCount{0};
+        std::atomic<i64> DeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
+        std::atomic<i64> GarbageBytesCount{0};
+        std::atomic<i64> FreshBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -118,6 +128,13 @@ private:
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
+        TRequestMetrics ReadData;
+        TRequestMetrics DescribeData;
+        TRequestMetrics WriteData;
+
+        // Compaction/cleanup stats
+        std::atomic<i64> MaxBlobsInRange{0};
+        std::atomic<i64> MaxDeletionsInRange{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -132,7 +149,8 @@ private:
             const NProto::TFileSystem& fileSystem,
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
-            const TCompactionMapStats& compactionStats);
+            const TCompactionMapStats& compactionStats,
+            const TSessionsStats& sessionsStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
@@ -149,6 +167,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
+    TIntrusiveList<TRequestInfo> ActiveTransactions;
 
     TInstant ReassignRequestSentTs;
 
@@ -166,6 +185,11 @@ private:
         bool Finished = false;
     } CompactionStateLoadStatus;
 
+    // used on monpages
+    NProto::TStorageConfig StorageConfigOverride;
+
+    ui32 BackpressureErrorCount = 0;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -174,7 +198,7 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry);
-    ~TIndexTabletActor();
+    ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
     using TCounters = TIndexTabletCounters;
@@ -214,9 +238,29 @@ private:
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
+    template <typename TMethod>
     void EnqueueWriteBatch(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request);
+        std::unique_ptr<TWriteRequest> request)
+    {
+        request->RequestInfo->CancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "tablet is dead"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
+            if (auto timeout = Config->GetWriteBatchTimeout()) {
+                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            } else {
+                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            }
+        }
+    }
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
@@ -224,6 +268,30 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+
+    void AddTransaction(
+        TRequestInfo& transaction,
+        TRequestInfo::TCancelRoutine cancelRoutine);
+
+    template <typename TMethod>
+    void AddTransaction(TRequestInfo& transaction)
+    {
+        auto cancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "request cancelled"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        AddTransaction(transaction, cancelRoutine);
+    }
+
+    void RemoveTransaction(TRequestInfo& transaction);
+    void TerminateTransactions(const NActors::TActorContext& ctx);
+    void ReleaseTransactions();
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,

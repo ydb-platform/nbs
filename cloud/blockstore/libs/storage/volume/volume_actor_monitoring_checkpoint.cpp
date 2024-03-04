@@ -89,9 +89,7 @@ THttpCheckpointActor::THttpCheckpointActor(
     , TabletId(tabletId)
     , CheckpointName(std::move(checkpointName))
     , Action(action)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void THttpCheckpointActor::Bootstrap(const TActorContext& ctx)
 {

@@ -57,6 +57,7 @@ TVolumeActor::TVolumeActor(
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage))
@@ -67,6 +68,7 @@ TVolumeActor::TVolumeActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , TraceSerializer(std::move(traceSerializer))
     , RdmaClient(std::move(rdmaClient))
+    , EndpointEventHandler(std::move(endpointEventHandler))
     , StartMode(startMode)
     , ThrottlerLogger(
         TabletID(),
@@ -76,9 +78,7 @@ TVolumeActor::TVolumeActor(
                 time);
         }
     )
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 TVolumeActor::~TVolumeActor()
 {
@@ -366,6 +366,13 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
         }
     }
     return TVolumeActor::STATUS_OFFLINE;
+}
+
+NRdma::IClientPtr TVolumeActor::GetRdmaClient() const
+{
+    return (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma())
+               ? RdmaClient
+               : NRdma::IClientPtr{};
 }
 
 ui64 TVolumeActor::GetBlocksCount() const
@@ -848,6 +855,10 @@ STFUNC(TVolumeActor::StateInit)
             TEvVolumePrivate::TEvRemoveExpiredVolumeParams,
             HandleRemoveExpiredVolumeParams);
 
+        HFunc(
+            TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
+            HandleUpdateShadowDiskState);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
         default:
@@ -927,6 +938,8 @@ STFUNC(TVolumeActor::StateWork)
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
 
+        HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
+
         HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
         HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);
         HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
@@ -934,6 +947,10 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvPartitionCommonPrivate::TEvLongRunningOperation,
             HandleLongRunningBlobOperation);
+
+        HFunc(
+            TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
+            HandleUpdateShadowDiskState);
 
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
@@ -967,6 +984,10 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
         IgnoreFunc(TEvBootstrapper::TEvStatus);
+
+        IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
+
+        IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
 
         default:
             if (!RejectRequests(ev)) {

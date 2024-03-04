@@ -171,6 +171,14 @@ inline bool RequiresCheckpointSupport(const NProto::TChecksumDeviceBlocksRequest
     return false;
 }
 
+inline NProto::EStorageMediaKind GetCheckpointShadowDiskType(
+    NProto::EStorageMediaKind srcMediaKind)
+{
+    return srcMediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+               ? NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+               : NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlockRange64 BuildRequestBlockRange(

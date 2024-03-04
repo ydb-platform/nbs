@@ -29,6 +29,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/init/server
     cloud/blockstore/libs/ydbstats
 
+    cloud/storage/core/config
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/aio
     cloud/storage/core/libs/common

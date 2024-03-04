@@ -81,6 +81,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr PlacementGroupsWithBrokenTwoOrMorePartitions;
     TCounterPtr MeanTimeBetweenFailures;
     TCounterPtr AutomaticallyReplacedDevices;
+    TCounterPtr CachedAcquireDevicesRequestAmount;
 
     TCumulativeCounter QueryAvailableStorageErrors;
 

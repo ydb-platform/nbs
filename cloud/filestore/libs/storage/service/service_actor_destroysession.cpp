@@ -81,9 +81,7 @@ TDestroySessionActor::TDestroySessionActor(
     , SessionId(std::move(sessionId))
     , SeqNo(seqNo)
     , Deadline(Config->GetIdleSessionTimeout().ToDeadLine())
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TDestroySessionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -226,7 +224,9 @@ void TStorageServiceActor::HandleDestroySession(
             "Another create or destroy request is in progress"));
     }
 
-    if (session->ClientId != clientId || session->FileSystemId != fsId) {
+    if (session->ClientId != clientId
+            || session->FileStore.GetFileSystemId() != fsId)
+    {
         return reply(ErrorInvalidSession(clientId, sessionId, seqNo));
     }
 
@@ -265,7 +265,7 @@ void TStorageServiceActor::HandleDestroySession(
         StorageConfig,
         std::move(requestInfo),
         session->ClientId,
-        session->FileSystemId,
+        session->FileStore.GetFileSystemId(),
         session->SessionId,
         seqNo);
 
@@ -281,7 +281,7 @@ void TStorageServiceActor::HandleSessionDestroyed(
     auto* session = State->FindSession(msg->SessionId, msg->SeqNo);
     if (session) {
         session->CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
-        const auto fsId = session->FileSystemId;
+        const auto fsId = session->FileStore.GetFileSystemId();
         const auto clientId = session->ClientId;
         if (!State->RemoveSession(msg->SessionId, msg->SeqNo)) {
             StatsRegistry->Unregister(fsId, clientId);

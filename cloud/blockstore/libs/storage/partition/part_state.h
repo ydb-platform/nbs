@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_unique_id_with_range.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
@@ -22,7 +23,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
 #include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
-#include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
@@ -1298,26 +1298,38 @@ public:
     }
 
 private:
-    TUnconfirmedBlobs UnconfirmedBlobs;
-    TConfirmedBlobs ConfirmedBlobs;
+    TCommitIdToBlobUniqueIdWithRange UnconfirmedBlobs;
+    // contains entries from UnconfirmedBlobs that have been confirmed but have
+    // not yet been added to the index
+    TCommitIdToBlobUniqueIdWithRange ConfirmedBlobs;
 
 public:
-    const TUnconfirmedBlobs& GetUnconfirmedBlobs() const
+    const TCommitIdToBlobUniqueIdWithRange& GetUnconfirmedBlobs() const
     {
         return UnconfirmedBlobs;
     }
 
-    const TConfirmedBlobs& GetConfirmedBlobs() const
+    const TCommitIdToBlobUniqueIdWithRange& GetConfirmedBlobs() const
     {
         return ConfirmedBlobs;
     }
 
-    void InitUnconfirmedBlobs(TUnconfirmedBlobs blobs);
+    bool OverlapsUnconfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
+        const TBlockRange32& blockRange) const;
+
+    bool OverlapsConfirmedBlobs(
+        ui64 lowCommitId,
+        ui64 highCommitId,
+        const TBlockRange32& blockRange) const;
+
+    void InitUnconfirmedBlobs(TCommitIdToBlobUniqueIdWithRange blobs);
 
     void WriteUnconfirmedBlob(
         TPartitionDatabase& db,
         ui64 commitId,
-        const TUnconfirmedBlob& blob);
+        const TBlobUniqueIdWithRange& blob);
 
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 

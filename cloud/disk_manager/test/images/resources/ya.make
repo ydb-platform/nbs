@@ -28,4 +28,11 @@ FROM_SANDBOX(
     OUT_NOAUTO vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk
 )
 
+FROM_SANDBOX(
+    FILE
+    5922914799
+    RENAME RESOURCE
+    OUT_NOAUTO vmdk_images/windows-vmdk-stream-optimised-multiple-grains.vmdk
+)
+
 END()

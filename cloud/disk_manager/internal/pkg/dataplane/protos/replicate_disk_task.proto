@@ -22,6 +22,7 @@ message ReplicateDiskTaskRequest {
     bool UseLightCheckpoint = 4; // Use light or withoutData checkpoint.
 
     bool IgnoreBaseDisk = 5;
+    bool UseProxyOverlayDisk = 6;
 }
 
 message ReplicateDiskTaskState {

@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/protos/base.pb.h>
+#include <contrib/ydb/core/protos/blockstore_config.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 
 #include <contrib/ydb/library/actors/core/event.h>

@@ -1,3 +1,4 @@
+Requesting DiskInfo...
 DiskInfo:
 {
     "DiskId": "fsa0uap9g03n6o91mjnl",
@@ -423,8 +424,10 @@ DiskInfo:
         }
     ]
 }
+Detecting targets to curse...
 Targets to curse:
 null
+Detecting targets to heal...
 Targets to heal:
 [
     {

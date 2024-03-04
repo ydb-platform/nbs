@@ -63,9 +63,7 @@ TCleanupSessionsActor::TCleanupSessionsActor(
     , FileSystemId(std::move(fileSystemId))
     , RequestInfo(std::move(requestInfo))
     , Sessions(std::move(sessions))
-{
-    ActivityType = TFileStoreComponents::TABLET_WORKER;
-}
+{}
 
 void TCleanupSessionsActor::Bootstrap(const TActorContext& ctx)
 {
@@ -184,6 +182,10 @@ void TIndexTabletActor::HandleCleanupSessions(
         ScheduleCleanupSessions(ctx);
         return;
     }
+
+    Metrics.SessionTimeouts.fetch_add(
+        sessions.size(),
+        std::memory_order_relaxed);
 
     TVector<NProto::TSession> list(sessions.size());
     for (size_t i = 0; i < sessions.size(); ++i) {

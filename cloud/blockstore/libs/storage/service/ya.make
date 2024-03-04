@@ -7,6 +7,7 @@ SRCS(
     service_actor_actions_change_disk_device.cpp
     service_actor_actions_change_storage_config.cpp
     service_actor_actions_check_blob.cpp
+    service_actor_actions_cms.cpp
     service_actor_actions_compact_range.cpp
     service_actor_actions_configure_volume_balancer.cpp
     service_actor_actions_create_disk_from_devices.cpp
@@ -19,6 +20,7 @@ SRCS(
     service_actor_actions_get_dependent_disks.cpp
     service_actor_actions_get_compaction_status.cpp
     service_actor_actions_get_diskregistry_tablet_info.cpp
+    service_actor_actions_get_nameservice_config.cpp
     service_actor_actions_get_partition_info.cpp
     service_actor_actions_kill_tablet.cpp
     service_actor_actions_migration_disk_registry_device.cpp

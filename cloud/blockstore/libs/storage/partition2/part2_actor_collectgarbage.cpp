@@ -113,9 +113,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
     , CleanupWholeHistory(cleanupWholeHistory)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCollectGarbageActor::Bootstrap(const TActorContext& ctx)
 {
@@ -366,7 +364,6 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TCollectGarbageHardActor::Bootstrap(const TActorContext& ctx)

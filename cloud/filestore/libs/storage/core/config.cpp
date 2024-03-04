@@ -20,7 +20,7 @@ namespace {
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
-    xxx(IdleSessionTimeout,            TDuration, TDuration::Seconds(30)      )\
+    xxx(IdleSessionTimeout,            TDuration, TDuration::Minutes(5)       )\
                                                                                \
     xxx(WriteBatchEnabled,             bool,      false                       )\
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
@@ -33,7 +33,7 @@ namespace {
     xxx(CollectGarbageThreshold,       ui32,      4_MB                        )\
     xxx(FlushBytesThreshold,           ui32,      4_MB                        )\
     xxx(MaxDeleteGarbageBlobsPerTx,    ui32,      16384                       )\
-    xxx(LoadedCompactionRangesPerTx,   ui32,      1048576                     )\
+    xxx(LoadedCompactionRangesPerTx,   ui32,      10 * 1024 * 1024            )\
     xxx(MaxBlocksPerTruncateTx,        ui32,      0 /*TODO: 8388608 32gb/4kb*/)\
     xxx(MaxTruncateTxInflight,         ui32,      10                          )\
     xxx(CompactionRetryTimeout,        TDuration, TDuration::Seconds(1)       )\
@@ -127,9 +127,17 @@ namespace {
                                                                                \
     xxx(TenantHiveTabletId,                        ui64,       0              )\
     xxx(FolderId,                                  TString,    {}             )\
+    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(AuthorizationMode,                                                     \
             NCloud::NProto::EAuthorizationMode,                                \
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
+                                                                               \
+    xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
+    xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
+    xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
+    xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -209,6 +217,30 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
         TABLED() { out << #name; }                                             \
         TABLED() { DumpImpl(Get##name(), out); }                               \
     }                                                                          \
+// FILESTORE_DUMP_CONFIG
+
+    HTML(out) {
+        TABLE_CLASS("table table-condensed") {
+            TABLEBODY() {
+                FILESTORE_STORAGE_CONFIG(FILESTORE_DUMP_CONFIG);
+            }
+        }
+    }
+
+#undef FILESTORE_DUMP_CONFIG
+}
+
+void TStorageConfig::DumpOverridesHtml(IOutputStream& out) const
+{
+#define FILESTORE_DUMP_CONFIG(name, type, ...) {                               \
+    const auto value = ProtoConfig.Get##name();                                \
+    if (!IsEmpty(value)) {                                                     \
+        TABLER() {                                                             \
+            TABLED() { out << #name; }                                         \
+            TABLED() { DumpImpl(ConvertValue<type>(value), out); }             \
+        }                                                                      \
+    }                                                                          \
+}                                                                              \
 // FILESTORE_DUMP_CONFIG
 
     HTML(out) {
