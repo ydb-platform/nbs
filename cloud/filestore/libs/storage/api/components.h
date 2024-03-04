@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "cloud/storage/core/libs/kikimr/components_start.h"
+
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
@@ -41,7 +43,7 @@ struct TFileStoreComponents
 {
     enum
     {
-        START = 2048,   // TODO
+        START = TComponentsStart::FileStoreComponentsStart,
 
 #define FILESTORE_DECLARE_COMPONENT(component)                                 \
         component,                                                             \

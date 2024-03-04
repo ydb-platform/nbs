@@ -15,6 +15,7 @@ PEERDIR(
     cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/kikimr
     contrib/ydb/library/actors/core
     contrib/ydb/core/base
     contrib/ydb/core/protos

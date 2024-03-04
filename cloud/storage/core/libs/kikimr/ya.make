@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     actorsystem.cpp
+    components_start.cpp
     components.cpp
     config_initializer.cpp
     events.cpp

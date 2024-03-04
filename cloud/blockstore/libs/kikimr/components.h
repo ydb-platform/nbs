@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "cloud/storage/core/libs/kikimr/components_start.h"
+
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
@@ -61,7 +63,7 @@ struct TBlockStoreComponents
 {
     enum
     {
-        START = 1024,   // TODO
+        START = TComponentsStart::BlockStoreComponentsStart,
 
 #define BLOCKSTORE_DECLARE_COMPONENT(component)                                \
         component,                                                             \
