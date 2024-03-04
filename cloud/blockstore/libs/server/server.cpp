@@ -24,6 +24,7 @@
 #include <cloud/storage/core/libs/grpc/initializer.h>
 #include <cloud/storage/core/libs/grpc/keepalive.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
@@ -244,6 +245,9 @@ public:
             auto it = FindClient(socket);
             Y_ABORT_UNLESS(it == ClientInfos.end());
 
+            // create duplicate socket. we poll socket to know when
+            // client disconnects and dupSocket is passed to GRPC to read
+            // messages.
             dupSocket = SafeCreateDuplicate(socket);
 
             auto client = TClientInfo {
@@ -302,7 +306,10 @@ private:
         return TSocketHolder(duplicateFd);
     }
 
-    // need for avoid race, see NBS-3325
+    // Grpc can release socket before we call RemoveClient. So it is possible
+    // to observe the situation when CreateDuplicate returns fd which was not
+    // yet removed from ClientInfo's. So completed RemoveClient will close fd
+    // related to another connection.
     TSocketHolder SafeCreateDuplicate(const TSocketHolder& socket)
     {
         TList<TSocketHolder> holders;
@@ -649,7 +656,7 @@ private:
         if (!source) {
             ui32 fd = 0;
             auto peer = Context->peer();
-            bool result = TryParseSourceFd(peer, fd);
+            bool result = TryParseSourceFd(peer, &fd);
 
             if (!result) {
                 ythrow TServiceError(E_FAIL)
@@ -696,17 +703,6 @@ private:
         if (source == NProto::SOURCE_SECURE_CONTROL_CHANNEL) {
             internal.SetAuthToken(GetAuthToken(Context->client_metadata()));
         }
-    }
-
-    bool TryParseSourceFd(const TStringBuf& peer, ui32& fd)
-    {
-        static const TString PeerFdPrefix = "fd:";
-        if (!peer.StartsWith(PeerFdPrefix)) {
-            return false;
-        }
-
-        auto peerFd = peer.SubString(PeerFdPrefix.length(), peer.length());
-        return TryFromString(peerFd, fd);
     }
 
     bool EndpointIsStopped() const
