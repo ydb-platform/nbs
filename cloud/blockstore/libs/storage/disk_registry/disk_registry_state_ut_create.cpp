@@ -458,10 +458,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            UNIT_ASSERT_SUCCESS(state.RegisterUnknownDevices(
+            TVector<TString> affectedDisks;
+            TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
+            UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
                 db,
                 agentConfig.GetAgentId(),
-                Now()));
+                NProto::AGENT_STATE_ONLINE,
+                Now(),
+                false,  // dryRun
+                affectedDisks,
+                timeout,
+                devicesThatNeedToBeClean));
+
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), timeout);
+            UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             const auto d = state.GetDevice(testDeviceId);
 

@@ -302,6 +302,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
         WriteTx([&] (auto db) {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             UNIT_ASSERT_SUCCESS(state.UpdateCmsHostState(
                 db,
                 Agents[2].GetAgentId(),
@@ -309,8 +310,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                 TInstant::FromValue(2),
                 false,  // dryRun
                 affectedDisks,
-                timeout));
+                timeout,
+                devicesThatNeedToBeClean));
 
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             for (const auto& d: Agents[2].GetDevices()) {
                 UNIT_ASSERT_C(state.IsSuspendedDevice(d.GetDeviceUUID()), d);
             }

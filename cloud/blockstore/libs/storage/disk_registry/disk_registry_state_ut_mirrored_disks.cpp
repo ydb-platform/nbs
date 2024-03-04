@@ -2147,6 +2147,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             if (isAgent) {
                 TVector<TString> affectedDisks;
+                TVector<TString> devicesThatNeedToBeClean;
                 error = state.UpdateCmsHostState(
                     db,
                     agentConfig1.GetAgentId(),
@@ -2154,9 +2155,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     changeStateTs,
                     false,  // dryRun
                     affectedDisks,
-                    timeout);
+                    timeout,
+                    devicesThatNeedToBeClean);
 
                 ASSERT_VECTORS_EQUAL(TVector{"disk-1/0"}, affectedDisks);
+                UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             } else {
                 auto result = state.UpdateCmsDeviceState(
                     db,
@@ -2262,6 +2265,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
             if (isAgent) {
                 TVector<TString> affectedDisks;
+                TVector<TString> devicesThatNeedToBeClean;
                 error = state.UpdateCmsHostState(
                     db,
                     agentConfig1.GetAgentId(),
@@ -2269,9 +2273,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     changeStateTs,
                     false,  // dryRun
                     affectedDisks,
-                    timeout);
+                    timeout,
+                    devicesThatNeedToBeClean);
 
                 ASSERT_VECTORS_EQUAL(TVector<TString>(), affectedDisks);
+                UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             } else {
                 auto result = state.UpdateCmsDeviceState(
                     db,

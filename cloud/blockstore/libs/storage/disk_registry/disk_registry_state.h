@@ -593,21 +593,8 @@ public:
         TInstant now,
         bool dryRun,
         TVector<TDiskId>& affectedDisks,
-        TDuration& timeout);
-
-    // adds all unknown devices from an agent to the DR's config
-    NProto::TError RegisterUnknownDevices(
-        TDiskRegistryDatabase& db,
-        const TString& agentId,
-        TInstant now);
-
-    TResultOrError<TVector<TDeviceId>> CollectDirtyLocalDevices(
-        const TAgentId& agentId);
-
-    NProto::TError ResumeLocalDevices(
-        TDiskRegistryDatabase& db,
-        const TAgentId& agentId,
-        TInstant now);
+        TDuration& timeout,
+        TVector<TDeviceId>& devicesThatNeedToBeClean);
 
     TMaybe<NProto::EAgentState> GetAgentState(const TString& agentId) const;
     TMaybe<TInstant> GetAgentCmsTs(const TString& agentId) const;
@@ -1222,6 +1209,19 @@ private:
         const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
 
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
+
+    // adds all unknown devices from an agent to the DR's config
+    NProto::TError RegisterUnknownDevices(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        TInstant now);
+
+    TVector<TDeviceId> CollectDirtyLocalDevices(NProto::TAgentConfig& agent);
+
+    void ResumeLocalDevices(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        TInstant now);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

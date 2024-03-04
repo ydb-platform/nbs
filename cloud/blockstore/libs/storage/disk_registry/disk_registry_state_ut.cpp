@@ -5684,6 +5684,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         // agent-1: online -> warning
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5691,7 +5692,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -5702,6 +5704,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDiskStateUpdates().size());
             auto updates = state.GetDiskStateUpdates();
@@ -5767,6 +5770,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5774,7 +5778,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -5782,6 +5787,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                     - TDuration::Seconds(10),
                 timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
@@ -5791,6 +5797,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5798,11 +5805,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration(), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             UNIT_ASSERT_VALUES_EQUAL(4, state.GetDiskStateUpdates().size());
         });
 
@@ -5868,6 +5877,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5875,7 +5885,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -5884,6 +5895,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             Sort(affectedDisks);
             UNIT_ASSERT_VALUES_EQUAL(2, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
             UNIT_ASSERT_VALUES_EQUAL("disk-3", affectedDisks[1]);
 
@@ -5904,6 +5916,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5911,13 +5924,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 storageConfig->GetNonReplicatedInfraTimeout() / 2,
                 timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
 
         ts += storageConfig->GetNonReplicatedInfraTimeout() / 2
@@ -5927,6 +5942,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agent1.GetAgentId(),
@@ -5934,13 +5950,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts + TDuration::Seconds(10),
                 false, // dryRun
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 storageConfig->GetNonReplicatedInfraTimeout(),
                 timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
     }
 
@@ -6329,6 +6347,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[0].GetAgentId(),
@@ -6336,12 +6355,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             /*
              * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
@@ -6363,6 +6384,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[1].GetAgentId(),
@@ -6370,11 +6392,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             /*
              * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
@@ -6393,6 +6417,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[2].GetAgentId(),
@@ -6400,7 +6425,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -6409,6 +6435,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             /*
              * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
@@ -6455,6 +6482,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[2].GetAgentId(),
@@ -6462,7 +6490,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -6471,6 +6500,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 cmsTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
 
         state.PublishCounters(ts + h);
@@ -6486,6 +6516,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[2].GetAgentId(),
@@ -6493,7 +6524,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             // timeout should just wrap
@@ -6502,6 +6534,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 cmsTimeout);
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
 
         state.PublishCounters(ts);
@@ -6521,6 +6554,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[2].GetAgentId(),
@@ -6528,11 +6562,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
 
         state.PublishCounters(ts);
@@ -6789,6 +6825,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[0].GetAgentId(),
@@ -6796,12 +6833,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             /*
              * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
@@ -6820,6 +6859,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 agents[1].GetAgentId(),
@@ -6827,7 +6867,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false, // dryRun
                 affectedDisks,
-                cmsTimeout);
+                cmsTimeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -6836,6 +6877,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-2", affectedDisks[0]);
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
 
             /*
              * migrations shouldn't start for STORAGE_MEDIA_HDD_NONREPLICATED
@@ -7420,6 +7462,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 "agent-1",
@@ -7427,16 +7470,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts,
                 false,
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
             TVector<TString> affectedDisks;
             TDuration timeout;
+            TVector<TString> devicesThatNeedToBeClean;
             auto error = state.UpdateCmsHostState(
                 db,
                 "agent-1",
@@ -7444,11 +7490,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 ts + TDuration::Seconds(10),
                 true,
                 affectedDisks,
-                timeout);
+                timeout,
+                devicesThatNeedToBeClean);
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(0), timeout);
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, devicesThatNeedToBeClean.size());
         });
     }
 

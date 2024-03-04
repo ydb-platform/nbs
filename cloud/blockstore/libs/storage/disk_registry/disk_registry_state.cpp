@@ -4814,7 +4814,8 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks,
-    TDuration& timeout)
+    TDuration& timeout,
+    TVector<TDeviceId>& devicesThatNeedToBeClean)
 {
     auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
@@ -4894,8 +4895,20 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
+    // When we have removed the host, we should suspend all local devices
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
+    }
+
+    // When we have added the host, we should also add all unknown devices to
+    // DR's config.
+    if (newState == NProto::AGENT_STATE_ONLINE && !HasError(result)) {
+        result = RegisterUnknownDevices(db, *agent, now);
+
+        if (!HasError(result) && StorageConfig->GetNonReplicatedDontSuspendDevices()) {
+            ResumeLocalDevices(db, *agent, now);
+            devicesThatNeedToBeClean = CollectDirtyLocalDevices(*agent);
+        }
     }
 
     return result;
@@ -5124,17 +5137,11 @@ auto TDiskRegistryState::ResolveDevices(
 
 NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     TDiskRegistryDatabase& db,
-    const TString& agentId,
+    NProto::TAgentConfig& agent,
     TInstant now)
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, TStringBuilder{}
-            << "agent " << agentId.Quote() << " not found");
-    }
-
     TVector<TDeviceId> ids;
-    for (auto& device: *agent->MutableUnknownDevices()) {
+    for (auto& device: *agent.MutableUnknownDevices()) {
         ids.push_back(device.GetDeviceUUID());
 
         device.SetState(NProto::DEVICE_STATE_ONLINE);
@@ -5142,7 +5149,7 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
         device.SetStateTs(now.MicroSeconds());
     }
 
-    STORAGE_INFO("add new devices: AgentId=" << agent->GetAgentId()
+    STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
         << " Devices=" << JoinSeq(", ", ids));
 
     auto newConfig = GetConfig();
@@ -5150,11 +5157,11 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     NProto::TAgentConfig* knownAgent = FindIfPtr(
         *newConfig.MutableKnownAgents(),
         [&] (const auto& x) {
-            return x.GetAgentId() == agent->GetAgentId();
+            return x.GetAgentId() == agent.GetAgentId();
         });
     if (!knownAgent) {
         knownAgent = newConfig.AddKnownAgents();
-        knownAgent->SetAgentId(agent->GetAgentId());
+        knownAgent->SetAgentId(agent.GetAgentId());
     }
 
     for (auto& id: ids) {
@@ -5176,18 +5183,12 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     return error;
 }
 
-auto TDiskRegistryState::CollectDirtyLocalDevices(const TAgentId& agentId)
-    -> TResultOrError<TVector<TDeviceId>>
+auto TDiskRegistryState::CollectDirtyLocalDevices(NProto::TAgentConfig& agent)
+    -> TVector<TDeviceId>
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, TStringBuilder{} <<
-            "agent " << agentId.Quote() << " not found");
-    }
-
     TVector<TDeviceId> ids;
 
-    for (const auto& d: agent->GetDevices()) {
+    for (const auto& d: agent.GetDevices()) {
         const auto& id = d.GetDeviceUUID();
         if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
             DeviceList.IsDirtyDevice(id))
@@ -6496,18 +6497,12 @@ void TDiskRegistryState::ResumeDevices(
     }
 }
 
-NProto::TError TDiskRegistryState::ResumeLocalDevices(
+void TDiskRegistryState::ResumeLocalDevices(
     TDiskRegistryDatabase& db,
-    const TAgentId& agentId,
+    NProto::TAgentConfig& agent,
     TInstant now)
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, TStringBuilder{}
-            << "agent " << agentId.Quote() << " not found");
-    }
-
-    for (const auto& device: agent->GetDevices()) {
+    for (const auto& device: agent.GetDevices()) {
         if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
             && DeviceList.IsSuspendedDevice(device.GetDeviceUUID()))
         {
@@ -6519,8 +6514,6 @@ NProto::TError TDiskRegistryState::ResumeLocalDevices(
             ResumeDevice(now, db, device.GetDeviceUUID());
         }
     }
-
-    return {};
 }
 
 bool TDiskRegistryState::IsSuspendedDevice(const TDeviceId& id) const
