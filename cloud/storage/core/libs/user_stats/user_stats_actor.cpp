@@ -19,10 +19,12 @@ namespace NCloud::NStorage::NUserStats {
 ////////////////////////////////////////////////////////////////////////////////
 
 TUserStatsActor::TUserStatsActor(
+        int component,
         TString path,
         TString title,
         TVector<IUserMetricsSupplierPtr> providers)
     : Providers(std::move(providers))
+    , Component(component)
     , Path(std::move(path))
     , Title(std::move(title))
 {}
@@ -144,7 +146,7 @@ STFUNC(TUserStatsActor::StateWork)
         HFunc(TEvUserStats::TEvUserStatsProviderCreate, HandleUserStatsProviderCreate);
 
         default:
-            HandleUnexpectedEvent(ev, TStorageComponents::USER_STATS);
+            HandleUnexpectedEvent(ev, Component);
     }
 }
 

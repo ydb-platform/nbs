@@ -228,6 +228,7 @@ public:
 
         auto storageUserStats =
             NCloud::NStorage::NUserStats::CreateStorageUserStats(
+                TBlockStoreComponents::USER_STATS,
                 "blockstore",
                 "BlockStore",
                 Args.UserCounterProviders);

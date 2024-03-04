@@ -144,6 +144,7 @@ public:
         //
 
         auto storageUserStats = NUserStats::CreateStorageUserStats(
+            TFileStoreComponents::USER_STATS,
             "filestore",
             "FileStore",
             {Args.UserCounters});

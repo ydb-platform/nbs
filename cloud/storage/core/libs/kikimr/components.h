@@ -18,11 +18,6 @@ namespace NCloud {
     xxx(HIVE_PROXY)                                                            \
 // STORAGE_ACTORS
 
-#define STORAGE_COMPONENTS(xxx)                                                \
-    xxx(AUTH)                                                                  \
-    xxx(USER_STATS)                                                            \
-// STORAGE_ACTORS
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TStorageEvents
@@ -78,27 +73,6 @@ struct TStoragePrivateEvents
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE),
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE)");
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TStorageComponents
-{
-    enum
-    {
-        START = TComponentsStart::StorageComponentsStart,
-
-#define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component,                                                             \
-// STORAGE_DECLARE_COMPONENT
-
-        STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
-        STORAGE_COMPONENTS(STORAGE_DECLARE_COMPONENT)
-
-#undef STORAGE_DECLARE_COMPONENT
-
-        END
-    };
 };
 
 }   // namespace NCloud

@@ -35,6 +35,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FUSE)                                                                  \
     xxx(CLIENT)                                                                \
     xxx(AUTH)                                                                  \
+    xxx(USER_STATS)                                                            \
 // FILESTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
