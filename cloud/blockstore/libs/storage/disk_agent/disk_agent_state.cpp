@@ -834,7 +834,6 @@ void TDiskAgentState::UpdateSessionCache(TDeviceClient& client) const
     const auto path = AgentConfig->GetCachedSessionsPath();
 
     if (path.empty()) {
-        STORAGE_INFO("Session cache is not configured.");
         return;
     }
 
