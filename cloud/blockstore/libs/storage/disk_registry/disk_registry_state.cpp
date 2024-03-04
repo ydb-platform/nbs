@@ -760,7 +760,8 @@ NProto::TError TDiskRegistryState::ValidateAgent(
         {
             return MakeError(E_ARGUMENT, TStringBuilder()
                 << "unexpected state of the device " << device.GetDeviceUUID()
-                << ": " << device.GetState());
+                << ": " << NProto::EDeviceState_Name(device.GetState())
+                << " (" << static_cast<ui32>(device.GetState()) << ")");
         }
     }
 
