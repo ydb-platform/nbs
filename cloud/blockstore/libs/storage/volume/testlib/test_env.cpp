@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -700,7 +701,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
-            rdmaClient
+            rdmaClient,
+            NServer::CreateEndpointEventProxy()
         );
         return tablet.release();
     };

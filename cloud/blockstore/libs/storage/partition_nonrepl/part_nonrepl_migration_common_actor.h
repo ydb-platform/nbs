@@ -62,8 +62,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 // To migrate data, it is necessary to inherit from this class. To get started,
-// you need to call the StartWork() method and pass the source and destination
-// actors to it.
+// you need to call the InitWork() method and pass the source and destination
+// actors to it. Then when you ready to run migration call StartWork()
 
 // About error handling. If migration errors occur, they cannot be fixed, on the
 // VolumeActor/PartitionActor side since DiskRegistry manages the allocation of
@@ -94,6 +94,7 @@ private:
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationInProgress = false;
+    bool MigrationStarted = false;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
         EAllowedRequests::WriteOnly};
@@ -134,11 +135,14 @@ public:
 
     virtual void Bootstrap(const NActors::TActorContext& ctx);
 
-    // Called from the inheritor to get started.
-    void StartWork(
+    // Called from the inheritor to initialize migration.
+    void InitWork(
         const NActors::TActorContext& ctx,
         NActors::TActorId srcActorId,
         NActors::TActorId dstActorId);
+
+    // Called from the inheritor to start migration.
+    void StartWork(const NActors::TActorContext& ctx);
 
     // Called from the inheritor to mark ranges that do not need to be
     // processed.

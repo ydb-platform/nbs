@@ -7166,6 +7166,69 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(mapping["Unknown"], "Not found");
     }
 
+    Y_UNIT_TEST(ShouldGetUseFastPathStats)
+    {
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        ui32 hasUseFastPathCounter = 0;
+
+        runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient == MakeStorageStatsServiceId() &&
+                    event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumeSelfCounters)
+                {
+                    auto* msg =
+                        event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+
+                    hasUseFastPathCounter =
+                        msg->VolumeSelfCounters->Simple.UseFastPath.Value;
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        TVolumeClient volume(*runtime);
+
+        int version = 0;
+
+        auto updateConfig = [&](auto tags)
+        {
+            volume.UpdateVolumeConfig(
+                0,       // maxBandwidth
+                0,       // maxIops
+                0,       // burstPercentage
+                0,       // maxPostponedWeight
+                false,   // throttlingEnabled
+                ++version,
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                1024,       // block count per partition
+                "vol0",     // diskId
+                "cloud",    // cloudId
+                "folder",   // folderId
+                1,          // partition count
+                0,          // blocksPerStripe
+                tags);
+            volume.WaitReady();
+        };
+
+        auto checkUseFastPath = [&](auto expectedVal)
+        {
+            volume.SendToPipe(
+                std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(expectedVal, hasUseFastPathCounter);
+        };
+
+        updateConfig("");
+        checkUseFastPath(0);
+
+        updateConfig("use-fastpath");
+        checkUseFastPath(1);
+    }
+
     Y_UNIT_TEST(ShouldDisableByFlag)
     {
         NProto::TStorageServiceConfig config;
