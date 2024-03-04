@@ -944,6 +944,7 @@ public:
 
     void Stop() override
     {
+        Server->Stop();
         TaskQueue->Stop();
     }
 
