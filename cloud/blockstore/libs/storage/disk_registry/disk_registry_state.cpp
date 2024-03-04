@@ -4894,7 +4894,7 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
-    if (newState != NProto::AGENT_STATE_ONLINE && result.GetCode() == S_OK) {
+    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
     }
 

@@ -289,14 +289,16 @@ void TDiskRegistryActor::ScheduleDiskRegistryAgentListExpiredParamsCleanup(
 
 void TDiskRegistryActor::PostponeResponse(
     const TActorContext& ctx,
-    const TVector<TString>& devicesNeedToBeClean,
+    const TVector<TString>& devicesThatNeedToBeClean,
     TRequestInfoPtr requestInfo,
     TResponseFactory responseFactory)
 {
-    for (const auto& id: devicesNeedToBeClean) {
+    // DR will not send requests to clean non-online devices so we need to check
+    // if there are such devices.
+    for (const auto& id: devicesThatNeedToBeClean) {
         const auto state = State->GetDeviceState(id);
         if (state != NProto::DEVICE_STATE_ONLINE) {
-            auto error = MakeError(E_TRY_AGAIN, TStringBuilder()
+            auto error = MakeError(E_INVALID_STATE, TStringBuilder()
                 << "device " << id << " has an incompatible state: "
                 << NProto::EDeviceState_Name(state));
 
@@ -308,17 +310,17 @@ void TDiskRegistryActor::PostponeResponse(
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "Postpone the response until the devices are cleared: %s",
-        JoinSeq(" ", devicesNeedToBeClean).c_str());
+        JoinSeq(" ", devicesThatNeedToBeClean).c_str());
 
     auto pendingRequest = std::make_shared<TPendingWaitForDeviceCleanupRequest>();
     pendingRequest->PendingDevices.insert(
-        devicesNeedToBeClean.begin(),
-        devicesNeedToBeClean.end());
+        devicesThatNeedToBeClean.begin(),
+        devicesThatNeedToBeClean.end());
 
     pendingRequest->RequestInfo = std::move(requestInfo);
     pendingRequest->ResponseFactory = std::move(responseFactory);
 
-    for (const auto& id: devicesNeedToBeClean) {
+    for (const auto& id: devicesThatNeedToBeClean) {
         PendingWaitForDeviceCleanupRequests[id].push_back(pendingRequest);
     }
 }
