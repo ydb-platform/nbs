@@ -1,6 +1,5 @@
 #pragma once
 
-#include "components_start.h"
 #include "public.h"
 
 #include <contrib/ydb/core/base/events.h>
