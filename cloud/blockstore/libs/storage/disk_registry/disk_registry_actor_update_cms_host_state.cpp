@@ -102,7 +102,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     if (!HasError(args.Error) && !args.DryRun && args.DevicesThatNeedToBeCleaned) {
         PostponeResponse(
             ctx,
-            std::move(args.DevicesThatNeedToBeCleaned),
+            args.DevicesThatNeedToBeCleaned,
             args.RequestInfo,
             [
                 timeout = args.Timeout,
