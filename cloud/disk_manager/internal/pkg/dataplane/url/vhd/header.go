@@ -25,7 +25,7 @@ type header struct {
 	ParentTimeStamp      uint32    // Used for differencing hard disks. Not supported.
 	Reserved1            uint32
 	ParentUnicodeName    [512]byte // Used for differencing hard disks. Not supported.
-	ParentLocatorEntries [192]byte // USed for differencing hard disks. Not supported.
+	ParentLocatorEntries [192]byte // Used for differencing hard disks. Not supported.
 	Reserved2            [256]byte
 }
 
