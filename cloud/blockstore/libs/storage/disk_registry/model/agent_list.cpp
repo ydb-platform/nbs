@@ -239,13 +239,15 @@ void TAgentList::UpdateDevice(
     const NProto::TDeviceConfig& oldConfig)
 {
     // If DA reports broken device we should keep the state and state message of
-    // that device. At the same time we shouldn't remove the 'error' state 
+    // the device. At the same time we shouldn't remove the 'error' state
     // automatically.
     if (oldConfig.GetState() != NProto::DEVICE_STATE_ERROR
         && device.GetState() == NProto::DEVICE_STATE_ERROR)
     {
         device.SetStateTs(timestamp.MicroSeconds());
     } else {
+        // Otherwise, we should keep the old state.
+
         device.SetState(oldConfig.GetState());
         device.SetStateTs(oldConfig.GetStateTs());
         device.SetStateMessage(oldConfig.GetStateMessage());
