@@ -1159,6 +1159,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             .Devices = {{ "uuid-1", CreateDevice("uuid-1", 0) }}
         };
 
+        // Register new agent with one device.
         {
             const auto timestamp = TInstant::FromValue(100000);
 
@@ -1177,11 +1178,14 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             UNIT_ASSERT_VALUES_EQUAL(timestamp.MicroSeconds(), d.GetStateTs());
         }
 
+        // Break the device.
         agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
         agentConfig.MutableDevices(0)->SetStateMessage(errorMessage);
 
         const auto errorTs = TInstant::FromValue(200000);
 
+        // Register the agent with the broken device.
+        // Now we expect to see our device in an error state.
         {
             auto r = agentList.RegisterAgent(
                 agentConfig,
@@ -1199,9 +1203,12 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
         }
 
+        // Fix the device
         agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ONLINE);
         agentConfig.MutableDevices(0)->SetStateMessage("");
 
+        // Register the agent with fixed device.
+        // But we expect that the device state remains the same (error).
         {
             const auto timestamp = TInstant::FromValue(300000);
 

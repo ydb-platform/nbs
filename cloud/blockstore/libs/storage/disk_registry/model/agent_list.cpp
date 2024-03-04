@@ -238,7 +238,11 @@ void TAgentList::UpdateDevice(
     TInstant timestamp,
     const NProto::TDeviceConfig& oldConfig)
 {
-    if (device.GetState() > oldConfig.GetState()) {
+    if (device.GetState() != oldConfig.GetState()
+        && device.GetState() == NProto::DEVICE_STATE_ERROR)
+    {
+        // Keep the device state and state message
+
         device.SetStateTs(timestamp.MicroSeconds());
     } else {
         device.SetState(oldConfig.GetState());

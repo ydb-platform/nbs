@@ -11342,6 +11342,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .WithConfig({agentConfig})
             .Build();
 
+        // Register new agent with one device.
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             const TInstant now = Now();
 
@@ -11360,11 +11361,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL("", d.GetStateMessage());
         });
 
+        // Break the device.
         agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
         agentConfig.MutableDevices(0)->SetStateMessage(errorMessage);
 
         const TInstant errorTs = Now();
 
+        // Register the agent with the broken device.
+        // Now we expect to see our device in an error state.
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
             TVector<TString> disksToReallocate;
@@ -11381,9 +11385,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
         });
 
+        // Fix the device
         agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ONLINE);
         agentConfig.MutableDevices(0)->SetStateMessage("");
 
+        // Register the agent with fixed device.
+        // But we expect that the device state remains the same (error).
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TString> affectedDisks;
             TVector<TString> disksToReallocate;
