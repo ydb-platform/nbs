@@ -1428,7 +1428,8 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
-            newState));
+            newState,
+            args.ProcessedBlockCount));
 }
 
 void TVolumeActor::HandleUpdateShadowDiskState(
@@ -1448,7 +1449,9 @@ void TVolumeActor::HandleUpdateShadowDiskState(
     auto reply = [&](EShadowDiskState newState)
     {
         auto response = std::make_unique<
-            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(newState);
+            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
+            newState,
+            msg->ProcessedBlockCount);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 

@@ -175,6 +175,10 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    TDuration GetEntryTimeout() const;
+    TDuration GetNegativeEntryTimeout() const;
+    TDuration GetAttrTimeout() const;
+
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
 
     bool GetConfigsDispatcherServiceEnabled() const;

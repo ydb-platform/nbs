@@ -156,6 +156,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
 
     TVector<TDeviceRequest> deviceRequests;
     bool ok = InitRequests<TEvService::TZeroBlocksMethod>(
+        *msg,
         ctx,
         *requestInfo,
         blockRange,

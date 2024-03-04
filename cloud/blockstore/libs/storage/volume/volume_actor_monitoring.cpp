@@ -1095,6 +1095,13 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                 }
 
                 TABLER() {
+                    TABLED() { out << "UseFastPath"; }
+                    TABLED() {
+                        out << State->GetUseFastPath();
+                    }
+                }
+
+                TABLER() {
                     TABLED() { out << "Throttler"; }
                     TABLED() {
                         const auto& tp = State->GetThrottlingPolicy();

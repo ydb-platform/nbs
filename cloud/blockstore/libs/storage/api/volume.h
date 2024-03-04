@@ -133,14 +133,20 @@ struct TEvVolume
     struct TDiskRegistryBasedPartitionCounters
     {
         TPartitionDiskCountersPtr DiskCounters;
+        TString DiskId;
         ui64 NetworkBytes = 0;
         TDuration CpuUsage;
 
         TDiskRegistryBasedPartitionCounters(
-                TPartitionDiskCountersPtr diskCounters)
+                TPartitionDiskCountersPtr diskCounters,
+                TString diskId,
+                ui64 networkBytes,
+                TDuration cpuUsage)
             : DiskCounters(std::move(diskCounters))
-        {
-        }
+            , DiskId(std::move(diskId))
+            , NetworkBytes(networkBytes)
+            , CpuUsage(cpuUsage)
+        {}
     };
 
     //
@@ -204,6 +210,25 @@ struct TEvVolume
 
         explicit TClearBaseDiskIdToTabletIdMapping(TString baseDiskId)
             : BaseDiskId(std::move(baseDiskId))
+        {}
+    };
+
+    //
+    // PreparePartitionMigrationRequest
+    //
+    struct TPreparePartitionMigrationRequest
+    {
+    };
+
+    //
+    // PreparePartitionMigrationResponse
+    //
+    struct TPreparePartitionMigrationResponse
+    {
+        bool IsMigrationAllowed;
+
+        explicit TPreparePartitionMigrationResponse(bool isMigrationAllowed)
+            : IsMigrationAllowed(isMigrationAllowed)
         {}
     };
 
@@ -295,6 +320,9 @@ struct TEvVolume
         EvChangeStorageConfigRequest = EvBegin + 54,
         EvChangeStorageConfigResponse = EvBegin + 55,
 
+        EvPreparePartitionMigrationRequest = EvBegin + 56,
+        EvPreparePartitionMigrationResponse = EvBegin + 57,
+
         EvEnd
     };
 
@@ -356,6 +384,16 @@ struct TEvVolume
     using TEvClearBaseDiskIdToTabletIdMapping = TRequestEvent<
         TClearBaseDiskIdToTabletIdMapping,
         EvClearBaseDiskIdToTabletIdMapping
+    >;
+
+    using TEvPreparePartitionMigrationRequest = TRequestEvent<
+        TPreparePartitionMigrationRequest,
+        EvPreparePartitionMigrationRequest
+    >;
+
+    using TEvPreparePartitionMigrationResponse = TRequestEvent<
+        TPreparePartitionMigrationResponse,
+        EvPreparePartitionMigrationResponse
     >;
 };
 

@@ -14,6 +14,9 @@ option go_package = "a.yandex-team.ru/cloud/filestore/public/api/protos";
 message TFileStoreFeatures
 {
     bool TwoStageReadEnabled = 1;
+    uint32 EntryTimeout = 2;
+    uint32 NegativeEntryTimeout = 3;
+    uint32 AttrTimeout = 4;
 }
 
 message TFileStore

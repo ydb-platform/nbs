@@ -19,6 +19,8 @@ target_link_libraries(filestore-libs-diagnostics PUBLIC
   filestore-libs-diagnostics-events
   filestore-libs-service
   storage-tablet-protos
+  filestore-public-api-protos
+  filestore-private-api-protos
   core-libs-diagnostics
   core-libs-user_stats
   core-libs-version

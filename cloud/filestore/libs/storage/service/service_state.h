@@ -41,11 +41,11 @@ private:
 
 public:
     TInFlightRequest(
-            TRequestInfo&& info,
+            const TRequestInfo& info,
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind,
             IRequestStatsPtr requestStats)
-        : TRequestInfo(std::move(info))
+        : TRequestInfo(info.Sender, info.Cookie, info.CallContext)
         , MediaKind(mediaKind)
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))

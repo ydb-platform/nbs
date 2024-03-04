@@ -57,12 +57,14 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
             DstCounters->Simple.IORequestsInFlight.Value);
     }
 
-    auto request = std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
-        MakeIntrusive<TCallContext>(),
-        std::move(stats));
+    auto request =
+        std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
+            MakeIntrusive<TCallContext>(),
+            std::move(stats),
+            DiskId,
+            NetworkBytes,
+            CpuUsage);
 
-    request->NetworkBytes = NetworkBytes;
-    request->CpuUsage = CpuUsage;
     NetworkBytes = 0;
     CpuUsage = {};
 

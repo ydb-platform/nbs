@@ -736,6 +736,17 @@ private:
             config.SetMaxBufferSize(pages * NSystemInfo::GetPageSize());
         }
 
+        const auto& features = filestore.GetFeatures();
+        if (features.GetEntryTimeout()) {
+            config.SetEntryTimeout(features.GetEntryTimeout());
+        }
+        if (features.GetNegativeEntryTimeout()) {
+            config.SetNegativeEntryTimeout(features.GetNegativeEntryTimeout());
+        }
+        if (features.GetAttrTimeout()) {
+            config.SetAttrTimeout(features.GetAttrTimeout());
+        }
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 

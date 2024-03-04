@@ -47,6 +47,8 @@ void TIndexTabletActor::HandleSetNodeXAttr(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TSetNodeXAttrMethod>(*requestInfo);
+
     ExecuteTx<TSetNodeXAttr>(
         ctx,
         std::move(requestInfo),
@@ -134,6 +136,8 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeXAttr& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (SUCCEEDED(args.Error.GetCode())) {
         NProto::TSessionEvent sessionEvent;
         {

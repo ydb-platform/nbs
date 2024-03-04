@@ -127,10 +127,16 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         msg->CallContext
     );
 
-    if (State->GetDiskRegistryBasedPartitionActor() != ev->Sender) {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "Partition %s for disk %s counters not found",
+    const bool doesPartitionBelongToDisk =
+        State->GetDiskRegistryBasedPartitionActor() == ev->Sender ||
+        State->GetDiskId() == msg->DiskId;
+    if (!doesPartitionBelongToDisk) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Counters from partition %s (%s) do not belong to disk %s",
             ToString(ev->Sender).c_str(),
+            msg->DiskId.Quote().c_str(),
             State->GetDiskId().Quote().c_str());
         return;
     }
@@ -371,6 +377,9 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.LastVolumeLoadTime.Set(GetLoadTime().MicroSeconds());
     simple.LastVolumeStartTime.Set(GetStartTime().MicroSeconds());
     simple.HasStorageConfigPatch.Set(HasStorageConfigPatch);
+    simple.UseFastPath.Set(
+        State->GetUseFastPath() &&
+        State->GetMeta().GetMigrations().size() == 0);
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);

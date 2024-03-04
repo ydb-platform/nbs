@@ -49,6 +49,8 @@ void TIndexTabletActor::HandleUnlinkNode(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
+
     ExecuteTx<TUnlinkNode>(
         ctx,
         std::move(requestInfo),
@@ -163,6 +165,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),

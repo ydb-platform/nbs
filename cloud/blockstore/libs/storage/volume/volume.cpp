@@ -19,6 +19,7 @@ IActorPtr CreateVolumeTablet(
     IBlockDigestGeneratorPtr blockDigestGenerator,
     ITraceSerializerPtr traceSerializer,
     NRdma::IClientPtr rdmaClient,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
     EVolumeStartMode startMode)
 {
     return std::make_unique<TVolumeActor>(
@@ -30,6 +31,7 @@ IActorPtr CreateVolumeTablet(
         std::move(blockDigestGenerator),
         std::move(traceSerializer),
         std::move(rdmaClient),
+        std::move(endpointEventHandler),
         startMode);
 }
 

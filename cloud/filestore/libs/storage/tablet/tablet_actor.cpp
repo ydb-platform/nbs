@@ -59,7 +59,9 @@ TIndexTabletActor::TIndexTabletActor(
 }
 
 TIndexTabletActor::~TIndexTabletActor()
-{}
+{
+    ReleaseTransactions();
+}
 
 TString TIndexTabletActor::GetStateName(ui32 state)
 {
@@ -223,14 +225,65 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
+    TerminateTransactions(ctx);
+
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
+    }
+
+    auto writeBatch = DequeueWriteBatch();
+    for (const auto& request: writeBatch) {
+        TRequestInfo& requestInfo = *request.RequestInfo;
+        requestInfo.CancelRoutine(ctx, requestInfo);
     }
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
 
     Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::AddTransaction(
+    TRequestInfo& transaction,
+    TRequestInfo::TCancelRoutine cancelRoutine)
+{
+    transaction.CancelRoutine = cancelRoutine;
+
+    transaction.Ref();
+
+    TABLET_VERIFY(transaction.Empty());
+    ActiveTransactions.PushBack(&transaction);
+}
+
+void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
+{
+    TABLET_VERIFY(!requestInfo.Empty());
+    requestInfo.Unlink();
+
+    TABLET_VERIFY(requestInfo.RefCount() > 1);
+    requestInfo.UnRef();
+}
+
+void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
+
+        requestInfo->CancelRoutine(ctx, *requestInfo);
+        requestInfo->UnRef();
+    }
+}
+
+void TIndexTabletActor::ReleaseTransactions()
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
+        requestInfo->UnRef();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
