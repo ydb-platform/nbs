@@ -95,9 +95,6 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		FolderID:         s.folderID,
 		PlacementGroupID: s.placementGroupID,
 
-		BaseDiskID:           s.baseDiskID,
-		BaseDiskCheckpointID: s.baseDiskCheckpointID,
-
 		CreateTaskID: s.createTaskID,
 		CreatingAt:   s.creatingAt,
 		CreatedAt:    s.createdAt,
@@ -381,9 +378,6 @@ func (s *storageYDB) createDisk(
 		folderID:         disk.FolderID,
 		placementGroupID: disk.PlacementGroupID,
 
-		baseDiskID:           disk.BaseDiskID,
-		baseDiskCheckpointID: disk.BaseDiskCheckpointID,
-
 		createRequest: createRequest,
 		createTaskID:  disk.CreateTaskID,
 		creatingAt:    disk.CreatingAt,
@@ -471,9 +465,6 @@ func (s *storageYDB) diskCreated(
 	}
 
 	state.status = diskStatusReady
-	// Base disk id and checkpoint id become known after disk creation.
-	state.baseDiskID = disk.BaseDiskID
-	state.baseDiskCheckpointID = disk.BaseDiskCheckpointID
 	state.createdAt = disk.CreatedAt
 
 	err = s.updateDiskState(ctx, tx, state)

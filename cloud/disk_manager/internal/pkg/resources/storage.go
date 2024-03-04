@@ -24,9 +24,6 @@ type DiskMeta struct {
 	PlacementGroupID        string `json:"placement_group_id"`
 	PlacementPartitionIndex string `json:"placement_partition_index"`
 
-	BaseDiskID           string `json:"base_disk_id"`
-	BaseDiskCheckpointID string `json:"base_disk_checkpoint_id"`
-
 	CreateRequest proto.Message `json:"create_request"`
 	CreateTaskID  string        `json:"create_task_id"`
 	CreatingAt    time.Time     `json:"creating_at"`

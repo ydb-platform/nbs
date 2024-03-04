@@ -129,8 +129,6 @@ func (t *createOverlayDiskTask) Run(
 		return err
 	}
 
-	diskMeta.BaseDiskID = baseDiskID
-	diskMeta.BaseDiskCheckpointID = baseDiskCheckpointID
 	diskMeta.CreatedAt = time.Now()
 
 	return t.storage.DiskCreated(ctx, *diskMeta)
