@@ -41,7 +41,6 @@ func (t *PanicTask) Cancel(
 
 func (t *PanicTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
