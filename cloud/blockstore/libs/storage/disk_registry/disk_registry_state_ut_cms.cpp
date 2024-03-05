@@ -29,12 +29,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             db.InitSchema();
         });
 
-        const auto agentConfig = AgentConfig(1, {
+        auto agentConfig = AgentConfig(1, {
             Device("NVMENBS01", "uuid-1.1", "rack-1"),
             Device("NVMENBS02", "uuid-1.2", "rack-1"),
             Device("NVMENBS03", "uuid-1.3", "rack-1"),
             Device("NVMENBS04", "uuid-1.4", "rack-1"),
+            Device("NVMENBS05", "uuid-1.5", "rack-1"),
         });
+
+        // uuid-1.5 is broken
+        agentConfig.MutableDevices(4)->SetState(NProto::DEVICE_STATE_ERROR);
+        agentConfig.MutableDevices(4)->SetStateMessage("broken device");
 
         TDiskRegistryState state = TDiskRegistryStateBuilder().Build();
 
@@ -101,6 +106,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 agentConfig.DevicesSize(),
                 agent.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(0, agent.UnknownDevicesSize());
+
+            for (size_t i = 0; i != agent.DevicesSize(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    NProto::EDeviceState_Name(agentConfig.GetDevices(i).GetState()),
+                    NProto::EDeviceState_Name(agent.GetDevices(i).GetState()));
+            }
         });
     }
 

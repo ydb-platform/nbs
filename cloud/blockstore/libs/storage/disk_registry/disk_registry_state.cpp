@@ -5144,8 +5144,10 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     for (auto& device: *agent.MutableUnknownDevices()) {
         ids.push_back(device.GetDeviceUUID());
 
-        device.SetState(NProto::DEVICE_STATE_ONLINE);
-        device.SetStateMessage("New device");
+        if (device.GetState() == NProto::DEVICE_STATE_ONLINE) {
+            device.SetStateMessage("New device");
+        }
+
         device.SetStateTs(now.MicroSeconds());
     }
 
