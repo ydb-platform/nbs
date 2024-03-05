@@ -44,6 +44,9 @@ def default_storage_config():
     storage.HDDMaxReadIops = iops
     storage.HDDMaxWriteIops = iops
 
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
+    storage.CheckBlockChecksumsInBlobsUponRead = True
+
     return storage
 
 
@@ -67,6 +70,9 @@ def storage_config_with_incremental_batch_compaction():
 def storage_config_with_incremental_compaction_and_patching():
     storage = storage_config_with_incremental_compaction()
     storage.BlobPatchingEnabled = True
+    # checksums are currently not supported for patched blobs
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
+    storage.CheckBlockChecksumsInBlobsUponRead = False
 
     return storage
 
@@ -116,6 +122,9 @@ def storage_config_with_mixed_index_cache_enabled():
 def storage_config_with_adding_unconfirmed_blobs_enabled():
     storage = default_storage_config()
     storage.AddingUnconfirmedBlobsEnabled = True
+    # checksums are currently not supported for unconfirmed blobs
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
+    storage.CheckBlockChecksumsInBlobsUponRead = False
 
     return storage
 
