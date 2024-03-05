@@ -189,6 +189,5 @@ func newLister(
 			handle: make(chan taskHandle),
 		}
 	}
-	go lister.loop(ctx)
 	return lister
 }

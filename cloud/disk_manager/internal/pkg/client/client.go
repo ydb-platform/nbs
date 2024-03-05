@@ -50,7 +50,10 @@ func WaitResponse(
 	response proto.Message,
 ) error {
 
-	logging.Debug(ctx, "Waiting for operation %v", operationID)
+	logging.Debug(
+		logging.WithFields(ctx, logging.NewComponentField(logging.ComponentClient)),
+		"Waiting for operation %v", operationID,
+	)
 
 	o, err := client.WaitOperation(
 		ctx,
@@ -73,7 +76,10 @@ func WaitResponse(
 		return err
 	}
 
-	logging.Debug(ctx, "Operation %v finished", operationID)
+	logging.Debug(
+		logging.WithFields(ctx, logging.NewComponentField(logging.ComponentClient)),
+		"Operation %v finished", operationID,
+	)
 	return nil
 }
 

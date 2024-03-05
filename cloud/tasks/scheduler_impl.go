@@ -22,6 +22,18 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func withComponentLoggingField(
+	ctx context.Context,
+) context.Context {
+
+	return logging.WithFields(
+		ctx,
+		logging.NewComponentField(logging.ComponentScheduler),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type scheduler struct {
 	registry                      *Registry
 	storage                       tasks_storage.Storage
@@ -40,6 +52,7 @@ func (s *scheduler) ScheduleTask(
 	folderID string,
 ) (string, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	return s.ScheduleZonalTask(
 		ctx,
 		taskType,
@@ -61,6 +74,7 @@ func (s *scheduler) ScheduleZonalTask(
 	folderID string,
 ) (string, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "scheduling task %v", taskType)
 
 	marshalledRequest, err := proto.Marshal(request)
@@ -119,6 +133,8 @@ func (s *scheduler) ScheduleRegularTasks(
 	taskType string,
 	schedule TaskSchedule,
 ) {
+
+	ctx = withComponentLoggingField(ctx)
 
 	// TODO: Don't schedule new goroutine for each regular task type.
 	go func() {
@@ -185,6 +201,7 @@ func (s *scheduler) CancelTask(
 	taskID string,
 ) (bool, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Info(ctx, "cancelling task %v", taskID)
 
 	cancelling, err := s.storage.MarkForCancellation(ctx, taskID, time.Now())
@@ -238,6 +255,7 @@ func (s *scheduler) WaitTask(
 	taskID string,
 ) (proto.Message, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	dependantTaskID := execCtx.GetTaskID()
 
 	logging.Info(ctx, "waiting task %v by %v", taskID, dependantTaskID)
@@ -256,6 +274,7 @@ func (s *scheduler) WaitAnyTasks(
 	taskIDs []string,
 ) ([]string, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	timeout := time.After(s.taskWaitingTimeout)
 
 	for {
@@ -294,6 +313,7 @@ func (s *scheduler) WaitTaskEnded(
 	taskID string,
 ) error {
 
+	ctx = withComponentLoggingField(ctx)
 	timeout := time.After(s.taskWaitingTimeout)
 
 	for {
@@ -324,6 +344,7 @@ func (s *scheduler) GetTaskMetadata(
 	taskID string,
 ) (proto.Message, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "getting task metadata %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
@@ -359,6 +380,7 @@ func (s *scheduler) SendEvent(
 	event int64,
 ) error {
 
+	ctx = withComponentLoggingField(ctx)
 	return s.storage.SendEvent(ctx, taskID, event)
 }
 
@@ -367,6 +389,7 @@ func (s *scheduler) GetOperation(
 	taskID string,
 ) (*operation.Operation, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "getting operation proto %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
@@ -460,6 +483,7 @@ func (s *scheduler) WaitTaskSync(
 	timeout time.Duration,
 ) (proto.Message, error) {
 
+	ctx = withComponentLoggingField(ctx)
 	timeoutChannel := time.After(timeout)
 	iteration := 0
 

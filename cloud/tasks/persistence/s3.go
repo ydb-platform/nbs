@@ -92,6 +92,7 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
+	ctx = logging.WithFields(ctx, logging.NewComponentField(logging.ComponentS3))
 	logging.Debug(ctx, "creating bucket %v in s3", bucket)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -125,6 +126,7 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
+	ctx = logging.WithFields(ctx, logging.NewComponentField(logging.ComponentS3))
 	logging.Debug(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -170,6 +172,7 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
+	ctx = logging.WithFields(ctx, logging.NewComponentField(logging.ComponentS3))
 	logging.Debug(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -204,6 +207,7 @@ func (c *S3Client) DeleteObject(
 	key string,
 ) (err error) {
 
+	ctx = logging.WithFields(ctx, logging.NewComponentField(logging.ComponentS3))
 	logging.Debug(
 		ctx,
 		"deleting object from s3, bucket %v, key %v",

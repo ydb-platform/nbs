@@ -41,7 +41,7 @@ func (c *multiZoneClient) Clone(
 	if err != nil {
 		if isAbortedError(err) {
 			logging.Error(
-				ctx,
+				logging.WithFields(ctx, logging.NewComponentField(logging.ComponentNbs)),
 				"src disk cloning failed because there exists dst disk with outdated fill generation: %v",
 				err,
 			)

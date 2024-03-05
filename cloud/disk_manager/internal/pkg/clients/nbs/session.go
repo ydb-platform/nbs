@@ -151,6 +151,10 @@ func (s *Session) init(ctx context.Context) error {
 
 	rediscoverCtx, cancel := context.WithCancel(context.Background())
 	rediscoverCtx = logging.SetLogger(rediscoverCtx, logging.GetLogger(ctx))
+	rediscoverCtx = logging.WithFields(
+		rediscoverCtx,
+		logging.NewComponentField(logging.ComponentNbsDiscovery),
+	)
 	s.cancelRediscover = cancel
 
 	go func() {
@@ -306,7 +310,7 @@ func (s *Session) discoverAndMount(ctx context.Context) error {
 	s.client = client
 	s.session = nbs_client.NewSession(
 		*client,
-		NewNbsClientLog(nbs_client.LOG_DEBUG),
+		NewNbsClientLog(nbs_client.LOG_DEBUG, logging.ComponentNbs),
 	)
 	s.metrics = newSessionMetrics(s.metricsRegistry, host)
 

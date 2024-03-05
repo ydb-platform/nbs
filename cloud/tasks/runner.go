@@ -291,7 +291,14 @@ func (r *runnerForRun) run(
 		}
 	}()
 
-	return task.Run(ctx, execCtx)
+	return task.Run(
+		logging.WithFields(
+			ctx,
+			logging.NewTaskIDField(execCtx.GetTaskID()),
+			logging.NewComponentField(logging.ComponentTasks),
+		),
+		execCtx,
+	)
 }
 
 func (r *runnerForRun) lockAndExecuteTask(
@@ -360,7 +367,15 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
-	err := task.Cancel(ctx, execCtx)
+	// TODO:_ check scopes of all fileds (not too wide)
+	err := task.Cancel(
+		logging.WithFields(
+			ctx,
+			logging.NewTaskIDField(execCtx.GetTaskID()),
+			logging.NewComponentField(logging.ComponentTasks),
+		),
+		execCtx,
+	)
 
 	if ctx.Err() != nil {
 		logging.Info(
