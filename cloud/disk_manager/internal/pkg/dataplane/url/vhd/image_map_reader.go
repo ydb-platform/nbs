@@ -32,7 +32,7 @@ type ImageMapReader struct {
 	reader common.Reader
 	header header
 	footer footer
-	bat    []uint32
+	bat    []uint32 // Block allocation table.
 }
 
 func (r *ImageMapReader) Size() uint64 {
