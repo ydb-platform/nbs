@@ -49,6 +49,9 @@ def start(argv):
     vhd_image_file_server = ImageFileServerLauncher(vhd_image_file_path)
     vhd_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT", str(vhd_image_file_server.port))
+    # size and crc32 after converting to raw image
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE", "117469184")
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32", "4215190084")
     image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
     set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
 
