@@ -615,10 +615,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         breakAgent("agent-2");
 
+        // It is OK to successfully acquire empty device list
         {
             diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
             auto response = diskRegistry.RecvAcquireDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
