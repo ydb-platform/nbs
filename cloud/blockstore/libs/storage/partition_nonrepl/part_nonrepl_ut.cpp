@@ -143,6 +143,7 @@ struct TTestEnv
         }
         storageConfig.SetExpectedClientBackoffIncrement(500);
         storageConfig.SetNonReplicatedAgentMaxTimeout(300'000);
+        storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -1502,6 +1503,117 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2048 * 4096, counters.BytesWritten.Value);
         UNIT_ASSERT_VALUES_EQUAL(512 * 4096, counters.BytesRead.Value);
+    }
+
+    Y_UNIT_TEST(ShouldSetVolumeRequestIdForNonBackgroundRequests)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        TActorId reacquireDiskRecipient;
+
+        ui64 interceptedVolumeRequestId = 0;
+        auto takeVolumeRequestId = [&](TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
+                    using TEvent = TEvDiskAgent::TEvWriteDeviceBlocksRequest;
+                    auto* msg = event->template Get<TEvent>();
+                    interceptedVolumeRequestId =
+                        msg->Record.GetVolumeRequestId();
+                } break;
+                case TEvDiskAgent::EvZeroDeviceBlocksRequest: {
+                    using TEvent = TEvDiskAgent::TEvZeroDeviceBlocksRequest;
+                    auto* msg = event->template Get<TEvent>();
+                    interceptedVolumeRequestId =
+                        msg->Record.GetVolumeRequestId();
+                } break;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime.SetObserverFunc(takeVolumeRequestId);
+
+        {   // Check WriteBlocks
+            auto doWriteBlocks = [&](bool isBackground, ui64 volumeRequestId)
+            {
+                interceptedVolumeRequestId = 0;
+                auto request = client.CreateWriteBlocksRequest(
+                    TBlockRange64::WithLength(1024, 3072),
+                    'A');
+                request->Record.MutableHeaders()->SetIsBackgroundRequest(
+                    isBackground);
+                client.SendRequest(
+                    client.GetActorId(),
+                    std::move(request),
+                    volumeRequestId);
+                runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+                runtime.DispatchEvents();
+                auto response = client.RecvWriteBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            };
+
+            doWriteBlocks(false, 101);
+            UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
+
+            doWriteBlocks(true, 102);
+            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+        }
+
+        {   // Check WriteBlocksLocal
+            auto doWriteBlocksLocal =
+                [&](bool isBackground, ui64 volumeRequestId)
+            {
+                interceptedVolumeRequestId = 0;
+                auto request = client.CreateWriteBlocksLocalRequest(
+                    TBlockRange64::WithLength(1024, 1024),
+                    TString(DefaultBlockSize, 'B'));
+                request->Record.MutableHeaders()->SetIsBackgroundRequest(
+                    isBackground);
+                client.SendRequest(
+                    client.GetActorId(),
+                    std::move(request),
+                    volumeRequestId);
+                runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+                runtime.DispatchEvents();
+                auto response = client.RecvWriteBlocksLocalResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            };
+
+            doWriteBlocksLocal(false, 101);
+            UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
+
+            doWriteBlocksLocal(true, 102);
+            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+        }
+
+        {   // Check ZeroBlocks
+            auto doZeroBlocks = [&](bool isBackground, ui64 volumeRequestId)
+            {
+                interceptedVolumeRequestId = 0;
+                auto request = client.CreateZeroBlocksRequest(
+                    TBlockRange64::WithLength(1024, 3072));
+                request->Record.MutableHeaders()->SetIsBackgroundRequest(
+                    isBackground);
+                client.SendRequest(
+                    client.GetActorId(),
+                    std::move(request),
+                    volumeRequestId);
+                runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+                runtime.DispatchEvents();
+                auto response = client.RecvZeroBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            };
+
+            doZeroBlocks(false, 101);
+            UNIT_ASSERT_VALUES_EQUAL(101, interceptedVolumeRequestId);
+
+            doZeroBlocks(true, 102);
+            UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
+        }
     }
 }
 

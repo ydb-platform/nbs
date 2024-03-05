@@ -239,6 +239,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     TVector<TDeviceRequestInfo> requests;
 
+    const bool assignVolumeRequestId =
+        AssignIdToWriteAndZeroRequestsEnabled &&
+        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
@@ -248,7 +252,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        if (AssignIdToWriteAndZeroRequestsEnabled) {
+        if (assignVolumeRequestId) {
             deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
@@ -379,6 +383,10 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     TVector<TDeviceRequestInfo> requests;
 
+    const bool assignVolumeRequestId =
+        AssignIdToWriteAndZeroRequestsEnabled &&
+        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+
     ui64 blocks = 0;
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
@@ -389,7 +397,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         deviceRequest.SetDeviceUUID(r.Device.GetDeviceUUID());
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
-        if (AssignIdToWriteAndZeroRequestsEnabled) {
+        if (assignVolumeRequestId) {
             deviceRequest.SetVolumeRequestId(requestInfo->Cookie);
             deviceRequest.SetMultideviceRequest(deviceRequests.size() > 1);
         }
