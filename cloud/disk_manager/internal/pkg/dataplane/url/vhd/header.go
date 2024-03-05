@@ -40,7 +40,7 @@ func (h header) validate() error {
 
 	if h.TableOffset != batOffset {
 		return common.NewSourceInvalidError(
-			"failed to check vhd header cookie: expected %v, actual %v",
+			"failed to check vhd header bat offset: expected %v, actual %v",
 			batOffset,
 			h.TableOffset,
 		)
