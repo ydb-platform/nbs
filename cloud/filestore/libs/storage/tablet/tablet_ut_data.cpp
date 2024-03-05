@@ -3778,7 +3778,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "tablet is dead",
+            "tablet is shutting down",
             response->GetErrorReason());
     }
 
@@ -3849,7 +3849,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "tablet is dead",
+            "tablet is shutting down",
             response->GetErrorReason());
     }
 

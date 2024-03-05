@@ -828,7 +828,7 @@ struct TIndexTabletMonitoringActor
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
-        ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is dead"), {});
+        ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"), {});
     }
 
     void ReplyAndDie(
