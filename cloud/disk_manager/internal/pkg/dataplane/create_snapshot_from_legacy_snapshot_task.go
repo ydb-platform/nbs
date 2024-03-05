@@ -155,7 +155,6 @@ func (t *createSnapshotFromLegacySnapshotTask) Cancel(
 
 func (t *createSnapshotFromLegacySnapshotTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &protos.CreateSnapshotFromLegacySnapshotMetadata{

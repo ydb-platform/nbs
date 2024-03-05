@@ -107,7 +107,6 @@ func (t *replicateDiskTask) Cancel(
 
 func (t *replicateDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	metadata := &protos.ReplicateDiskTaskMetadata{

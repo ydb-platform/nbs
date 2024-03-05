@@ -350,7 +350,7 @@ func (s *scheduler) GetTaskMetadata(
 		return nil, err
 	}
 
-	return task.GetMetadata(ctx, taskID)
+	return task.GetMetadata(ctx)
 }
 
 func (s *scheduler) SendEvent(
@@ -399,7 +399,7 @@ func (s *scheduler) GetOperation(
 		return nil, err
 	}
 
-	metadata, err := task.GetMetadata(ctx, taskID)
+	metadata, err := task.GetMetadata(ctx)
 	if err != nil {
 		logging.Warn(ctx, "failed to get task metadata %v: %v", taskID, err)
 		return nil, err

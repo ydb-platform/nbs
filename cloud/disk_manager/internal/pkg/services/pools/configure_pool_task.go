@@ -93,7 +93,6 @@ func (t *configurePoolTask) Cancel(
 
 func (t *configurePoolTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 	return &empty.Empty{}, nil
 }

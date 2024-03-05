@@ -193,7 +193,6 @@ func (t *createOverlayDiskTask) Cancel(
 
 func (t *createOverlayDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.CreateDiskMetadata{}, nil

@@ -44,7 +44,6 @@ func (t *clearEndedTasksTask) Cancel(
 
 func (t *clearEndedTasksTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

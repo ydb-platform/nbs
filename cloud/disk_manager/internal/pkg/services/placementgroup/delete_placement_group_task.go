@@ -98,7 +98,6 @@ func (t *deletePlacementGroupTask) Cancel(
 
 func (t *deletePlacementGroupTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.DeletePlacementGroupMetadata{

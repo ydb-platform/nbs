@@ -57,7 +57,6 @@ func (t *resizeFilesystemTask) Cancel(
 
 func (t *resizeFilesystemTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
