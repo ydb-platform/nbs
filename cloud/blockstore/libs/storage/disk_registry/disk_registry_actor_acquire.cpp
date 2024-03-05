@@ -136,7 +136,7 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateAcquire);
 
     if (Devices.empty()) {
-        FinishAcquireDisk(ctx, MakeError(E_REJECTED, "nothing to acquire"));
+        FinishAcquireDisk(ctx, {});
         return;
     }
 
@@ -439,6 +439,15 @@ void TDiskRegistryActor::HandleAcquireDisk(
         devices.insert(devices.end(),
             std::make_move_iterator(replica.begin()),
             std::make_move_iterator(replica.end()));
+    }
+
+    if (devices.empty()) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>());
+
+        return;
     }
 
     auto actor = NCloud::Register<TAcquireDiskActor>(
