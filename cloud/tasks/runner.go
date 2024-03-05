@@ -295,7 +295,7 @@ func (r *runnerForRun) run(
 		logging.WithFields(
 			ctx,
 			logging.NewTaskIDField(execCtx.GetTaskID()),
-			logging.NewComponentField(logging.ComponentTasks),
+			logging.NewComponentField(logging.ComponentTask),
 		),
 		execCtx,
 	)
@@ -367,12 +367,11 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
-	// TODO:_ check scopes of all fileds (not too wide)
 	err := task.Cancel(
 		logging.WithFields(
 			ctx,
 			logging.NewTaskIDField(execCtx.GetTaskID()),
-			logging.NewComponentField(logging.ComponentTasks),
+			logging.NewComponentField(logging.ComponentTask),
 		),
 		execCtx,
 	)

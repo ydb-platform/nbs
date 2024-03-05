@@ -18,13 +18,13 @@ type Field = log.Field
 const ComponentYDB = "YDB"
 const ComponentS3 = "S3"
 const ComponentNbs = "NBS"
-const ComponentNbsDiscovery = "NBS_DISCOVERY" // TODO:_ maybe just "Discovery"? Btw, how nfs discovery work?
+const ComponentNbsDiscovery = "NBS_DISCOVERY"
 const ComponentNfs = "NFS"
 const ComponentClient = "CLIENT"
 const ComponentRunners = "RUNNERS"
 const ComponentScheduler = "SCHEDULER"
 const ComponentApp = "APP"
-const ComponentTasks = "TASKS" // TODO:_ naming. This name is confusing: looks like it is related to 'tasks' folder
+const ComponentTask = "TASK"
 
 ////////////////////////////////////////////////////////////////////////////////
 
