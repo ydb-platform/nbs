@@ -1516,7 +1516,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TActorId reacquireDiskRecipient;
 
         ui64 interceptedVolumeRequestId = 0;
-        auto takeVolumeRequestId = [&](TAutoPtr<IEventHandle>& event)
+        auto takeVolumeRequestId =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             switch (event->GetTypeRewrite()) {
                 case TEvDiskAgent::EvWriteDeviceBlocksRequest: {
@@ -1533,7 +1534,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                 } break;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime.SetObserverFunc(takeVolumeRequestId);
 
