@@ -529,18 +529,18 @@ bool TShadowDiskActor::OnMessage(
                 *reinterpret_cast<TEvService::TEvWriteBlocksRequest::TPtr*>(
                     &ev),
                 ctx);
-        } break;
+        }
         case TEvService::TEvWriteBlocksLocalRequest::EventType: {
             return HandleWriteZeroBlocks<TEvService::TWriteBlocksLocalMethod>(
                 *reinterpret_cast<
                     TEvService::TEvWriteBlocksLocalRequest::TPtr*>(&ev),
                 ctx);
-        } break;
+        }
         case TEvService::TEvZeroBlocksRequest::EventType: {
             return HandleWriteZeroBlocks<TEvService::TZeroBlocksMethod>(
                 *reinterpret_cast<TEvService::TEvZeroBlocksRequest::TPtr*>(&ev),
                 ctx);
-        } break;
+        }
 
         default:
             // Message processing by the base class is required.

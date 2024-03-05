@@ -1332,7 +1332,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.Completed ? "completed" : "rejected",
         args.ShadowDiskId.Quote().c_str());
 
-    const bool needDestroyShadowActor =
+    const bool needToDestroyShadowActor =
         (request.ReqType == ECheckpointRequestType::Delete ||
          request.ReqType == ECheckpointRequestType::DeleteData) &&
          State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
@@ -1344,12 +1344,12 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.ShadowDiskState);
     CheckpointRequests.erase(request.RequestId);
 
-    const bool needCreateShadowActor =
+    const bool needToCreateShadowActor =
         request.ReqType == ECheckpointRequestType::Create &&
         !request.ShadowDiskId.Empty() &&
         !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
-    if (needDestroyShadowActor || needCreateShadowActor) {
+    if (needToDestroyShadowActor || needToCreateShadowActor) {
         RestartDiskRegistryBasedPartition(ctx);
     }
 
