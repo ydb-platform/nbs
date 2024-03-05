@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -1165,6 +1166,67 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.True(t, !errors.CanRetry(err))
+}
+
+func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+	otherZoneClient := newOtherZoneClient(t, ctx)
+	multiZoneClient := newMultiZoneClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 4096,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+		"", // baseDiskID
+	)
+	require.NoError(t, err)
+
+	errs := make(chan error)
+
+	go func() {
+		// Need to add some variance for better testing.
+		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+
+		errs <- multiZoneClient.Clone(
+			ctx,
+			diskID,
+			"", // dstPlacementGroupID
+			0,  // dstPlacementPartitionIndex
+			2,  // fillGeneration
+			"", // baseDiskID
+		)
+	}()
+
+	go func() {
+		// Need to add some variance for better testing.
+		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+
+		errs <- otherZoneClient.DeleteWithFillGeneration(
+			ctx,
+			diskID,
+			1, // fillGeneration
+		)
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if err != nil {
+			require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+		}
+	}
 }
 
 func TestFinishFillDisk(t *testing.T) {
