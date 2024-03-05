@@ -277,7 +277,7 @@ void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
 
-        requestInfo->CancelRoutine(ctx, *requestInfo);
+        requestInfo->CancelRequest(ctx);
         requestInfo->UnRef();
     }
 }

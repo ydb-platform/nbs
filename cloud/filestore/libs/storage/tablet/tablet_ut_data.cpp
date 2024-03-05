@@ -4377,9 +4377,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             return false;
         });
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-
-        UNIT_ASSERT(putSeen);
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return putSeen;
+        };
+        env.GetRuntime().DispatchEvents(options);
 
         tablet.RebootTablet();
 
@@ -4387,6 +4389,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_REJECTED,
             response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down",
             response->GetErrorReason());
     }
 
@@ -4440,9 +4446,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             return false;
         });
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return getSeen;
+        };
 
-        UNIT_ASSERT(getSeen);
+        env.GetRuntime().DispatchEvents(options);
 
         failGet = false;
         tablet.RebootTablet();
@@ -4451,6 +4460,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_REJECTED,
             response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down",
             response->GetErrorReason());
     }
 
