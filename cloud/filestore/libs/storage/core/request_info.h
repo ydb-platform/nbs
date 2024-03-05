@@ -52,8 +52,7 @@ struct TRequestInfo
     void CancelRequest(const NActors::TActorContext& ctx)
     {
         if (!CancelRoutine) {
-            ReportCancelRoutineIsNotSet(
-                "Cancel routine is not set for request info, but called");
+            ReportCancelRoutineIsNotSet();
             return;
         };
         CancelRoutine(ctx, *this);
