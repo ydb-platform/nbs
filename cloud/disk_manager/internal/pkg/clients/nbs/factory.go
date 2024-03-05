@@ -19,72 +19,63 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func withComponentLoggingField(
-	ctx context.Context,
-	component string,
-) context.Context {
-
-	return logging.WithFields(ctx, logging.NewComponentField(component))
-}
-
-type logger struct {
-	component string
+func withComponentLoggingField(ctx context.Context) context.Context {
+	return logging.WithFields(
+		ctx,
+		logging.NewComponentField(logging.ComponentNbs),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type errorLogger struct {
-	logger
 }
 
 func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Error(withComponentLoggingField(ctx, l.component), fmt.Sprint(v...))
+	logging.Error(withComponentLoggingField(ctx), fmt.Sprint(v...))
 }
 
 func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Error(withComponentLoggingField(ctx, l.component), fmt.Sprintf(format, v...))
+	logging.Error(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type warnLogger struct {
-	logger
 }
 
 func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Warn(withComponentLoggingField(ctx, l.component), fmt.Sprint(v...))
+	logging.Warn(withComponentLoggingField(ctx), fmt.Sprint(v...))
 }
 
 func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Warn(withComponentLoggingField(ctx, l.component), fmt.Sprintf(format, v...))
+	logging.Warn(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type infoLogger struct {
-	logger
 }
 
 func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Info(withComponentLoggingField(ctx, l.component), fmt.Sprint(v...))
+	logging.Info(withComponentLoggingField(ctx), fmt.Sprint(v...))
 }
 
 func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Info(withComponentLoggingField(ctx, l.component), fmt.Sprintf(format, v...))
+	logging.Info(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type debugLogger struct {
-	logger
 }
 
 func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Debug(withComponentLoggingField(ctx, l.component), fmt.Sprint(v...))
+	logging.Debug(withComponentLoggingField(ctx), fmt.Sprint(v...))
 }
 
 func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Debug(withComponentLoggingField(ctx, l.component), fmt.Sprintf(format, v...))
+	logging.Debug(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,12 +93,12 @@ func (w *nbsClientLogWrapper) Logger(level nbs_client.LogLevel) nbs_client.Logge
 	return nil
 }
 
-func NewNbsClientLog(level nbs_client.LogLevel, component string) nbs_client.Log {
+func NewNbsClientLog(level nbs_client.LogLevel) nbs_client.Log {
 	loggers := []nbs_client.Logger{
-		&errorLogger{logger{component}},
-		&warnLogger{logger{component}},
-		&infoLogger{logger{component}},
-		&debugLogger{logger{component}},
+		&errorLogger{},
+		&warnLogger{},
+		&infoLogger{},
+		&debugLogger{},
 	}
 	return &nbsClientLogWrapper{level, loggers}
 }
@@ -230,7 +221,7 @@ func (f *factory) initClients(
 				HardTimeout: discoveryClientHardTimeout,
 				SoftTimeout: discoveryClientSoftTimeout,
 			},
-			NewNbsClientLog(nbs_client.LOG_DEBUG, logging.ComponentNbsDiscovery),
+			NewNbsClientLog(nbs_client.LOG_DEBUG),
 		)
 		if err != nil {
 			return err

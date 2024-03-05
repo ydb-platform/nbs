@@ -8,7 +8,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,7 +36,7 @@ func (c *client) CalculateCrc32WithEncryption(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG, logging.ComponentNbs),
+		NewNbsClientLog(nbs_client.LOG_DEBUG),
 	)
 	defer session.Close()
 
@@ -199,7 +198,7 @@ func (c *client) MountForReadWrite(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG, logging.ComponentNbs),
+		NewNbsClientLog(nbs_client.LOG_DEBUG),
 	)
 
 	opts := nbs_client.MountVolumeOpts{
@@ -240,7 +239,7 @@ func (c *client) Write(
 
 	session := nbs_client.NewSession(
 		*nbsClient,
-		NewNbsClientLog(nbs_client.LOG_DEBUG, logging.ComponentNbs),
+		NewNbsClientLog(nbs_client.LOG_DEBUG),
 	)
 	defer session.Close()
 

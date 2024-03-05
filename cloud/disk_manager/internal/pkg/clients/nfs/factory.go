@@ -18,8 +18,10 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func withComponentLoggingField(ctx context.Context) context.Context {
-
-	return logging.WithFields(ctx, logging.NewComponentField(logging.ComponentNfs))
+	return logging.WithFields(
+		ctx,
+		logging.NewComponentField(logging.ComponentNfs),
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

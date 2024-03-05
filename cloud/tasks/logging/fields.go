@@ -18,13 +18,12 @@ type Field = log.Field
 const ComponentYDB = "YDB"
 const ComponentS3 = "S3"
 const ComponentNbs = "NBS"
-const ComponentNbsDiscovery = "NBS_DISCOVERY"
 const ComponentNfs = "NFS"
-const ComponentClient = "CLIENT"
 const ComponentRunners = "RUNNERS"
 const ComponentScheduler = "SCHEDULER"
-const ComponentApp = "APP"
 const ComponentTask = "TASK"
+const ComponentApp = "APP"
+const ComponentClient = "CLIENT"
 
 ////////////////////////////////////////////////////////////////////////////////
 
