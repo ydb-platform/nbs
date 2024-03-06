@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <loud/storage/core/libs/kikimr/components_start.h>
+#include <cloud/storage/core/libs/kikimr/components_start.h>
 
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
