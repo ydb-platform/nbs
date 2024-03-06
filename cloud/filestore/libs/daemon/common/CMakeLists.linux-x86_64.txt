@@ -28,6 +28,7 @@ target_link_libraries(filestore-libs-daemon-common PUBLIC
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics
+  core-libs-features
   core-libs-kikimr
   core-libs-version
   library-cpp-lwtrace
