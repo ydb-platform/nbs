@@ -298,7 +298,7 @@ private:
         const NProto::TStartEndpointRequest& newRequest,
         const NProto::TStartEndpointRequest& oldRequest);
 
-    NProto::TError OpenEndpointSockets(
+    NProto::TError OpenAllEndpointSockets(
         const NProto::TStartEndpointRequest& request,
         const TSessionInfo& sessionInfo);
 
@@ -306,11 +306,8 @@ private:
         const NProto::TStartEndpointRequest& request,
         const TSessionInfo& sessionInfo);
 
-    TVector<TFuture<NProto::TError>> CloseEndpointSockets(
-        const NProto::TStartEndpointRequest& startRequest);
-
-    TFuture<NProto::TError> CloseEndpointSocket(
-        const NProto::TStartEndpointRequest& startRequest);
+    void CloseAllEndpointSockets(const NProto::TStartEndpointRequest& request);
+    void CloseEndpointSocket(const NProto::TStartEndpointRequest& request);
 
     std::shared_ptr<NProto::TStartEndpointRequest> CreateNbdStartEndpointRequest(
         const NProto::TStartEndpointRequest& request);
@@ -413,7 +410,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
-    error = OpenEndpointSockets(*request, sessionInfo);
+    error = OpenAllEndpointSockets(*request, sessionInfo);
     if (HasError(error)) {
         auto future = SessionManager->RemoveSession(
             std::move(ctx),
@@ -561,21 +558,18 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    auto futures = CloseEndpointSockets(*startRequest);
+    CloseAllEndpointSockets(*startRequest);
+
     auto future = SessionManager->RemoveSession(
         std::move(ctx),
         socketPath,
         request->GetHeaders());
-    futures.push_back(future);
-
-    NProto::TError result;
-    for (const auto& future: futures) {
-        auto error = Executor->WaitFor(future);
-        if (HasError(error)) {
-            result = error;
-        }
+    auto error = Executor->WaitFor(future);
+    if (HasError(error)) {
+        STORAGE_ERROR("Failed to remove session: " << FormatError(error));
     }
-    return TErrorResponse(result);
+
+    return {};
 }
 
 NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
@@ -672,7 +666,7 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     return TErrorResponse(error);
 }
 
-NProto::TError TEndpointManager::OpenEndpointSockets(
+NProto::TError TEndpointManager::OpenAllEndpointSockets(
     const NProto::TStartEndpointRequest& request,
     const TSessionInfo& sessionInfo)
 {
@@ -687,8 +681,7 @@ NProto::TError TEndpointManager::OpenEndpointSockets(
         auto error = OpenEndpointSocket(*nbdRequest, sessionInfo);
 
         if (HasError(error)) {
-            auto closeFuture = CloseEndpointSocket(request);
-            Executor->WaitFor(closeFuture);
+            CloseEndpointSocket(request);
             return error;
         }
     }
@@ -721,36 +714,38 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     return Executor->WaitFor(future);
 }
 
-TVector<TFuture<NProto::TError>> TEndpointManager::CloseEndpointSockets(
-    const NProto::TStartEndpointRequest& startRequest)
+void TEndpointManager::CloseAllEndpointSockets(
+    const NProto::TStartEndpointRequest& request)
 {
-    TVector<TFuture<NProto::TError>> futures;
+    CloseEndpointSocket(request);
 
-    auto future = CloseEndpointSocket(startRequest);
-    futures.push_back(future);
-
-    auto nbdRequest = CreateNbdStartEndpointRequest(startRequest);
+    auto nbdRequest = CreateNbdStartEndpointRequest(request);
     if (nbdRequest) {
         STORAGE_INFO("Stop additional endpoint: "
             << nbdRequest->GetUnixSocketPath().Quote());
-        auto future = CloseEndpointSocket(*nbdRequest);
-        futures.push_back(future);
+        CloseEndpointSocket(*nbdRequest);
     }
-    return futures;
 }
 
-TFuture<NProto::TError> TEndpointManager::CloseEndpointSocket(
-    const NProto::TStartEndpointRequest& startRequest)
+void TEndpointManager::CloseEndpointSocket(
+    const NProto::TStartEndpointRequest& request)
 {
-    auto ipcType = startRequest.GetIpcType();
+    auto ipcType = request.GetIpcType();
+    auto socketPath = request.GetUnixSocketPath();
+
     auto listenerIt = EndpointListeners.find(ipcType);
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
         TWellKnownEntityTypes::ENDPOINT,
-        startRequest.GetUnixSocketPath());
+        request.GetUnixSocketPath());
     const auto& listener = listenerIt->second;
 
-    return listener->StopEndpoint(startRequest.GetUnixSocketPath());
+    auto future = listener->StopEndpoint(socketPath);
+    auto error = Executor->WaitFor(future);
+    if (HasError(error)) {
+        STORAGE_ERROR("Failed to close socket " << socketPath.Quote()
+            << ", error: " << FormatError(error));
+    }
 }
 
 using TStartEndpointRequestPtr = std::shared_ptr<NProto::TStartEndpointRequest>;
