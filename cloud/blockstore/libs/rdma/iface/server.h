@@ -32,6 +32,8 @@ struct TServerConfig
     TServerConfig() = default;
 
     TServerConfig(const NProto::TRdmaServer& config);
+
+    void DumpHtml(IOutputStream& out) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,6 +70,8 @@ struct IServer
         TString host,
         ui32 port,
         IServerHandlerPtr handler) = 0;
+
+    virtual void DumpHtml(IOutputStream& out) const = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/storage/core/libs/common/format.h>
 
@@ -39,6 +40,11 @@ void TDiskAgentActor::HandleHttpInfo(
 
         TAG(TH3) { out << "Config"; }
         AgentConfig->DumpHtml(out);
+
+        if (RdmaServer) {
+            TAG(TH3) { out << "RdmaServer"; }
+            RdmaServer->DumpHtml(out);
+        }
     }
 
     NCloud::Reply(
