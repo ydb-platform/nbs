@@ -1299,9 +1299,11 @@ public:
 
 private:
     TCommitIdToBlobUniqueIdWithRange UnconfirmedBlobs;
+    ui32 UnconfirmedBlobCount = 0;
     // contains entries from UnconfirmedBlobs that have been confirmed but have
     // not yet been added to the index
     TCommitIdToBlobUniqueIdWithRange ConfirmedBlobs;
+    ui32 ConfirmedBlobCount = 0;
 
 public:
     const TCommitIdToBlobUniqueIdWithRange& GetUnconfirmedBlobs() const
@@ -1309,9 +1311,19 @@ public:
         return UnconfirmedBlobs;
     }
 
+    ui32 GetUnconfirmedBlobCount() const
+    {
+        return UnconfirmedBlobCount;
+    }
+
     const TCommitIdToBlobUniqueIdWithRange& GetConfirmedBlobs() const
     {
         return ConfirmedBlobs;
+    }
+
+    ui32 GetConfirmedBlobCount() const
+    {
+        return ConfirmedBlobCount;
     }
 
     bool OverlapsUnconfirmedBlobs(

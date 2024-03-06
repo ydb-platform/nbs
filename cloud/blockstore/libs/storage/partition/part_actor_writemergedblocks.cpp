@@ -505,7 +505,7 @@ void TPartitionActor::WriteMergedBlocks(
         // added to the index, so we treat them as unconfirmed while counting
         // the limit
         const ui32 blobCount =
-            State->GetUnconfirmedBlobs().size() + State->GetConfirmedBlobs().size();
+            State->GetUnconfirmedBlobCount() + State->GetConfirmedBlobCount();
         shouldAddUnconfirmedBlobs =
             blobCount < Config->GetUnconfirmedBlobCountHardLimit();
     }

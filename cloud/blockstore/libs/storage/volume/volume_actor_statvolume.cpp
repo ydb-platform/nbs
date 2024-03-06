@@ -98,6 +98,9 @@ void Merge(const NProto::TVolumeStats& source, NProto::TVolumeStats& target)
     MERGE_FIELD_MAX(CompactionDelay);
 
     MERGE_FIELD(CleanupQueueBytes);
+
+    MERGE_FIELD(UnconfirmedBlobCount);
+    MERGE_FIELD(ConfirmedBlobCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
