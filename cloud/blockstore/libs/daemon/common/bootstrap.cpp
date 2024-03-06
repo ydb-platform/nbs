@@ -477,17 +477,6 @@ void TBootstrapBase::Init()
         STORAGE_INFO("RDMA EndpointListener initialized");
     }
 
-    auto endpointManager = CreateEndpointManager(
-        Logging,
-        ServerStats,
-        Executor,
-        EndpointEventHandler,
-        std::move(sessionManager),
-        std::move(endpointListeners),
-        Configs->ServerConfig->GetNbdSocketSuffix());
-
-    STORAGE_INFO("EndpointManager initialized");
-
     IEndpointStoragePtr endpointStorage;
     switch (Configs->ServerConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
@@ -507,8 +496,7 @@ void TBootstrapBase::Init()
     }
     STORAGE_INFO("EndpointStorage initialized");
 
-    EndpointService = CreateMultipleEndpointService(
-        std::move(Service),
+    EndpointManager = CreateEndpointManager(
         Timer,
         Scheduler,
         Logging,
@@ -516,10 +504,20 @@ void TBootstrapBase::Init()
         VolumeStats,
         ServerStats,
         Executor,
+        EndpointEventHandler,
+        std::move(sessionManager),
         std::move(endpointStorage),
-        std::move(endpointManager),
-        Configs->EndpointConfig->GetClientConfig());
-    Service = EndpointService;
+        std::move(endpointListeners),
+        Configs->EndpointConfig->GetClientConfig(),
+        Configs->ServerConfig->GetNbdSocketSuffix());
+
+    STORAGE_INFO("EndpointManager initialized");
+
+    Service = CreateMultipleEndpointService(
+        std::move(Service),
+        Timer,
+        Scheduler,
+        EndpointManager);
 
     STORAGE_INFO("MultipleEndpointService initialized");
 
@@ -585,7 +583,7 @@ void TBootstrapBase::Init()
 
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,
-        EndpointService
+        EndpointManager
     };
 
     if (NbdServer) {
@@ -799,6 +797,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Spdk);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOService);
+    START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
@@ -821,7 +820,7 @@ void TBootstrapBase::Start()
         STORAGE_INFO("Process memory locked");
     }
 
-    auto restoreFuture = EndpointService->RestoreEndpoints();
+    auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;
         restoreFuture.Subscribe([=] (const auto& future) {
@@ -864,6 +863,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(NbdServer);
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
+    STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(FileIOService);
     STOP_KIKIMR_COMPONENT(ActorSystem);
     STOP_COMMON_COMPONENT(Spdk);
