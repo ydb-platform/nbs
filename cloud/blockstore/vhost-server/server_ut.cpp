@@ -171,6 +171,11 @@ public:
 
     TSimpleStats GetStats(ui64 expectedCompleted) const
     {
+        // Without I/O, stats are synced every second and only if there is a 
+        // pending GetStats call. The first call to GetStats might not bring the
+        // latest stats; therefore, you need at least two calls so that the AIO
+        // backend will sync the stats.
+
         TSimpleStats prevStats;
         TSimpleStats stats;
         for (int i = 0; i != 5; ++i) {
