@@ -45,6 +45,8 @@ enum class EPublishingPolicy
     xxx(CompactionGarbageScore, Max,     Permanent,                __VA_ARGS__)\
     xxx(ChannelHistorySize,     Max,     Permanent,                __VA_ARGS__)\
     xxx(CompactionRangeCountPerRun, Max, Permanent,                __VA_ARGS__)\
+    xxx(UnconfirmedBlobCount,   Generic, Permanent,                __VA_ARGS__)\
+    xxx(ConfirmedBlobCount,     Generic, Permanent,                __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
