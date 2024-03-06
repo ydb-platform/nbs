@@ -22,6 +22,10 @@ TOptionsCommon::TOptionsCommon()
         .RequiredArgument("FILE")
         .StoreResult(&StorageConfig);
 
+    Opts.AddLongOption("features-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&FeaturesConfig);
+
     Opts.AddLongOption("node-registration-attempts")
         .RequiredArgument("NUM")
         .DefaultValue(NodeRegistrationMaxAttempts)
