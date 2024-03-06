@@ -47,6 +47,8 @@ private:
     TSocket Socket;
     TFileHandle Device;
 
+    TAtomic ShouldStop = 0;
+
 public:
     TDeviceConnection(
             ILoggingServicePtr logging,
@@ -58,6 +60,11 @@ public:
         , DeviceName(std::move(deviceName))
         , Timeout(timeout)
     {}
+
+    ~TDeviceConnection()
+    {
+        Stop();
+    }
 
     void Start() override
     {
@@ -71,6 +78,10 @@ public:
 
     void Stop() override
     {
+        if (AtomicSwap(&ShouldStop, 1) == 1) {
+            return;
+        }
+
         DisconnectDevice();
 
         ISimpleThread::Join();

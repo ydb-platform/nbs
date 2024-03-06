@@ -436,6 +436,10 @@ void TBootstrap::Start()
 
 void TBootstrap::Stop()
 {
+    if (NbdDevice) {
+        NbdDevice->Stop();
+    }
+
     if (Options->DeviceMode == EDeviceMode::Endpoint) {
         auto ctx = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TStopEndpointRequest>();
@@ -445,10 +449,6 @@ void TBootstrap::Stop()
             std::move(ctx),
             std::move(request));
         CheckError(future.GetValue(WaitTimeout));
-    }
-
-    if (NbdDevice) {
-        NbdDevice->Stop();
     }
 
     if (NbdServer) {
