@@ -140,10 +140,12 @@ public:
 
     bool FindBlocksInBlobsIndex(
         IBlocksIndexVisitor& visitor,
+        const ui32 maxBlocksInBlob,
         const TBlockRange32& blockRange);
 
     bool FindBlocksInBlobsIndex(
         IBlocksIndexVisitor& visitor,
+        const ui32 maxBlocksInBlob,
         const TPartialBlobId& blobId);
 
     EBlobIndexScanProgress FindBlocksInBlobsIndex(

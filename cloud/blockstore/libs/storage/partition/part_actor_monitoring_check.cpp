@@ -165,7 +165,10 @@ bool TPartitionActor::PrepareCheckIndex(
     );
 
     TCheckIndexVisitor<false> visitorBlobs(args);
-    ready &= db.FindBlocksInBlobsIndex(visitorBlobs, args.BlockRange);
+    ready &= db.FindBlocksInBlobsIndex(
+        visitorBlobs,
+        State->GetMaxBlocksInBlob(),
+        args.BlockRange);
 
     return ready;
 }
