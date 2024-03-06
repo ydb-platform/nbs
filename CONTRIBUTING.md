@@ -30,4 +30,4 @@ It is enough to provide us such notification once.
 
 ## Other questions
 
-If you have any questions, please mail us at qkrorlqr@yandex-team.ru.
+If you have any questions, please mail us at thinkingwhat@yandex.ru.
