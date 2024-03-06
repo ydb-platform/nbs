@@ -59,7 +59,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDescribeBlobVisitor final
-    : public IBlocksIndexVisitor
+    : public IExtendedBlocksIndexVisitor
 {
 private:
     TTxPartition::TDescribeBlob& Args;
@@ -73,17 +73,17 @@ public:
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui32 checksum) override
     {
         Y_UNUSED(blobId);
 
-        Args.MarkBlock(blockIndex, commitId, blobOffset);
+        Args.MarkBlock(blockIndex, commitId, blobOffset, checksum);
         return true;
     }
 };
 
 }   // namespace
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -307,6 +307,7 @@ void TPartitionActor::CompleteDescribeBlob(
                 TABLER() {
                     TABLED() { out << "# Block"; }
                     TABLED() { out << "Offset"; }
+                    TABLED() { out << "Checksum"; }
                 }
             }
             TABLEBODY() {
@@ -322,6 +323,9 @@ void TPartitionActor::CompleteDescribeBlob(
                         }
                         TABLED() {
                             DumpBlobOffset(out, mark.BlobOffset);
+                        }
+                        TABLED() {
+                            out << mark.Checksum;
                         }
                     }
                 };
