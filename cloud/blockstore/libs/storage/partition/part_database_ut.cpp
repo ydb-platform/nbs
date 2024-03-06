@@ -15,20 +15,17 @@ TString GetBlockContent(char fill)
     return TString(DefaultBlockSize, fill);
 }
 
+TString CommitId2Str(ui64 commitId)
+{
+    return commitId == InvalidCommitId ? "x" : ToString(commitId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestBlockVisitor final
     : public IBlocksIndexVisitor
 {
     TStringBuilder Result;
-
-    void MarkBlock(ui32 blockIndex, ui64 commitId)
-    {
-        if (Result) {
-            Result << " ";
-        }
-        Result << "#" << blockIndex << ":" << commitId;
-    }
 
     bool Visit(
         ui32 blockIndex,
@@ -39,7 +36,33 @@ struct TTestBlockVisitor final
         Y_UNUSED(blobId);
         Y_UNUSED(blobOffset);
 
-        MarkBlock(blockIndex, commitId);
+        if (Result) {
+            Result << " ";
+        }
+        Result << "#" << blockIndex << ":" << CommitId2Str(commitId);
+        return true;
+    }
+};
+
+struct TTestBlockVisitorWithBlobOffset final
+    : public IBlocksIndexVisitor
+{
+    TStringBuilder Result;
+
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset) override
+    {
+        Y_UNUSED(blobId);
+
+        if (Result) {
+            Result << " ";
+        }
+        Result << "#" << blockIndex
+            << ":" << CommitId2Str(commitId)
+            << ":" << blobOffset;
         return true;
     }
 };
@@ -806,6 +829,82 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 ));
                 UNIT_ASSERT_VALUES_EQUAL(visitor.ReadCount, 2);
             }
+        });
+    }
+
+    Y_UNIT_TEST(ShouldUseSkipMaskInFindBlocksInBlobsIndex)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            db.InitSchema();
+        });
+
+        TPartialBlobId blob1;
+        auto range1 = TBlockRange32::MakeClosedInterval(100, 120);
+        TBlockMask skipMask1;
+        skipMask1.Set(8, 14);
+        skipMask1.Set(21, skipMask1.Size());
+
+        TPartialBlobId blob2;
+        auto range2 = TBlockRange32::MakeClosedInterval(110, 140);
+        TBlockMask skipMask2;
+        skipMask2.Set(10, 20);
+        skipMask2.Set(31, skipMask2.Size());
+
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            NProto::TBlobMeta meta;
+
+            auto* mb = meta.MutableMergedBlocks();
+            mb->SetStart(range1.Start);
+            mb->SetEnd(range1.End);
+            mb->SetSkipped(5);
+            blob1 = executor.MakeBlobId();
+            db.WriteBlobMeta(blob1, meta);
+            db.WriteMergedBlocks(blob1, range1, skipMask1);
+        });
+
+        executor.WriteTx([&] (TPartitionDatabase db) {
+            NProto::TBlobMeta meta;
+
+            auto* mb = meta.MutableMergedBlocks();
+            mb->SetStart(range2.Start);
+            mb->SetEnd(range2.End);
+            mb->SetSkipped(10);
+            blob2 = executor.MakeBlobId();
+            db.WriteBlobMeta(blob2, meta);
+            db.WriteMergedBlocks(blob2, range2, skipMask2);
+        });
+
+        executor.ReadTx([&] (TPartitionDatabase db) {
+            TTestBlockVisitorWithBlobOffset visitor;
+            db.FindBlocksInBlobsIndex(
+                visitor,
+                MaxBlocksCount,
+                blob1);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "#100:2:0 #101:2:1 #102:2:2 #103:2:3 #104:2:4 #105:2:5 #106:2:6"
+                " #107:2:7 #108:x:65535 #109:x:65535 #110:x:65535 #111:x:65535"
+                " #112:x:65535 #113:x:65535 #114:2:8 #115:2:9 #116:2:10"
+                " #117:2:11 #118:2:12 #119:2:13 #120:2:14",
+                visitor.Result);
+        });
+
+        executor.ReadTx([&] (TPartitionDatabase db) {
+            TTestBlockVisitorWithBlobOffset visitor;
+            db.FindBlocksInBlobsIndex(
+                visitor,
+                MaxBlocksCount,
+                blob2);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "#110:3:0 #111:3:1 #112:3:2 #113:3:3 #114:3:4 #115:3:5 #116:3:6"
+                " #117:3:7 #118:3:8 #119:3:9 #120:x:65535 #121:x:65535"
+                " #122:x:65535 #123:x:65535 #124:x:65535 #125:x:65535"
+                " #126:x:65535 #127:x:65535 #128:x:65535 #129:x:65535"
+                " #130:3:10 #131:3:11 #132:3:12 #133:3:13 #134:3:14 #135:3:15"
+                " #136:3:16 #137:3:17 #138:3:18 #139:3:19 #140:3:20",
+                visitor.Result);
         });
     }
 }

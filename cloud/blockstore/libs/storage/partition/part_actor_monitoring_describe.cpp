@@ -138,23 +138,23 @@ void TPartitionActor::CompleteDescribeRange(
 {
     using namespace NMonitoringUtils;
 
-    auto comparer = [] (
+    auto cmp = [] (
         const TTxPartition::TDescribeRange::TBlockMark& l,
         const TTxPartition::TDescribeRange::TBlockMark& r)
     {
-        if (l.BlockIndex == r.BlockIndex) {
-            if (l.CommitId == r.CommitId) {
-                return l.BlobOffset < r.BlobOffset;
-            } else {
-                // last entries goes first
-                return l.CommitId > r.CommitId;
-            }
-        } else {
+        if (l.BlockIndex != r.BlockIndex) {
             return l.BlockIndex < r.BlockIndex;
         }
+
+        if (l.CommitId != r.CommitId) {
+            // last entries go first
+            return l.CommitId > r.CommitId;
+        }
+
+        return l.BlobOffset < r.BlobOffset;
     };
 
-    Sort(args.BlockMarks, comparer);
+    Sort(args.BlockMarks, cmp);
 
     TStringStream out;
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
@@ -275,7 +275,10 @@ bool TPartitionActor::PrepareDescribeBlob(
     TPartitionDatabase db(tx.DB);
 
     TDescribeBlobVisitor visitor(args);
-    return db.FindBlocksInBlobsIndex(visitor, args.BlobId);
+    return db.FindBlocksInBlobsIndex(
+        visitor,
+        State->GetMaxBlocksInBlob(),
+        args.BlobId);
 }
 
 void TPartitionActor::ExecuteDescribeBlob(
@@ -307,10 +310,19 @@ void TPartitionActor::CompleteDescribeBlob(
                 }
             }
             TABLEBODY() {
-                auto dump = [&] (const TTxPartition::TDescribeBlob::TBlockMark& mark) {
+                using TMark = TTxPartition::TDescribeBlob::TBlockMark;
+                auto dump = [&] (const TMark& mark) {
                     TABLER() {
-                        TABLED_CLASS("view") { DumpBlockIndex(out, *Info(), mark.BlockIndex, mark.CommitId); }
-                        TABLED() { DumpBlobOffset(out, mark.BlobOffset); }
+                        TABLED_CLASS("view") {
+                            DumpBlockIndex(
+                                out,
+                                *Info(),
+                                mark.BlockIndex,
+                                mark.CommitId);
+                        }
+                        TABLED() {
+                            DumpBlobOffset(out, mark.BlobOffset);
+                        }
                     }
                 };
 
