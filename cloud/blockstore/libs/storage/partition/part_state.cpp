@@ -620,8 +620,10 @@ void TPartitionState::InitUnconfirmedBlobs(
     TCommitIdToBlobUniqueIdWithRange blobs)
 {
     UnconfirmedBlobs = std::move(blobs);
-    for (const auto& entry: UnconfirmedBlobs) {
-        auto commitId = entry.first;
+    UnconfirmedBlobCount = 0;
+
+    for (const auto& [commitId, blobs]: UnconfirmedBlobs) {
+        UnconfirmedBlobCount += blobs.size();
         CommitQueue.AcquireBarrier(commitId);
         GarbageQueue.AcquireBarrier(commitId);
     }
@@ -635,6 +637,7 @@ void TPartitionState::WriteUnconfirmedBlob(
     auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
     db.WriteUnconfirmedBlob(blobId, blob);
     UnconfirmedBlobs[commitId].push_back(blob);
+    UnconfirmedBlobCount++;
 }
 
 void TPartitionState::ConfirmedBlobsAdded(
@@ -646,12 +649,17 @@ void TPartitionState::ConfirmedBlobsAdded(
         return;
     }
 
-    for (const auto& blob: it->second) {
+    auto& blobs = it->second;
+    const auto blobCount = blobs.size();
+
+    for (const auto& blob: blobs) {
         auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
         db.DeleteUnconfirmedBlob(blobId);
     }
 
     ConfirmedBlobs.erase(it);
+    Y_DEBUG_ABORT_UNLESS(ConfirmedBlobCount >= blobCount);
+    ConfirmedBlobCount -= blobCount;
 
     GarbageQueue.ReleaseBarrier(commitId);
     CommitQueue.ReleaseBarrier(commitId);
@@ -662,8 +670,15 @@ void TPartitionState::BlobsConfirmed(ui64 commitId)
     auto it = UnconfirmedBlobs.find(commitId);
     Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
 
-    ConfirmedBlobs[commitId] = std::move(it->second);
+    auto& blobs = it->second;
+    const auto blobCount = blobs.size();
+
+    ConfirmedBlobs[commitId] = std::move(blobs);
+    ConfirmedBlobCount += blobCount;
+
     UnconfirmedBlobs.erase(it);
+    Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
+    UnconfirmedBlobCount -= blobCount;
 }
 
 void TPartitionState::ConfirmBlobs(
@@ -687,7 +702,10 @@ void TPartitionState::ConfirmBlobs(
     }
 
     ConfirmedBlobs = std::move(UnconfirmedBlobs);
+    ConfirmedBlobCount = UnconfirmedBlobCount;
+
     UnconfirmedBlobs.clear();
+    UnconfirmedBlobCount = 0;
 }
 
 #define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)                           \
