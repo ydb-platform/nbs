@@ -25,7 +25,6 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/string/join.h>
 #include <util/system/fs.h>
@@ -756,7 +755,7 @@ TVector<TDeviceClient::TSessionInfo> TDiskAgentState::GetReaderSessions(
     return DeviceClient->GetReaderSessions(uuid);
 }
 
-void TDiskAgentState::AcquireDevices(
+bool TDiskAgentState::AcquireDevices(
     const TVector<TString>& uuids,
     const TString& clientId,
     TInstant now,
@@ -776,9 +775,7 @@ void TDiskAgentState::AcquireDevices(
 
     CheckError(error);
 
-    if (updated) {
-        UpdateSessionCache(*DeviceClient);
-    }
+    return updated;
 }
 
 void TDiskAgentState::ReleaseDevices(
@@ -792,8 +789,6 @@ void TDiskAgentState::ReleaseDevices(
         clientId,
         diskId,
         volumeGeneration));
-
-    UpdateSessionCache(*DeviceClient);
 }
 
 void TDiskAgentState::DisableDevice(const TString& uuid)
@@ -826,37 +821,6 @@ void TDiskAgentState::StopTarget()
 
     if (RdmaTarget) {
         RdmaTarget->Stop();
-    }
-}
-
-void TDiskAgentState::UpdateSessionCache(TDeviceClient& client) const
-{
-    const auto path = AgentConfig->GetCachedSessionsPath();
-
-    if (path.empty()) {
-        return;
-    }
-
-    try {
-        auto sessions = client.GetSessions();
-
-        NProto::TDiskAgentDeviceSessionCache proto;
-        proto.MutableSessions()->Assign(
-            std::make_move_iterator(sessions.begin()),
-            std::make_move_iterator(sessions.end())
-        );
-
-        const TString tmpPath {path + ".tmp"};
-
-        SerializeToTextFormat(proto, tmpPath);
-
-        if (!NFs::Rename(tmpPath, path)) {
-            const auto ec = errno;
-            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
-        }
-    } catch (...) {
-        STORAGE_ERROR("Can't update session cache: " << CurrentExceptionMessage());
-        ReportDiskAgentSessionCacheUpdateError();
     }
 }
 
@@ -926,6 +890,11 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             << CurrentExceptionMessage());
         ReportDiskAgentSessionCacheRestoreError();
     }
+}
+
+TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
+{
+    return DeviceClient->GetSessions();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
