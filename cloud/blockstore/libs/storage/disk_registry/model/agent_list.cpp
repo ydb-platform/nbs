@@ -1,6 +1,7 @@
 #include "agent_list.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
 
@@ -238,7 +239,7 @@ void TAgentList::UpdateDevice(
     TInstant timestamp,
     const NProto::TDeviceConfig& oldConfig)
 {
-    Y_DEBUG_ABORT_UNLESS(
+    STORAGE_CHECK_PRECONDITION(
         device.GetState() == NProto::DEVICE_STATE_ERROR ||
         device.GetState() == NProto::DEVICE_STATE_ONLINE);
 
