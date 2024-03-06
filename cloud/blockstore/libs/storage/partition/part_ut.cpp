@@ -9589,6 +9589,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
@@ -9625,6 +9627,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
         }
 
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetConfirmedBlobCount());
+        }
+
         // but we can work with other ranges
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
@@ -9648,6 +9657,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(11))
         );
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+        }
     }
 
     Y_UNIT_TEST(ShouldConfirmBlobs)
