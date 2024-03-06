@@ -605,4 +605,13 @@ void TAgentList::SetDiskRegistryAgentListParams(
     DiskRegistryAgentListParams[agentId] = params;
 }
 
+TVector<TString> TAgentList::GetAgentIdsWithOverriddenListParams() const
+{
+    TVector<TAgentId> agentIds(Reserve(DiskRegistryAgentListParams.size()));
+    for (const auto& [agentId, _]: DiskRegistryAgentListParams) {
+        agentIds.push_back(agentId);
+    }
+    return agentIds;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
