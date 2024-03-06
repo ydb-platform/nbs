@@ -669,9 +669,17 @@ bool TPartitionDatabase::ReadBlockMask(
     return true;
 }
 
-// TODO: pass and use skipMask
-static bool FindBlocksInBlobIndex(
+enum class EIndexProcResult
+{
+    Ok,
+    NotReady,
+    Interrupted,
+};
+
+static EIndexProcResult FindBlocksInBlobIndex(
+    TPartitionDatabase& db,
     IBlocksIndexVisitor& visitor,
+    const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId,
     const NProto::TBlobMeta& blobMeta,
     const TBlockMask& blockMask,
@@ -701,7 +709,7 @@ static bool FindBlocksInBlobIndex(
             for (ui32 blockIndex: mixedBlocks.GetBlocks()) {
                 if (blockRange.Contains(blockIndex)) {
                     if (!visit(blockIndex, commitId, blobId, blobOffset)) {
-                        return false;    // interrupted
+                        return EIndexProcResult::Interrupted;
                     }
                 }
                 ++blobOffset;
@@ -717,7 +725,7 @@ static bool FindBlocksInBlobIndex(
 
                 if (blockRange.Contains(blockIndex)) {
                     if (!visit(blockIndex, commitId, blobId, blobOffset)) {
-                        return false;    // interrupted
+                        return EIndexProcResult::Interrupted;
                     }
                 }
                 ++blobOffset;
@@ -726,29 +734,84 @@ static bool FindBlocksInBlobIndex(
         }
     } else if (blobMeta.HasMergedBlocks()) {
         const auto& mergedBlocks = blobMeta.GetMergedBlocks();
+        const auto blobRange = TBlockRange32::MakeClosedInterval(
+            mergedBlocks.GetStart(),
+            mergedBlocks.GetEnd());
+        if (!blobRange.Overlaps(blockRange)) {
+            return EIndexProcResult::Ok;
+        }
+        const auto intersection = blobRange.Intersect(blockRange);
 
-        // if there is no intersection - just skip range
-        ui32 start = Max(blockRange.Start, mergedBlocks.GetStart());
-        ui32 end = Min(blockRange.End, mergedBlocks.GetEnd());
+        struct TMark
+        {
+            ui64 CommitId = InvalidCommitId;
+            ui16 BlobOffset = InvalidBlobOffset;
+        };
 
-        if (start <= end) {
-            // every block shares the same commitId
-            ui64 commitId = blobId.CommitId();
+        struct TVisitor final
+            : public IBlocksIndexVisitor
+        {
+            TBlockRange32 Intersection;
+            TPartialBlobId BlobId;
 
-            for (ui32 blockIndex = start; blockIndex <= end; ++blockIndex) {
-                ui16 blobOffset = blockIndex - mergedBlocks.GetStart();
-                if (!visit(blockIndex, commitId, blobId, blobOffset)) {
-                    return false;    // interrupted
+            TVector<TMark> Marks;
+
+            TVisitor(TBlockRange32 intersection, TPartialBlobId blobId)
+                : Intersection(intersection)
+                , BlobId(blobId)
+                , Marks(intersection.Size())
+            {
+            }
+
+            bool Visit(
+                ui32 blockIndex,
+                ui64 commitId,
+                const TPartialBlobId& blobId,
+                ui16 blobOffset) override
+            {
+                if (blobId == BlobId) {
+                    Marks[blockIndex - Intersection.Start] = {
+                        commitId,
+                        blobOffset,
+                    };
                 }
+
+                return true;
+            }
+        } helper(intersection, blobId);
+
+        // just using BlobMeta isn't enough - we need SkipMask to properly
+        // iterate blocks belonging to this merged blob
+        const bool ready = db.FindMergedBlocks(
+            helper,
+            blockRange,
+            true,   // precharge
+            maxBlocksInBlob,
+            Max<ui64>());
+
+        if (!ready) {
+            return EIndexProcResult::NotReady;
+        }
+
+        for (ui32 i = 0; i < intersection.Size(); ++i) {
+            const auto res = visitor.Visit(
+                intersection.Start + i,
+                helper.Marks[i].CommitId,
+                blobId,
+                helper.Marks[i].BlobOffset);
+
+            if (!res) {
+                return EIndexProcResult::Interrupted;
             }
         }
     }
 
-    return true;
+    return EIndexProcResult::Ok;
 }
 
 bool TPartitionDatabase::FindBlocksInBlobsIndex(
     IBlocksIndexVisitor& visitor,
+    const ui32 maxBlocksInBlob,
     const TBlockRange32& blockRange)
 {
     using TTable = TPartitionSchema::BlobsIndex;
@@ -771,15 +834,19 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
         auto blockMask = BlockMaskFromString(
             it.GetValueOrDefault<TTable::BlockMask>());
 
-        bool shouldContinue = FindBlocksInBlobIndex(
+        const auto res = FindBlocksInBlobIndex(
+            *this,
             visitor,
+            maxBlocksInBlob,
             blobId,
             blobMeta,
             blockMask,
             blockRange);
 
-        if (!shouldContinue) {
-            return true;    // interrupted
+        switch (res) {
+            case EIndexProcResult::Ok: break;
+            case EIndexProcResult::NotReady: return false;
+            case EIndexProcResult::Interrupted: return true;
         }
 
         if (!it.Next()) {
@@ -792,6 +859,7 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
 
 bool TPartitionDatabase::FindBlocksInBlobsIndex(
     IBlocksIndexVisitor& visitor,
+    const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId)
 {
     using TTable = TPartitionSchema::BlobsIndex;
@@ -810,12 +878,20 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
         auto blockMask = BlockMaskFromString(
             it.GetValueOrDefault<TTable::BlockMask>());
 
-        FindBlocksInBlobIndex(
+        const auto res = FindBlocksInBlobIndex(
+            *this,
             visitor,
+            maxBlocksInBlob,
             blobId,
             blobMeta,
             blockMask,
             TBlockRange32::Max());
+
+        switch (res) {
+            case EIndexProcResult::Ok: break;
+            case EIndexProcResult::NotReady: return false;
+            case EIndexProcResult::Interrupted: return true;
+        }
     }
 
     return true;
