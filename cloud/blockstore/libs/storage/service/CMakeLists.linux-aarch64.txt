@@ -46,6 +46,7 @@ target_sources(libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_change_disk_device.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_change_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_check_blob.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_cms.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_compact_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_configure_volume_balancer.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_create_disk_from_devices.cpp
