@@ -135,6 +135,10 @@ private:
                 TEvDiskRegistry::TEvDeallocateCheckpointRequest,
                 HandleDeallocateCheckpoint);
 
+            HFunc(
+                TEvService::TEvCmsActionRequest,
+                HandleCmsAction);
+
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
             default:
@@ -950,6 +954,17 @@ private:
             *ev,
             std::make_unique<
                 TEvDiskRegistry::TEvDeallocateCheckpointResponse>());
+    }
+
+    void HandleCmsAction(
+        const TEvService::TEvCmsActionRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvService::TEvCmsActionResponse>());
     }
 };
 

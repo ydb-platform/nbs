@@ -168,6 +168,26 @@ public:
         Files.clear();
         Options.Layout.clear();
     }
+
+    TSimpleStats GetStats(ui64 expectedCompleted) const
+    {
+        // Without I/O, stats are synced every second and only if there is a 
+        // pending GetStats call. The first call to GetStats might not bring the
+        // latest stats; therefore, you need at least two calls so that the AIO
+        // backend will sync the stats.
+
+        TSimpleStats prevStats;
+        TSimpleStats stats;
+        for (int i = 0; i != 5; ++i) {
+            stats = Server->GetStats(prevStats);
+            if (stats.Completed == expectedCompleted) {
+                break;
+            }
+            Sleep(TDuration::Seconds(1));
+        }
+
+        return stats;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -252,8 +272,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT_VALUES_EQUAL(expectedData, buffer);
         }
 
-        TSimpleStats prevStats;
-        auto stats = Server->GetStats(prevStats);
+        const auto stats = GetStats(sectorCount);
 
         UNIT_ASSERT_VALUES_EQUAL(0, stats.CompFailed);
         UNIT_ASSERT_VALUES_EQUAL(0, stats.SubFailed);
@@ -422,8 +441,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         WaitAll(futures).Wait();
 
-        TSimpleStats prevStats;
-        auto stats = Server->GetStats(prevStats);
+        const auto stats = GetStats(requestCount);
 
         UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Submitted);
         UNIT_ASSERT_VALUES_EQUAL(requestCount, stats.Completed);

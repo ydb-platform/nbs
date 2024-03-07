@@ -3,8 +3,8 @@
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -55,7 +55,9 @@ public:
     TDeviceClient(TDeviceClient&&) noexcept = delete;
     TDeviceClient& operator=(TDeviceClient&&) noexcept = delete;
 
-    NCloud::NProto::TError AcquireDevices(
+    // returns `true` if any session has been updated
+    // (excluding `LastActivityTs` field) or a new one has been added.
+    TResultOrError<bool> AcquireDevices(
         const TVector<TString>& uuids,
         const TString& clientId,
         TInstant now,

@@ -39,7 +39,6 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(ws.MountSeqNumber);
-                session.SetLastActivityTs(ws.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -52,7 +51,6 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(rs.MountSeqNumber);
-                session.SetLastActivityTs(rs.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -74,7 +72,7 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
     return r;
 }
 
-NCloud::NProto::TError TDeviceClient::AcquireDevices(
+TResultOrError<bool> TDeviceClient::AcquireDevices(
     const TVector<TString>& uuids,
     const TString& clientId,
     TInstant now,
@@ -124,6 +122,8 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         }
     }
 
+    bool somethingHasChanged = false;
+
     // acquire devices
     for (const auto& uuid: uuids) {
         TDeviceState& ds = *GetDeviceState(uuid);
@@ -138,6 +138,10 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
             }
         );
 
+        if (ds.DiskId != diskId || ds.VolumeGeneration != volumeGeneration) {
+            somethingHasChanged = true;
+        }
+
         ds.DiskId = diskId;
         ds.VolumeGeneration = volumeGeneration;
 
@@ -146,12 +150,16 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 ds.WriterSession = {};
                 STORAGE_INFO("Device %s was released by client %s for writing.",
                     uuid.Quote().c_str(), clientId.c_str());
+
+                somethingHasChanged = true;
             }
 
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
                 STORAGE_INFO("Device %s was acquired by client %s for reading.",
                     uuid.Quote().c_str(), clientId.c_str());
+
+                somethingHasChanged = true;
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
@@ -160,11 +168,19 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
                 ds.ReaderSessions.erase(s);
                 STORAGE_INFO("Device %s was released by client %s for reading.",
                     uuid.Quote().c_str(), clientId.c_str());
+
+                somethingHasChanged = true;
             }
 
             if (ds.WriterSession.Id != clientId) {
                 STORAGE_INFO("Device %s was acquired by client %s for writing.",
                     uuid.Quote().c_str(), clientId.c_str());
+
+                somethingHasChanged = true;
+            }
+
+            if (ds.WriterSession.MountSeqNumber != mountSeqNumber) {
+                somethingHasChanged = true;
             }
 
             ds.WriterSession.Id = clientId;
@@ -174,7 +190,7 @@ NCloud::NProto::TError TDeviceClient::AcquireDevices(
         }
     }
 
-    return {};
+    return {somethingHasChanged};
 }
 
 NCloud::NProto::TError TDeviceClient::ReleaseDevices(

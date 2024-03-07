@@ -754,6 +754,15 @@ NProto::TError TDiskRegistryState::ValidateAgent(
                 << "all agent devices should come from the same rack, mismatch: "
                 << rack << " != " << device.GetRack());
         }
+
+        if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
+            device.GetState() != NProto::DEVICE_STATE_ERROR)
+        {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "unexpected state of the device " << device.GetDeviceUUID()
+                << ": " << NProto::EDeviceState_Name(device.GetState())
+                << " (" << static_cast<ui32>(device.GetState()) << ")");
+        }
     }
 
     return {};

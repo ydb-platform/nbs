@@ -74,4 +74,22 @@ TString ReportCriticalEvent(
     STORAGE_CRITICAL_EVENTS(STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
 
+////////////////////////////////////////////////////////////////////////////////
+
+void ReportPreconditionFailed(
+    TStringBuf file,
+    int line,
+    TStringBuf func,
+    TStringBuf expr)
+{
+    ReportCriticalEvent(
+        "PreconditionFailed",
+        TStringBuilder()
+            << file << ":" << line
+            << " " << func << "(): requirement " << expr
+            << " failed",
+        true    // verifyDebug
+    );
+}
+
 }   // namespace NCloud
