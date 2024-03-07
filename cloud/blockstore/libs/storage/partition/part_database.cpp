@@ -678,7 +678,7 @@ enum class EIndexProcResult
 
 static EIndexProcResult FindBlocksInBlobIndex(
     TPartitionDatabase& db,
-    IBlocksIndexVisitor& visitor,
+    IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId,
     const NProto::TBlobMeta& blobMeta,
@@ -695,7 +695,14 @@ static EIndexProcResult FindBlocksInBlobIndex(
             ? InvalidBlobOffset
             : blobOffset;
 
-        return visitor.Visit(blockIndex, commitId, blobId, maskedBlobOffset);
+        return visitor.Visit(
+            blockIndex,
+            commitId,
+            blobId,
+            maskedBlobOffset,
+            blobOffset < blobMeta.BlockChecksumsSize()
+                ? blobMeta.GetBlockChecksums(blobOffset)
+                : 0);
     };
 
     if (blobMeta.HasMixedBlocks()) {
@@ -794,7 +801,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
         }
 
         for (ui32 i = 0; i < intersection.Size(); ++i) {
-            const auto res = visitor.Visit(
+            const auto res = visit(
                 intersection.Start + i,
                 helper.Marks[i].CommitId,
                 blobId,
@@ -810,7 +817,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
 }
 
 bool TPartitionDatabase::FindBlocksInBlobsIndex(
-    IBlocksIndexVisitor& visitor,
+    IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TBlockRange32& blockRange)
 {
@@ -858,7 +865,7 @@ bool TPartitionDatabase::FindBlocksInBlobsIndex(
 }
 
 bool TPartitionDatabase::FindBlocksInBlobsIndex(
-    IBlocksIndexVisitor& visitor,
+    IExtendedBlocksIndexVisitor& visitor,
     const ui32 maxBlocksInBlob,
     const TPartialBlobId& blobId)
 {

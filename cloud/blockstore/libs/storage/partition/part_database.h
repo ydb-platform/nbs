@@ -139,12 +139,12 @@ public:
         TMaybe<TBlockMask>& blockMask);
 
     bool FindBlocksInBlobsIndex(
-        IBlocksIndexVisitor& visitor,
+        IExtendedBlocksIndexVisitor& visitor,
         const ui32 maxBlocksInBlob,
         const TBlockRange32& blockRange);
 
     bool FindBlocksInBlobsIndex(
-        IBlocksIndexVisitor& visitor,
+        IExtendedBlocksIndexVisitor& visitor,
         const ui32 maxBlocksInBlob,
         const TPartialBlobId& blobId);
 

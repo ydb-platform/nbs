@@ -45,7 +45,7 @@ struct TTestBlockVisitor final
 };
 
 struct TTestBlockVisitorWithBlobOffset final
-    : public IBlocksIndexVisitor
+    : public IExtendedBlocksIndexVisitor
 {
     TStringBuilder Result;
 
@@ -53,7 +53,8 @@ struct TTestBlockVisitorWithBlobOffset final
         ui32 blockIndex,
         ui64 commitId,
         const TPartialBlobId& blobId,
-        ui16 blobOffset) override
+        ui16 blobOffset,
+        ui32 checksum) override
     {
         Y_UNUSED(blobId);
 
@@ -63,6 +64,9 @@ struct TTestBlockVisitorWithBlobOffset final
         Result << "#" << blockIndex
             << ":" << CommitId2Str(commitId)
             << ":" << blobOffset;
+        if (checksum) {
+            Result << "##" << checksum;
+        }
         return true;
     }
 };
@@ -870,6 +874,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             mb->SetStart(range2.Start);
             mb->SetEnd(range2.End);
             mb->SetSkipped(10);
+            meta.AddBlockChecksums(111);
+            meta.AddBlockChecksums(222);
+            meta.AddBlockChecksums(333);
             blob2 = executor.MakeBlobId();
             db.WriteBlobMeta(blob2, meta);
             db.WriteMergedBlocks(blob2, range2, skipMask2);
@@ -898,12 +905,12 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 blob2);
 
             UNIT_ASSERT_VALUES_EQUAL(
-                "#110:3:0 #111:3:1 #112:3:2 #113:3:3 #114:3:4 #115:3:5 #116:3:6"
-                " #117:3:7 #118:3:8 #119:3:9 #120:x:65535 #121:x:65535"
-                " #122:x:65535 #123:x:65535 #124:x:65535 #125:x:65535"
-                " #126:x:65535 #127:x:65535 #128:x:65535 #129:x:65535"
-                " #130:3:10 #131:3:11 #132:3:12 #133:3:13 #134:3:14 #135:3:15"
-                " #136:3:16 #137:3:17 #138:3:18 #139:3:19 #140:3:20",
+                "#110:3:0##111 #111:3:1##222 #112:3:2##333 #113:3:3 #114:3:4"
+                " #115:3:5 #116:3:6 #117:3:7 #118:3:8 #119:3:9 #120:x:65535"
+                " #121:x:65535 #122:x:65535 #123:x:65535 #124:x:65535"
+                " #125:x:65535 #126:x:65535 #127:x:65535 #128:x:65535"
+                " #129:x:65535 #130:3:10 #131:3:11 #132:3:12 #133:3:13 #134:3:14"
+                " #135:3:15 #136:3:16 #137:3:17 #138:3:18 #139:3:19 #140:3:20",
                 visitor.Result);
         });
     }

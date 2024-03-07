@@ -82,4 +82,16 @@ struct IBlocksIndexVisitor
         ui16 blobOffset) = 0;
 };
 
+struct IExtendedBlocksIndexVisitor
+{
+    virtual ~IExtendedBlocksIndexVisitor() = default;
+
+    virtual bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 checksum) = 0;
+};
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
