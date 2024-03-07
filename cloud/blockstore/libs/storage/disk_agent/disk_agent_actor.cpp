@@ -123,8 +123,10 @@ void TDiskAgentActor::HandlePoisonPill(
         StatsActor = {};
     }
 
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Stop RDMA target");
     State->StopTarget();
 
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Reject secure erase pending requests");
     for (auto& [uuid, pendingRequests]: SecureErasePendingRequests) {
         for (auto& requestInfo: pendingRequests) {
             NCloud::Reply(
@@ -136,6 +138,7 @@ void TDiskAgentActor::HandlePoisonPill(
         }
     }
 
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Die");
     Die(ctx);
 }
 
