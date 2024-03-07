@@ -348,6 +348,10 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
+    bool IsAddingUnconfirmedBlobsFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
