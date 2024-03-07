@@ -553,15 +553,15 @@ func contains(collection []string, target string) bool {
 	return false
 }
 
-func (g *ConfigGenerator) Generate(ctx context.Context, whileListCluster []string) error {
+func (g *ConfigGenerator) Generate(ctx context.Context, whiteListCluster []string) error {
 	g.LogInfo(
 		ctx,
 		"Start generation for service: %v",
 		g.spec.ServiceSpec.ServiceName)
 
-	genAllClusters := len(whileListCluster) == 0
+	genAllClusters := len(whiteListCluster) == 0
 	for cluster, clusterConfig := range g.spec.ServiceSpec.Clusters {
-		if !genAllClusters && !contains(whileListCluster, cluster) {
+		if !genAllClusters && !contains(whiteListCluster, cluster) {
 			continue
 		}
 		for _, zone := range clusterConfig.Zones {
