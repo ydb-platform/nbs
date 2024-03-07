@@ -24,7 +24,7 @@ bool TChecksumRangeActorCompanion::IsFinished() {
     return Finished;
 }
 
-TVector<ui64> TChecksumRangeActorCompanion::GetChecksums() {
+const TVector<ui64>& TChecksumRangeActorCompanion::GetChecksums() {
     return Checksums;
 }
 

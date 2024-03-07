@@ -35,7 +35,6 @@ private:
     TGuardedSgList SgList;
     NProto::TError Error;
 
-    TVector<ui64> Checksums;
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
     TInstant ReadStartTs;

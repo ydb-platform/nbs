@@ -13,6 +13,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TChecksumRangeActorCompanion
 {
+private:
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
 
@@ -20,7 +21,6 @@ class TChecksumRangeActorCompanion
     bool Finished = false;
     TVector<ui64> Checksums;
     NProto::TError Error;
-
 
 public:
     TChecksumRangeActorCompanion(
@@ -34,7 +34,7 @@ public:
         const NActors::TActorContext& ctx);
 
     bool IsFinished();
-    TVector<ui64> GetChecksums();
+    const TVector<ui64>& GetChecksums();
     NProto::TError GetError();
 
 private:

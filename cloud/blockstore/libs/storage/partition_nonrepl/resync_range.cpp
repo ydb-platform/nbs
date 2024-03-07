@@ -50,13 +50,14 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
 {
+    const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
     THashMap<ui64, ui32> checksumCount;
     ui32 majorCount = 0;
     ui64 majorChecksum = 0;
     int majorIdx = 0;
 
-    for (size_t i = 0; i < Checksums.size(); i++) {
-        ui64 checksum = Checksums[i];
+    for (size_t i = 0; i < checksums.size(); i++) {
+        ui64 checksum = checksums[i];
         if (++checksumCount[checksum] > majorCount) {
             majorCount = checksumCount[checksum];
             majorChecksum = checksum;
@@ -79,8 +80,8 @@ void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
         majorCount,
         Replicas.size());
 
-    for (size_t i = 0; i < Checksums.size(); i++) {
-        ui64 checksum = Checksums[i];
+    for (size_t i = 0; i < checksums.size(); i++) {
+        ui64 checksum = checksums[i];
         if (checksum != majorChecksum) {
             LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
                 "[%s] Replica %lu block range %s checksum %lu differs from majority checksum %lu",
@@ -241,7 +242,6 @@ void TResyncRangeActor::HandleChecksumResponse(
     }
 
     ChecksumDuration = ctx.Now() - ChecksumStartTs;
-    Checksums = ChecksumRangeActorCompanion.GetChecksums();
     CompareChecksums(ctx);
 }
 
