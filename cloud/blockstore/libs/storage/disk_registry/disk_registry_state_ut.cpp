@@ -11141,9 +11141,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
     Y_UNIT_TEST(ShouldPullInLegacyDiskErrorUserNotifications)
     {
-        TDiskRegistryStateBuilder builder;
-        builder.ErrorNotifications.assign({"disk0", "disk1", "disk2"});
-        auto state = builder.Build();
+        auto state = TDiskRegistryStateBuilder()
+            .WithErrorNotifications({"disk0", "disk1", "disk2"})
+            .Build();
 
         UNIT_ASSERT_VALUES_EQUAL(3, state.GetUserNotifications().Count);
 
@@ -11323,6 +11323,88 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         replaceDevice("uuid-1.1", "uuid-2.1", true /* manual */, 7);
         // make sure uuid-2.1 is not considered dirty or automatically replaced anymore
         checkDevices({"uuid-2.1", "uuid-2.2"}, {"uuid-1.1", "uuid-2.4"}, {});
+    }
+
+    Y_UNIT_TEST(ShouldPreserveDeviceErrorState)
+    {
+        const TString errorMessage = "broken device";
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        auto agentConfig = AgentConfig(1000, {
+            Device("dev-1", "uuid-1", "rack-1")
+        });
+
+        auto state = TDiskRegistryStateBuilder()
+            .WithConfig({agentConfig})
+            .Build();
+
+        // Register new agent with one device.
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            const TInstant now = Now();
+
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agentConfig,
+                now,
+                &affectedDisks,
+                &disksToReallocate));
+
+            auto d = state.GetDevice("uuid-1");
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(now.MicroSeconds(), d.GetStateTs());
+            UNIT_ASSERT_VALUES_EQUAL("", d.GetStateMessage());
+        });
+
+        // Break the device.
+        agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ERROR);
+        agentConfig.MutableDevices(0)->SetStateMessage(errorMessage);
+
+        const TInstant errorTs = Now();
+
+        // Register the agent with the broken device.
+        // Now we expect to see our device in an error state.
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(
+                db,
+                agentConfig,
+                errorTs,
+                &affectedDisks,
+                &disksToReallocate));
+
+            auto d = state.GetDevice("uuid-1");
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
+            UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
+        });
+
+        // Fix the device
+        agentConfig.MutableDevices(0)->SetState(NProto::DEVICE_STATE_ONLINE);
+        agentConfig.MutableDevices(0)->SetStateMessage("");
+
+        // Register the agent with fixed device.
+        // But we expect that the device state remains the same (error).
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            TVector<TString> affectedDisks;
+            TVector<TString> disksToReallocate;
+            UNIT_ASSERT_SUCCESS(state.RegisterAgent(db,
+                agentConfig,
+                Now(),
+                &affectedDisks,
+                &disksToReallocate));
+
+            auto d = state.GetDevice("uuid-1");
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, d.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
+            UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
+        });
     }
 }
 

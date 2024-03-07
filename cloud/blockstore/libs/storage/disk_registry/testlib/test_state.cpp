@@ -597,6 +597,14 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithPlacementGroups(
     return *this;
 }
 
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithErrorNotifications(
+    TVector<TString> notifications)
+{
+    ErrorNotifications = std::move(notifications);
+
+    return *this;
+}
+
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::AddDevicePoolConfig(
     TString name,
     ui64 allocationUnit,
