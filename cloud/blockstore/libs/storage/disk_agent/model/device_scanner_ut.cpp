@@ -261,6 +261,86 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             UNIT_ASSERT_VALUES_EQUAL_C(expectedPathIndex, pathIndex, f);
         }
     }
+
+    Y_UNIT_TEST_F(ShouldInferMinSizeFromLayout, TFixture)
+    {
+        PrepareFiles({
+            { "dev/disk/by-partlabel/NVMENBS01", 100_KB },
+        });
+
+        auto& nvme = *Config.AddPathConfigs();
+        nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+        nvme.SetBlockSize(4_KB);
+
+        auto& def = *nvme.AddPoolConfigs();
+        auto& layout = *def.MutableLayout();
+        layout.SetHeaderSize(8_KB);
+        layout.SetDeviceSize(2_KB);
+        layout.SetDevicePadding(1_KB);
+
+        TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
+
+        auto error = FindDevices(Config, [&] (
+            auto& path,
+            auto& pool,
+            auto pathIndex,
+            auto maxDeviceCount,
+            auto blockSize,
+            auto fileSize)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
+
+            NProto::TFileDeviceArgs f;
+            f.SetPath(path);
+            f.SetPoolName(pool.GetPoolName());
+            f.SetBlockSize(blockSize);
+            f.SetFileSize(fileSize);
+
+            r.emplace_back(std::move(f), pathIndex);
+
+            return MakeError(S_OK);
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+
+        auto& [f, pathIndex] = r.front();
+
+        UNIT_ASSERT_VALUES_EQUAL("", f.GetPoolName());
+        UNIT_ASSERT_VALUES_EQUAL(
+            RootDir / "dev/disk/by-partlabel/NVMENBS01",
+            f.GetPath());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, f.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(100_KB, f.GetFileSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, pathIndex);
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreTooSmallDevices, TFixture)
+    {
+        PrepareFiles({
+            { "dev/disk/by-partlabel/NVMENBS01", 9_KB },
+        });
+
+        auto& nvme = *Config.AddPathConfigs();
+        nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+        nvme.SetBlockSize(4_KB);
+
+        auto& def = *nvme.AddPoolConfigs();
+        auto& layout = *def.MutableLayout();
+        layout.SetHeaderSize(8_KB);
+        layout.SetDeviceSize(2_KB);
+        layout.SetDevicePadding(1_KB);
+
+        int success = 0;
+
+        auto error = FindDevices(Config, [&] (auto ...) {
+            ++success;
+            return MakeError(S_OK);
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(E_NOT_FOUND, error.GetCode(), error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(0, success);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

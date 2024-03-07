@@ -1623,6 +1623,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
 
             auto& pool = *path.AddPoolConfigs();
+            pool.SetMinSize(DefaultFileSize);
             pool.SetMaxSize(DefaultFileSize);
 
             auto state = CreateDiskAgentStateNull(
