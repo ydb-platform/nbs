@@ -103,7 +103,8 @@ on:
 jobs:
   provide-runner:
     name: Start self-hosted runner
-    timeout-minutes: 5
+    timeout-minutes: 60
+    if: always()
     runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.start-yc-runner.outputs.label }}
@@ -111,6 +112,7 @@ jobs:
     steps:
       - name: Start YC runner
         id: start-yc-runner
+        if: always()
         uses: librarian/yc-github-runner@0.0.15
         timeout-minutes: 60
         with:
