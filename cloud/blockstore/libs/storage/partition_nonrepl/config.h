@@ -245,9 +245,7 @@ public:
     void AugmentErrorFlags(NCloud::NProto::TError& error) const
     {
         if (MuteIOErrors) {
-            ui32 flags = error.GetFlags();
-            SetProtoFlag(flags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
-            error.SetFlags(flags);
+            SetErrorProtoFlag(error, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
         }
     }
 
