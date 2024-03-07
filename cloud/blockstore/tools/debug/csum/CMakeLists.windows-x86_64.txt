@@ -6,7 +6,19 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(csum)
-add_subdirectory(featureconfig)
-add_subdirectory(formatter)
-add_subdirectory(readbdev)
+
+add_executable(blockstore-debug-csum)
+target_link_libraries(blockstore-debug-csum PUBLIC
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  blockstore-libs-diagnostics
+  library-cpp-getopt
+)
+target_sources(blockstore-debug-csum PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/tools/debug/csum/main.cpp
+)
+target_allocator(blockstore-debug-csum
+  system_allocator
+)
+vcs_info(blockstore-debug-csum)
