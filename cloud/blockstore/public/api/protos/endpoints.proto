@@ -87,6 +87,9 @@ message TStartEndpointRequest
 
     // Restore endpoint after restart
     bool Persistent = 24;
+
+    // The device file (e.g. "/dev/nbd0") which nbd-client connected to.
+    string NbdDeviceFile = 25;
 }
 
 message TStartEndpointResponse
