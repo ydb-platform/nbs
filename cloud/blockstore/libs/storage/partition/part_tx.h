@@ -1139,7 +1139,7 @@ struct TTxPartition
     struct TConfirmBlobs
     {
         const TRequestInfoPtr RequestInfo;
-        ui64 StartCycleCount;
+        const ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
         TConfirmBlobs(

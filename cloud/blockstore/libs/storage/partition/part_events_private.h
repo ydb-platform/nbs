@@ -813,10 +813,8 @@ struct TEvPartitionPrivate
 
     struct TConfirmBlobsCompleted
     {
-        ui64 StartCycleCount;
+        const ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
-
-        TConfirmBlobsCompleted() = default;
 
         TConfirmBlobsCompleted(
                 ui64 startCycleCount,
