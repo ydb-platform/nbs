@@ -10,6 +10,8 @@ Follow the instructions [here](example/README.md) to build and run NBS on your m
 
 Follow the instructions [here](CLANG-FORMAT.md) to install clang-format for formatting the code.
 
+Additional information about features of our [Github Actions](GITHUB.md) (labels, test results and so on)
+
 ### How to Deploy
 
 TODO

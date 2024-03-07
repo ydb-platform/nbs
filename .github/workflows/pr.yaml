@@ -8,6 +8,7 @@ on:
       - '.github/**'
       - 'example/**'
       - 'doc/**'
+      - '**.md'
     types:
       - 'opened'
       - 'synchronize'
