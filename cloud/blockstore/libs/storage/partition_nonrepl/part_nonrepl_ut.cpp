@@ -1568,10 +1568,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             auto doWriteBlocksLocal =
                 [&](bool isBackground, ui64 volumeRequestId)
             {
+                const TString data(DefaultBlockSize, 'B');
                 interceptedVolumeRequestId = 0;
                 auto request = client.CreateWriteBlocksLocalRequest(
                     TBlockRange64::WithLength(1024, 1024),
-                    TString(DefaultBlockSize, 'B'));
+                    data);
                 request->Record.MutableHeaders()->SetIsBackgroundRequest(
                     isBackground);
                 client.SendRequest(
