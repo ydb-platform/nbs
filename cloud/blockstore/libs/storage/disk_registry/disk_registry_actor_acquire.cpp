@@ -155,10 +155,10 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
     SentAcquireRequests.reserve(sentRequests.size());
     TInstant now = ctx.Now();
     for (auto& x: sentRequests) {
-        SentAcquireRequests.emplace_back(
+        SentAcquireRequests.push_back(TAgentAcquireDevicesCachedRequest{
             std::move(x.AgentId),
             std::move(x.Record),
-            now);
+            now});
     }
 }
 
