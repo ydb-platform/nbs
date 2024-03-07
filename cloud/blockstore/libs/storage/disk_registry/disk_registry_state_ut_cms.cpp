@@ -96,7 +96,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 agentConfig.DevicesSize(),
                 state.GetDirtyDevices().size());
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetBrokenDevices().size());
+
+            // We have one broken device
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDevices().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-1.5",
+                state.GetBrokenDevices()[0].GetDeviceUUID());
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAgents().size());
 
