@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     features_config.cpp
+    filters.cpp
 )
 
 PEERDIR(

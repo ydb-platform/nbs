@@ -148,6 +148,44 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             "whitelisted_id",
             f->GetName()));
     }
+
+    Y_UNIT_TEST(ShouldSupportWhiteAndBlacklistSimultaneously)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        *f->MutableWhitelist()->AddCloudIds() = "white";
+        *f->MutableWhitelist()->AddCloudIds() = "gray";
+
+        *f->MutableBlacklist()->AddCloudIds() = "black";
+        *f->MutableBlacklist()->AddCloudIds() = "gray";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(config.IsFeatureEnabled("white", {}, {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled("black", {}, {}, f->GetName()));
+
+        // blacklist takes precedence
+        UNIT_ASSERT(!config.IsFeatureEnabled("gray", {}, {}, f->GetName()));
+    }
+
+    Y_UNIT_TEST(ShouldEnableByDefaultIfWhitelistIsEmpty)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+        TFeaturesConfig config(fc);
+
+        auto clouds = RandomStrings(1000);
+        int matches = 0;
+        for (const auto& cloud: clouds) {
+            matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
+        }
+
+        UNIT_ASSERT_C(matches == 1000, TStringBuilder()
+            << "match count: " << matches);
+    }
 }
 
 }   // namespace NCloud::NFeatures
