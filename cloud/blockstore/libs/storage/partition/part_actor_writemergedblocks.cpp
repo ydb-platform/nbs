@@ -499,7 +499,12 @@ void TPartitionActor::WriteMergedBlocks(
         / State->GetBlockSize();
     const bool checksumsEnabled = writeRange.Start < checksumBoundary;
 
-    bool shouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled();
+    const bool addingUnconfirmedBlobsEnabledForCloud = Config->IsAddingUnconfirmedBlobsFeatureEnabled(
+        PartitionConfig.GetCloudId(),
+        PartitionConfig.GetFolderId(),
+        PartitionConfig.GetDiskId());
+    bool shouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled()
+        || addingUnconfirmedBlobsEnabledForCloud;
     if (shouldAddUnconfirmedBlobs) {
         // we take confirmed blobs into account because they have not yet been
         // added to the index, so we treat them as unconfirmed while counting

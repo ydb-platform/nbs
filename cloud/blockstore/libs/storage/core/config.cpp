@@ -494,6 +494,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ChangeThrottlingPolicy)                                                \
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
+    xxx(AddingUnconfirmedBlobs)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 
