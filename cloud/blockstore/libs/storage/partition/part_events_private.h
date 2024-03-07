@@ -812,15 +812,17 @@ struct TEvPartitionPrivate
     //
 
     struct TConfirmBlobsCompleted
-        : TOperationCompleted
     {
+        ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
         TConfirmBlobsCompleted() = default;
 
-        explicit TConfirmBlobsCompleted(
+        TConfirmBlobsCompleted(
+                ui64 startCycleCount,
                 TVector<TPartialBlobId> unrecoverableBlobs)
-            : UnrecoverableBlobs(std::move(unrecoverableBlobs))
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
     };
 

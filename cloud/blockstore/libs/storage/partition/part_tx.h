@@ -1139,10 +1139,14 @@ struct TTxPartition
     struct TConfirmBlobs
     {
         const TRequestInfoPtr RequestInfo;
+        ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
-        explicit TConfirmBlobs(TVector<TPartialBlobId> unrecoverableBlobs)
-            : UnrecoverableBlobs(std::move(unrecoverableBlobs))
+        TConfirmBlobs(
+                ui64 startCycleCount,
+                TVector<TPartialBlobId> unrecoverableBlobs)
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
 
         void Clear()
