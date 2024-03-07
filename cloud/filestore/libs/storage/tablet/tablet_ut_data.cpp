@@ -1746,6 +1746,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(4 * block);
 
         TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
 
         env.CreateSubDomain("nfs");
 
@@ -1886,6 +1887,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(tabletId, reassignedTabletId);
         UNIT_ASSERT_VALUES_EQUAL(1, channels.size());
         UNIT_ASSERT_VALUES_EQUAL(3, channels.front());
+
+        tablet.AdvanceTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+
+        TTestRegistryVisitor visitor;
+        // clang-format off
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "ReassignCount"}, {"filesystem", "test"}}, 2},
+            {{{"sensor", "WritableChannelCount"}, {"filesystem", "test"}}, 3},
+            {{{"sensor", "UnwritableChannelCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "ChannelsToMoveCount"}, {"filesystem", "test"}}, 1},
+        });
+        // clang-format on
 
         tablet.DestroyHandle(handle);
     }
