@@ -109,6 +109,7 @@ private:
     TString EncryptionKeyPath;
     TString EncryptionKeyHash;
     bool Persistent = false;
+    TString NbdDeviceFile;
 
 public:
     TStartEndpointCommand(IBlockStorePtr client)
@@ -180,6 +181,10 @@ public:
         Opts.AddLongOption("persistent", "add endpoint to keyring")
             .NoArgument()
             .SetFlag(&Persistent);
+
+        Opts.AddLongOption("nbd-device", "nbd device file which nbd-client connected to")
+            .RequiredArgument("STR")
+            .StoreResult(&NbdDeviceFile);
     }
 
 protected:
@@ -225,6 +230,7 @@ protected:
                     EncryptionKeyPath,
                     EncryptionKeyHash));
             request->SetPersistent(Persistent);
+            request->SetNbdDeviceFile(NbdDeviceFile);
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");
