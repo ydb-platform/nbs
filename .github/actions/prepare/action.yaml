@@ -26,3 +26,9 @@ runs:
         curl -4 -L https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${OS_ARCH}.tar.xz \
           | tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${CCACHE_VERSION}-linux-${OS_ARCH}/ccache
         ls -la /usr/local/bin/ccache
+    - name: add user github to kvm group
+      shell: bash
+      run: |
+        sudo usermod -a -G kvm github
+        id github
+        grep kvm /etc/group
