@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "cloud/storage/core/libs/viewer/tablet_monitoring.h"
 #include "tablet_database.h"
 #include "tablet_tx.h"
 
