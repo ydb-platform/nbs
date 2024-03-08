@@ -1,4 +1,3 @@
-#include "cloud/storage/core/libs/kikimr/tenant.h"
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
@@ -1031,7 +1030,7 @@ void TIndexTabletActor::HandleHttpInfo_Default(
 
         DumpChannels(
             out,
-            GetChannelMonInfos(),
+            MakeChannelMonInfos(),
             *Info(),
             hiveTabletId);
 
