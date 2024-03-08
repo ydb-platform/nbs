@@ -30,6 +30,11 @@ public:
     void Stop() override
     {}
 
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+
     NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> Run(
         TString host,
         ui32 port,
