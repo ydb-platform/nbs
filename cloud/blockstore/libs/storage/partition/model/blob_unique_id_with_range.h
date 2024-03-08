@@ -11,21 +11,26 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TUnconfirmedBlob
+struct TBlobUniqueIdWithRange
 {
     ui64 UniqueId = 0;
     TBlockRange32 BlockRange;
 
-    TUnconfirmedBlob() = default;
+    TBlobUniqueIdWithRange() = default;
 
-    TUnconfirmedBlob(ui64 uniqueId, const TBlockRange32& blockRange)
+    TBlobUniqueIdWithRange(ui64 uniqueId, const TBlockRange32& blockRange)
         : UniqueId(uniqueId)
         , BlockRange(blockRange)
     {}
 };
 
-// mapping from CommitId
-using TUnconfirmedBlobs = THashMap<ui64, TVector<TUnconfirmedBlob>>;
-using TConfirmedBlobs = THashMap<ui64, TVector<TUnconfirmedBlob>>;
+using TCommitIdToBlobUniqueIdWithRange =
+    THashMap<ui64, TVector<TBlobUniqueIdWithRange>>;
+
+bool Overlaps(
+    const TCommitIdToBlobUniqueIdWithRange& blobs,
+    ui64 lowCommitId,
+    ui64 highCommitId,
+    const TBlockRange32& blockRange);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

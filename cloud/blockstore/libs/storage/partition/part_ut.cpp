@@ -9583,11 +9583,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        partition.WriteBlocks(11, 0);
+        partition.CreateCheckpoint("checkpoint");
+
         partition.WriteBlocks(10, 1);
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
@@ -9596,15 +9601,57 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         dropAddConfirmedBlobs = true;
         partition.WriteBlocks(11, 2);
-        partition.SendReadBlocksRequest(11);
-        auto response = partition.RecvReadBlocksResponse();
-        // can't read unconfirmed range
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
-        // but we can read other ranges
+
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(11);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            // can't describe unconfirmed range
+            partition.SendDescribeBlocksRequest(TBlockRange32::WithLength(11, 1), "");
+            auto response =
+                partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            // can't do GetChangedBlocks on unconfirmed range
+            partition.SendGetChangedBlocksRequest(
+                TBlockRange32::WithLength(11, 1),
+                "checkpoint",
+                "",
+                false);
+            auto response =
+                partition.RecvResponse<TEvService::TEvGetChangedBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetConfirmedBlobCount());
+        }
+
+        // but we can work with other ranges
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(10))
         );
+        partition.DescribeBlocks(TBlockRange32::WithLength(10, 1), "");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(10, 1), "checkpoint", "", false);
+
+        // older commits are also available even when range overlaps with
+        // unconfirmed blobs
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(0),
+            GetBlockContent(partition.ReadBlocks(11, "checkpoint"))
+        );
+        partition.DescribeBlocks(TBlockRange32::WithLength(11, 1), "checkpoint");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(11, 1), "", "checkpoint", false);
 
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
@@ -9612,6 +9659,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(11))
         );
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+        }
     }
 
     Y_UNIT_TEST(ShouldConfirmBlobs)
@@ -9669,9 +9723,46 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
 
-        // check that we are not affected by previous request
+        // check that we are not affected by previous write
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
+            GetBlockContent(partition.ReadBlocks(11))
+        );
+    }
+
+    Y_UNIT_TEST(ShouldLimitUnconfirmedBlobCount)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        config.SetUnconfirmedBlobCountHardLimit(1);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(10, 1);
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(10);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        // but next blob should be added bypassing 'unconfirmed blobs' feature
+        partition.WriteBlocks(11, 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(11))
         );
     }

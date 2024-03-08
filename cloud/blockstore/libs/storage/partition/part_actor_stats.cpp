@@ -116,6 +116,9 @@ void TPartitionActor::SendStatsToService(const TActorContext& ctx)
 
     PartCounters->Simple.CheckpointBytes.Set(State->CalculateCheckpointBytes());
 
+    PartCounters->Simple.UnconfirmedBlobCount.Set(State->GetUnconfirmedBlobCount());
+    PartCounters->Simple.ConfirmedBlobCount.Set(State->GetConfirmedBlobCount());
+
     ui64 sysCpuConsumption  = 0;
     for (ui32 tx = 0; tx < TPartitionCounters::ETransactionType::TX_SIZE; ++tx) {
         sysCpuConsumption += Counters->TxCumulative(tx, NKikimr::COUNTER_TT_EXECUTE_CPUTIME).Get();

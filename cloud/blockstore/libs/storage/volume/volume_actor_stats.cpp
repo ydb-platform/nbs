@@ -31,6 +31,8 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
     xxx(CleanupQueueBytes,                                         __VA_ARGS__)\
     xxx(GarbageQueueBytes,                                         __VA_ARGS__)\
     xxx(ChannelHistorySize,                                        __VA_ARGS__)\
+    xxx(UnconfirmedBlobCount,                                      __VA_ARGS__)\
+    xxx(ConfirmedBlobCount,                                        __VA_ARGS__)\
 // BLOCKSTORE_CACHED_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////

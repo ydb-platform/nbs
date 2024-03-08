@@ -94,6 +94,12 @@ void TPartitionActor::HandleStatPartition(
     response->Record.MutableStats()->SetCleanupQueueBytes(
         State->GetCleanupQueue().GetQueueBytes());
 
+    response->Record.MutableStats()->SetUnconfirmedBlobCount(
+        State->GetUnconfirmedBlobCount());
+
+    response->Record.MutableStats()->SetConfirmedBlobCount(
+        State->GetConfirmedBlobCount());
+
     LWTRACK(
         ResponseSent_Partition,
         requestInfo->CallContext->LWOrbit,

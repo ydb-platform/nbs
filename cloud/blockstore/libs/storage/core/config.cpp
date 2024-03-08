@@ -464,6 +464,8 @@ TDuration MSeconds(ui32 value)
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
     xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
+                                                                               \
+    xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
@@ -492,6 +494,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ChangeThrottlingPolicy)                                                \
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
+    xxx(AddingUnconfirmedBlobs)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 
