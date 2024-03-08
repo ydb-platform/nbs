@@ -9738,14 +9738,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetUnconfirmedBlobCountHardLimit(1);
         auto runtime = PrepareTestActorRuntime(config);
 
-        runtime->SetObserverFunc([&] (auto& event) {
+        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
                     return TTestActorRuntime::EEventAction::DROP;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         });
 
         TPartitionClient partition(*runtime);
