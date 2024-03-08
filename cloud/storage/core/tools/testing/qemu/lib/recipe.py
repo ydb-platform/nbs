@@ -5,7 +5,7 @@ import argparse
 import yatest.common
 import yatest.common.network
 import retrying
-import pipes
+import shlex
 import tarfile
 
 import library.python.fs as fs
@@ -386,7 +386,7 @@ def _prepare_test_environment(ssh, virtio):
         [
             "#!/bin/bash"
         ] + [
-            "export {}={}".format(k, pipes.quote(v))
+            "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
         ] + [
             '"$@"',
