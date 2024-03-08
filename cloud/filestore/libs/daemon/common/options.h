@@ -25,6 +25,7 @@ struct TOptionsCommon
 {
     TString AppConfig;
     TString StorageConfig;
+    TString FeaturesConfig;
 
     ui32 NodeRegistrationMaxAttempts = 10;
     TDuration NodeRegistrationTimeout = TDuration::Seconds(10);

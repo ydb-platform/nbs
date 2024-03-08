@@ -10,6 +10,9 @@ message TFilters
 {
     repeated string CloudIds = 1;
     repeated string FolderIds = 2;
+
+    // DiskId for blockstore or FsId for filestore
+    repeated string EntityIds = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

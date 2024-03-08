@@ -201,7 +201,11 @@ void TDiskRegistryActor::HandleHttpInfo_ReplaceDevice(
         return;
     }
 
-    if (!Config->IsReplaceDeviceFeatureEnabled(info.CloudId, info.FolderId)) {
+    if (!Config->IsReplaceDeviceFeatureEnabled(
+            info.CloudId,
+            info.FolderId,
+            diskId))
+    {
         RejectHttpRequest(
             ctx,
             *requestInfo,

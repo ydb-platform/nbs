@@ -156,7 +156,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             maxTimedOutDeviceStateDuration =
                 Config->GetMaxTimedOutDeviceStateDurationFeatureValue(
                     volumeConfig.GetCloudId(),
-                    volumeConfig.GetFolderId());
+                    volumeConfig.GetFolderId(),
+                    volumeConfig.GetDiskId());
         }
     }
 

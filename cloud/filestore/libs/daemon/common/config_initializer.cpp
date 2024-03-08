@@ -45,4 +45,15 @@ void TConfigInitializerCommon::InitStorageConfig()
         storageConfig);
 }
 
+void TConfigInitializerCommon::InitFeaturesConfig()
+{
+    NCloud::NProto::TFeaturesConfig featuresConfig;
+    if (Options->FeaturesConfig) {
+        ParseProtoTextFromFileRobust(Options->FeaturesConfig, featuresConfig);
+    }
+
+    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
+        std::move(featuresConfig));
+}
+
 }   // namespace NCloud::NFileStore::NDaemon
