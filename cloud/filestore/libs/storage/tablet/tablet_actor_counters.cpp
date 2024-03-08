@@ -96,6 +96,11 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
 
+    REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(UnwritableChannelCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(ChannelsToMoveCount, EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
@@ -218,7 +223,8 @@ void TIndexTabletActor::TMetrics::Update(
     const NProto::TFileSystemStats& stats,
     const NProto::TFileStorePerformanceProfile& performanceProfile,
     const TCompactionMapStats& compactionStats,
-    const TSessionsStats& sessionsStats)
+    const TSessionsStats& sessionsStats,
+    const TChannelsStats& channelsStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -267,6 +273,9 @@ void TIndexTabletActor::TMetrics::Update(
 
     Store(StatefulSessionsCount, sessionsStats.StatefulSessionsCount);
     Store(StatelessSessionsCount, sessionsStats.StatelessSessionsCount);
+    Store(WritableChannelCount, channelsStats.WritableChannelCount);
+    Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
+    Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
 
     BusyIdleCalc.OnUpdateStats();
 }
@@ -312,7 +321,8 @@ void TIndexTabletActor::RegisterStatCounters()
         GetFileSystemStats(),
         GetPerformanceProfile(),
         GetCompactionMapStats(1),
-        CalculateSessionsStats());
+        CalculateSessionsStats(),
+        CalculateChannelsStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -344,7 +354,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetFileSystemStats(),
         GetPerformanceProfile(),
         GetCompactionMapStats(1),
-        CalculateSessionsStats());
+        CalculateSessionsStats(),
+        CalculateChannelsStats());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);

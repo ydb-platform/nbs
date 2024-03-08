@@ -11,6 +11,15 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TChannelsStats
+{
+    ui32 WritableChannelCount = 0;
+    ui32 UnwritableChannelCount = 0;
+    ui32 ChannelsToMoveCount = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TChannels
 {
 private:
@@ -30,6 +39,8 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind dataKind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+
+    TChannelsStats CalculateChannelsStats() const;
 
     ui32 Size() const;
     bool Empty() const;

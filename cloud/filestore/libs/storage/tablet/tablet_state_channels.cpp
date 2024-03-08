@@ -39,6 +39,11 @@ TVector<ui32> TIndexTabletState::GetChannelsToMove(ui32 percentageThreshold) con
     return Impl->Channels.GetChannelsToMove(percentageThreshold);
 }
 
+TChannelsStats TIndexTabletState::CalculateChannelsStats() const
+{
+    return Impl->Channels.CalculateChannelsStats();
+}
+
 void TIndexTabletState::LoadChannels()
 {
     Y_ABORT_UNLESS(Impl->Channels.Empty());
