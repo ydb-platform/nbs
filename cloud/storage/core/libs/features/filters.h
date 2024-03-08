@@ -9,7 +9,8 @@ namespace NCloud::NFeatures {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFilters {
+class TFilters
+{
 private:
     THashSet<TString> CloudIds;
     THashSet<TString> FolderIds;
