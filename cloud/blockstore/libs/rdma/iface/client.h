@@ -33,6 +33,8 @@ struct TClientConfig
     TClientConfig() = default;
 
     TClientConfig(const NProto::TRdmaClient& config);
+
+    void DumpHtml(IOutputStream& out) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,6 +111,8 @@ struct IClient
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) = 0;
+
+    virtual void DumpHtml(IOutputStream& out) const = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

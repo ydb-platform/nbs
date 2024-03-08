@@ -25,6 +25,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -1376,6 +1377,11 @@ public:
         }
     }
 
+    auto GetEndpoints()
+    {
+        return Endpoints.Get();
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1574,6 +1580,7 @@ public:
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port) noexcept override;
+    void DumpHtml(IOutputStream& out) const override;
 
 private:
     // called from external thread
@@ -1987,6 +1994,77 @@ TCompletionPoller& TClient::PickPoller() noexcept
 {
     size_t index = RandomNumber(CompletionPollers.size());
     return *CompletionPollers[index];
+}
+
+void TClient::DumpHtml(IOutputStream& out) const
+{
+    HTML(out) {
+        TAG(TH4) { out << "Config"; }
+        Config->DumpHtml(out);
+
+        TAG(TH4) { out << "Counters"; }
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "QueuedRequests"; }
+                    TABLEH() { out << "ActiveRequests"; }
+                    TABLEH() { out << "AbortedRequests"; }
+                    TABLEH() { out << "CompletedRequests"; }
+                    TABLEH() { out << "UnknownRequests"; }
+                    TABLEH() { out << "ActiveSend"; }
+                    TABLEH() { out << "ActiveRecv"; }
+                    TABLEH() { out << "SendErrors"; }
+                    TABLEH() { out << "RecvErrors"; }
+                    TABLEH() { out << "UnexpectedCompletions"; }
+                }
+                TABLER() {
+                    TABLED() { out << Counters->QueuedRequests->Val(); }
+                    TABLED() { out << Counters->ActiveRequests->Val(); }
+                    TABLED() { out << Counters->AbortedRequests->Val(); }
+                    TABLED() { out << Counters->CompletedRequests->Val(); }
+                    TABLED() { out << Counters->UnknownRequests->Val(); }
+                    TABLED() { out << Counters->ActiveSend->Val(); }
+                    TABLED() { out << Counters->ActiveRecv->Val(); }
+                    TABLED() { out << Counters->SendErrors->Val(); }
+                    TABLED() { out << Counters->RecvErrors->Val(); }
+                    TABLED() { out << Counters->UnexpectedCompletions->Val(); }
+                }
+            }
+        }
+
+        TAG(TH4) { out << "Endpoints"; }
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Poller"; }
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "Port"; }
+                    TABLEH() { out << "Magic"; }
+                }
+            }
+
+            for (size_t i = 0; i < CompletionPollers.size(); ++i) {
+                auto& poller = CompletionPollers[i];
+                auto endpoints = poller->GetEndpoints();
+                for (auto& ep : *endpoints) {
+                    TABLER() {
+                        TABLED() { out << i; }
+                        TABLED() { out << ep->Host; }
+                        TABLED() { out << ep->Port; }
+                        TABLED()
+                        {
+                            Printf(
+                                out,
+                                "%08X:%08X:%d",
+                                ep->SendMagic,
+                                ep->RecvMagic,
+                                ep->Generation);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 }   // namespace

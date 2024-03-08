@@ -41,6 +41,11 @@ struct TRdmaClientTest: NRdma::IClient
     {
     }
 
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+
     void InjectErrors(
         NProto::TError allocationError,
         NProto::TError rdmaResponseError,
