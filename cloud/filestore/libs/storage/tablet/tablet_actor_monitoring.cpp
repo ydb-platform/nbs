@@ -1017,8 +1017,6 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             out << "</div>";
         }
 
-        GetFileSystem().GetExplicitChannelProfiles();
-
         TAG(TH3) {
             out << "Channels";
         }
