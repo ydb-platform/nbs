@@ -522,8 +522,8 @@ void TBootstrap::Start()
     START_COMPONENT(TraceProcessor);
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
-    START_COMPONENT(ActorSystem);
     START_COMPONENT(FileIOService);
+    START_COMPONENT(ActorSystem);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -553,8 +553,11 @@ void TBootstrap::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMPONENT(Scheduler);
 
-    STOP_COMPONENT(FileIOService);
     STOP_COMPONENT(ActorSystem);
+    // stop FileIOService after ActorSystem to ensure that there are no
+    // in-flight I/O requests from TDiskAgentActor
+    STOP_COMPONENT(FileIOService);
+
     STOP_COMPONENT(Spdk);
     STOP_COMPONENT(RdmaServer);
     STOP_COMPONENT(TraceProcessor);
