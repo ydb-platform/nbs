@@ -63,6 +63,11 @@ public:
 
     void Stop() override
     {}
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
 };
 
 }   // namespace
