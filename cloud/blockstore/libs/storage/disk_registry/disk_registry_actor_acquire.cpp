@@ -443,15 +443,6 @@ void TDiskRegistryActor::HandleAcquireDisk(
             std::make_move_iterator(replica.end()));
     }
 
-    if (devices.empty()) {
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<TEvDiskRegistry::TEvAcquireDiskResponse>());
-
-        return;
-    }
-
     auto actor = NCloud::Register<TAcquireDiskActor>(
         ctx,
         ctx.SelfID,
