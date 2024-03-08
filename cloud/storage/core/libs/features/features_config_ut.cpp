@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(matches > 998, TStringBuilder()
+        UNIT_ASSERT_C(matches == 1000, TStringBuilder()
             << "match count: " << matches);
     }
 }
