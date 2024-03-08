@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/diag_down_graph.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/rdma/iface/client.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -153,6 +154,11 @@ void TServiceActor::RenderHtmlInfo(IOutputStream& out) const
         TAG(TH3) { out << "Volumes"; }
         RenderDownDisks(out);
         RenderVolumeList(out);
+
+        if (RdmaClient) {
+            TAG(TH3) { out << "RdmaClient"; }
+            RdmaClient->DumpHtml(out);
+        }
 
         TAG(TH3) { out << "Config"; }
         Config->DumpHtml(out);
