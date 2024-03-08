@@ -71,6 +71,8 @@ public:
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager);
 
+    ~TDiskAgentState();
+
     struct TInitializeResult
     {
         TVector<NProto::TDeviceConfig> Configs;

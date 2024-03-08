@@ -262,6 +262,27 @@ TDiskAgentState::TDiskAgentState(
 {
 }
 
+TDiskAgentState::~TDiskAgentState()
+{
+    STORAGE_INFO("Destroy Device Client");
+    DeviceClient.reset();
+
+    STORAGE_INFO("Destroy Devices");
+    Devices.clear();
+
+    STORAGE_INFO("Destroy NVME Manager");
+    NvmeManager.reset();
+
+    STORAGE_INFO("Destroy RDMA Target");
+    RdmaTarget.reset();
+
+    STORAGE_INFO("Destroy RDMA Server");
+    RdmaServer.reset();
+
+    STORAGE_INFO("Destroy SPDK Server");
+    SpdkTarget.reset();
+}
+
 const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceState(
     const TString& uuid,
     const TString& clientId,
