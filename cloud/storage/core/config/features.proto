@@ -32,8 +32,9 @@ message TFeatureConfig
     optional string Value = 4;
 
     // By setting these probabilities, feature can be enabled for Ids that
-    // aren't in the whitelist. If whitelist is not specified, default value
-    // is 1 for backwards compatibility, otherwise 0.
+    // aren't in the whitelist. If blacklist is specified and whitelist is not,
+    // default value is 1 for compatibility with configs that only use
+    // blacklist. In other cases it's 0.
     optional double CloudProbability = 5;
     optional double FolderProbability = 6;
 };

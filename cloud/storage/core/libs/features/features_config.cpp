@@ -22,7 +22,8 @@ TFeaturesConfig::TFeatureInfo::TFeatureInfo(NProto::TFeatureConfig config)
     , Blacklist(config.GetBlacklist())
     , Value(config.GetValue())
 {
-    double defaultProbability = config.HasWhitelist() ? 0.0 : 1.0;
+    double defaultProbability = config.HasBlacklist() && !config.HasWhitelist()
+        ? 1.0 : 0.0;
 
     CloudProbability = config.HasCloudProbability()
         ? config.GetCloudProbability() : defaultProbability;

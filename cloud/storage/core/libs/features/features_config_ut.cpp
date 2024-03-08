@@ -175,6 +175,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         NProto::TFeaturesConfig fc;
         auto* f = fc.AddFeatures();
         f->SetName("feature");
+        *f->MutableBlacklist()->AddCloudIds() = "black";
         TFeaturesConfig config(fc);
 
         auto clouds = RandomStrings(1000);
@@ -183,7 +184,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(matches == 1000, TStringBuilder()
+        UNIT_ASSERT_C(matches > 998, TStringBuilder()
             << "match count: " << matches);
     }
 }

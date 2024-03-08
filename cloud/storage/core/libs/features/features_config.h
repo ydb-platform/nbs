@@ -19,7 +19,7 @@ class TFeaturesConfig
         TFilters Whitelist;
         TFilters Blacklist;
         double CloudProbability = 0;
-        double FolderProbability = 0;;
+        double FolderProbability = 0;
         TString Value;
 
         TFeatureInfo(NProto::TFeatureConfig config);
