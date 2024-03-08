@@ -17,4 +17,5 @@ RECURSE(
     uds
     user_stats
     version
+    viewer
 )

@@ -95,6 +95,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/tablet
     cloud/storage/core/libs/tablet/model
+    cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
     contrib/ydb/library/actors/core

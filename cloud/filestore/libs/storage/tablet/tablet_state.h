@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "cloud/storage/core/libs/viewer/tablet_monitoring.h"
 #include "tablet_database.h"
 #include "tablet_tx.h"
 
@@ -25,6 +26,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -233,6 +235,7 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind kind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
 
     TChannelsStats CalculateChannelsStats() const;
 
