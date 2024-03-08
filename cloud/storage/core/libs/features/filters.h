@@ -17,7 +17,7 @@ private:
     THashSet<TString> EntityIds;   // DiskIds or FsIds
 
 public:
-    TFilters(NProto::TFilters config);
+    explicit TFilters(NProto::TFilters config);
 
     bool Contains(
         const TString& cloudId,

@@ -23,7 +23,7 @@ class TFeaturesConfig
         double FolderProbability = 0;
         TString Value;
 
-        TFeatureInfo(NProto::TFeatureConfig config);
+        explicit TFeatureInfo(NProto::TFeatureConfig config);
     };
 
 private:
@@ -32,7 +32,7 @@ private:
     THashMap<TString, TFeatureInfo> Features;
 
 public:
-    TFeaturesConfig(NProto::TFeaturesConfig config = {});
+    explicit TFeaturesConfig(NProto::TFeaturesConfig config = {});
 
     bool IsValid() const;
 
