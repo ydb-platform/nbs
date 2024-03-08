@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
