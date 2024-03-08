@@ -234,6 +234,8 @@ public:
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
 
+    TChannelsStats CalculateChannelsStats() const;
+
     void RegisterUnwritableChannel(ui32 channel);
     void RegisterChannelToMove(ui32 channel);
 

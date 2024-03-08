@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
+#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
+#include <cloud/filestore/libs/diagnostics/metrics/visitor.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/config.h>
@@ -151,6 +153,63 @@ private:
     void InitSchemeShard();
 
     void WaitForSchemeShardTx(ui64 txId);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestRegistryVisitor
+    : public NMetrics::IRegistryVisitor
+{
+public:
+    using TLabel = NCloud::NFileStore::NMetrics::TLabel;
+
+private:
+    struct TMetricsEntry
+    {
+        TInstant Time;
+        NMetrics::EAggregationType AggrType;
+        NMetrics::EMetricType MetrType;
+        THashMap<TString, TString> Labels;
+        i64 Value;
+
+        bool Matches(const TVector<TLabel>& labels) const
+        {
+            for (auto& label: labels) {
+                auto it = Labels.find(label.GetName());
+                if (it == Labels.end() || it->second != label.GetValue()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
+    TVector<TMetricsEntry> MetricsEntries;
+    TMetricsEntry CurrentEntry;
+
+public:
+    void OnStreamBegin() override;
+    void OnStreamEnd() override;
+    void OnMetricBegin(
+        TInstant time,
+        NMetrics::EAggregationType aggrType,
+        NMetrics::EMetricType metrType) override;
+    void OnMetricEnd() override;
+    void OnLabelsBegin() override;
+    void OnLabelsEnd() override;
+    void OnLabel(TStringBuf name, TStringBuf value) override;
+    void OnValue(i64 value) override;
+
+public:
+    const TVector<TMetricsEntry>& GetEntries() const;
+    void ValidateExpectedCounters(
+        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters);
+    void ValidateExpectedHistogram(
+        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
+        bool checkEqual);
+
+private:
+    static TString LabelsToString(const TVector<TLabel>& labels);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

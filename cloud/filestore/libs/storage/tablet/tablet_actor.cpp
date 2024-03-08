@@ -181,6 +181,10 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
+    Metrics.ReassignCount.fetch_add(
+        channels.size(),
+        std::memory_order_relaxed);
+
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
