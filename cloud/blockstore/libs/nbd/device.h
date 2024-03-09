@@ -26,4 +26,6 @@ IDeviceConnectionPtr CreateDeviceConnection(
     TString deviceName,
     TDuration timeout);
 
+IDeviceConnectionPtr CreateDeviceConnectionStub();
+
 }   // namespace NCloud::NBlockStore::NBD
