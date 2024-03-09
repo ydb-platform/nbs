@@ -2,9 +2,10 @@
 
 #include "public.h"
 
+#include "filters.h"
+
 #include <cloud/storage/core/config/features.pb.h>
 
-#include <util/generic/hash_set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -16,13 +17,13 @@ class TFeaturesConfig
 {
     struct TFeatureInfo
     {
-        THashSet<TString> CloudIds;
-        THashSet<TString> FolderIds;
-        THashSet<TString> EntityIds;   // DiskIds or FsIds
-        bool IsBlacklist = false;
+        TFilters Whitelist;
+        TFilters Blacklist;
         double CloudProbability = 0;
         double FolderProbability = 0;
         TString Value;
+
+        explicit TFeatureInfo(NProto::TFeatureConfig config);
     };
 
 private:
@@ -31,7 +32,7 @@ private:
     THashMap<TString, TFeatureInfo> Features;
 
 public:
-    TFeaturesConfig(NProto::TFeaturesConfig config = {});
+    explicit TFeaturesConfig(NProto::TFeaturesConfig config = {});
 
     bool IsValid() const;
 
