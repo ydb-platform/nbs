@@ -1,5 +1,4 @@
 #include "service.h"
-#include "cloud/filestore/private/api/protos/actions.pb.h"
 #include "service_private.h"
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
