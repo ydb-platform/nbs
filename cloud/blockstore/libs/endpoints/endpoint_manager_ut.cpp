@@ -9,24 +9,28 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
+#include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/server/client_storage_factory.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/keyring/endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -122,6 +126,23 @@ struct TTestSessionManager final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestDeviceFactory
+    : public NBD::IDeviceConnectionFactory
+{
+    TVector<TString> Devices;
+
+    NBD::IDeviceConnectionPtr Create(
+        TNetworkAddress connectAddress,
+        TString deviceName) override
+    {
+        Y_UNUSED(connectAddress);
+        Devices.push_back(deviceName);
+        return NBD::CreateDeviceConnectionStub();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestEndpoint
 {
     NProto::TStartEndpointRequest Request;
@@ -142,6 +163,10 @@ public:
     ui32 AlterEndpointCounter = 0;
     ui32 SwitchEndpointCounter = 0;
 
+    using TStartEndpointHandler = std::function<TFuture<NProto::TError>(
+        const NProto::TStartEndpointRequest& request,
+        NClient::ISessionPtr session)>;
+
 public:
     TTestEndpointListener(
             TFuture<NProto::TError> result = MakeFuture<NProto::TError>())
@@ -154,7 +179,13 @@ public:
         NClient::ISessionPtr session) override
     {
         Y_UNUSED(volume);
+        return StartEndpointHandler(request, session);
+    }
 
+    TStartEndpointHandler StartEndpointHandler = [&] (
+        const NProto::TStartEndpointRequest& request,
+        NClient::ISessionPtr session)
+    {
         UNIT_ASSERT(!Endpoints.contains(request.GetUnixSocketPath()));
 
         TTestEndpoint endpoint;
@@ -168,7 +199,7 @@ public:
             });
 
         return Result;
-    }
+    };
 
     TFuture<NProto::TError> AlterEndpoint(
         const NProto::TStartEndpointRequest& request,
@@ -222,17 +253,33 @@ public:
 
 struct TBootstrap
 {
-    const ILoggingServicePtr Logging = CreateLoggingService("console");
-    const IBlockStorePtr Service;
-    const TExecutorPtr Executor = TExecutor::Create("TestService");
+    const TString DirPath = "./" + CreateGuidAsString();
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+    ITimerPtr Timer = CreateWallClockTimer();
+    std::shared_ptr<TTestScheduler> Scheduler = std::make_shared<TTestScheduler>();
+    IBlockStorePtr Service = std::make_shared<TTestService>();
+    TExecutorPtr Executor = TExecutor::Create("TestService");
+    IRequestStatsPtr RequestStats = CreateRequestStatsStub();
+    IVolumeStatsPtr VolumeStats = CreateVolumeStatsStub();
+    IServerStatsPtr ServerStats = CreateServerStatsStub();
+    ISessionManagerPtr SessionManager;
+    IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
+    IMutableEndpointStoragePtr MutableStorage = CreateFileMutableEndpointStorage(DirPath);
+    THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
+    NBD::IDeviceConnectionFactoryPtr NbdDeviceFactory;
+    IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
+    TEndpointManagerOptions Options;
 
-    TBootstrap(IBlockStorePtr service)
-        : Service(std::move(service))
-    {}
+    TBootstrap()
+    {
+        MutableStorage->Init();
+    }
 
     ~TBootstrap()
     {
         Stop();
+
+        MutableStorage->Remove();
     }
 
     void Start()
@@ -367,57 +414,46 @@ std::shared_ptr<TTestService> CreateTestService(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEndpointManagerPtr CreateEndpointManager(
-    TBootstrap& bootstrap,
-    THashMap<NProto::EClientIpcType, IEndpointListenerPtr> endpointListeners,
-    IServerStatsPtr serverStats = CreateServerStatsStub(),
-    TString nbdSocketSuffix = "",
-    IEndpointEventProxyPtr endpointEventHandler = CreateEndpointEventProxy())
+IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
 {
-    TSessionManagerOptions sessionManagerOptions;
-    sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
-        TestRequestTimeout.MilliSeconds());
+    if (!bootstrap.SessionManager) {
+        TSessionManagerOptions sessionManagerOptions;
+        sessionManagerOptions.DefaultClientConfig.SetRequestTimeout(
+            TestRequestTimeout.MilliSeconds());
 
-    auto encryptionClientFactory = CreateEncryptionClientFactory(
-        bootstrap.Logging,
-        CreateDefaultEncryptionKeyProvider());
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            bootstrap.Logging,
+            CreateDefaultEncryptionKeyProvider());
 
-    auto timer = CreateWallClockTimer();
-    auto scheduler = CreateSchedulerStub();
-    auto requestStats = CreateRequestStatsStub();
-    auto volumeStats = CreateVolumeStatsStub();
-
-    auto sessionManager = CreateSessionManager(
-        timer,
-        scheduler,
-        bootstrap.Logging,
-        CreateMonitoringServiceStub(),
-        requestStats,
-        volumeStats,
-        serverStats,
-        bootstrap.Service,
-        CreateDefaultStorageProvider(bootstrap.Service),
-        encryptionClientFactory,
-        bootstrap.Executor,
-        sessionManagerOptions);
-
-    const TString dirPath = "./" + CreateGuidAsString();
-    auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        bootstrap.SessionManager = CreateSessionManager(
+            bootstrap.Timer,
+            bootstrap.Scheduler,
+            bootstrap.Logging,
+            CreateMonitoringServiceStub(),
+            bootstrap.RequestStats,
+            bootstrap.VolumeStats,
+            bootstrap.ServerStats,
+            bootstrap.Service,
+            CreateDefaultStorageProvider(bootstrap.Service),
+            std::move(encryptionClientFactory),
+            bootstrap.Executor,
+            std::move(sessionManagerOptions));
+    }
 
     return NServer::CreateEndpointManager(
-        timer,
-        scheduler,
+        bootstrap.Timer,
+        bootstrap.Scheduler,
         bootstrap.Logging,
-        requestStats,
-        volumeStats,
-        serverStats,
+        bootstrap.RequestStats,
+        bootstrap.VolumeStats,
+        bootstrap.ServerStats,
         bootstrap.Executor,
-        std::move(endpointEventHandler),
-        std::move(sessionManager),
-        std::move(endpointStorage),
-        std::move(endpointListeners),
-        {}, // clientConfig
-        std::move(nbdSocketSuffix));
+        bootstrap.EndpointEventHandler,
+        bootstrap.SessionManager,
+        bootstrap.EndpointStorage,
+        bootstrap.EndpointListeners,
+        bootstrap.NbdDeviceFactory,
+        bootstrap.Options);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -463,14 +499,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TString diskId = "testDiskId";
         auto ipcType = NProto::IPC_GRPC;
 
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ ipcType, listener }});
+        bootstrap.EndpointListeners = {{ ipcType, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         {
@@ -505,14 +541,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         auto ipcType = NProto::IPC_GRPC;
         TString diskId = "testDiskId";
 
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ ipcType, listener }});
+        bootstrap.EndpointListeners = {{ ipcType, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         UNIT_ASSERT_VALUES_EQUAL(0, listener->AlterEndpointCounter);
@@ -584,16 +620,16 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldHandleListEndpoints)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {
-                { NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() },
-                { NProto::IPC_NBD, std::make_shared<TTestEndpointListener>() },
-            });
+        bootstrap.EndpointListeners = {
+            { NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() },
+            { NProto::IPC_NBD, std::make_shared<TTestEndpointListener>() },
+        };
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         NProto::TStartEndpointRequest request1;
@@ -648,14 +684,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldNotStartStopEndpointTwice)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_GRPC, listener }});
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto socketPath = "testSocketPath";
@@ -701,19 +737,18 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldNotStartBusyEndpoint)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto grpcListener = std::make_shared<TTestEndpointListener>();
         auto nbdListener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {
+            { NProto::IPC_GRPC, grpcListener },
+            { NProto::IPC_NBD, nbdListener },
+        };
 
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {
-                { NProto::IPC_GRPC, grpcListener },
-                { NProto::IPC_NBD, nbdListener },
-            });
-
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto socketPath = "testSocketPath";
@@ -751,17 +786,16 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldNotMountDiskWhenStartEndpointFailed)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto error = TErrorResponse(E_FAIL, "Endpoint listener is broken");
         auto listener = std::make_shared<TTestEndpointListener>(
             MakeFuture<NProto::TError>(error));
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
 
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_GRPC, listener }});
-
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         NProto::TStartEndpointRequest request;
@@ -778,14 +812,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldHandleLocalRequests)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_GRPC, listener }});
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto unixSocket = "testSocket";
@@ -890,15 +924,15 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 ++unmountCounter;
             };
 
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_VHOST, listener }},
-            serverStats);
+        bootstrap.EndpointListeners = {{ NProto::IPC_VHOST, listener }};
+        bootstrap.ServerStats = serverStats;
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto unixSocket = "testSocket";
@@ -927,16 +961,15 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldNotStartEndpointWithSocketPathLongerThanLimit)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto grpcListener = CreateSocketEndpointListener(bootstrap.Logging, 16);
         grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, grpcListener }};
 
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_GRPC, grpcListener }});
-
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         TString maxSocketPath(UnixSocketPathLengthLimit, 'x');
@@ -979,21 +1012,19 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TString diskId = "testDiskId";
         TString nbdSocketSuffix = "_nbd";
 
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto grpcListener = std::make_shared<TTestEndpointListener>();
         auto nbdListener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {
+            { NProto::IPC_GRPC, grpcListener },
+            { NProto::IPC_NBD, nbdListener },
+        };
+        bootstrap.Options.NbdSocketSuffix = nbdSocketSuffix;
 
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {
-                { NProto::IPC_GRPC, grpcListener },
-                { NProto::IPC_NBD, nbdListener },
-            },
-            CreateServerStatsStub(),
-            nbdSocketSuffix);
-
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         {
@@ -1038,29 +1069,17 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldIgnoreInstanceIdWhenCompareStartEndpointRequests)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
-
-        const TString dirPath = "./" + CreateGuidAsString();
-        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto sessionManager = std::make_shared<TTestSessionManager>();
-        auto manager = NServer::CreateEndpointManager(
-            CreateWallClockTimer(),
-            CreateSchedulerStub(),
-            bootstrap.Logging,
-            CreateRequestStatsStub(),
-            CreateVolumeStatsStub(),
-            CreateServerStatsStub(),
-            bootstrap.Executor,
-            CreateEndpointEventProxy(),
-            sessionManager,
-            endpointStorage,
-            {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
-            {}, // clientConfig
-            ""  // NbdSocketSuffix
-        );
+        bootstrap.SessionManager = sessionManager;
 
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
+
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         size_t requestId = 42;
@@ -1170,14 +1189,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
     // NBS-3018, CLOUD-98154
     Y_UNIT_TEST(ShouldIgnoreSomeArgsWhenStartEndpointTwice)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_GRPC, listener }});
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto socketPath = "testSocketPath";
@@ -1214,18 +1233,14 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldSwitchEndpointWhenEndpointStarted)
     {
+        TBootstrap bootstrap;
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
-        TBootstrap bootstrap(CreateTestService(mountedVolumes));
+        bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto endpointEventHandler = CreateEndpointEventProxy();
         auto listener = std::make_shared<TTestEndpointListener>();
-        auto manager = CreateEndpointManager(
-            bootstrap,
-            {{ NProto::IPC_VHOST, listener }},
-            CreateServerStatsStub(),
-            "",
-            endpointEventHandler);
+        bootstrap.EndpointListeners = {{ NProto::IPC_VHOST, listener }};
 
+        auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
 
         auto socketPath = "testSocketPath";
@@ -1233,7 +1248,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         {
             // without started endpoint SwitchEndpointIfNeeded is ignored
-            auto future = endpointEventHandler->SwitchEndpointIfNeeded(
+            auto future = bootstrap.EndpointEventHandler->SwitchEndpointIfNeeded(
                 diskId, "test");
             auto error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1262,7 +1277,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         {
             // with started endpoint SwitchEndpointIfNeeded leads to
             // SwitchEndpoint call
-            auto future = endpointEventHandler->SwitchEndpointIfNeeded(
+            auto future = bootstrap.EndpointEventHandler->SwitchEndpointIfNeeded(
                 diskId,
                 "test");
             auto error = future.GetValue(TDuration::Seconds(5));
@@ -1271,6 +1286,416 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 error.GetCode(),
                 error);
             UNIT_ASSERT_VALUES_EQUAL(1, listener->SwitchEndpointCounter);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldStartEndpointWithNbdDevice)
+    {
+        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
+        int deviceCount = 6;
+        for (int i = 0; i < deviceCount; ++i) {
+            TFsPath(nbdDevPrefix + ToString(i)).Touch();
+        }
+        Y_DEFER {
+            for (int i = 0; i < deviceCount; ++i) {
+                TFsPath(nbdDevPrefix + ToString(i)).DeleteIfExists();
+            }
+        };
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
+
+        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
+        bootstrap.NbdDeviceFactory = deviceFactory;
+
+        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+
+        auto& storage = *bootstrap.EndpointStorage;
+        google::protobuf::util::MessageDifferencer comparator;
+
+        TString unixSocket = "testSocket";
+        TString diskId = "testDiskId";
+        TString nbdDevFile = nbdDevPrefix + "0";
+
+        NProto::TStartEndpointRequest baseRequest;
+        SetDefaultHeaders(baseRequest);
+        baseRequest.SetUnixSocketPath(unixSocket);
+        baseRequest.SetDiskId(diskId);
+        baseRequest.SetClientId(TestClientId);
+        baseRequest.SetIpcType(NProto::IPC_NBD);
+        baseRequest.SetNbdDeviceFile(nbdDevFile);
+        baseRequest.SetPersistent(true);
+
+        {
+            auto request = baseRequest;
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+
+            UNIT_ASSERT(mountedVolumes.contains(diskId));
+            UNIT_ASSERT(listener->GetEndpoints().contains(unixSocket));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, deviceFactory->Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(nbdDevFile, deviceFactory->Devices[0]);
+
+            auto [str, error] = storage.GetEndpoint(request.GetUnixSocketPath());
+            UNIT_ASSERT(!HasError(error));
+            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
+            UNIT_ASSERT(req);
+            UNIT_ASSERT(comparator.Equals(request, *req));
+        }
+
+        {
+            auto request = baseRequest;
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == S_ALREADY);
+            UNIT_ASSERT_VALUES_EQUAL(nbdDevFile, response.GetNbdDeviceFile());
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetUseFreeNbdDeviceFile(true);
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == S_ALREADY);
+            UNIT_ASSERT_VALUES_EQUAL(nbdDevFile, response.GetNbdDeviceFile());
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetUnixSocketPath(unixSocket + "other");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile(nbdDevPrefix + "1");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile("");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            auto future = StopEndpoint(*manager, unixSocket);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+
+            UNIT_ASSERT(mountedVolumes.empty());
+            UNIT_ASSERT(listener->GetEndpoints().empty());
+        }
+
+        //
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile("");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile("");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == S_ALREADY);
+            UNIT_ASSERT_VALUES_EQUAL("", response.GetNbdDeviceFile());
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetUseFreeNbdDeviceFile(true);
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile(nbdDevPrefix + "1");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            auto future = StopEndpoint(*manager, unixSocket);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+
+            UNIT_ASSERT(mountedVolumes.empty());
+            UNIT_ASSERT(listener->GetEndpoints().empty());
+        }
+
+        //
+
+        {
+            auto request = baseRequest;
+            request.SetNbdDeviceFile("blabla3");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_ARGUMENT);
+        }
+
+        {
+            auto request = baseRequest;
+            request.SetPersistent(false);
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_ARGUMENT);
+        }
+
+        //
+
+        int num = 0;
+        deviceFactory->Devices.clear();
+
+        for (int i: {0, 1, 3}) {
+            auto request = baseRequest;
+            request.SetUnixSocketPath(unixSocket + ToString(num++));
+            request.SetNbdDeviceFile(nbdDevPrefix + ToString(i));
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nbdDevPrefix + ToString(i),
+                response.GetNbdDeviceFile());
+
+            UNIT_ASSERT_VALUES_EQUAL(num, deviceFactory->Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nbdDevPrefix + ToString(i),
+                deviceFactory->Devices[num - 1]);
+
+            auto [str, error] = storage.GetEndpoint(request.GetUnixSocketPath());
+            UNIT_ASSERT(!HasError(error));
+            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
+            UNIT_ASSERT(req);
+            UNIT_ASSERT(comparator.Equals(request, *req));
+        }
+
+        for (int i: {2, 4, 5}) {
+            auto request = baseRequest;
+            request.SetUnixSocketPath(unixSocket + ToString(num++));
+            request.SetUseFreeNbdDeviceFile(true);
+
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nbdDevPrefix + ToString(i),
+                response.GetNbdDeviceFile());
+
+            UNIT_ASSERT_VALUES_EQUAL(num, deviceFactory->Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nbdDevPrefix + ToString(i),
+                deviceFactory->Devices[num - 1]);
+
+            auto [str, error] = storage.GetEndpoint(request.GetUnixSocketPath());
+            UNIT_ASSERT(!HasError(error));
+            auto req = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
+            UNIT_ASSERT(req);
+            UNIT_ASSERT(!comparator.Equals(request, *req));
+            UNIT_ASSERT_VALUES_EQUAL(
+                nbdDevPrefix + ToString(i),
+                req->GetNbdDeviceFile());
+        }
+
+         {
+            auto request = baseRequest;
+            request.SetUnixSocketPath(unixSocket + ToString(num++));
+            request.SetUseFreeNbdDeviceFile(true);
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        for (int i = 0; i < deviceCount; ++i) {
+            auto future = StopEndpoint(*manager, unixSocket + ToString(i));
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        UNIT_ASSERT(mountedVolumes.empty());
+        UNIT_ASSERT(listener->GetEndpoints().empty());
+    }
+
+    Y_UNIT_TEST(ShouldRestoreEndpointWithNbdDevice)
+    {
+        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
+        int deviceCount = 10;
+        for (int i = 0; i < deviceCount; ++i) {
+            TFsPath(nbdDevPrefix + ToString(i)).Touch();
+        }
+        Y_DEFER {
+            for (int i = 0; i < deviceCount; ++i) {
+                TFsPath(nbdDevPrefix + ToString(i)).DeleteIfExists();
+            }
+        };
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
+
+        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
+        bootstrap.NbdDeviceFactory = deviceFactory;
+
+        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+
+        TString unixSocket = "testSocket";
+        TString diskId = "testDiskId";
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetDiskId(diskId);
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_NBD);
+
+        size_t correctCount = 5;
+        size_t wrongCount = 3;
+
+        for (size_t i = 0; i < wrongCount + correctCount; ++i) {
+            request.SetUnixSocketPath(unixSocket + ToString(i));
+
+            if (i < wrongCount) {
+                request.SetUseFreeNbdDeviceFile(true);
+            } else {
+                request.SetNbdDeviceFile(nbdDevPrefix + ToString(i));
+            }
+
+            auto [str, error] = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+                request.GetUnixSocketPath(),
+                str);
+            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        }
+
+        NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto configCounter = counters->GetCounter("AppCriticalEvents/EndpointRestoringError", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
+
+        manager->RestoreEndpoints().Wait();
+
+        UNIT_ASSERT(wrongCount != correctCount);
+        UNIT_ASSERT_VALUES_EQUAL(wrongCount, static_cast<int>(*configCounter));
+    }
+
+    Y_UNIT_TEST(ShouldNotUseRestoringNbdDevices)
+    {
+        TString nbdDevPrefix = CreateGuidAsString() + "_nbd";
+        int deviceCount = 6;
+        for (int i = 0; i < deviceCount; ++i) {
+            TFsPath(nbdDevPrefix + ToString(i)).Touch();
+        }
+        Y_DEFER {
+            for (int i = 0; i < deviceCount; ++i) {
+                TFsPath(nbdDevPrefix + ToString(i)).DeleteIfExists();
+            }
+        };
+
+        TString unixSocket = "testSocket";
+        TString diskId = "testDiskId";
+        TString nbdDevFile = nbdDevPrefix + "0";
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto rejected = MakeFuture(MakeError(E_REJECTED));
+        auto listener = std::make_shared<TTestEndpointListener>(rejected);
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request,
+            NClient::ISessionPtr session)
+        {
+            UNIT_ASSERT(session);
+
+            if (unixSocket == request.GetUnixSocketPath()) {
+                return MakeFuture(MakeError(E_REJECTED));
+            }
+            return MakeFuture<NProto::TError>();
+        };
+
+        bootstrap.EndpointListeners = {{ NProto::IPC_NBD, listener }};
+
+        auto deviceFactory = std::make_shared<TTestDeviceFactory>();
+        bootstrap.NbdDeviceFactory = deviceFactory;
+
+        bootstrap.Options.NbdDevicePrefix = nbdDevPrefix;
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(unixSocket);
+        request.SetDiskId(diskId);
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_NBD);
+        request.SetNbdDeviceFile(nbdDevFile);
+        request.SetPersistent(true);
+
+        {
+            auto [str, error] = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+                request.GetUnixSocketPath(),
+                str);
+            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        }
+
+        NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto configCounter = counters->GetCounter("AppCriticalEvents/EndpointRestoringError", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
+
+        manager->RestoreEndpoints();
+        bootstrap.Scheduler->RunAllScheduledTasks();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
+
+        {
+            request.SetUnixSocketPath(unixSocket + "other");
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(response.GetError().GetCode() == E_INVALID_STATE);
+        }
+
+        {
+            request.SetUnixSocketPath(unixSocket + "other");
+            request.SetUseFreeNbdDeviceFile(true);
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT(response.GetNbdDeviceFile() != nbdDevFile);
         }
     }
 }
