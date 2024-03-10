@@ -39,6 +39,12 @@ TVector<ui32> TIndexTabletState::GetChannelsToMove(ui32 percentageThreshold) con
     return Impl->Channels.GetChannelsToMove(percentageThreshold);
 }
 
+TVector<NCloud::NStorage::TChannelMonInfo>
+TIndexTabletState::MakeChannelMonInfos() const
+{
+    return Impl->Channels.MakeChannelMonInfos();
+}
+
 TChannelsStats TIndexTabletState::CalculateChannelsStats() const
 {
     return Impl->Channels.CalculateChannelsStats();

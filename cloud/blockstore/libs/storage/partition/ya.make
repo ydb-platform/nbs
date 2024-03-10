@@ -64,6 +64,7 @@ PEERDIR(
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet
+    cloud/storage/core/libs/viewer
 
     library/cpp/blockcodecs
     library/cpp/cgiparam

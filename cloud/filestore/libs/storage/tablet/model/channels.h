@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
+
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
@@ -39,6 +41,8 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind dataKind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
 
     TChannelsStats CalculateChannelsStats() const;
 
