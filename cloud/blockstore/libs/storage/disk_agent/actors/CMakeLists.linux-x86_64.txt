@@ -6,8 +6,6 @@
 # original buildsystem will not be accepted.
 
 
-add_subdirectory(ut)
-
 add_library(storage-disk_agent-actors)
 target_link_libraries(storage-disk_agent-actors PUBLIC
   contrib-libs-linux-headers
