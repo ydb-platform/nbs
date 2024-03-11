@@ -6,10 +6,13 @@
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <contrib/ydb/core/base/hive.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -1969,6 +1972,71 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
+    }
+
+    Y_UNIT_TEST(ShouldReassignTablet)
+    {
+        NProto::TStorageConfig config;
+        config.SetCompactionThreshold(1000);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        ui64 tabletId = 0;
+        ui64 reassignedTabletId = 0;
+        TVector<ui32> reassignedChannels;
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeFileStoreResponse: {
+                    const auto* msg =
+                        event->Get<TEvSSProxy::TEvDescribeFileStoreResponse>();
+                    const auto& desc =
+                        msg->PathDescription.GetFileStoreDescription();
+                    tabletId = desc.GetIndexTabletId();
+
+                    break;
+                }
+
+                case NKikimr::TEvHive::EvReassignTablet: {
+                    const auto* msg =
+                        event->Get<NKikimr::TEvHive::TEvReassignTablet>();
+                    reassignedTabletId = msg->Record.GetTabletID();
+                    reassignedChannels = {
+                        msg->Record.GetChannels().begin(),
+                        msg->Record.GetChannels().end()};
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        auto headers = service.InitSession("test", "client");
+        UNIT_ASSERT(headers.SessionId);
+        UNIT_ASSERT(tabletId);
+
+        NProtoPrivate::TReassignTabletRequest request;
+        request.SetTabletId(tabletId);
+        request.AddChannels(1);
+        request.AddChannels(4);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        auto jsonResponse = service.ExecuteAction("reassigntablet", buf);
+        NProtoPrivate::TReassignTabletResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+
+        UNIT_ASSERT_VALUES_EQUAL(tabletId, reassignedTabletId);
+        UNIT_ASSERT_VALUES_EQUAL(2, reassignedChannels.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, reassignedChannels[0]);
+        UNIT_ASSERT_VALUES_EQUAL(4, reassignedChannels[1]);
     }
 }
 

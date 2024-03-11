@@ -5,7 +5,7 @@ package NCloud.NFileStore.NProtoPrivate;
 option go_package = "a.yandex-team.ru/cloud/filestore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Actions
+// DrainNode
 
 message TDrainNodeRequest
 {
@@ -13,5 +13,18 @@ message TDrainNodeRequest
 }
 
 message TDrainNodeResponse
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReassignTablet
+
+message TReassignTabletRequest
+{
+    uint64 TabletId = 1;
+    repeated uint32 Channels = 2;
+}
+
+message TReassignTabletResponse
 {
 }
