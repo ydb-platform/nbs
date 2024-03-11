@@ -24,6 +24,7 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NClient;
 using namespace NThreading;
 
 namespace {
@@ -103,7 +104,7 @@ private:
     const IEndpointStoragePtr EndpointStorage;
     const IEndpointManagerPtr EndpointManager;
 
-    NClient::IMetricClientPtr RestoringClient;
+    IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
 
     TLog Log;
@@ -139,25 +140,25 @@ public:
     {
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
 
-        NProto::TClientAppConfig clientAppConfig;
-        *clientAppConfig.MutableClientConfig() = std::move(clientConfig);
-        auto appConfig = std::make_shared<NClient::TClientAppConfig>(
-            std::move(clientAppConfig));
-
         IBlockStorePtr client = std::make_shared<TEndpointClient>(
             EndpointManager);
 
+        NProto::TClientAppConfig config;
+        *config.MutableClientConfig() = std::move(clientConfig);
+        auto appConfig = std::make_shared<TClientAppConfig>(std::move(config));
+        auto retryPolicy = CreateRetryPolicy(appConfig);
+
         client = CreateDurableClient(
-            appConfig,
+            std::move(appConfig),
             std::move(client),
-            CreateRetryPolicy(appConfig),
+            std::move(retryPolicy),
             logging,
             Timer,
             Scheduler,
             std::move(requestStats),
             std::move(volumeStats));
 
-        RestoringClient = NClient::CreateMetricClient(
+        RestoringClient = CreateMetricClient(
             std::move(client),
             std::move(logging),
             std::move(serverStats));

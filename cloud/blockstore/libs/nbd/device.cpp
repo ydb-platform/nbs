@@ -59,7 +59,9 @@ public:
         , ConnectAddress(connectAddress)
         , DeviceName(std::move(deviceName))
         , Timeout(timeout)
-    {}
+    {
+        Log = Logging->CreateLog("BLOCKSTORE_NBD");
+    }
 
     ~TDeviceConnection()
     {
@@ -68,8 +70,6 @@ public:
 
     void Start() override
     {
-        Log = Logging->CreateLog("BLOCKSTORE_NBD");
-
         ConnectSocket();
         ConnectDevice();
 
@@ -206,6 +206,19 @@ void TDeviceConnection::DisconnectDevice()
     // device will be closed when thread exit
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceConnectionStub final
+    : public IDeviceConnection
+{
+public:
+    void Start()
+    {}
+
+    void Stop()
+    {}
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,6 +234,11 @@ IDeviceConnectionPtr CreateDeviceConnection(
         std::move(connectAddress),
         std::move(deviceName),
         timeout);
+}
+
+IDeviceConnectionPtr CreateDeviceConnectionStub()
+{
+    return std::make_shared<TDeviceConnectionStub>();
 }
 
 }   // namespace NCloud::NBlockStore::NBD

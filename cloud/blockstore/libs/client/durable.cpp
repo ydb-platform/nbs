@@ -121,7 +121,7 @@ using TRequestStatePtr = TIntrusivePtr<TRequestState<T>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDurableClient
+class TDurableClient final
     : public IBlockStore
     , public std::enable_shared_from_this<TDurableClient>
 {
