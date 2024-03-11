@@ -127,8 +127,21 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         auto nodeId = handle->GetNodeId();
         DestroyHandle(db, &*(handle++));
 
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s Removing handle upon session reset s:%s n:%lu",
+            LogTag.c_str(),
+            args.SessionId.c_str(),
+            nodeId);
+
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s Removing node upon session reset s:%s n:%lu (size %lu)",
+                LogTag.c_str(),
+                args.SessionId.c_str(),
+                nodeId,
+                it->Attrs.GetSize());
+
             RemoveNode(
                 db,
                 *it,

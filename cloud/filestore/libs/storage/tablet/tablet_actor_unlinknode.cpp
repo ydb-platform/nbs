@@ -90,7 +90,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     if (!args.ChildRef) {
-        args.Error = ErrorInvalidTarget(args.ParentNodeId);
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
         return true;
     }
 
