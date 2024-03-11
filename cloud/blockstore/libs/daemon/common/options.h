@@ -26,6 +26,7 @@ public:
     TString DiskAgentConfig;
     TString DiskRegistryProxyConfig;
     TString EndpointConfig;
+    TString RdmaConfig;
 
     enum class EServiceKind {
         Null   /* "null"   */ ,

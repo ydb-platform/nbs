@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
@@ -242,6 +243,7 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 TDiskAgentState::TDiskAgentState(
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -252,6 +254,7 @@ TDiskAgentState::TDiskAgentState(
         NNvme::INvmeManagerPtr nvmeManager)
     : StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
+    , RdmaConfig(std::move(rdmaConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))
@@ -427,7 +430,7 @@ void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
     if (RdmaServer) {
         THashMap<TString, TStorageAdapterPtr> devices;
 
-        auto endpoint = AgentConfig->GetRdmaTarget().GetEndpoint();
+        auto endpoint = AgentConfig->GetRdmaEndpoint();
 
         if (endpoint.GetHost().empty()) {
             endpoint.SetHost(FQDNHostName());

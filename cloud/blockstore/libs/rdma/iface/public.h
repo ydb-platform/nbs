@@ -53,4 +53,7 @@ using TProtoMessagePtr = std::unique_ptr<TProtoMessage>;
 
 class TProtoMessageSerializer;
 
+class TRdmaConfig;
+using TRdmaConfigPtr = std::shared_ptr<TRdmaConfig>;
+
 }   // namespace NCloud::NBlockStore::NRdma

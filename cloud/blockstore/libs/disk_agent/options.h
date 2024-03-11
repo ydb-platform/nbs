@@ -19,6 +19,7 @@ struct TOptions
     TString DiskAgentConfig;
     TString DiskRegistryProxyConfig;
     TString FeaturesConfig;
+    TString RdmaConfig;
 
     TString SysLogService;
 

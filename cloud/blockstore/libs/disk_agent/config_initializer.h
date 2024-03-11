@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
@@ -34,6 +35,7 @@ struct TConfigInitializer
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    NRdma::TRdmaConfigPtr RdmaConfig;
 
     TString Rack;
 
@@ -52,6 +54,7 @@ struct TConfigInitializer
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();
+    void InitRdmaConfig();
 
     NKikimrConfig::TLogConfig GetLogConfig() const;
     NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;
