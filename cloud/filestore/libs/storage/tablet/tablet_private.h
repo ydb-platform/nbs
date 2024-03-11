@@ -250,6 +250,7 @@ struct TEvIndexTabletPrivate
 
     struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
     {
+        bool ShouldReportStats = true;
     };
 
     //

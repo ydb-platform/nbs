@@ -368,3 +368,83 @@ message TDescribeSessionsResponse
     // All tablet sessions.
     repeated TTabletSessionInfo Sessions = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// IssueBlob request/response.
+
+message TIssueBlobRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // TODO(debnatkh): support multiple blobs.
+
+    // Starting offset for write.
+    uint64 Offset = 5;
+
+    // Data size.
+    uint64 Length = 6;
+}
+
+message TIssueBlobResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Blob id.
+    // TODO(debnatkh): support multiple blobs.
+    NKikimrProto.TLogoBlobID BlobId = 2;
+
+    // Group id.
+    uint32 BSGroupId = 3;
+
+    uint64 CommitId = 4;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+// TwoStageWrite request/response.
+
+message TMarkWriteCompletedRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for write.
+    uint64 Offset = 5;
+
+    // Data size.
+    uint64 Length = 6;
+
+    // Blob id.
+    // TODO(debnatkh): support multiple blobs.
+    NKikimrProto.TLogoBlobID BlobId = 7;
+
+    // Commit id.
+    uint64 CommitId = 8;
+}
+
+message TMarkWriteCompletedResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

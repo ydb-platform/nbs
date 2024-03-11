@@ -59,6 +59,7 @@ SRCS(
     tablet_actor_testlock.cpp
     tablet_actor_throttling.cpp
     tablet_actor_truncate.cpp
+    tablet_actor_twostagewrite.cpp
     tablet_actor_unlinknode.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp

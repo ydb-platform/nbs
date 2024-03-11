@@ -14,6 +14,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/prot
 message TFileStoreFeatures
 {
     bool TwoStageReadEnabled = 1;
+    bool TwoStageWriteEnabled = 5;
     uint32 EntryTimeout = 2;
     uint32 NegativeEntryTimeout = 3;
     uint32 AttrTimeout = 4;

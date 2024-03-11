@@ -1178,23 +1178,29 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
+        ui64 CommitId;
+        std::optional<NKikimr::TLogoBlobID> BlobId;
 
-        ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
 
+        template <typename TDataRequest>
         TWriteData(
-                TRequestInfoPtr requestInfo,
+            TRequestInfoPtr requestInfo,
                 const ui32 writeBlobThreshold,
-                const NProto::TWriteDataRequest& request,
+                const TDataRequest& request,
                 TByteRange byteRange,
-                IBlockBufferPtr buffer)
+                IBlockBufferPtr buffer,
+                ui64 commitId,
+                const std::optional<NKikimr::TLogoBlobID>& blobId = std::nullopt)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
+            , CommitId(commitId)
+            , BlobId(blobId)
         {}
 
         void Clear()
@@ -1208,7 +1214,14 @@ struct TTxIndexTablet
         {
             // skip fresh completely for large aligned writes
             return ByteRange.IsAligned()
-                && ByteRange.Length >= WriteBlobThreshold;
+                && ByteRange.Length >= WriteBlobThreshold
+                // TODO(debnatkh): support fresh blocks for two-phase writes
+                && !IsBlobAlreadyWritten();
+        }
+
+        bool IsBlobAlreadyWritten() const
+        {
+            return BlobId.has_value();
         }
     };
 

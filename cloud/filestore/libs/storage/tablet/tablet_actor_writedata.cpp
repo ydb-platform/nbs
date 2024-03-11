@@ -39,6 +39,12 @@ private:
     const TWriteRange WriteRange;
     ui32 BlobsSize = 0;
 
+    // This parameter is used for a scenario, when there is already a blobId
+    // with data written to. In this case, we don't need to send requests to
+    // blobstorage. This field is used only for two-stage writes. For more info
+    // see See #539
+    std::optional<NKikimr::TLogoBlobID> BlobId;
+
 public:
     TWriteDataActor(
         ITraceSerializerPtr traceSerializer,
@@ -47,7 +53,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
-        TWriteRange writeRange);
+        TWriteRange writeRange,
+        std::optional<NKikimr::TLogoBlobID>);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -71,18 +78,22 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error = {});
+
+private:
+    bool IsBlobAlreadyWritten() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteDataActor::TWriteDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TWriteRange writeRange)
+    ITraceSerializerPtr traceSerializer,
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TVector<TMergedBlob> blobs,
+    TWriteRange writeRange,
+    std::optional<NKikimr::TLogoBlobID> blobid)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , Tablet(tablet)
@@ -90,6 +101,7 @@ TWriteDataActor::TWriteDataActor(
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
+    , BlobId(blobid)
 {
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobContent.Size();
@@ -109,6 +121,13 @@ void TWriteDataActor::Bootstrap(const TActorContext& ctx)
 
 void TWriteDataActor::WriteBlob(const TActorContext& ctx)
 {
+    if (IsBlobAlreadyWritten()) {
+        // In the case, when there is already a blobId with data written to,
+        // bypass BlobStorage access
+        AddBlob(ctx);
+        return;
+    }
+
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
         RequestInfo->CallContext
     );
@@ -180,6 +199,8 @@ void TWriteDataActor::ReplyAndDie(
         response->Count = 1;
         response->Size = BlobsSize;
         response->Time = ctx.Now() - RequestInfo->StartedTs;
+        // In cases when the blob is already written, we do not report stats
+        response->ShouldReportStats = !IsBlobAlreadyWritten();
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -206,6 +227,11 @@ void TWriteDataActor::ReplyAndDie(
     }
 
     Die(ctx);
+}
+
+bool TWriteDataActor::IsBlobAlreadyWritten() const
+{
+    return BlobId.has_value();
 }
 
 STFUNC(TWriteDataActor::StateWork)
@@ -371,7 +397,9 @@ void TIndexTabletActor::HandleWriteData(
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
-        std::move(blockBuffer));
+        std::move(blockBuffer),
+        InvalidCommitId,
+        std::nullopt);
 }
 
 void TIndexTabletActor::HandleWriteDataCompleted(
@@ -380,16 +408,24 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 {
     const auto* msg = ev->Get();
 
-    ReleaseCollectBarrier(msg->CommitId);
+    // We release CollectBarrier regardless of whether the write was done in
+    // two-stage manner or not
+    if (msg->ShouldReportStats) {
+        ReleaseCollectBarrier(msg->CommitId);
+    }
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.WriteData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.WriteData.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.WriteData.Time.Record(msg->Time);
+    if (msg->ShouldReportStats) {
+        Metrics.WriteData.Count.fetch_add(
+            msg->Count,
+            std::memory_order_relaxed);
+        Metrics.WriteData.RequestBytes.fetch_add(
+            msg->Size,
+            std::memory_order_relaxed);
+        Metrics.WriteData.Time.Record(msg->Time);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -564,6 +600,12 @@ void TIndexTabletActor::CompleteTx_WriteData(
     };
 
     if (FAILED(args.Error.GetCode())) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Failed TX two-stage completion: %lu",
+            LogTag.c_str(),
+            args.RequestInfo->CallContext->RequestId);
         reply(ctx, args);
         return;
     }
@@ -606,30 +648,52 @@ void TIndexTabletActor::CompleteTx_WriteData(
     auto blobs = builder.Finish();
     TABLET_VERIFY(blobs);
 
-    args.CommitId = GenerateCommitId();
-    if (args.CommitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "WriteData");
-    }
+    if (args.IsBlobAlreadyWritten()) {
+        // TODO(debnatkh): support multiple blobs in two-stage write scenario
+        TABLET_VERIFY(blobs.size() == 1);
 
-    ui32 blobIndex = 0;
-    for (auto& blob: blobs) {
-        const auto ok = GenerateBlobId(
-            args.CommitId,
-            blob.BlobContent.size(),
-            blobIndex++,
-            &blob.BlobId);
+        // TODO(debnatkh): extract TPartialBlobId(TLogoBlobID) constructor
+        for (auto& blob: blobs) {
+            blob.BlobId = TPartialBlobId(
+                args.BlobId->Generation(),
+                args.BlobId->Step(),
+                args.BlobId->Channel(),
+                args.BlobId->BlobSize(),
+                args.BlobId->Cookie(),
+                args.BlobId->PartId());
+        }
+    } else {
+        // No need to assign blobIds as they are already assigned
+        args.CommitId = GenerateCommitId();
+        if (args.CommitId == InvalidCommitId) {
+            return RebootTabletOnCommitOverflow(ctx, "WriteData");
+        }
 
-        if (!ok) {
-            ReassignDataChannelsIfNeeded(ctx);
+        ui32 blobIndex = 0;
+        for (auto& blob: blobs) {
+            const auto ok = GenerateBlobId(
+                args.CommitId,
+                blob.BlobContent.size(),
+                blobIndex++,
+                &blob.BlobId);
 
-            args.Error = MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId");
-            reply(ctx, args);
+            if (!ok) {
+                ReassignDataChannelsIfNeeded(ctx);
 
-            return;
+                args.Error =
+                    MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId");
+                reply(ctx, args);
+
+                return;
+            }
         }
     }
 
-    AcquireCollectBarrier(args.CommitId);
+    if (!args.IsBlobAlreadyWritten()) {
+        // In the two-stage write scenario, CollectBarrier is acquired on the
+        // issuing of the blobIds by the TIndexTabletActor
+        AcquireCollectBarrier(args.CommitId);
+    }
 
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
@@ -638,7 +702,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()});
+        TWriteRange{args.NodeId, args.ByteRange.End()},
+        args.BlobId);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

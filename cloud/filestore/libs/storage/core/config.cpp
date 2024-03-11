@@ -133,6 +133,7 @@ namespace {
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageWriteEnabled,            bool,      false                     )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\

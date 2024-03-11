@@ -175,6 +175,7 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    bool GetTwoStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;

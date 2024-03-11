@@ -15,6 +15,7 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetTwoStageWriteEnabled(config.GetTwoStageWriteEnabled());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
