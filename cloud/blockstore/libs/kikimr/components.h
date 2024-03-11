@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/kikimr/components_start.h>
+
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
@@ -53,6 +55,7 @@ namespace NCloud::NBlockStore {
     xxx(LOCAL_STORAGE)                                                         \
     xxx(EXTERNAL_ENDPOINT)                                                     \
     BLOCKSTORE_ACTORS(xxx)                                                     \
+    xxx(USER_STATS)                                                            \
 // BLOCKSTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -61,7 +64,7 @@ struct TBlockStoreComponents
 {
     enum
     {
-        START = 1024,   // TODO
+        START = TComponentsStart::BlockStoreComponentsStart,
 
 #define BLOCKSTORE_DECLARE_COMPONENT(component)                                \
         component,                                                             \
@@ -127,22 +130,6 @@ struct TBlockStorePrivateEvents
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_BLOCKSTORE_PRIVATE),
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::BLOCKSTORE)");
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBlockStoreActivities
-{
-    enum
-    {
-#define BLOCKSTORE_DECLARE_COMPONENT(component)                                \
-        component = NKikimrServices::TActivity::BLOCKSTORE_##component,        \
-// BLOCKSTORE_DECLARE_COMPONENT
-
-        BLOCKSTORE_ACTORS(BLOCKSTORE_DECLARE_COMPONENT)
-
-#undef BLOCKSTORE_DECLARE_COMPONENT
-    };
 };
 
 }   // namespace NCloud::NBlockStore

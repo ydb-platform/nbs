@@ -633,7 +633,7 @@ void TIndexTabletActor::RebootTabletOnCommitOverflow(
     const TActorContext& ctx,
     const TString& request)
 {
-    LOG_ERROR(ctx, TFileStoreActivities::TABLET,
+    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
         "%s CommitId overflow in %s. Restarting",
         LogTag.c_str(),
         request.c_str());
