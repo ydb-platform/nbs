@@ -22,9 +22,8 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NClient;
 using namespace NThreading;
-
-using namespace NCloud::NBlockStore::NClient;
 
 namespace {
 
@@ -135,6 +134,22 @@ bool CompareRequests(
         && left.GetNbdDeviceFile() == right.GetNbdDeviceFile();
 }
 
+bool CompareRequests(
+    const NProto::TStopEndpointRequest& left,
+    const NProto::TStopEndpointRequest& right)
+{
+    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TStopEndpointRequest>());
+    return left.GetUnixSocketPath() == right.GetUnixSocketPath();
+}
+
+bool CompareRequests(
+    const NProto::TRefreshEndpointRequest& left,
+    const NProto::TRefreshEndpointRequest& right)
+{
+    Y_DEBUG_ABORT_UNLESS(2 == GetFieldCount<NProto::TRefreshEndpointRequest>());
+    return left.GetUnixSocketPath() == right.GetUnixSocketPath();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
@@ -148,6 +163,8 @@ bool CompareRequests(
     BLOCKSTORE_ENDPOINT_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TSwitchEndpointRequest
 {
@@ -188,6 +205,19 @@ public:
     }
 
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool CompareRequests(
+    const TSwitchEndpointRequest& left,
+    const TSwitchEndpointRequest& right)
+{
+    return left.GetDiskId() == right.GetDiskId()
+        && left.GetUnixSocketPath() == right.GetUnixSocketPath()
+        && left.GetReason() == right.GetReason();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TSwitchEndpointMethod
 {
@@ -346,9 +376,35 @@ private:
         const typename TMethod::TRequest& request)
     {
         auto promise = NewPromise<typename TMethod::TResponse>();
+        const auto& socketPath = request.GetUnixSocketPath();
+
+        auto it = ProcessingSockets.find(socketPath);
+        if (it != ProcessingSockets.end()) {
+            const auto& st = it->second;
+            auto* state = std::get_if<TRequestState<TMethod>>(&st);
+            if (!state) {
+                auto response = TErrorResponse(E_REJECTED, TStringBuilder()
+                    << "endpoint " << socketPath.Quote()
+                    << " is " << GetProcessName(st) << " now");
+                promise.SetValue(response);
+                return promise;
+            }
+
+            if (!CompareRequests(request, state->Request)) {
+                auto response = TErrorResponse(E_REJECTED, TStringBuilder()
+                    << "endpoint " << socketPath.Quote()
+                    << " is " << GetProcessName(st) << " now with other args");
+                promise.SetValue(response);
+                return promise;
+            }
+
+            auto response = Executor->WaitFor(state->Result);
+            promise.SetValue(response);
+            return promise;
+        }
 
         auto [_, inserted] = ProcessingSockets.emplace(
-            request.GetUnixSocketPath(),
+            socketPath,
             TRequestState<TMethod>{request, promise.GetFuture()});
         Y_ABORT_UNLESS(inserted);
 
@@ -360,11 +416,9 @@ private:
         ProcessingSockets.erase(socketPath);
     }
 
-    TErrorResponse MakeBusySocketError(
-        const TString& socketPath,
-        const TRequestStateVariant& st)
+    TString GetProcessName(const TRequestStateVariant& st)
     {
-        auto processName = std::visit(TOverloaded{
+        return std::visit(TOverloaded{
             [] (const TRequestState<TStartEndpointMethod>&) {
                 return "starting";
             },
@@ -381,10 +435,6 @@ private:
                 return "busy (undefined process)";
             }
         }, st);
-
-        return TErrorResponse(E_REJECTED, TStringBuilder()
-            << "endpoint " << socketPath.Quote()
-            << " is " << processName << " now");
     }
 };
 
@@ -396,24 +446,10 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 {
     auto socketPath = request->GetUnixSocketPath();
 
-    auto it = ProcessingSockets.find(socketPath);
-    if (it != ProcessingSockets.end()) {
-        const auto& st = it->second;
-        auto* state = std::get_if<TRequestState<TStartEndpointMethod>>(&st);
-        if (!state) {
-            return MakeBusySocketError(socketPath, st);
-        }
-
-        if (!AreSameStartEndpointRequests(*request, state->Request)) {
-            return TErrorResponse(E_REJECTED, TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " is starting now with other args");
-        }
-
-        return Executor->WaitFor(state->Result);
-    }
-
     auto promise = AddProcessingSocket<TStartEndpointMethod>(*request);
+    if (promise.HasValue()) {
+        return promise.ExtractValue();
+    }
 
     auto response = StartEndpointImpl(std::move(ctx), std::move(request));
     promise.SetValue(response);
@@ -557,18 +593,10 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 {
     auto socketPath = request->GetUnixSocketPath();
 
-    auto it = ProcessingSockets.find(socketPath);
-    if (it != ProcessingSockets.end()) {
-        const auto& st = it->second;
-        auto* state = std::get_if<TRequestState<TStopEndpointMethod>>(&st);
-        if (!state) {
-            return MakeBusySocketError(socketPath, st);
-        }
-
-        return Executor->WaitFor(state->Result);
-    }
-
     auto promise = AddProcessingSocket<TStopEndpointMethod>(*request);
+    if (promise.HasValue()) {
+        return promise.ExtractValue();
+    }
 
     auto response = StopEndpointImpl(std::move(ctx), std::move(request));
     promise.SetValue(response);
@@ -596,7 +624,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    endpoint.Device.reset();
+    endpoint.Device->Stop();
     CloseAllEndpointSockets(*endpoint.Request);
     RemoveSession(std::move(ctx), *request);
     return {};
@@ -644,18 +672,10 @@ NProto::TRefreshEndpointResponse TEndpointManager::DoRefreshEndpoint(
 {
     auto socketPath = request->GetUnixSocketPath();
 
-    auto it = ProcessingSockets.find(socketPath);
-    if (it != ProcessingSockets.end()) {
-        const auto& st = it->second;
-        auto* state = std::get_if<TRequestState<TRefreshEndpointMethod>>(&st);
-        if (!state) {
-            return MakeBusySocketError(socketPath, st);
-        }
-
-        return Executor->WaitFor(state->Result);
-    }
-
     auto promise = AddProcessingSocket<TRefreshEndpointMethod>(*request);
+    if (promise.HasValue()) {
+        return promise.ExtractValue();
+    }
 
     auto response = RefreshEndpointImpl(std::move(ctx), std::move(request));
     promise.SetValue(response);
@@ -760,13 +780,13 @@ void TEndpointManager::CloseEndpointSocket(
     const NProto::TStartEndpointRequest& request)
 {
     auto ipcType = request.GetIpcType();
-    auto socketPath = request.GetUnixSocketPath();
+    const auto& socketPath = request.GetUnixSocketPath();
 
     auto listenerIt = EndpointListeners.find(ipcType);
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
         TWellKnownEntityTypes::ENDPOINT,
-        request.GetUnixSocketPath());
+        socketPath);
     const auto& listener = listenerIt->second;
 
     auto future = listener->StopEndpoint(socketPath);
@@ -802,31 +822,23 @@ NProto::TError TEndpointManager::DoSwitchEndpoint(
 {
     const auto& diskId = request->GetDiskId();
 
-    auto reqIt = FindIf(Endpoints, [&] (auto& v) {
+    auto it = FindIf(Endpoints, [&] (auto& v) {
         const auto& [_, endpoint] = v;
         return endpoint.Request->GetDiskId() == diskId
             && endpoint.Request->GetIpcType() == NProto::IPC_VHOST;
     });
 
-    if (reqIt == Endpoints.end()) {
+    if (it == Endpoints.end()) {
         return TErrorResponse(S_OK);
     }
 
-    const auto& socketPath = reqIt->first;
-
-    auto sockIt = ProcessingSockets.find(socketPath);
-    if (sockIt != ProcessingSockets.end()) {
-        const auto& st = sockIt->second;
-        auto* state = std::get_if<TRequestState<TSwitchEndpointMethod>>(&st);
-        if (!state) {
-            return MakeBusySocketError(socketPath, st);
-        }
-
-        return Executor->WaitFor(state->Result);
-    }
-
+    auto socketPath = it->first;
     request->SetUnixSocketPath(socketPath);
+
     auto promise = AddProcessingSocket<TSwitchEndpointMethod>(*request);
+    if (promise.HasValue()) {
+        return promise.ExtractValue();
+    }
 
     auto response = SwitchEndpointImpl(std::move(ctx), std::move(request));
     promise.SetValue(response);
@@ -847,7 +859,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
             << "endpoint " << socketPath.Quote() << " not started");
     }
 
-    auto& startRequest = it->second.Request;
+    auto startRequest = it->second.Request;
     auto listenerIt = EndpointListeners.find(startRequest->GetIpcType());
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -891,7 +903,7 @@ TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
     if (request->GetIpcType() != NProto::IPC_NBD ||
         request->GetNbdDeviceFile().empty())
     {
-        return NBD::IDeviceConnectionPtr{};
+        return NBD::CreateDeviceConnectionStub();
     }
 
     auto device = NBD::CreateDeviceConnection(
