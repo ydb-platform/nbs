@@ -120,17 +120,20 @@ TString GetMonitoringYDBGroupUrl(
     ui32 groupId,
     const TString& storagePool)
 {
-    TMonitoringUrlData data = config.GetMonitoringUrlData();
-    return TStringBuilder()
-           << data.MonitoringUrl
-           << "/projects/kikimr/explorer/"
-              "queries?q.0.s=histogram_percentile(99, {project=\"kikimr"
-           << "\", cluster=\"*\", storagePool=\"" << storagePool
-           << "\", group=\"" << groupId << "\", host=\"" << GetShortHostName()
-           << "\", service=\"vdisks\", "
-              "subsystem=\"latency_histo\", "
-              "handleclass=\"GetFast\"})&q.0.name=A&from=now-1d&to=now&refresh="
-              "60000";
+    constexpr TStringBuf GetFast =
+        R"(q.0.s=histogram_percentile(99, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="GetFast"})&q.0.name=A)";
+    constexpr TStringBuf PutUserData =
+        R"(q.1.s=histogram_percentile(99, {project="kikimr", cluster="*", storagePool="%s", group="%)" PRIu32
+        R"(", host="*", service="vdisks", subsystem="latency_histo", handleclass="PutUserData"})&q.1.name=B)";
+    constexpr TStringBuf Url =
+        "%s/projects/kikimr/explorer/"
+        "queries?%s&%s&from=now-1d&to=now&refresh=60000";
+    return Sprintf(
+        Url.data(),
+        config.GetMonitoringUrlData().MonitoringUrl.c_str(),
+        Sprintf(GetFast.data(), storagePool.c_str(), groupId).c_str(),
+        Sprintf(PutUserData.data(), storagePool.c_str(), groupId).c_str());
 }
 
 }   // namespace NCloud::NBlockStore
