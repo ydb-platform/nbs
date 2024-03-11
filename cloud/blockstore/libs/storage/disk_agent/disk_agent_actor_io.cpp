@@ -22,6 +22,9 @@ constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod> ||
     std::is_same_v<T, TEvDiskAgent::TZeroDeviceBlocksMethod>;
 
+template <typename T>
+constexpr bool IsReadDeviceMethod = !IsWriteDeviceMethod<T>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod, typename T>
@@ -187,7 +190,9 @@ void TDiskAgentActor::PerformIO(
         clientId.c_str());
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
-        if (IsWriteDeviceMethod<TMethod> || clientId != CheckHealthClientId) {
+        const bool allowedReadingDuringSecureErase =
+            IsReadDeviceMethod<TMethod> && clientId == CheckHealthClientId;
+        if (!allowedReadingDuringSecureErase) {
             ReportDiskAgentIoDuringSecureErase(
                 TStringBuilder()
                 << " Device=" << deviceUUID

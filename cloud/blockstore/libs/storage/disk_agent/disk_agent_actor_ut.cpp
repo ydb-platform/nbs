@@ -3004,9 +3004,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 "uuid",
                 0,
                 1,
-                TString(CheckHealthClientId))
-                ->Record.GetError()
-                .GetCode());
+                TString(CheckHealthClientId))->Record.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
 
         // Write zero during secure erase from HealthCheck client generates
@@ -3019,9 +3017,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 "uuid",
                 0,
                 1,
-                TString(CheckHealthClientId))
-                ->Record.GetError()
-                .GetCode());
+                TString(CheckHealthClientId))->Record.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 4);
 
         spdk->SecureEraseResult.SetValue(NProto::TError());
