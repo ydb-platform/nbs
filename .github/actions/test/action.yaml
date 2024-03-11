@@ -112,7 +112,7 @@ runs:
         readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
 
         echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES="CPP PY3 PY2 GO"' \
+        sudo -E -H -u github ./ya test -k --build "${build_type}" \
           ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
