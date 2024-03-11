@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(actors)
 add_subdirectory(benchmark)
 add_subdirectory(model)
 add_subdirectory(testlib)
@@ -32,6 +33,7 @@ target_link_libraries(libs-storage-disk_agent PUBLIC
   libs-spdk-iface
   libs-storage-api
   libs-storage-core
+  storage-disk_agent-actors
   storage-disk_agent-model
   libs-storage-disk_common
   libs-storage-model
