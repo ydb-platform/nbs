@@ -368,7 +368,14 @@ private:
         TString* overlapDetails) const
     {
         if (synchronizedData.SecureEraseInProgress) {
-            ReportDiskAgentIoDuringSecureErase();
+            ReportDiskAgentIoDuringSecureErase(
+                TStringBuilder()
+                << " Device=" << requestDetails.DeviceUUID
+                << ", ClientId=" << requestDetails.ClientId
+                << ", StartIndex=" << requestDetails.Range.Start
+                << ", EndIndex=" << requestDetails.Range.End
+                << ", IsWrite=1"
+                << ", IsRdma=1");
             *overlapDetails = "Secure erase in progress";
             return ECheckRange::ResponseRejected;
         }
@@ -508,6 +515,23 @@ private:
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
+
+        auto token = GetAccessToken(request.GetDeviceUUID());
+        if (token->SecureEraseInProgress) {
+            const auto& clientId = request.GetHeaders().GetClientId();
+            if (clientId != CheckHealthClientId) {
+                ReportDiskAgentIoDuringSecureErase(
+                    TStringBuilder()
+                    << " Device=" << request.GetDeviceUUID()
+                    << ", ClientId=" << clientId
+                    << ", StartIndex=" << request.GetStartIndex()
+                    << ", EndIndex="
+                    << (request.GetStartIndex() + request.GetBlocksCount() - 1)
+                    << ", IsWrite=0"
+                    << ", IsRdma=1");
+            }
+            return MakeError(E_REJECTED, "Secure erase in progress");
+        }
 
         auto req = std::make_shared<NProto::TReadBlocksRequest>();
 

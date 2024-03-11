@@ -117,6 +117,10 @@ void TDiskAgentActor::PerformIO(
     if constexpr (IsWriteDeviceMethod<TMethod>) {
         volumeRequestId = GetVolumeRequestId(*msg);
         range = BuildRequestBlockRange(*msg);
+    } else {
+        range = TBlockRange64::WithLength(
+            msg->Record.GetStartIndex(),
+            msg->Record.GetBlocksCount());
     }
 
     auto requestInfo = CreateRequestInfo<TMethod>(
@@ -183,7 +187,16 @@ void TDiskAgentActor::PerformIO(
         clientId.c_str());
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
-        ReportDiskAgentIoDuringSecureErase();
+        if (IsWriteDeviceMethod<TMethod> || clientId != CheckHealthClientId) {
+            ReportDiskAgentIoDuringSecureErase(
+                TStringBuilder()
+                << " Device=" << deviceUUID
+                << ", ClientId=" << clientId
+                << ", StartIndex=" << range.Start
+                << ", EndIndex=" << range.End
+                << ", IsWrite=" << IsWriteDeviceMethod<TMethod>
+                << ", IsRdma=0");
+        }
         replyError(E_REJECTED, "Secure erase in progress");
         return;
     }
