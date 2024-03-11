@@ -50,8 +50,8 @@ TString ReportCriticalEvent(
     fullMessage << "CRITICAL_EVENT:" << sensorName;
     if (message) {
         fullMessage << ":" << message;
-        Cerr << fullMessage << Endl;
     }
+    Cerr << fullMessage << Endl;
 
     return fullMessage;
 }
