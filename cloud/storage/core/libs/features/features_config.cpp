@@ -27,7 +27,7 @@ TFeaturesConfig::TFeatureInfo::TFeatureInfo(NProto::TFeatureConfig config)
 
     CloudProbability = config.HasCloudProbability()
         ? config.GetCloudProbability() : defaultProbability;
-    
+
     FolderProbability = config.HasFolderProbability()
         ? config.GetFolderProbability() : defaultProbability;
 }
