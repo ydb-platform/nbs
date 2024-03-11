@@ -1,5 +1,7 @@
 #include "disk_agent_actor.h"
 
+#include "actors/session_cache_actor.h"
+
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -106,6 +108,25 @@ void TDiskAgentActor::UpdateActorStats()
         IncrementFor(actorQueue, actorQueues.first);
         IncrementFor(mailboxQueue, actorQueues.second);
     }
+}
+
+void TDiskAgentActor::UpdateSessionCacheAndRespond(
+    const NActors::TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    NActors::IEventBasePtr response)
+{
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Update the session cache");
+
+    auto actor = NDiskAgent::CreateSessionCacheActor(
+        State->GetSessions(),
+        AgentConfig->GetCachedSessionsPath(),
+        std::move(requestInfo),
+        std::move(response));
+
+    ctx.Register(
+        actor.release(),
+        TMailboxType::HTSwap,
+        NKikimr::AppData()->IOPoolId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
