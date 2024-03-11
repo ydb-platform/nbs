@@ -18,11 +18,13 @@ private:
     TRWMutex Lock;
     TVector<IUserMetricsSupplierPtr> Providers;
 
+    const int Component;
     const TString Path;
     const TString Title;
 
 public:
     TUserStatsActor(
+        int component,
         TString path,
         TString title,
         TVector<IUserMetricsSupplierPtr> providers);
