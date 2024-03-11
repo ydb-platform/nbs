@@ -12,16 +12,18 @@ namespace NCloud::NBlockStore::NStorage {
 class TMigrationTimeoutCalculator
 {
 private:
-    const TStorageConfigPtr Config;
+    const ui32 MaxMigrationBandwidthMiBs = 0;
+    const ui32 ExpectedDiskAgentSize = 0;
     TNonreplicatedPartitionConfigPtr PartitionConfig;
 
 public:
     TMigrationTimeoutCalculator(
-        TStorageConfigPtr config,
+        ui32 maxMigrationBandwidthMiBs,
+        ui32 expectedDiskAgentSize,
         TNonreplicatedPartitionConfigPtr partitionConfig);
 
-    [[nodiscard]] TDuration CalculateTimeout(
-        TBlockRange64 nextProcessingRange) const;
+    [[nodiscard]] TDuration
+    CalculateTimeout(TBlockRange64 nextProcessingRange) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

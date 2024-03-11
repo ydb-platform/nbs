@@ -16,7 +16,9 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
-// An actor for shadow disk. Can migrate data from the source disk into the
+///////////////////////////////////////////////////////////////////////////////
+
+// The actor for shadow disk. Can migrate data from the source disk into the
 // shadow disk and serves read requests from the checkpoint.
 class TShadowDiskActor final
     : public TNonreplicatedPartitionMigrationCommonActor
@@ -31,13 +33,53 @@ public:
     };
 
 private:
+
+    // We always start from the WaitAcquireFor* or Error states.
+    //
+    // WaitAcquireForPrepareStart -> Preparing -> CheckpointReady
+    //             |                     |
+    //             v                     v
+    //           Error                  Error
+    //
+    // WaitAcquireForPrepareContinue -> Preparing -> CheckpointReady
+    //             |                       |
+    //             v                       v
+    //           Error                    Error
+    //
+    // WaitAcquireForRead -> CheckpointReady
+    //             |
+    //             v
+    //           Error
+
     enum class EActorState
     {
+        // We are waiting for the acquire of the shadow disk devices. The shadow
+        // disk has not filled up yet and we are starting from the beginning of
+        // the disk.
+        // We do not block writes to the source disk.
         WaitAcquireForPrepareStart,
+
+        // Waiting for the acquire of the shadow disk devices. The
+        // shadow disk has already been partially filled, and we are not
+        // starting from the beginning of the disk.
+        // We block writes to the source disk.
         WaitAcquireForPrepareContinue,
+
+        // Waiting for the acquire of the shadow disk devices. The disk is
+        // already completely filled and we will only read checkpoint data from it.
         WaitAcquireForRead,
+
+        // The devices of the shadow disk have been successfully acquired and we
+        // are currently filling it.
         Preparing,
+
+        // The devices of the shadow disk have been successfully acquired and we
+        // are ready to read the checkpoint data.
         CheckpointReady,
+
+        // Something went wrong and we stopped filling the shadow disk.
+        // At the same time, we do not interfere with the operation of the
+        // source disk.
         Error,
     };
 
@@ -52,11 +94,12 @@ private:
     const TActorId VolumeActorId;
     const TActorId SrcActorId;
 
+    TNonreplicatedPartitionConfigPtr DstConfig;
     TActorId DstActorId;
     ui64 ProcessedBlockCount = 0;
 
     EActorState State = EActorState::Error;
-    TMigrationTimeoutCalculator TimeoutCalculator;
+    std::optional<TMigrationTimeoutCalculator> TimeoutCalculator;
 
     TActorId AcquireActorId;
     // The list of devices received on first acquire.
@@ -100,6 +143,7 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void CreateShadowDiskConfig();
     void CreateShadowDiskPartitionActor(
         const NActors::TActorContext& ctx,
         const TDevices& acquiredShadowDiskDevices);
@@ -112,15 +156,15 @@ private:
 
     // If the shadow disk is only partially filled, and it is not ready to
     // write (because it is not acquired), we reject writes to the source disk.
-    bool IsWritesToSrcDiskForbidden() const;
+    bool AreWritesToSrcDiskForbidden() const;
 
     // If the shadow disk is not acquired, or has lost acquiring, then user
     // writes to the source disk will not be considered completed, the client
-    // will repeat recording attempts. Since we don't want to slow down the
-    // client's recordings for a long time, we need to keep track of the time
-    // during which the recordings did not occur in order to stop attempts to
+    // will repeat write attempts. Since we don't want to slow down the
+    // client's writing for a long time, we need to keep track of the time
+    // during which the writing did not occur in order to stop attempts to
     // fill a broken shadow disk.
-    bool IsWritesToSrcDiskImpossible() const;
+    bool AreWritesToSrcDiskImpossible() const;
 
     bool WaitingForAcquire() const;
     bool Acquired() const;

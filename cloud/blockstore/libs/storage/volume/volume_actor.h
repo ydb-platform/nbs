@@ -920,7 +920,7 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    NActors::TActorId MaybeWrapNonreplActor(
+    NActors::TActorId WrapNonreplActorIfNeeded(
         const NActors::TActorContext& ctx,
         NActors::TActorId nonreplicatedActorId,
         std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);

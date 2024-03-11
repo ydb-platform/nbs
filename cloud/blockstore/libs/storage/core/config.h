@@ -553,6 +553,14 @@ public:
 
     TString GetCachedDiskAgentConfigPath() const;
     TString GetCachedDiskAgentSessionsPath() const;
+
+    ui32 GetMaxShadowDiskFillBandwidth() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
 };
 
 ui64 GetAllocationUnit(

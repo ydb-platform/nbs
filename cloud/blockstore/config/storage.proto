@@ -926,4 +926,26 @@ message TStorageServiceConfig
     // caches. Disk agent config has higher priority than storage config.
     optional string CachedDiskAgentConfigPath = 350;
     optional string CachedDiskAgentSessionsPath = 351;
+
+    // Max bandwidth used for shadow disk fill in MiB/s (actual bandwidth is x2
+    //  due to the need to read and write).
+    optional uint32 MaxShadowDiskFillBandwidth = 352;
+    // Minimum delay between shadow disk acquire attempts when writes to the
+    // source disk are blocked (in ms).
+    optional uint32 MinAcquireShadowDiskRetryDelayWhenBlocked = 353;
+    // Maximum delay between shadow disk acquire attempts when writes to the
+    // source disk are blocked (in ms).
+    optional uint32 MaxAcquireShadowDiskRetryDelayWhenBlocked = 354;
+    // Minimum delay between shadow disk acquire attempts when writes to the
+    // source disk are not blocked (in ms).
+    optional uint32 MinAcquireShadowDiskRetryDelayWhenNonBlocked = 355;
+    // Maximum delay between shadow disk acquire attempts when writes to the
+    // source disk are not blocked (in ms).
+    optional uint32 MaxAcquireShadowDiskRetryDelayWhenNonBlocked = 356;
+    // Timeout for attempts to acquire the shadow disk when writes to the source
+    // disk are blocked (in ms).
+    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenBlocked = 357;
+    // Timeout for attempts to acquire the shadow disk when writes to the source
+    // disk are not blocked (in ms).
+    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
 }

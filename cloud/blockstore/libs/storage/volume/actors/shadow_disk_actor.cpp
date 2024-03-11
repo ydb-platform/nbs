@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
 
@@ -13,14 +14,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
-constexpr auto MinBlockedRetryDelay = TDuration::MilliSeconds(250);
-constexpr auto MaxBlockedRetryDelay = TDuration::Seconds(1);
-
-constexpr auto MinNonBlockedRetryDelay = TDuration::Seconds(1);
-constexpr auto MaxNonBlockedRetryDelay = TDuration::Seconds(10);
-
-constexpr auto MaxBlockingTotalTimeout = TDuration::Seconds(5);
-constexpr auto MaxNonBlockingTotalTimeout = TDuration::Seconds(600);
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename TEvent>
 void ForwardMessageToActor(
@@ -71,6 +65,7 @@ bool CheckDeviceUUIDsIdentical(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
 class TAcquireShadowDiskActor
     : public NActors::TActorBootstrapped<TAcquireShadowDiskActor>
 {
@@ -96,6 +91,7 @@ private:
 
 public:
     TAcquireShadowDiskActor(
+        const TStorageConfigPtr config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -136,6 +132,14 @@ private:
         const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleDescribeDiskRequestUndelivery(
+        const TEvDiskRegistry::TEvDescribeDiskRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAcquireDiskRequestUndelivery(
+        const TEvDiskRegistry::TEvAcquireDiskRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -144,6 +148,7 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
+        const TStorageConfigPtr config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -156,20 +161,23 @@ TAcquireShadowDiskActor::TAcquireShadowDiskActor(
     , AcquireReason(acquireReason)
     , ReadOnlyMount(readOnlyMount)
     , TotalTimeout(
-          isWritesToSourceBlocked ? MaxBlockingTotalTimeout
-                                  : MaxNonBlockingTotalTimeout)
+          isWritesToSourceBlocked
+              ? config->GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked()
+              : config->GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked())
     , ParentActor(parentActor)
     , MountSeqNumber(mountSeqNumber)
     , Generation(generation)
     , ShadowDiskDevices(shadowDiskDevices)
     , RetryDelayProvider(
-          isWritesToSourceBlocked ? MinBlockedRetryDelay
-                                  : MinNonBlockedRetryDelay,
-          isWritesToSourceBlocked ? MaxBlockedRetryDelay
-                                  : MaxNonBlockedRetryDelay)
+          isWritesToSourceBlocked
+              ? config->GetMinAcquireShadowDiskRetryDelayWhenBlocked()
+              : config->GetMinAcquireShadowDiskRetryDelayWhenNonBlocked(),
+          isWritesToSourceBlocked
+              ? config->GetMaxAcquireShadowDiskRetryDelayWhenBlocked()
+              : config->GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked())
 {
     if (AcquireReason != TShadowDiskActor::EAcquireReason::FirstAcquire) {
-        Y_DEBUG_ABORT_UNLESS(!ShadowDiskDevices.empty());
+        STORAGE_CHECK_PRECONDITION(!ShadowDiskDevices.empty());
     }
 }
 
@@ -197,7 +205,7 @@ void TAcquireShadowDiskActor::DescribeShadowDisk(
         TBlockStoreComponents::VOLUME,
         "Describing shadow disk " << ShadowDiskId.Quote());
 
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         MakeDiskRegistryProxyServiceId(),
         MakeDescribeDiskRequest());
@@ -215,7 +223,7 @@ void TAcquireShadowDiskActor::AcquireShadowDisk(
                                      << TotalTimeout.ToString());
     }
 
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         MakeDiskRegistryProxyServiceId(),
         MakeAcquireDiskRequest());
@@ -266,11 +274,13 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
             TBlockStoreComponents::VOLUME,
             "Will soon retry " << actionName << " shadow disk "
                                << ShadowDiskId.Quote()
-                               << " Error: " << FormatError(error));
+                               << " Error: " << FormatError(error)
+                               << " with delay " << RetryDelayProvider.GetDelay().ToString());
 
         TActivationContext::Schedule(
             RetryDelayProvider.GetDelayAndIncrease(),
-            TAutoPtr(retryEvent.release()));
+            std::move(retryEvent),
+            nullptr);
     } else {
         LOG_ERROR_S(
             ctx,
@@ -310,6 +320,12 @@ STFUNC(TAcquireShadowDiskActor::Work)
         HFunc(
             TEvDiskRegistry::TEvAcquireDiskResponse,
             HandleAcquireDiskResponse);
+        HFunc(
+            TEvDiskRegistry::TEvDescribeDiskRequest,
+            HandleDescribeDiskRequestUndelivery);
+        HFunc(
+            TEvDiskRegistry::TEvAcquireDiskRequest,
+            HandleAcquireDiskRequestUndelivery);
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
@@ -361,6 +377,22 @@ void TAcquireShadowDiskActor::HandleAcquireDiskResponse(
 
     AcquiredShadowDiskDevices.Swap(record.MutableDevices());
     MaybeReady(ctx);
+}
+
+void TAcquireShadowDiskActor::HandleDescribeDiskRequestUndelivery(
+    const TEvDiskRegistry::TEvDescribeDiskRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    DescribeShadowDisk(ctx);
+}
+
+void TAcquireShadowDiskActor::HandleAcquireDiskRequestUndelivery(
+    const TEvDiskRegistry::TEvAcquireDiskRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    AcquireShadowDisk(ctx);
 }
 
 void TAcquireShadowDiskActor::HandleWakeup(
@@ -422,8 +454,6 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
     ReplyAndDie(ctx, MakeError(S_OK));
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 }   // namespace
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -461,13 +491,14 @@ TShadowDiskActor::TShadowDiskActor(
     , VolumeActorId(volumeActorId)
     , SrcActorId(srcActorId)
     , ProcessedBlockCount(checkpointInfo.ProcessedBlockCount)
-    , TimeoutCalculator(Config, SrcConfig)
 {
-    Y_DEBUG_ABORT_UNLESS(checkpointInfo.Data == ECheckpointData::DataPresent);
+    STORAGE_CHECK_PRECONDITION(
+        checkpointInfo.Data == ECheckpointData::DataPresent);
 
     switch (checkpointInfo.ShadowDiskState) {
         case EShadowDiskState::None:
-            Y_DEBUG_ABORT_UNLESS(false);
+            STORAGE_CHECK_PRECONDITION(
+                checkpointInfo.ShadowDiskState != EShadowDiskState::None);
             break;
         case EShadowDiskState::New:
             State = EActorState::WaitAcquireForPrepareStart;
@@ -545,7 +576,6 @@ bool TShadowDiskActor::OnMessage(
         default:
             // Message processing by the base class is required.
             return false;
-            break;
     }
 
     // We get here if we have processed an incoming message. And its processing
@@ -555,7 +585,12 @@ bool TShadowDiskActor::OnMessage(
 
 TDuration TShadowDiskActor::CalculateMigrationTimeout()
 {
-    return TimeoutCalculator.CalculateTimeout(GetNextProcessingRange());
+    STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
+
+    if (TimeoutCalculator) {
+        return TimeoutCalculator->CalculateTimeout(GetNextProcessingRange());
+    }
+    return TDuration::Seconds(1);
 }
 
 void TShadowDiskActor::OnMigrationProgress(
@@ -612,21 +647,21 @@ void TShadowDiskActor::AcquireShadowDisk(
 {
     switch (acquireReason) {
         case EAcquireReason::FirstAcquire: {
-            Y_DEBUG_ABORT_UNLESS(WaitingForAcquire());
-            Y_DEBUG_ABORT_UNLESS(DstActorId == TActorId());
-            Y_DEBUG_ABORT_UNLESS(AcquireActorId == TActorId());
+            STORAGE_CHECK_PRECONDITION(WaitingForAcquire());
+            STORAGE_CHECK_PRECONDITION(DstActorId == TActorId());
+            STORAGE_CHECK_PRECONDITION(AcquireActorId == TActorId());
         } break;
         case EAcquireReason::PeriodicalReAcquire: {
-            Y_DEBUG_ABORT_UNLESS(!WaitingForAcquire());
-            Y_DEBUG_ABORT_UNLESS(DstActorId != TActorId());
+            STORAGE_CHECK_PRECONDITION(!WaitingForAcquire());
+            STORAGE_CHECK_PRECONDITION(DstActorId != TActorId());
 
             if (AcquireActorId != TActorId()) {
                 return;
             }
         } break;
         case EAcquireReason::ForcedReAcquire: {
-            Y_DEBUG_ABORT_UNLESS(!WaitingForAcquire());
-            Y_DEBUG_ABORT_UNLESS(DstActorId != TActorId());
+            STORAGE_CHECK_PRECONDITION(!WaitingForAcquire());
+            STORAGE_CHECK_PRECONDITION(DstActorId != TActorId());
 
             if (ForcedReAcquireInProgress) {
                 return;
@@ -638,11 +673,12 @@ void TShadowDiskActor::AcquireShadowDisk(
     AcquireActorId = NCloud::Register(
         ctx,
         std::make_unique<TAcquireShadowDiskActor>(
+            Config,
             ShadowDiskId,
             ShadowDiskDevices,
             acquireReason,
             ReadOnlyMount(),
-            IsWritesToSrcDiskImpossible(),
+            AreWritesToSrcDiskImpossible(),
             MountSeqNumber,
             Generation,
             SelfId()));
@@ -679,22 +715,16 @@ void TShadowDiskActor::HandleAcquireDiskResponse(
     }
 }
 
-void TShadowDiskActor::CreateShadowDiskPartitionActor(
-    const NActors::TActorContext& ctx,
-    const TDevices& acquiredShadowDiskDevices)
+void TShadowDiskActor::CreateShadowDiskConfig()
 {
-    using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
-
-    Y_DEBUG_ABORT_UNLESS(WaitingForAcquire());
-
-    ShadowDiskDevices = acquiredShadowDiskDevices;
+    STORAGE_CHECK_PRECONDITION(!ShadowDiskDevices.empty());
 
     TNonreplicatedPartitionConfig::TVolumeInfo volumeInfo{
         TInstant(),
         GetCheckpointShadowDiskType(SrcConfig->GetVolumeInfo().MediaKind)};
 
-    auto nonreplicatedConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-        acquiredShadowDiskDevices,
+    DstConfig = std::make_shared<TNonreplicatedPartitionConfig>(
+        ShadowDiskDevices,
         ReadOnlyMount() ? NProto::VOLUME_IO_ERROR_READ_ONLY
                         : NProto::VOLUME_IO_OK,
         ShadowDiskId,
@@ -706,30 +736,50 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
         THashSet<TString>(),   // freshDeviceIds
         TDuration(),           // maxTimedOutDeviceStateDuration
         false,                 // maxTimedOutDeviceStateDurationOverridden
-        false                  // useSimpleMigrationBandwidthLimiter
+        true                   // useSimpleMigrationBandwidthLimiter
     );
+
+    TimeoutCalculator.emplace(
+        Config->GetMaxShadowDiskFillBandwidth(),
+        Config->GetExpectedDiskAgentSize(),
+        DstConfig);
+}
+
+void TShadowDiskActor::CreateShadowDiskPartitionActor(
+    const NActors::TActorContext& ctx,
+    const TDevices& acquiredShadowDiskDevices)
+{
+    using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
+
+    STORAGE_CHECK_PRECONDITION(WaitingForAcquire());
+    STORAGE_CHECK_PRECONDITION(DstActorId == TActorId());
+
+    ShadowDiskDevices = acquiredShadowDiskDevices;
+
+    CreateShadowDiskConfig();
 
     DstActorId = NCloud::Register(
         ctx,
         CreateNonreplicatedPartition(
             Config,
-            nonreplicatedConfig,
+            DstConfig,
             SelfId(),
             RdmaClient));
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
     if (State == EActorState::WaitAcquireForRead) {
+        STORAGE_CHECK_PRECONDITION(Acquired());
+
         // Ready to serve checkpoint reads.
         State = EActorState::CheckpointReady;
-        Y_DEBUG_ABORT_UNLESS(Acquired());
     } else {
-        Y_DEBUG_ABORT_UNLESS(
+        STORAGE_CHECK_PRECONDITION(
             State == EActorState::WaitAcquireForPrepareStart ||
             State == EActorState::WaitAcquireForPrepareContinue);
 
         // Ready to fill shadow disk with data.
         State = EActorState::Preparing;
-        Y_DEBUG_ABORT_UNLESS(Acquired());
+        STORAGE_CHECK_PRECONDITION(Acquired());
 
         TNonreplicatedPartitionMigrationCommonActor::InitWork(
             ctx,
@@ -780,14 +830,14 @@ bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const
            State == EActorState::WaitAcquireForPrepareStart;
 }
 
-bool TShadowDiskActor::IsWritesToSrcDiskForbidden() const
+bool TShadowDiskActor::AreWritesToSrcDiskForbidden() const
 {
     return State == EActorState::WaitAcquireForPrepareContinue;
 }
 
-bool TShadowDiskActor::IsWritesToSrcDiskImpossible() const
+bool TShadowDiskActor::AreWritesToSrcDiskImpossible() const
 {
-    return IsWritesToSrcDiskForbidden() || ForcedReAcquireInProgress;
+    return AreWritesToSrcDiskForbidden() || ForcedReAcquireInProgress;
 }
 
 bool TShadowDiskActor::WaitingForAcquire() const
@@ -805,7 +855,7 @@ bool TShadowDiskActor::Acquired() const
 
 bool TShadowDiskActor::ReadOnlyMount() const
 {
-    Y_DEBUG_ABORT_UNLESS(State != EActorState::Error);
+    STORAGE_CHECK_PRECONDITION(State != EActorState::Error);
 
     return State == EActorState::WaitAcquireForRead ||
            State == EActorState::CheckpointReady;
@@ -853,7 +903,7 @@ bool TShadowDiskActor::HandleWriteZeroBlocks(
         return true;
     }
 
-    if (IsWritesToSrcDiskForbidden()) {
+    if (AreWritesToSrcDiskForbidden()) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -914,14 +964,16 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
     switch (msg->NewState) {
         case EShadowDiskState::None:
         case EShadowDiskState::New: {
+            STORAGE_CHECK_PRECONDITION(
+                msg->NewState != EShadowDiskState::New &&
+                msg->NewState != EShadowDiskState::None);
             LOG_ERROR_S(
                 ctx,
                 TBlockStoreComponents::VOLUME,
                 "State of shadow disk " << ShadowDiskId.Quote()
-                                        << " unexpected changed to "
+                                        << " unexpectedly changed to "
                                         << ToString(msg->NewState));
             State = EActorState::Error;
-            Y_DEBUG_ABORT_UNLESS(false);
         } break;
         case EShadowDiskState::Preparing: {
             LOG_INFO_S(
@@ -932,7 +984,7 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
                     << ToString(msg->NewState)
                     << ", processed block count: " << msg->ProcessedBlockCount);
             State = EActorState::Preparing;
-            Y_DEBUG_ABORT_UNLESS(Acquired());
+            STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Ready: {
             LOG_INFO_S(
@@ -942,7 +994,7 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
                                         << " changed to "
                                         << ToString(msg->NewState));
             State = EActorState::CheckpointReady;
-            Y_DEBUG_ABORT_UNLESS(Acquired());
+            STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Error: {
             LOG_WARN_S(
@@ -1003,7 +1055,7 @@ void TShadowDiskActor::HandleReacquireDisk(
 
     // If an E_BS_INVALID_SESSION error occurred while working with the shadow
     // disk, the shadow disk partition sends a TEvReacquireDisk message. In this
-    // case, we try acquire shadow disk again.
+    // case, we try to acquire shadow disk again.
 
     // If we are in prepare state, this means that writing errors to the
     // shadow disk will lead to blocking of the source disk. In that case, we
@@ -1025,7 +1077,7 @@ void TShadowDiskActor::HandleReacquireDisk(
         case EActorState::Error: {
             // If we are waiting for disk acquire, or in error state, then we
             // should not receive TEvReacquireDisk message.
-            Y_DEBUG_ABORT_UNLESS(false);
+            STORAGE_CHECK_PRECONDITION(false);
         } break;
         case EActorState::Preparing:
         case EActorState::CheckpointReady: {

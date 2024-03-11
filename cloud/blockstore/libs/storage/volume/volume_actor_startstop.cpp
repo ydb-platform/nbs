@@ -252,11 +252,11 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     }
 
     State->SetDiskRegistryBasedPartitionActor(
-        MaybeWrapNonreplActor(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
         nonreplicatedConfig);
 }
 
-NActors::TActorId TVolumeActor::MaybeWrapNonreplActor(
+NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
     const TActorContext& ctx,
     NActors::TActorId nonreplicatedActorId,
     std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
