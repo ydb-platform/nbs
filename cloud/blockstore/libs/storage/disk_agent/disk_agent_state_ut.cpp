@@ -1644,6 +1644,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
 
+        auto dumpSessionsToFile = [&] {
+            auto sessions = state->GetSessions();
+            NProto::TDiskAgentDeviceSessionCache cache;
+            cache.MutableSessions()->Assign(
+                std::make_move_iterator(sessions.begin()),
+                std::make_move_iterator(sessions.end()));
+
+            SerializeToTextFormat(cache, CachedSessionsPath);
+        };
+
         TVector<TString> devices;
         for (auto& d: state->GetDevices()) {
             devices.push_back(d.GetDeviceUUID());
@@ -1681,72 +1691,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol1",
             2000);  // VolumeGeneration
 
-        // validate the cache file
-
-        {
-            NProto::TDiskAgentDeviceSessionCache cache;
-            ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
-
-            UNIT_ASSERT_VALUES_EQUAL(3, cache.SessionsSize());
-
-            SortBy(*cache.MutableSessions(), [] (auto& session) {
-                return session.GetClientId();
-            });
-
-            {
-                auto& session = *cache.MutableSessions(0);
-                Sort(*session.MutableDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL("reader-1", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[0], devices[1]}),
-                    session.GetDeviceIds());
-
-                // MountSeqNumber is not applicable to read sessions
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(session.GetReadOnly());
-            }
-
-            {
-                auto& session = *cache.MutableSessions(1);
-
-                UNIT_ASSERT_VALUES_EQUAL("reader-2", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[2], devices[3]}),
-                    session.GetDeviceIds());
-
-                // MountSeqNumber is not applicable to read sessions
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(session.GetReadOnly());
-            }
-
-            {
-                auto& session = *cache.MutableSessions(2);
-                Sort(*session.MutableDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[0], devices[1]}),
-                    session.GetDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL(42, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
-
-                // VolumeGeneration was updated by reader-1
-                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(!session.GetReadOnly());
-            }
-        }
+        dumpSessionsToFile();
 
         // restart
         state = createState();
@@ -1847,6 +1792,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer-1",
             "vol0",
             1001);  // VolumeGeneration
+
+        dumpSessionsToFile();
 
         // remove reader-2's file
         TFsPath { state->GetDeviceName(devices[3]) }.DeleteIfExists();
