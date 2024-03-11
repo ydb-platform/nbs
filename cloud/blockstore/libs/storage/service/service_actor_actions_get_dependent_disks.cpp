@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -150,7 +151,11 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
 {
     auto* msg = ev->Get();
 
-    const auto& error = msg->GetError();
+    auto error = msg->GetError();
+    if (error.GetCode() == E_NOT_FOUND) {
+        SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+    }
+
     if (HasError(error)) {
         HandleError(ctx, error);
         return;
