@@ -373,7 +373,7 @@ private:
                 << " Device=" << requestDetails.DeviceUUID
                 << ", ClientId=" << requestDetails.ClientId
                 << ", StartIndex=" << requestDetails.Range.Start
-                << ", EndIndex=" << requestDetails.Range.End
+                << ", BlocksCount=" << requestDetails.Range.Size()
                 << ", IsWrite=1"
                 << ", IsRdma=1");
             *overlapDetails = "Secure erase in progress";
@@ -525,8 +525,7 @@ private:
                     << " Device=" << request.GetDeviceUUID()
                     << ", ClientId=" << clientId
                     << ", StartIndex=" << request.GetStartIndex()
-                    << ", EndIndex="
-                    << (request.GetStartIndex() + request.GetBlocksCount() - 1)
+                    << ", BlocksCount=" << request.GetBlocksCount()
                     << ", IsWrite=0"
                     << ", IsRdma=1");
             }

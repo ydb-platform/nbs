@@ -23,7 +23,8 @@ constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TZeroDeviceBlocksMethod>;
 
 template <typename T>
-constexpr bool IsReadDeviceMethod = !IsWriteDeviceMethod<T>;
+constexpr bool IsReadDeviceMethod =
+    std::is_same_v<T, TEvDiskAgent::TReadDeviceBlocksMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -198,7 +199,7 @@ void TDiskAgentActor::PerformIO(
                 << " Device=" << deviceUUID
                 << ", ClientId=" << clientId
                 << ", StartIndex=" << range.Start
-                << ", EndIndex=" << range.End
+                << ", BlocksCount=" << range.Size()
                 << ", IsWrite=" << IsWriteDeviceMethod<TMethod>
                 << ", IsRdma=0");
         }
