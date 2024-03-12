@@ -121,9 +121,7 @@ TWriteAndMarkUsedActor<TMethod>::TWriteAndMarkUsedActor(
     , PartActorId(partActorId)
     , VolumeTabletId(volumeTabletId)
     , VolumeActorId(volumeActorId)
-{
-    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 template <WriteRequest TMethod>
 void TWriteAndMarkUsedActor<TMethod>::Bootstrap(const TActorContext& ctx)

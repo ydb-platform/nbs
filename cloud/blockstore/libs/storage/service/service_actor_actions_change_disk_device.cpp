@@ -57,9 +57,7 @@ TChangeDiskDeviceActor::TChangeDiskDeviceActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TChangeDiskDeviceActor::Bootstrap(const TActorContext& ctx)
 {

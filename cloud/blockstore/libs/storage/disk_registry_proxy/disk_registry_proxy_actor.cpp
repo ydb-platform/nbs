@@ -36,9 +36,7 @@ TDiskRegistryProxyActor::TDiskRegistryProxyActor(
         TDiskRegistryProxyConfigPtr diskRegistryProxyConfig)
     : StorageConfig(std::move(config))
     , Config(std::move(diskRegistryProxyConfig))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_PROXY;
-}
+{}
 
 void TDiskRegistryProxyActor::Bootstrap(const TActorContext& ctx)
 {

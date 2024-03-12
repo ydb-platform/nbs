@@ -54,9 +54,7 @@ TPartitionActor::TPartitionActor(
     , SiblingCount(siblingCount)
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TPartitionActor::~TPartitionActor()
 {}

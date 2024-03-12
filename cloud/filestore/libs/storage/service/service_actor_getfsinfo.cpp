@@ -60,9 +60,7 @@ TGetFileStoreInfoActor::TGetFileStoreInfoActor(
         TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TGetFileStoreInfoActor::Bootstrap(const TActorContext& ctx)
 {

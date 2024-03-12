@@ -160,9 +160,7 @@ TMetadataRebuildBlockCountActor::TMetadataRebuildBlockCountActor(
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
     , RebuildState{0, 0, mixedBlocksCount, mergedBlocksCount}
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMetadataRebuildBlockCountActor::Bootstrap(const TActorContext& ctx)
 {

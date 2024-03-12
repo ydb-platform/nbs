@@ -5,9 +5,11 @@
 #include <cloud/filestore/libs/client/client.h>
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/endpoint_test.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -19,6 +21,7 @@
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/guid.h>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -165,6 +168,11 @@ public:
     {
         return ServerConfig;
     }
+
+    void SetUnixSocketPath(const TString& path)
+    {
+        ServerConfig.SetUnixSocketPath(path);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,18 +205,83 @@ public:
     {
         return ClientConfig;
     }
+
+    void SetUnixSocketPath(const TString& path)
+    {
+        ClientConfig.SetUnixSocketPath(path);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TServerSetup
+{
+    using TService = TFileStoreTest;
+    using TClientIntf = IFileStoreServicePtr;
+
+    static TClientIntf CreateClient(
+        TClientConfigPtr config,
+        ILoggingServicePtr logging)
+    {
+        return CreateFileStoreClient(std::move(config), std::move(logging));
+    }
+
+    static IServerPtr CreateTestServer(
+        TServerConfigPtr config,
+        ILoggingServicePtr logging,
+        IRequestStatsPtr requestStats,
+        IFileStoreServicePtr service)
+    {
+        return CreateServer(
+            std::move(config),
+            std::move(logging),
+            std::move(requestStats),
+            CreateProfileLogStub(),
+            std::move(service));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TVHostSetup
+{
+    using TService = TEndpointManagerTest;
+    using TClientIntf = IEndpointManagerPtr;
+
+    static TClientIntf CreateClient(
+        TClientConfigPtr config,
+        ILoggingServicePtr logging)
+    {
+        return CreateEndpointManagerClient(
+            std::move(config),
+            std::move(logging));
+    }
+
+    static IServerPtr CreateTestServer(
+        TServerConfigPtr config,
+        ILoggingServicePtr logging,
+        IRequestStatsPtr requestStats,
+        IEndpointManagerPtr service)
+    {
+        return CreateServer(
+            std::move(config),
+            std::move(logging),
+            std::move(requestStats),
+            std::move(service));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TSetup>
 struct TBootstrap
 {
     NMonitoring::TDynamicCountersPtr Counters;
 
     IServerPtr Server;
-    TVector<IFileStoreServicePtr> Clients;
+    TVector<typename TSetup::TClientIntf> Clients;
     ILoggingServicePtr Logging;
-    std::shared_ptr<TFileStoreTest> Service;
+    std::shared_ptr<typename TSetup::TService> Service;
     TServerConfigPtr ServerConfig;
     bool Stopped = false;
 
@@ -218,7 +291,7 @@ public:
             std::shared_ptr<TLogBackendControlPlaneCollector> logBackend = nullptr)
         : Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
         , Logging{logBackend ? CreateLoggingService(logBackend) : CreateLoggingService("console")}
-        , Service{std::make_shared<TFileStoreTest>()}
+        , Service{std::make_shared<typename TSetup::TService>()}
     {
         auto registry = CreateRequestStatsRegistry(
             "server_ut",
@@ -229,11 +302,10 @@ public:
 
         ServerConfig = CreateConfig(serverConfig);
 
-        Server = CreateServer(
+        Server = TSetup::CreateTestServer(
             ServerConfig,
             Logging,
             registry->GetRequestStats(),
-            CreateProfileLogStub(),
             Service);
 
         CreateClient();
@@ -263,7 +335,7 @@ public:
         }
     }
 
-    IFileStoreServicePtr CreateClient(NProto::TClientConfig config = {})
+    typename TSetup::TClientIntf CreateClient(NProto::TClientConfig config = {})
     {
         auto clientConfig = config;
         if (!clientConfig.GetSecurePort() && clientConfig.GetRootCertsFile()) {
@@ -273,7 +345,7 @@ public:
             clientConfig.SetPort(ServerConfig->GetPort());
         }
         Clients.push_back(
-            CreateFileStoreClient(
+            TSetup::CreateClient(
                 std::make_shared<TClientConfig>(clientConfig),
                 Logging));
         return Clients.back();
@@ -301,12 +373,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
 {
     Y_UNIT_TEST(ShouldHandleRequests)
     {
-        TBootstrap bootstrap;
+        TBootstrap<TServerSetup> bootstrap;
 
         bootstrap.Service->PingHandler = [] (auto, auto) {
             return MakeFuture<NProto::TPingResponse>();
         };
 
+        bootstrap.CreateClient();
         bootstrap.Start();
 
         auto context = MakeIntrusive<TCallContext>("fs");
@@ -323,7 +396,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(CheckLoggingPriority)
     {
         auto logBackend = std::make_shared<TLogBackendControlPlaneCollector>();
-        TBootstrap bootstrap({}, logBackend);
+        TBootstrap<TServerSetup> bootstrap({}, logBackend);
 
         bootstrap.Service->PingHandler = [] (auto, auto) {
             return MakeFuture<NProto::TPingResponse>();
@@ -333,6 +406,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture<NProto::TCreateFileStoreResponse>();
         };
 
+        bootstrap.CreateClient();
         bootstrap.Start();
 
         auto context = MakeIntrusive<TCallContext>("fs");
@@ -363,13 +437,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         TAtomicStorage<IResponseHandlerPtr<NProto::TGetSessionEventsResponse>> storage;
 
-        TBootstrap bootstrap;
+        TBootstrap<TServerSetup> bootstrap;
         bootstrap.Service->GetSessionEventsStreamHandler =
             [&] (auto callContext, auto request, auto responseHandler) {
                 Y_UNUSED(callContext, request);
                 storage.Set(responseHandler);
             };
 
+        bootstrap.CreateClient();
         bootstrap.Start();
 
         auto context = MakeIntrusive<TCallContext>("fs");
@@ -397,11 +472,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldHitErrorMetricOnFailure)
     {
-        TBootstrap bootstrap;
+        TBootstrap<TServerSetup> bootstrap;
         bootstrap.Service->CreateNodeHandler = [] (auto, auto) {
             return MakeFuture<NProto::TCreateNodeResponse>(TErrorResponse(E_IO, ""));
         };
 
+        bootstrap.CreateClient();
         bootstrap.Start();
 
         auto context = MakeIntrusive<TCallContext>("fs");
@@ -429,7 +505,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             "certs/server.crt",
             {{"certs/server.crt", "certs/server.key"}});
 
-        TBootstrap bootstrap(serverConfigBuilder.BuildServerConfig());
+        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
         bootstrap.Service->PingHandler =
             [&] (auto callContext, auto request) {
                 Y_UNUSED(callContext);
@@ -471,7 +547,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
             "certs/server.crt",
             "certs/server.key");
 
-        TBootstrap bootstrap(serverConfigBuilder.BuildServerConfig());
+        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
         bootstrap.Service->PingHandler =
             [&] (auto callContext, auto request) {
                 Y_UNUSED(callContext);
@@ -507,13 +583,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
             "certs/server.crt",
             {{"certs/server.crt", "certs/server.key"}});
 
-        TBootstrap bootstrap(serverConfigBuilder.BuildServerConfig());
+        TBootstrap<TServerSetup> bootstrap(serverConfigBuilder.BuildServerConfig());
         bootstrap.Service->PingHandler =
             [&] (auto callContext, auto request) {
                 Y_UNUSED(callContext);
                 Y_UNUSED(request);
                 return MakeFuture<NProto::TPingResponse>();
             };
+
+        bootstrap.CreateClient();
 
         TTestClientBuilder clientConfigBuilder;
         clientConfigBuilder.SetSecureEndpoint(
@@ -547,7 +625,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldFailRequestWithNonEmptyInternalHeaders)
     {
-        TBootstrap bootstrap;
+        TBootstrap<TServerSetup> bootstrap;
         bootstrap.Service->PingHandler =
             [&] (auto callContext, auto request) {
                 Y_UNUSED(callContext);
@@ -569,6 +647,88 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldIdentifyFdControlChannelSource)
+    {
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
+
+        TTestServerBuilder serverConfigBuilder;
+        serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+
+        TBootstrap<TVHostSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+        bootstrap.Service->PingHandler =
+            [&] (auto request) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    int(NProto::SOURCE_FD_CONTROL_CHANNEL),
+                    int(request->GetHeaders().GetInternal().GetRequestSource())
+                );
+                return MakeFuture<NProto::TPingResponse>();
+            };
+
+        bootstrap.Start();
+
+        TTestClientBuilder clientConfigBuilder;
+        clientConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+        client->Start();
+
+        auto request = std::make_shared<NProto::TPingRequest>();
+        auto future = client->Ping(
+            MakeIntrusive<TCallContext>(),
+            std::move(request)
+        );
+
+        const auto& response = future.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+    }
+
+    Y_UNIT_TEST(ShouldReportCriticalEventIfFailedToStartUnixSocketEndpoint)
+    {
+        TFsPath unixSocket("./invalid/path/test_socket");
+
+        TTestServerBuilder serverConfigBuilder;
+        serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+
+        TBootstrap<TVHostSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+        auto errorCounter =
+            bootstrap.Counters->
+            GetSubgroup("component", "server_ut")->
+            GetCounter("AppCriticalEvents/EndpointStartingError", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*errorCounter));
+        bootstrap.Start();
+        UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+    }
+
+    Y_UNIT_TEST(ShouldNotStartUnixSocketEndpointForNonVHostServer)
+    {
+        TFsPath unixSocket("./invalid/path/test_socket");
+
+        TTestServerBuilder serverConfigBuilder;
+        serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+
+        TBootstrap<TServerSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+
+        bootstrap.Start();
+
+        TTestClientBuilder clientConfigBuilder;
+        clientConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+        auto client = bootstrap.CreateClient(clientConfigBuilder.BuildClientConfig());
+
+        bool gotException = false;
+        try {
+            client->Start();
+        } catch (const TServiceError& ex) {
+            gotException = true;
+        }
+
+        UNIT_ASSERT_C(
+            gotException,
+            "Client connected to socket that should not be listened");
     }
 }
 

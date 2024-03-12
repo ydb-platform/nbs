@@ -55,9 +55,7 @@ TDescribeActor::TDescribeActor(
         TString path)
     : RequestInfo(std::move(requestInfo))
     , Path(std::move(path))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDescribeActor::Bootstrap(const TActorContext& ctx)
 {

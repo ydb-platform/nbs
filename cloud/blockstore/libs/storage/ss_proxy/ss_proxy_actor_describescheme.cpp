@@ -70,9 +70,7 @@ TDescribeSchemeActor::TDescribeSchemeActor(
     , Config(std::move(config))
     , Path(std::move(path))
     , PathDescriptionBackup(std::move(pathDescriptionBackup))
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
 {

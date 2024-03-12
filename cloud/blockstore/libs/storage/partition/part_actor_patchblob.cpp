@@ -95,9 +95,7 @@ TPatchBlobActor::TPatchBlobActor(
     , TabletId(tabletId)
     , Request(std::move(request))
     , OriginalGroupId(originalGroupId)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TPatchBlobActor::Bootstrap(const TActorContext& ctx)
 {

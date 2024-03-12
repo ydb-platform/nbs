@@ -47,9 +47,7 @@ TInitFreshZonesActor::TInitFreshZonesActor(
         TVector<TBlockRange32> blockRanges)
     : PartitionActorId(partitionActorId)
     , BlockRanges(std::move(blockRanges))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TInitFreshZonesActor::Bootstrap(const TActorContext& ctx)
 {

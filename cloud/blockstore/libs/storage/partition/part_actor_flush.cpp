@@ -132,9 +132,7 @@ TFlushActor::TFlushActor(
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {

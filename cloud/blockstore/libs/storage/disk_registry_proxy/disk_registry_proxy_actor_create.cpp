@@ -95,9 +95,7 @@ TCreateDiskRegistryActor::TCreateDiskRegistryActor(
     , Config(std::move(diskRegistryProxyConfig))
     , Sender(std::move(sender))
     , Kinds(std::move(kinds))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_PROXY;
-}
+{}
 
 void TCreateDiskRegistryActor::Bootstrap(const TActorContext& ctx)
 {

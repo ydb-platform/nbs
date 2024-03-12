@@ -41,9 +41,7 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
     , StatActorId(statActorId)
     , PartCounters(
         CreatePartitionDiskCounters(EPublishingPolicy::DiskRegistryBased))
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor()
 {

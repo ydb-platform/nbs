@@ -8,6 +8,7 @@ namespace NCloud::NStorage::NUserStats {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateStorageUserStats(
+    int component,
     TString path,
     TString title,
     TVector<IUserMetricsSupplierPtr> providers);

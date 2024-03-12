@@ -28,9 +28,7 @@ TStatsServiceActor::TStatsServiceActor(
     , ClientStatsAggregator(std::move(clientStatsAggregator))
     , State(*Config)
     , UserCounters(CreateUserCounterSupplier())
-{
-    ActivityType = TBlockStoreActivities::STATS_SERVICE;
-}
+{}
 
 TStatsServiceActor::~TStatsServiceActor()
 {}

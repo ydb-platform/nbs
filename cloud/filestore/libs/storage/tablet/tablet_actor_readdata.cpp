@@ -357,7 +357,6 @@ TReadDataActor::TReadDataActor(
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
 {
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
     TABLET_VERIFY(AlignedByteRange.IsAligned());
 }
 

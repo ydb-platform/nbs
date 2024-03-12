@@ -78,9 +78,7 @@ TDescribeVolumeActor::TDescribeVolumeActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
 {

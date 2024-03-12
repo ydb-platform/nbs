@@ -53,9 +53,7 @@ TReassignDiskRegistryActionActor::TReassignDiskRegistryActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TReassignDiskRegistryActionActor::Bootstrap(const TActorContext& ctx)
 {

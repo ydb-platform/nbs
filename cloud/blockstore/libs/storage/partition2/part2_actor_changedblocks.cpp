@@ -118,9 +118,7 @@ TGetChangedBlocksActor::TGetChangedBlocksActor(
     , BaseDiskId(baseDiskId)
     , BaseDiskCheckpointId(baseDiskCheckpointId)
     , ChangedBlocks(std::move(changedBlocks))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TGetChangedBlocksActor::Bootstrap(const TActorContext& ctx)
 {

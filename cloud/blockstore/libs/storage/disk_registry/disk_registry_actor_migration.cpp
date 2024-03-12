@@ -57,9 +57,7 @@ TMarkReplacementDevicesActor::TMarkReplacementDevicesActor(
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TMarkReplacementDevicesActor::Bootstrap(const TActorContext& ctx)
 {

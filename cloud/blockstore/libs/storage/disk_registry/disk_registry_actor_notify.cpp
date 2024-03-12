@@ -70,9 +70,7 @@ TNotifyActor::TNotifyActor(
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskIds(std::move(diskIds))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TNotifyActor::Bootstrap(const TActorContext& ctx)
 {

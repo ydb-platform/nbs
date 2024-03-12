@@ -91,8 +91,6 @@ TWriteDataActor::TWriteDataActor(
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
 {
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobContent.Size();
     }

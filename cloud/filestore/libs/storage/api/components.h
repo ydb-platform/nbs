@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/kikimr/components_start.h>
+
 #include <ydb/core/base/events.h>
 #include <ydb/library/services/services.pb.h>
 
@@ -33,6 +35,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FUSE)                                                                  \
     xxx(CLIENT)                                                                \
     xxx(AUTH)                                                                  \
+    xxx(USER_STATS)                                                            \
 // FILESTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +44,7 @@ struct TFileStoreComponents
 {
     enum
     {
-        START = 2048,   // TODO
+        START = TComponentsStart::FileStoreComponentsStart,
 
 #define FILESTORE_DECLARE_COMPONENT(component)                                 \
         component,                                                             \
@@ -56,22 +59,6 @@ struct TFileStoreComponents
 };
 
 const TString& GetComponentName(int component);
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TFileStoreActivities
-{
-    enum
-    {
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
-        component = NKikimrServices::TActivity::FILESTORE_##component,         \
-// FILESTORE_DECLARE_COMPONENT
-
-        FILESTORE_ACTORS(FILESTORE_DECLARE_COMPONENT)
-
-#undef FILESTORE_DECLARE_COMPONENT
-    };
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 

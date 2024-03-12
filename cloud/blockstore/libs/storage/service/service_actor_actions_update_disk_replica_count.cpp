@@ -60,9 +60,7 @@ TUpdateDiskReplicaCountActionActor::TUpdateDiskReplicaCountActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdateDiskReplicaCountActionActor::Bootstrap(const TActorContext& ctx)
 {

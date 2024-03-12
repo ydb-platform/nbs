@@ -127,9 +127,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , Requests(std::move(requests))
     , ReplyLocal(replyLocal)
     , WriteHandler(std::move(writeHandler))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
 {

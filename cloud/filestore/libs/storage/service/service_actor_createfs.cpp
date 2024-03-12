@@ -104,9 +104,7 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-{
-    ActivityType = TFileStoreActivities::SERVICE_WORKER;
-}
+{}
 
 void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

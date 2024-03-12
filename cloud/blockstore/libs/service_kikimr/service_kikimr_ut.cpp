@@ -38,9 +38,7 @@ struct TTestServiceActor final
 {
     TTestServiceActor()
         : TActor(&TThis::StateWork)
-    {
-        TThis::ActivityType = TBlockStoreActivities::SERVICE;
-    }
+    {}
 
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ns)                                  \
     using T##name##ResponsePtr = std::unique_ptr<ns::TEv##name##Response>;     \

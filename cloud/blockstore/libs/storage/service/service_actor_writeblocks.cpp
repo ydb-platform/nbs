@@ -41,9 +41,7 @@ public:
         , BlockSize(blockSize)
         , MaxBlocksCount(maxBlocksCount)
         , VolumeClient(volumeClient)
-    {
-        ActivityType = TBlockStoreActivities::SERVICE;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

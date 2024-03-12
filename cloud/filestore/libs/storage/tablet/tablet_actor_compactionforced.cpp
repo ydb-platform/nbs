@@ -92,9 +92,7 @@ TForcedOperationActor<TResponseType, TRequestConstructor>::
     , RetryTimeout(retry)
     , State(std::move(state))
     , RequestInfo(std::move(requestInfo))
-{
-    TBase::ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::Bootstrap(

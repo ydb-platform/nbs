@@ -83,9 +83,7 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentReadActor::Bootstrap(const TActorContext& ctx)
 {

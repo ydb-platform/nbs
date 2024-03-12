@@ -57,9 +57,7 @@ TSetUserIdActor::TSetUserIdActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TSetUserIdActor::Bootstrap(const TActorContext& ctx)
 {

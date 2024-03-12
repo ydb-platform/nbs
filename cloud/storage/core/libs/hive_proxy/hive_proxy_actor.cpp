@@ -40,9 +40,7 @@ THiveProxyActor::THiveProxyActor(THiveProxyConfig config)
     , LogComponent(config.LogComponent)
     , TabletBootInfoBackupFilePath(config.TabletBootInfoBackupFilePath)
     , TenantHiveTabletId(config.TenantHiveTabletId)
-{
-    ActivityType = TStorageActivities::HIVE_PROXY;
-}
+{}
 
 void THiveProxyActor::Bootstrap(const TActorContext& ctx)
 {

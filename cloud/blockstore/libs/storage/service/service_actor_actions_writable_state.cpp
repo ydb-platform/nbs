@@ -59,9 +59,7 @@ TWritableStateActor::TWritableStateActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TWritableStateActor::Bootstrap(const TActorContext& ctx)
 {

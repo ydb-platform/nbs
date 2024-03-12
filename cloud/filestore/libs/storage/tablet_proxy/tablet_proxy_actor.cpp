@@ -53,9 +53,7 @@ TIndexTabletProxyActor::TIndexTabletProxyActor(TStorageConfigPtr config)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , ClientCache(CreateTabletPipeClientCache(*Config))
-{
-    ActivityType = TFileStoreActivities::TABLET_PROXY;
-}
+{}
 
 TIndexTabletProxyActor::TConnection& TIndexTabletProxyActor::CreateConnection(
     const TString& fileSystemId)

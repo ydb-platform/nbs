@@ -39,8 +39,6 @@ TCopyRangeActor::TCopyRangeActor(
 
     Y_ABORT_UNLESS(!HasError(sgListOrError));
     SgList.SetSgList(sgListOrError.ExtractResult());
-
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TCopyRangeActor::Bootstrap(const TActorContext& ctx)

@@ -68,9 +68,7 @@ TAddConfirmedBlobsActor::TAddConfirmedBlobsActor(
     : Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TAddConfirmedBlobsActor::Bootstrap(const TActorContext& ctx)
 {

@@ -63,9 +63,7 @@ TCleanupSessionsActor::TCleanupSessionsActor(
     , FileSystemId(std::move(fileSystemId))
     , RequestInfo(std::move(requestInfo))
     , Sessions(std::move(sessions))
-{
-    ActivityType = TFileStoreComponents::TABLET_WORKER;
-}
+{}
 
 void TCleanupSessionsActor::Bootstrap(const TActorContext& ctx)
 {

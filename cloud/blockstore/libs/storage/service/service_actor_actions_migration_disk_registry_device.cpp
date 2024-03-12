@@ -58,9 +58,7 @@ TForceMigrationActor::TForceMigrationActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TForceMigrationActor::Bootstrap(const TActorContext& ctx)
 {

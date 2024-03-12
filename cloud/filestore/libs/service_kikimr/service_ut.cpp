@@ -33,9 +33,7 @@ struct TTestServiceActor final
 {
     TTestServiceActor()
         : TActor(&TThis::StateWork)
-    {
-        ActivityType = TFileStoreActivities::SERVICE;
-    }
+    {}
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ns)                                   \
     using T##name##Handler = std::function<                                    \

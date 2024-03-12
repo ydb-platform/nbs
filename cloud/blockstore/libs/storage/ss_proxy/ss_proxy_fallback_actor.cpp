@@ -64,9 +64,7 @@ TReadPathDescriptionBackupActor<TResponse>::TReadPathDescriptionBackupActor(
     : RequestInfo(std::move(requestInfo))
     , PathDescriptionBackup(std::move(pathDescriptionCache))
     , Paths(std::move(paths))
-{
-    TSelf::ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 template <class TResponse>
 void TReadPathDescriptionBackupActor<TResponse>::Bootstrap(
@@ -148,9 +146,7 @@ STFUNC(TReadPathDescriptionBackupActor<TResponse>::StateWork)
 
 TSSProxyFallbackActor::TSSProxyFallbackActor(TStorageConfigPtr config)
     : Config(std::move(config))
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
 {

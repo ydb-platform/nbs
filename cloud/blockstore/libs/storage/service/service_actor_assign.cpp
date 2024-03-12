@@ -71,9 +71,7 @@ TAssignVolumeActor::TAssignVolumeActor(
     , DiskId(std::move(diskId))
     , PublicToken(std::move(publicToken))
     , TokenVersion(tokenVersion)
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TAssignVolumeActor::Bootstrap(const TActorContext& ctx)
 {

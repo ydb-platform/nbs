@@ -66,9 +66,7 @@ TRebuildMetadataActor::TRebuildMetadataActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
 {
@@ -237,7 +235,6 @@ TRebuildMetadataStatusActor::TRebuildMetadataStatusActor(
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {
-    ActivityType = TBlockStoreActivities::SERVICE;
 }
 
 void TRebuildMetadataStatusActor::Bootstrap(const TActorContext& ctx)

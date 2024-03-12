@@ -38,9 +38,7 @@ public:
         : Request(request)
         , BlockSize(blockSize)
         , VolumeClient(volumeClient)
-    {
-        ActivityType = TBlockStoreActivities::SERVICE;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
