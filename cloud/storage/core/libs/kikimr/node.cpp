@@ -11,6 +11,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
 
 #include <util/generic/vector.h>
 #include <util/network/address.h>
@@ -148,7 +149,10 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                 hostName,
                 options.SchemeShardDir,
                 options.NodeType,
-                options.Domain);
+                options.Domain,
+                "", // no token
+                true,
+                1);
 
             if (!configResult.IsSuccess()) {
                 ythrow TServiceError(E_FAIL)
@@ -156,7 +160,26 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
                     << ": " << configResult.GetErrorMessage();
             }
 
-            cmsConfig = configResult.GetConfig();
+            const TMap<TString, TString> labels{
+                {"node_type", "nbs"},
+            };
+
+            NKikimrConfig::TAppConfig yamlConfig;
+            if (configResult.HasYamlConfig() && !configResult.GetYamlConfig().empty()) {
+                Cerr << configResult.GetYamlConfig() << Endl;
+                NYamlConfig::ResolveAndParseYamlConfig(
+                    configResult.GetYamlConfig(),
+                    configResult.GetVolatileYamlConfigs(),
+                    labels,
+                    yamlConfig);
+            }
+
+            if (yamlConfig.GetYamlConfigEnabled()) {
+                cmsConfig = yamlConfig;
+                NYamlConfig::ReplaceUnmanagedKinds(configResult.GetConfig(), *cmsConfig);
+            } else {
+                cmsConfig = configResult.GetConfig();
+            }
 
             if (cmsConfig->HasNameserviceConfig()) {
                 cmsConfig->MutableNameserviceConfig()
