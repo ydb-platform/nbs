@@ -492,6 +492,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -515,6 +516,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -541,6 +543,8 @@ STFUNC(TIndexTabletActor::StateWork)
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -579,6 +583,8 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
 
@@ -604,6 +610,7 @@ STFUNC(TIndexTabletActor::StateBroken)
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

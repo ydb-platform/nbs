@@ -557,6 +557,21 @@ public:
         return request;
     }
 
+    auto CreateIssueBlobRequest(
+        ui64 nodeId,
+        ui64 handle,
+        const TVector<ui64>& lengths)
+    {
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvIssueBlobRequest>();
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        for (auto len: lengths) {
+            request->Record.AddLengths(len);
+        }
+        return request;
+    }
+
     auto CreateAcquireLockRequest(
         ui64 handle,
         ui64 owner,

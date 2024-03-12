@@ -3840,6 +3840,117 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
     }
 
+    TABLET_TEST(ShouldIssueBlobs)
+    {
+        auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, node);
+
+        TVector<ui64> sizes = {1, block, block - 1};
+
+        auto blobs = tablet.IssueBlob(node, handle, sizes);
+
+        const auto [generation, step] =
+            ParseCommitId(blobs->Record.GetCommitId());
+
+        UNIT_ASSERT_VALUES_EQUAL(blobs->Record.BlobIdsSize(), sizes.size());
+        for (size_t i = 0; i < sizes.size(); ++i) {
+            auto blob = LogoBlobIDFromLogoBlobID(blobs->Record.GetBlobIds(i));
+            UNIT_ASSERT_VALUES_EQUAL(blob.BlobSize(), sizes[i]);
+            UNIT_ASSERT_VALUES_EQUAL(blob.Generation(), generation);
+            UNIT_ASSERT_VALUES_EQUAL(blob.Step(), step);
+        }
+    }
+
+    TABLET_TEST(ShouldAcquireLockForCollectGarbageOnIssueBlob)
+    {
+        auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto createGarbage = [&]
+        {
+            auto node =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            ui64 handle = CreateHandle(tablet, node);
+            tablet.WriteData(handle, 0, block, 'a');
+            tablet.Flush();
+            tablet.DestroyHandle(handle);
+            tablet.UnlinkNode(RootNodeId, "test", false);
+            tablet.Flush();
+            tablet.CollectGarbage();
+        };
+        createGarbage();
+
+        ui64 lastCollectGarbage = 0;
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            lastCollectGarbage = stats.GetLastCollectCommitId();
+        }
+        UNIT_ASSERT_GT(lastCollectGarbage, 0);
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        ui64 handle = CreateHandle(tablet, node);
+
+        auto blobs = tablet.IssueBlob(node, handle, TVector<ui64>{block});
+        auto commitId = blobs->Record.GetCommitId();
+
+        createGarbage();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_LE_C(
+                stats.GetLastCollectCommitId(),
+                commitId,
+                "commitId: " << commitId << ", stats.GetLastCollectCommitId(): "
+                             << stats.GetLastCollectCommitId());
+        }
+
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(15));
+
+        createGarbage();
+        // After the IssueBlobReleaseCollectBarrierTimeout has passed, we can
+        // observe that the last collect garbage has moved beyond the commit id
+        // of the issued blob.
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+    }
+
+    // TODO(debnatkh): tests for TIndexTabletActor::HandleMarkWriteCompleted
+
 #undef TABLET_TEST
 }
 

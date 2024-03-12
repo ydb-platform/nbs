@@ -598,6 +598,8 @@ struct TEvIndexTabletPrivate
         EvReadDataCompleted,
         EvWriteDataCompleted,
 
+        EvReleaseCollectBarrier,
+
         EvEnd
     };
 
@@ -609,6 +611,14 @@ struct TEvIndexTabletPrivate
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
+
+    struct TReleaseCollectBarrier
+    {
+        ui64 CommitId;
+    };
+
+    using TEvReleaseCollectBarrier =
+        TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
 
     using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
     using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;

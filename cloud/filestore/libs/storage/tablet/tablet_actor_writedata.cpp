@@ -9,6 +9,7 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <library/cpp/iterator/zip.h>
 #include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -53,8 +54,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
-        TWriteRange writeRange,
-        std::optional<NKikimr::TLogoBlobID>);
+        TWriteRange writeRange);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -92,8 +92,7 @@ TWriteDataActor::TWriteDataActor(
     TRequestInfoPtr requestInfo,
     ui64 commitId,
     TVector<TMergedBlob> blobs,
-    TWriteRange writeRange,
-    std::optional<NKikimr::TLogoBlobID> blobid)
+    TWriteRange writeRange)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , Tablet(tablet)
@@ -101,7 +100,6 @@ TWriteDataActor::TWriteDataActor(
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
-    , BlobId(blobid)
 {
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobContent.Size();
@@ -399,7 +397,7 @@ void TIndexTabletActor::HandleWriteData(
         range,
         std::move(blockBuffer),
         InvalidCommitId,
-        std::nullopt);
+        TVector<NKikimr::TLogoBlobID>{});
 }
 
 void TIndexTabletActor::HandleWriteDataCompleted(
@@ -410,9 +408,7 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 
     // We release CollectBarrier regardless of whether the write was done in
     // two-stage manner or not
-    if (msg->ShouldReportStats) {
-        ReleaseCollectBarrier(msg->CommitId);
-    }
+    ReleaseCollectBarrier(msg->CommitId);
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
@@ -649,18 +645,16 @@ void TIndexTabletActor::CompleteTx_WriteData(
     TABLET_VERIFY(blobs);
 
     if (args.IsBlobAlreadyWritten()) {
-        // TODO(debnatkh): support multiple blobs in two-stage write scenario
-        TABLET_VERIFY(blobs.size() == 1);
+        TABLET_VERIFY(blobs.size() == args.BlobIds.size());
 
-        // TODO(debnatkh): extract TPartialBlobId(TLogoBlobID) constructor
-        for (auto& blob: blobs) {
-            blob.BlobId = TPartialBlobId(
-                args.BlobId->Generation(),
-                args.BlobId->Step(),
-                args.BlobId->Channel(),
-                args.BlobId->BlobSize(),
-                args.BlobId->Cookie(),
-                args.BlobId->PartId());
+        for (auto [targetBlob, srcBlob]: Zip(blobs, args.BlobIds)) {
+            targetBlob.BlobId = TPartialBlobId(
+                srcBlob.Generation(),
+                srcBlob.Step(),
+                srcBlob.Channel(),
+                srcBlob.BlobSize(),
+                srcBlob.Cookie(),
+                srcBlob.PartId());
         }
     } else {
         // No need to assign blobIds as they are already assigned
@@ -702,8 +696,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()},
-        args.BlobId);
+        TWriteRange{args.NodeId, args.ByteRange.End()});
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

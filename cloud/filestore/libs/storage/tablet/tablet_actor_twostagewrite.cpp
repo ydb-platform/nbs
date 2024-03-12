@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
+#include <library/cpp/iterator/enumerate.h>
+
 #include <util/generic/algorithm.h>
 #include <util/generic/cast.h>
 #include <util/generic/hash.h>
@@ -41,37 +43,43 @@ void TIndexTabletActor::HandleIssueBlob(
         return RebootTabletOnCommitOverflow(ctx, "IssueBlob");
     }
 
-    // TODO(debnatkh): better logic for lease expiration
     AcquireCollectBarrier(commitId);
+    // We schedule this event for the case if the client will not call
+    // MarkWriteCompleted, due to connection loss. Thus we ensure that the
+    // collect barrier will be released eventually.
+    ctx.Schedule(
+        Config->GetIssueBlobReleaseCollectBarrierTimeout(),
+        new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId));
 
-    // TODO(debnatkh): better selection of channel
-    ui32 blobIndex = 0;
-    TPartialBlobId partialBlobId;
-    const auto ok = GenerateBlobId(
-        commitId,
-        msg->Record.GetLength(),
-        blobIndex++,
-        &partialBlobId);
+    auto response = std::make_unique<TEvIndexTablet::TEvIssueBlobResponse>();
+    for (auto [blobIndex, length]: Enumerate(msg->Record.GetLengths())) {
+        TPartialBlobId partialBlobId;
+        // TODO(debnatkh): better selection of channel
+        const auto ok =
+            GenerateBlobId(commitId, length, blobIndex, &partialBlobId);
 
-    if (!ok) {
-        ReassignDataChannelsIfNeeded(ctx);
+        if (!ok) {
+            ReassignDataChannelsIfNeeded(ctx);
 
-        auto response = std::make_unique<TEvIndexTablet::TEvIssueBlobResponse>(
-            MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
+            auto response =
+                std::make_unique<TEvIndexTablet::TEvIssueBlobResponse>(
+                    MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(TabletID(), partialBlobId),
+            response->Record.MutableBlobIds()->Add());
+        if (blobIndex == 0) {
+            response->Record.SetBSGroupId(Info()->GroupFor(
+                partialBlobId.Channel(),
+                partialBlobId.Generation()));
+        }
     }
 
     // TODO(debnatkh): Throttling
 
-    auto response = std::make_unique<TEvIndexTablet::TEvIssueBlobResponse>();
-
-    response->Record.SetBSGroupId(
-        Info()->GroupFor(partialBlobId.Channel(), partialBlobId.Generation()));
-    LogoBlobIDFromLogoBlobID(
-        MakeBlobId(TabletID(), partialBlobId),
-        response->Record.MutableBlobId());
     response->Record.SetCommitId(commitId);
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -95,7 +103,7 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
 
     if (!CompactionStateLoadStatus.Finished) {
         // TODO(debnatkh): Support two-stage write in case of unfinished
-        // compaction state load
+        // compaction state loading
 
         auto response =
             std::make_unique<TEvIndexTablet::TEvMarkWriteCompletedResponse>(
@@ -104,12 +112,51 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         return;
     }
 
-    // TODO(debnatkh): do the same validation as in TIndexTabletActor::HandleWriteData
-
     const TByteRange range(
         msg->Record.GetOffset(),
         msg->Record.GetLength(),
         GetBlockSize());
+
+    auto validator =
+        [&](const NProtoPrivate::TMarkWriteCompletedRequest& request)
+    {
+        if (auto error = ValidateRange(range); HasError(error)) {
+            return error;
+        }
+
+        auto* handle = FindHandle(request.GetHandle());
+        if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+            return ErrorInvalidHandle(request.GetHandle());
+        }
+
+        if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+            if (CompactionStateLoadStatus.Finished &&
+                ++BackpressureErrorCount >=
+                    Config->GetMaxBackpressureErrorsBeforeSuicide())
+            {
+                LOG_WARN(
+                    ctx,
+                    TFileStoreComponents::TABLET_WORKER,
+                    "%s Suiciding after %u backpressure errors",
+                    LogTag.c_str(),
+                    BackpressureErrorCount);
+
+                Suicide(ctx);
+            }
+
+            return MakeError(E_REJECTED, "rejected due to backpressure");
+        }
+
+        return NProto::TError{};
+    };
+
+    if (!AcceptRequest<TEvIndexTablet::TMarkWriteCompletedMethod>(
+            ev,
+            ctx,
+            validator))
+    {
+        return;
+    }
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
@@ -122,15 +169,21 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
 
     AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
 
-    auto blobId = LogoBlobIDFromLogoBlobID(msg->Record.GetBlobId());
+    TVector<NKikimr::TLogoBlobID> blobIds;
+    for (const auto& blobId: msg->Record.GetBlobIds()) {
+        blobIds.push_back(LogoBlobIDFromLogoBlobID(blobId));
+    }
+
+    TABLET_VERIFY(!blobIds.empty());
 
     LOG_DEBUG(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s %s: blobId: %s",
+        "%s %s: blobId: %s,... (total: %lu)",
         LogTag.c_str(),
         "MarkWriteCompleted",
-        blobId.ToString().c_str());
+        blobIds[0].ToString().c_str(),
+        blobIds.size());
 
     ExecuteTx<TWriteData>(
         ctx,
@@ -143,7 +196,7 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         // blobId to the TWriteData transaction, so it skips the BlobStorage
         // write
         msg->Record.GetCommitId(),
-        std::make_optional(blobId));
+        std::move(blobIds));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

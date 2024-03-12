@@ -927,9 +927,9 @@ void TIndexTabletState::AcquireCollectBarrier(ui64 commitId)
     Impl->GarbageQueue.AcquireCollectBarrier(commitId);
 }
 
-void TIndexTabletState::ReleaseCollectBarrier(ui64 commitId)
+void TIndexTabletState::ReleaseCollectBarrier(ui64 commitId, bool allowMissing)
 {
-    Impl->GarbageQueue.ReleaseCollectBarrier(commitId);
+    Impl->GarbageQueue.ReleaseCollectBarrier(commitId, allowMissing);
 }
 
 ui64 TIndexTabletState::GetCollectCommitId() const

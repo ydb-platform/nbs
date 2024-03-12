@@ -186,6 +186,8 @@ public:
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
 
+    TDuration GetIssueBlobReleaseCollectBarrierTimeout() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

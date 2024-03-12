@@ -117,6 +117,7 @@ message TStorageStats
     uint64 FreshBytesCount = 109;
     uint64 AllocatedCompactionRanges = 110;
     uint64 UsedCompactionRanges = 111;
+    uint64 LastCollectCommitId = 112;
 
     // channel stats
     uint64 TabletChannelCount = 1000;
@@ -386,13 +387,8 @@ message TIssueBlobRequest
     // IO handle.
     uint64 Handle = 4;
 
-    // TODO(debnatkh): support multiple blobs.
-
-    // Starting offset for write.
-    uint64 Offset = 5;
-
-    // Data size.
-    uint64 Length = 6;
+    // Sizes of blobs needed to be issued.
+    repeated uint64 Lengths = 5;
 }
 
 message TIssueBlobResponse
@@ -400,13 +396,13 @@ message TIssueBlobResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Blob id.
-    // TODO(debnatkh): support multiple blobs.
-    NKikimrProto.TLogoBlobID BlobId = 2;
+    // Blob ids, in the same order as in the request.
+    repeated NKikimrProto.TLogoBlobID BlobIds = 2;
 
     // Group id.
     uint32 BSGroupId = 3;
 
+    // AcquireCollectBarrier has been executed for this commit id.
     uint64 CommitId = 4;
 }
 
@@ -435,9 +431,8 @@ message TMarkWriteCompletedRequest
     // Data size.
     uint64 Length = 6;
 
-    // Blob id.
-    // TODO(debnatkh): support multiple blobs.
-    NKikimrProto.TLogoBlobID BlobId = 7;
+    // Blob ids in the same order as in the request.
+    repeated NKikimrProto.TLogoBlobID BlobIds = 7;
 
     // Commit id.
     uint64 CommitId = 8;

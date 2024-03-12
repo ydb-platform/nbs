@@ -52,8 +52,8 @@ public:
         request->Record.SetFileSystemId(WriteRequest.GetFileSystemId());
         request->Record.SetNodeId(WriteRequest.GetNodeId());
         request->Record.SetHandle(WriteRequest.GetHandle());
-        request->Record.SetOffset(WriteRequest.GetOffset());
-        request->Record.SetLength(WriteRequest.GetBuffer().size());
+        // TODO
+        request->Record.MutableLengths()->Add(WriteRequest.GetBuffer().size());
 
         LOG_DEBUG(
             ctx,
@@ -98,7 +98,9 @@ private:
         // TODO(debnatkh): proper error handling
 
         IssueBlobResponse.CopyFrom(msg->Record);
-        BlobId = LogoBlobIDFromLogoBlobID(IssueBlobResponse.GetBlobId());
+        // TODO(debnatkh): support multiple blobs
+        Y_ABORT_UNLESS(IssueBlobResponse.BlobIdsSize() == 1);
+        BlobId = LogoBlobIDFromLogoBlobID(IssueBlobResponse.GetBlobIds(0));
 
         LOG_DEBUG(
             ctx,
@@ -167,7 +169,10 @@ private:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(WriteRequest.GetBuffer().size());
-        LogoBlobIDFromLogoBlobID(BlobId, request->Record.MutableBlobId());
+        // TODO(debnatkh): support multiple blobs
+        LogoBlobIDFromLogoBlobID(
+            BlobId,
+            request->Record.MutableBlobIds()->Add());
         request->Record.SetCommitId(IssueBlobResponse.GetCommitId());
 
         LOG_DEBUG(

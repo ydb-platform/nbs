@@ -200,9 +200,6 @@ message TStorageConfig
     // Enables DescribeData + ReadBlob instead of ReadData for reading.
     optional bool TwoStageReadEnabled = 331;
 
-    // Enables IssueBlob + MarkWriteCompleted instead of WriteBlob for writing.
-    optional bool TwoStageWriteEnabled = 338;
-
     // Enables runtime config update tool.
     optional bool ConfigsDispatcherServiceEnabled = 332;
 
@@ -219,4 +216,12 @@ message TStorageConfig
     optional uint32 EntryTimeout = 335;
     optional uint32 NegativeEntryTimeout = 336;
     optional uint32 AttrTimeout = 337;
+
+    // Enables IssueBlob + WriteBlob + MarkWriteCompleted instead of WriteBlob
+    // for writing.
+    optional bool TwoStageWriteEnabled = 338;
+
+    // When issuing blobs, the tablet acquires collect barrier. In order to
+    // release it in case of a client disconnect, this timeout is used.
+    optional uint32 IssueBlobReleaseCollectBarrierTimeout = 339;
 }

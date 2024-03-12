@@ -1179,7 +1179,9 @@ struct TTxIndexTablet
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
         ui64 CommitId;
-        std::optional<NKikimr::TLogoBlobID> BlobId;
+        // This field is supposed to be used only for two-phase writes. It
+        // contains blobs that were already written by the vhost.
+        TVector<NKikimr::TLogoBlobID> BlobIds;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
@@ -1192,7 +1194,7 @@ struct TTxIndexTablet
                 TByteRange byteRange,
                 IBlockBufferPtr buffer,
                 ui64 commitId,
-                const std::optional<NKikimr::TLogoBlobID>& blobId = std::nullopt)
+                TVector<NKikimr::TLogoBlobID> blobIds)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
@@ -1200,7 +1202,7 @@ struct TTxIndexTablet
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
             , CommitId(commitId)
-            , BlobId(blobId)
+            , BlobIds(std::move(blobIds))
         {}
 
         void Clear()
@@ -1221,7 +1223,7 @@ struct TTxIndexTablet
 
         bool IsBlobAlreadyWritten() const
         {
-            return BlobId.has_value();
+            return !BlobIds.empty();
         }
     };
 

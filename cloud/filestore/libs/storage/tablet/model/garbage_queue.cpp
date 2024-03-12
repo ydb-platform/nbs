@@ -182,11 +182,14 @@ void TGarbageQueue::AcquireCollectBarrier(ui64 commitId)
     }
 }
 
-void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
+void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId, bool allowMissing)
 {
     {
         auto it = Impl->Barriers.find(commitId);
-        Y_ABORT_UNLESS(it != Impl->Barriers.end());
+        Y_ABORT_UNLESS(it != Impl->Barriers.end() || allowMissing);
+        if (it == Impl->Barriers.end()) {
+            return;
+        }
 
         auto& barrier = const_cast<TBarrier&>(*it);
 
