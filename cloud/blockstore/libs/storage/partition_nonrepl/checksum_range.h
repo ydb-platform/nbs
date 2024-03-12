@@ -17,7 +17,9 @@ private:
     const TBlockRange64 Range;
     const TVector<TReplicaDescriptor> Replicas;
 
-    ui32 ChecksumsCount = 0;
+    TInstant ChecksumStartTs;
+    TDuration ChecksumDuration;
+    ui32 CalculatedChecksumsCount = 0;
     bool Finished = false;
     TVector<ui64> Checksums;
     NProto::TError Error;
@@ -27,18 +29,21 @@ public:
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas);
 
-    void ChecksumBlocks(const NActors::TActorContext& ctx);
+    void CalculateChecksums(const NActors::TActorContext& ctx);
 
     void HandleChecksumResponse(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+    void HandleChecksumUndelivery(const NActors::TActorContext& ctx);
 
-    bool IsFinished();
-    const TVector<ui64>& GetChecksums();
-    NProto::TError GetError();
+    bool IsFinished() const;
+    const TVector<ui64>& GetChecksums() const;
+    NProto::TError GetError() const;
+    TInstant GetChecksumStartTs() const;
+    TDuration GetChecksumDuration() const;
 
 private:
-    void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
+    void CalculateReplicaChecksum(const NActors::TActorContext& ctx, int idx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

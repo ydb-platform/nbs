@@ -44,8 +44,7 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         "ResyncRange",
         RequestInfo->CallContext->RequestId);
 
-    ChecksumRangeActorCompanion.ChecksumBlocks(ctx);
-    ChecksumStartTs = ctx.Now();
+    ChecksumRangeActorCompanion.CalculateChecksums(ctx);
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)
@@ -189,8 +188,8 @@ void TResyncRangeActor::Done(const TActorContext& ctx)
     auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvRangeResynced>(
         std::move(Error),
         Range,
-        ChecksumStartTs,
-        ChecksumDuration,
+        ChecksumRangeActorCompanion.GetChecksumStartTs(),
+        ChecksumRangeActorCompanion.GetChecksumDuration(),
         ReadStartTs,
         ReadDuration,
         WriteStartTs,
@@ -215,11 +214,10 @@ void TResyncRangeActor::HandleChecksumUndelivery(
     const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ChecksumDuration = ctx.Now() - ChecksumStartTs;
-
     Y_UNUSED(ev);
 
-    Error = MakeError(E_REJECTED, "ChecksumBlocks request undelivered");
+    ChecksumRangeActorCompanion.HandleChecksumUndelivery(ctx);
+    Error = ChecksumRangeActorCompanion.GetError();
 
     Done(ctx);
 }
@@ -241,7 +239,6 @@ void TResyncRangeActor::HandleChecksumResponse(
         return;
     }
 
-    ChecksumDuration = ctx.Now() - ChecksumStartTs;
     CompareChecksums(ctx);
 }
 

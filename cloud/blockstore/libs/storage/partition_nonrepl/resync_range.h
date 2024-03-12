@@ -35,8 +35,6 @@ private:
     TGuardedSgList SgList;
     NProto::TError Error;
 
-    TInstant ChecksumStartTs;
-    TDuration ChecksumDuration;
     TInstant ReadStartTs;
     TDuration ReadDuration;
     TInstant WriteStartTs;
