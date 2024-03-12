@@ -550,6 +550,9 @@ public:
     TDuration GetCachedAcquireRequestLifetime() const;
 
     ui32 GetUnconfirmedBlobCountHardLimit() const;
+
+    TString GetCachedDiskAgentConfigPath() const;
+    TString GetCachedDiskAgentSessionsPath() const;
 };
 
 ui64 GetAllocationUnit(

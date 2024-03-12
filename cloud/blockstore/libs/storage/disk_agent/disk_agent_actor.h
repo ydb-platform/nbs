@@ -133,6 +133,8 @@ private:
 
     TRecentBlocksTracker& GetRecentBlocksTracker(const TString& deviceUUID);
 
+    TString GetCachedSessionsPath() const;
+
     void UpdateSessionCacheAndRespond(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
@@ -176,6 +178,11 @@ private:
 
     void HandleWriteOrZeroCompleted(
         const TEvDiskAgentPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReportDelayedDiskAgentConfigMismatch(
+        const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -42,6 +42,7 @@ private:
     };
 
 private:
+    const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
@@ -63,6 +64,7 @@ private:
 
 public:
     TDiskAgentState(
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
@@ -77,6 +79,7 @@ public:
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
+        TVector<TString> ConfigMismatchErrors;
         TDeviceGuard Guard;
     };
 

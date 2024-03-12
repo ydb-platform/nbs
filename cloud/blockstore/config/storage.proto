@@ -920,4 +920,10 @@ message TStorageServiceConfig
 
     // Limits unconfirmed (and confirmed but not added to the index) blob count.
     optional uint32 UnconfirmedBlobCountHardLimit = 349;
+
+    // These are duplicates of "CachedConfigPath" and "CachedSessionsPath"
+    // fields in the "TDiskAgentConfig" and here just to ease deployment of the
+    // caches. Disk agent config has higher priority than storage config.
+    optional string CachedDiskAgentConfigPath = 350;
+    optional string CachedDiskAgentSessionsPath = 351;
 }

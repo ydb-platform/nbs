@@ -4005,6 +4005,66 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         UNIT_ASSERT_EQUAL(1, *cacheRestoreError);
     }
+
+    Y_UNIT_TEST_F(ShouldGetCacheSessionsPathFromStorageConfig, TFixture)
+    {
+        {
+            TFile file {CachedSessionsPath, EOpenModeFlag::CreateAlways};
+            TFileOutput(file).Write("{ broken protobuf#");
+        }
+
+        auto cacheRestoreError = Counters->GetCounter(
+            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            true);
+
+        UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
+
+        auto diskAgentConfig = CreateDiskAgentConfig();
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetCachedDiskAgentSessionsPath(
+            diskAgentConfig.GetCachedSessionsPath());
+        diskAgentConfig.ClearCachedSessionsPath();
+
+        auto env = TTestEnvBuilder(Runtime)
+            .With(diskAgentConfig)
+            .With(storageConfig)
+            .Build();
+
+        TDiskAgentClient diskAgent(Runtime);
+        diskAgent.WaitReady();
+
+        UNIT_ASSERT_EQUAL(1, *cacheRestoreError);
+    }
+
+    Y_UNIT_TEST_F(ShouldNotGetCacheSessionsPathFromStorageConfig, TFixture)
+    {
+        const TString diskAgentCachedSessionsPath = CachedSessionsPath;
+        const TString storageCachedSessionsPath =
+            TempDir.Path() / "must-not-use-sessions.txt";
+
+        {
+            TFile file {storageCachedSessionsPath, EOpenModeFlag::CreateAlways};
+            TFileOutput(file).Write("{ broken protobuf#");
+        }
+
+        auto cacheRestoreError = Counters->GetCounter(
+            "AppCriticalEvents/DiskAgentSessionCacheRestoreError",
+            true);
+
+        UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
+
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetCachedDiskAgentSessionsPath(storageCachedSessionsPath);
+        auto env = TTestEnvBuilder(Runtime)
+            .With(CreateDiskAgentConfig())
+            .With(storageConfig)
+            .Build();
+
+        TDiskAgentClient diskAgent(Runtime);
+        diskAgent.WaitReady();
+
+        UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
