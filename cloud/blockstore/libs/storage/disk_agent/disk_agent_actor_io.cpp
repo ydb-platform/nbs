@@ -22,6 +22,10 @@ constexpr bool IsWriteDeviceMethod =
     std::is_same_v<T, TEvDiskAgent::TWriteDeviceBlocksMethod> ||
     std::is_same_v<T, TEvDiskAgent::TZeroDeviceBlocksMethod>;
 
+template <typename T>
+constexpr bool IsReadDeviceMethod =
+    std::is_same_v<T, TEvDiskAgent::TReadDeviceBlocksMethod>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod, typename T>
@@ -117,6 +121,10 @@ void TDiskAgentActor::PerformIO(
     if constexpr (IsWriteDeviceMethod<TMethod>) {
         volumeRequestId = GetVolumeRequestId(*msg);
         range = BuildRequestBlockRange(*msg);
+    } else {
+        range = TBlockRange64::WithLength(
+            msg->Record.GetStartIndex(),
+            msg->Record.GetBlocksCount());
     }
 
     auto requestInfo = CreateRequestInfo<TMethod>(
@@ -183,7 +191,18 @@ void TDiskAgentActor::PerformIO(
         clientId.c_str());
 
     if (SecureErasePendingRequests.contains(deviceUUID)) {
-        ReportDiskAgentIoDuringSecureErase();
+        const bool isHealthCheckRead =
+            IsReadDeviceMethod<TMethod> && clientId == CheckHealthClientId;
+        if (!isHealthCheckRead) {
+            ReportDiskAgentIoDuringSecureErase(
+                TStringBuilder()
+                << " Device=" << deviceUUID
+                << ", ClientId=" << clientId
+                << ", StartIndex=" << range.Start
+                << ", BlocksCount=" << range.Size()
+                << ", IsWrite=" << IsWriteDeviceMethod<TMethod>
+                << ", IsRdma=0");
+        }
         replyError(E_REJECTED, "Secure erase in progress");
         return;
     }
