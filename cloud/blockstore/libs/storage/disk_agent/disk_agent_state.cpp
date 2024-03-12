@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -239,6 +240,7 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
@@ -248,7 +250,8 @@ TDiskAgentState::TDiskAgentState(
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager)
-    : AgentConfig(std::move(agentConfig))
+    : StorageConfig(std::move(storageConfig))
+    , AgentConfig(std::move(agentConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))
@@ -373,6 +376,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 {
     return InitializeStorage(
             Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            StorageConfig,
             AgentConfig,
             StorageProvider,
             NvmeManager)
@@ -412,6 +416,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             return TInitializeResult {
                 .Configs = std::move(r.Configs),
                 .Errors = std::move(r.Errors),
+                .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
                 .Guard = std::move(r.Guard)
             };
         });
@@ -826,7 +831,9 @@ void TDiskAgentState::StopTarget()
 
 void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
 {
-    const auto path = AgentConfig->GetCachedSessionsPath();
+    const TString storagePath = StorageConfig->GetCachedDiskAgentSessionsPath();
+    const TString agentPath = AgentConfig->GetCachedSessionsPath();
+    const TString& path = agentPath.empty() ? storagePath : agentPath;
 
     if (path.empty()) {
         STORAGE_INFO("Session cache is not configured.");
