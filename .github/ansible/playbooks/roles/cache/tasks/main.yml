@@ -12,7 +12,7 @@
 - name: Add a remote cache user htpasswd file
   community.general.htpasswd:
     path: /etc/bazel-remote-htpasswd
-    name: cache
+    name: bazel-remote-user
     password: "{{ remote_cache_password }}"
     owner: 1000
     group: 1000
