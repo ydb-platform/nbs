@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
@@ -131,6 +132,11 @@ private:
         const TString& deviceId);
 
     TRecentBlocksTracker& GetRecentBlocksTracker(const TString& deviceUUID);
+
+    void UpdateSessionCacheAndRespond(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        NActors::IEventBasePtr response);
 
 private:
     STFUNC(StateInit);

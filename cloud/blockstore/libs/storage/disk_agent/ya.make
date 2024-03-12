@@ -33,6 +33,7 @@ PEERDIR(
     cloud/blockstore/libs/spdk/iface
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/disk_agent/actors
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/model
@@ -52,6 +53,7 @@ PEERDIR(
 END()
 
 RECURSE(
+    actors
     model
 )
 

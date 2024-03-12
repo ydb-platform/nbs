@@ -135,9 +135,9 @@ public:
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode,
         const ui64 mountSeqNumber = 0,
-        const NSpdk::TDeviceRateLimits& limits = {},
         const TString& diskId = "",
-        const ui32 volumeGeneration = 0)
+        const ui32 volumeGeneration = 0,
+        const NSpdk::TDeviceRateLimits& limits = {})
     {
         auto request = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 

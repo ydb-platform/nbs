@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <ydb/core/base/appdata.h>
+
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -56,7 +58,7 @@ void TDiskAgentActor::HandleAcquireDevices(
                 << ", uuids=" << JoinSeq(",", uuids)
         );
 
-        State->AcquireDevices(
+        const bool updated = State->AcquireDevices(
             uuids,
             clientId,
             ctx.Now(),
@@ -66,6 +68,17 @@ void TDiskAgentActor::HandleAcquireDevices(
             record.GetVolumeGeneration());
 
         if (!Spdk || !record.HasRateLimits()) {
+            // If something has changed in sessions we should update the session
+            // cache (if it was configured). To do this, we spawn a special actor
+            // that updates the session cache and responds to the acquire request.
+            if (updated && AgentConfig->GetCachedSessionsPath()) {
+                UpdateSessionCacheAndRespond(
+                    ctx,
+                    std::move(requestInfo),
+                    std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>());
+                return;
+            }
+
             reply(NProto::TError());
             return;
         }
