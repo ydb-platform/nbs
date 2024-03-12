@@ -21,6 +21,7 @@ target_link_libraries(filestore-libs-server PUBLIC
   core-libs-common
   core-libs-diagnostics
   core-libs-grpc
+  core-libs-uds
   storage-core-protos
   cpp-deprecated-atomic
   library-cpp-lwtrace
