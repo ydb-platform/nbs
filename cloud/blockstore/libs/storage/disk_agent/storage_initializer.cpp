@@ -95,6 +95,7 @@ class TInitializer
 {
 private:
     const TLog Log;
+    const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
     const IStorageProviderPtr StorageProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
@@ -107,11 +108,13 @@ private:
     TDeviceGuard Guard;
 
     TVector<TString> Errors;
+    TVector<TString> ConfigMismatchErrors;
     TMutex Lock;
 
 public:
     TInitializer(
         TLog log,
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager);
@@ -142,16 +145,20 @@ private:
 
     TVector<NProto::TFileDeviceArgs> LoadCachedConfig() const;
     void SaveCurrentConfig();
+
+    void ReportDiskAgentConfigMismatchEvent(const TString& error);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TInitializer::TInitializer(
         TLog log,
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager)
     : Log {std::move(log)}
+    , StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , StorageProvider(std::move(storageProvider))
     , NvmeManager(std::move(nvmeManager))
@@ -271,7 +278,7 @@ bool TInitializer::ValidateGeneratedConfigs(
 void TInitializer::ScanFileDevices()
 {
     if (!ValidateStorageDiscoveryConfig()) {
-        ReportDiskAgentConfigMismatch("Bad storage discovery config");
+        ReportDiskAgentConfigMismatchEvent("Bad storage discovery config");
         return;
     }
 
@@ -281,9 +288,8 @@ void TInitializer::ScanFileDevices()
             AgentConfig->GetStorageDiscoveryConfig(),
             std::ref(gen)); HasError(error))
     {
-        ReportDiskAgentConfigMismatch(TStringBuilder()
+        ReportDiskAgentConfigMismatchEvent(TStringBuilder()
             << "Can't generate config: " << FormatError(error));
-
         return;
     }
 
@@ -296,7 +302,7 @@ void TInitializer::ScanFileDevices()
     SortBy(files, GetDeviceId);
 
     if (!ValidateGeneratedConfigs(files)) {
-        ReportDiskAgentConfigMismatch("Bad generated config");
+        ReportDiskAgentConfigMismatchEvent("Bad generated config");
 
         return;
     }
@@ -322,13 +328,15 @@ void TInitializer::ScanFileDevices()
             ss << d << "\n";
         }
 
-        ReportDiskAgentConfigMismatch(ss.Str());
+        ReportDiskAgentConfigMismatchEvent(ss.Str());
     }
 }
 
 TVector<NProto::TFileDeviceArgs> TInitializer::LoadCachedConfig() const
 {
-    const auto path = AgentConfig->GetCachedConfigPath();
+    const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
+    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
 
     if (path.empty()) {
         return {};
@@ -408,7 +416,7 @@ void TInitializer::ValidateCurrentConfigs()
         ss << d << "\n";
     }
 
-    ReportDiskAgentConfigMismatch(ss.Str());
+    ReportDiskAgentConfigMismatchEvent(ss.Str());
 
     STORAGE_WARN("Current config is broken, fallback to the cached one.");
     FileDevices.swap(cachedDevices);
@@ -444,7 +452,7 @@ TFuture<void> TInitializer::Initialize()
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
 
-        auto onInitError = [=] () {
+        auto onInitError = [i, this] () {
             OnError(i, CurrentExceptionMessage());
 
             Configs[i].SetState(NProto::DEVICE_STATE_ERROR);
@@ -584,9 +592,15 @@ TInitializeStorageResult TInitializer::GetResult()
     }
 
     r.Errors = std::move(Errors);
+    r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
     r.Guard = std::move(Guard);
 
     return r;
+}
+
+void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error) {
+    ReportDiskAgentConfigMismatch(error);
+    ConfigMismatchErrors.push_back(error);
 }
 
 }   // namespace
@@ -595,12 +609,14 @@ TInitializeStorageResult TInitializer::GetResult()
 
 TFuture<TInitializeStorageResult> InitializeStorage(
     TLog log,
+    TStorageConfigPtr storageConfig,
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager)
 {
     auto initializer = std::make_shared<TInitializer>(
         std::move(log),
+        std::move(storageConfig),
         std::move(agentConfig),
         std::move(storageProvider),
         std::move(nvmeManager));

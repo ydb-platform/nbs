@@ -35,14 +35,17 @@ struct TEvDiskAgentPrivate
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
+        TVector<TString> ConfigMismatchErrors;
 
         TInitAgentCompleted() = default;
 
         TInitAgentCompleted(
                 TVector<NProto::TDeviceConfig> configs,
-                TVector<TString> errors)
+                TVector<TString> errors,
+                TVector<TString> configMismatchErrors)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
+            , ConfigMismatchErrors(std::move(configMismatchErrors))
         {}
     };
 
@@ -114,6 +117,19 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // TReportDelayedDiskAgentConfigMismatch
+    //
+
+    struct TReportDelayedDiskAgentConfigMismatch
+    {
+        TString ErrorText;
+
+        explicit TReportDelayedDiskAgentConfigMismatch(TString errorText)
+            : ErrorText(std::move(errorText))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -126,6 +142,7 @@ struct TEvDiskAgentPrivate
         EvInitAgentCompleted,
         EvSecureEraseCompleted,
         EvWriteOrZeroCompleted,
+        EvReportDelayedDiskAgentConfigMismatch,
 
         EvEnd
     };
@@ -146,6 +163,10 @@ struct TEvDiskAgentPrivate
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
         EvWriteOrZeroCompleted>;
+
+    using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
+        TReportDelayedDiskAgentConfigMismatch,
+        EvReportDelayedDiskAgentConfigMismatch>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,6 +1,7 @@
 import hashlib
 import os
 import pytest
+import time
 
 from copy import deepcopy
 
@@ -333,6 +334,14 @@ def test_config_comparison(
     crit = disk_agent.counters.find({'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
     assert crit is not None
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
+
+    if cmp == 'mismatch':
+        # Wait for duplicate event.
+        time.sleep(30)
+        crit = disk_agent.counters.find(
+            {'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+        assert crit is not None
+        assert crit['value'] == 2
 
     disk_agent.kill()
 
