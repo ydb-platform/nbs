@@ -71,7 +71,7 @@ void TDiskAgentActor::HandleAcquireDevices(
             // If something has changed in sessions we should update the session
             // cache (if it was configured). To do this, we spawn a special actor
             // that updates the session cache and responds to the acquire request.
-            if (updated && AgentConfig->GetCachedSessionsPath()) {
+            if (updated && GetCachedSessionsPath()) {
                 UpdateSessionCacheAndRespond(
                     ctx,
                     std::move(requestInfo),

@@ -109,6 +109,8 @@ TDuration MSeconds(ui32 value)
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
     xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20       )\
+    xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
+    xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
