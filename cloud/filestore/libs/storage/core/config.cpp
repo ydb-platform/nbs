@@ -26,17 +26,21 @@ namespace {
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
-    xxx(MaxBlobSize,                   ui32,      4_MB                        )\
-    xxx(FlushThreshold,                ui32,      4_MB                        )\
-    xxx(CleanupThreshold,              ui32,      512                         )\
-    xxx(CompactionThreshold,           ui32,      20                          )\
-    xxx(CollectGarbageThreshold,       ui32,      4_MB                        )\
-    xxx(FlushBytesThreshold,           ui32,      4_MB                        )\
-    xxx(MaxDeleteGarbageBlobsPerTx,    ui32,      16384                       )\
-    xxx(LoadedCompactionRangesPerTx,   ui32,      10 * 1024 * 1024            )\
-    xxx(MaxBlocksPerTruncateTx,        ui32,      0 /*TODO: 8388608 32gb/4kb*/)\
-    xxx(MaxTruncateTxInflight,         ui32,      10                          )\
-    xxx(CompactionRetryTimeout,        TDuration, TDuration::Seconds(1)       )\
+    xxx(MaxBlobSize,                        ui32,   4_MB                      )\
+    xxx(FlushThreshold,                     ui32,   4_MB                      )\
+    xxx(CleanupThreshold,                   ui32,   512                       )\
+    xxx(CompactionThreshold,                ui32,   20                        )\
+    xxx(GarbageCompactionThreshold,         ui32,   100                       )\
+    xxx(CompactionThresholdAverage,         ui32,   4                         )\
+    xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
+    xxx(NewCompactionEnabled,               bool,   false                     )\
+    xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
+    xxx(FlushBytesThreshold,                ui32,   4_MB                      )\
+    xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
+    xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
+    xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
+    xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+    xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
