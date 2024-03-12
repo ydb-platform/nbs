@@ -28,11 +28,13 @@ struct TInitializeStorageResult
     TVector<IStoragePtr> Devices;
     TVector<TStorageIoStatsPtr> Stats;
     TVector<TString> Errors;
+    TVector<TString> ConfigMismatchErrors;
     TDeviceGuard Guard;
 };
 
 NThreading::TFuture<TInitializeStorageResult> InitializeStorage(
     TLog log,
+    TStorageConfigPtr storageConfig,
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager);

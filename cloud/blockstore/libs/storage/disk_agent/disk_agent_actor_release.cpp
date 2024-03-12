@@ -30,7 +30,7 @@ void TDiskAgentActor::HandleReleaseDevices(
 
         // We should update the session cache (if it was configured) with every
         // release request.
-        if (AgentConfig->GetCachedSessionsPath()) {
+        if (GetCachedSessionsPath()) {
             UpdateSessionCacheAndRespond(
                 ctx,
                 CreateRequestInfo(

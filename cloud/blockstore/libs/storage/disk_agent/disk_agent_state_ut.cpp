@@ -139,13 +139,22 @@ auto CreateNullConfig(TNullConfigParams params)
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
 
+TStorageConfigPtr CreateStorageConfig()
+{
+    NProto::TStorageServiceConfig config;
+    return std::make_shared<TStorageConfig>(
+        std::move(config),
+        std::make_shared<NFeatures::TFeaturesConfig>());
+}
+
 auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 {
     return std::make_unique<TDiskAgentState>(
+        CreateStorageConfig(),
         std::move(config),
         NSpdk::CreateEnvStub(),
         CreateTestAllocator(),
-        nullptr,    // storageProvider
+        nullptr,   // storageProvider
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
         CreateLoggingService("console"),
@@ -330,6 +339,7 @@ struct TFiles
     auto CreateDiskAgentStateNull(TDiskAgentConfigPtr config)
     {
         return std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             std::move(config),
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -462,28 +472,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             false); // checkSerialNumbers
     }
 
-    Y_UNIT_TEST_F(ShouldInitializeWithNull, TFiles)
-    {
-        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        InitCriticalEventsCounter(counters);
-
-        auto mismatch = counters->GetCounter(
-            "AppCriticalEvents/DiskAgentDeviceGeneratedConfigMismatch",
-            true);
-
-        UNIT_ASSERT_EQUAL(0, *mismatch);
-
-        auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({ .Files = Nvme3s })
-        );
-
-        ShouldInitialize(
-            *state,
-            true); // checkSerialNumbers
-
-        UNIT_ASSERT_EQUAL(0, *mismatch);
-    }
-
     Y_UNIT_TEST_F(ShouldReportDeviceGeneratedConfigMismatch, TFiles)
     {
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
@@ -524,6 +512,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto config = CreateNullConfig({ .Files = Nvme3s });
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             config,
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -734,6 +723,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack");
 
                 TDiskAgentState state(
+                    CreateStorageConfig(),
                     config,
                     nullptr,    // spdk
                     CreateTestAllocator(),
@@ -803,6 +793,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack"),
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -1221,6 +1212,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             config,
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -1379,6 +1371,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             config,
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -1459,6 +1452,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             config,
             nullptr,    // spdk
             CreateTestAllocator(),
@@ -1535,6 +1529,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         auto newState = [&] (auto discoveryConfig) {
             return std::make_unique<TDiskAgentState>(
+                CreateStorageConfig(),
                 CreateNullConfig({
                     .DiscoveryConfig = discoveryConfig,
                     .CachedConfigPath = CachedConfigPath

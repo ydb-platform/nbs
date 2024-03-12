@@ -2,6 +2,7 @@
 
 #include "actors/session_cache_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -119,7 +120,7 @@ void TDiskAgentActor::UpdateSessionCacheAndRespond(
 
     auto actor = NDiskAgent::CreateSessionCacheActor(
         State->GetSessions(),
-        AgentConfig->GetCachedSessionsPath(),
+        GetCachedSessionsPath(),
         std::move(requestInfo),
         std::move(response));
 
@@ -129,7 +130,25 @@ void TDiskAgentActor::UpdateSessionCacheAndRespond(
         NKikimr::AppData()->IOPoolId);
 }
 
+TString TDiskAgentActor::GetCachedSessionsPath() const
+{
+    const TString storagePath = Config->GetCachedDiskAgentSessionsPath();
+    const TString agentPath = AgentConfig->GetCachedSessionsPath();
+    return agentPath.empty() ? storagePath : agentPath;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
+
+void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
+    const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::TPtr&
+        ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    const auto* msg = ev->Get();
+    ReportDiskAgentConfigMismatch(
+        TStringBuilder() << "[duplicate] " << msg->ErrorText);
+}
 
 void TDiskAgentActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
@@ -196,6 +215,10 @@ STFUNC(TDiskAgentActor::StateInit)
 
         HFunc(TEvDiskAgentPrivate::TEvInitAgentCompleted, HandleInitAgentCompleted);
 
+        HFunc(
+            TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
+            HandleReportDelayedDiskAgentConfigMismatch);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskAgent)
 
         default:
@@ -223,6 +246,10 @@ STFUNC(TDiskAgentActor::StateWork)
         HFunc(TEvDiskRegistryProxy::TEvConnectionLost, HandleConnectionLost);
 
         HFunc(TEvDiskAgentPrivate::TEvWriteOrZeroCompleted, HandleWriteOrZeroCompleted);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
+            HandleReportDelayedDiskAgentConfigMismatch);
 
         default:
             if (!HandleRequests(ev)) {
