@@ -168,10 +168,7 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    // TODO(debnatkh): Make sure that this block buffer can be empty and get rid of it
-    auto blockBuffer = CreateBlockBuffer(
-        range,
-        TString(msg->Record.GetLength(), 'A' + (msg->Record.GetOffset() % 26)));
+    auto blockBuffer = CreateLazyBlockBuffer(range);
 
     TVector<NKikimr::TLogoBlobID> blobIds;
     for (const auto& blobId: msg->Record.GetBlobIds()) {
