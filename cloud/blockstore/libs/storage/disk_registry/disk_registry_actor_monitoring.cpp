@@ -22,6 +22,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+uint16_t GetDeviceStateFlags(
+    const TDiskRegistryState& state,
+    const TString& deviceUUID)
+{
+    uint16_t deviceStateFlags = EDeviceStateFlags::NONE;
+    if (state.IsDirtyDevice(deviceUUID)) {
+        deviceStateFlags |= EDeviceStateFlags::DIRTY;
+    }
+    if (state.IsSuspendedDevice(deviceUUID)) {
+        deviceStateFlags |= EDeviceStateFlags::SUSPENDED;
+    }
+    return deviceStateFlags;
+}
+
 void BuildVolumeReallocateButton(
     IOutputStream& out,
     ui64 tabletId,
@@ -243,7 +257,14 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     }
                     TABLED() { out << device.GetDeviceName(); }
                     TABLED() { out << device.GetSerialNumber(); }
-                    TABLED() { DumpDeviceState(out, device.GetState()); }
+                    TABLED() {
+                        DumpDeviceState(
+                            out,
+                            device.GetState(),
+                            GetDeviceStateFlags(
+                                *State,
+                                device.GetDeviceUUID()));
+                    }
                     TABLED() {
                         out << TInstant::MicroSeconds(device.GetStateTs());
                     }
@@ -396,7 +417,13 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
             out << device.GetRack();
         }
 
-        DIV() { out << "State: "; DumpDeviceState(out, device.GetState()); }
+        DIV() {
+            out << "State: ";
+            DumpDeviceState(
+                out,
+                device.GetState(),
+                GetDeviceStateFlags(*State, id));
+        }
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(device.GetStateTs());
@@ -641,12 +668,16 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
             }
             TABLED() {
-                const bool isFresh =
-                    FindPtr(
+                uint16_t flags =
+                    GetDeviceStateFlags(*State, device.GetDeviceUUID());
+                if (FindPtr(
                         info.MasterDiskId ? masterDiskInfo.DeviceReplacementIds
                                           : info.DeviceReplacementIds,
-                        device.GetDeviceUUID()) != nullptr;
-                DumpDeviceState(out, device.GetState(), isFresh);
+                        device.GetDeviceUUID()) != nullptr)
+                {
+                    flags |= EDeviceStateFlags::FRESH;
+                }
+                DumpDeviceState(out, device.GetState(), flags);
             }
             TABLED() {
                 out << TInstant::MicroSeconds(device.GetStateTs());
@@ -1731,16 +1762,14 @@ void TDiskRegistryActor::RenderAgentList(
                             DumpDeviceState(
                                 out,
                                 NProto::DEVICE_STATE_ONLINE,
-                                false,
-                                false,
+                                EDeviceStateFlags::NONE,
                                 TStringBuilder() << " " << onlineDevs);
                             if (warningDevs) {
                                 out << " / ";
                                 DumpDeviceState(
                                     out,
                                     NProto::DEVICE_STATE_WARNING,
-                                    false,
-                                    false,
+                                    EDeviceStateFlags::NONE,
                                     TStringBuilder() << " " << warningDevs);
                             }
                             if (errorDevs) {
@@ -1748,8 +1777,7 @@ void TDiskRegistryActor::RenderAgentList(
                                 DumpDeviceState(
                                     out,
                                     NProto::DEVICE_STATE_ERROR,
-                                    false,
-                                    false,
+                                    EDeviceStateFlags::NONE,
                                     TStringBuilder() << " " << errorDevs);
                             }
                         }

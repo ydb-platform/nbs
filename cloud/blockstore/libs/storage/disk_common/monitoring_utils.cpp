@@ -47,8 +47,7 @@ IOutputStream& DumpDiskState(
 IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
-    bool isFresh,
-    bool isDisabled,
+    uint16_t flags,
     TString suffix)
 {
     switch (state) {
@@ -67,11 +66,17 @@ IOutputStream& DumpDeviceState(
                 << static_cast<int>(state)
                 << ")" << suffix;
     }
-    if (isFresh) {
-        out << " [<font color=blue>Fresh</font>]";
+    if (flags & EDeviceStateFlags::FRESH) {
+        out << " [<font color=blue>fresh</font>]";
     }
-    if (isDisabled) {
-        out << " [<font color=red>Disabled</font>]";
+    if (flags & EDeviceStateFlags::DISABLED) {
+        out << " [<font color=red>disabled</font>]";
+    }
+    if (flags & EDeviceStateFlags::DIRTY) {
+        out << " [<font color=DimGrey>dirty</font>]";
+    }
+    if (flags & EDeviceStateFlags::SUSPENDED) {
+        out << " [<font color=DarkCyan>suspended</font>]";
     }
     return out;
 }
