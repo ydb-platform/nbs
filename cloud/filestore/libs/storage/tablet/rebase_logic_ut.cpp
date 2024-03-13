@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
             return TBlock(defaultNodeId, blockIndex, minCommitId, maxCommitId);
         };
         TVector<TBlock> blocks = {
-            b(10, 5, 15),
+            b(10, 5, 9),
             b(11, 7, 20),
             b(11, 20, InvalidCommitId),
             b(12, 20, 31),
@@ -27,6 +27,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
         const ui64 c1 = 3;
         const ui64 c2 = 6;
         const ui64 c3 = 10;
+        const ui64 lastCommitId = 40;
 
         const auto findCheckpoint = [&] (ui64 nodeId, ui64 commitId) {
             UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, nodeId);
@@ -55,7 +56,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
 
         const auto rebaseResult = RebaseBlocks(
             blocks,
-            40,
+            lastCommitId,
             findCheckpoint,
             findBlock);
 
@@ -65,6 +66,38 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(2, rebaseResult.UsedCheckpoints.size());
         UNIT_ASSERT(rebaseResult.UsedCheckpoints.contains(c2));
         UNIT_ASSERT(rebaseResult.UsedCheckpoints.contains(c3));
+
+        UNIT_ASSERT_VALUES_EQUAL(6, blocks.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[0].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(10, blocks[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(c2, blocks[0].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(c3, blocks[0].MaxCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[1].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(11, blocks[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(7, blocks[1].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocks[1].MaxCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[2].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(11, blocks[2].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(20, blocks[2].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, blocks[2].MaxCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[3].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(12, blocks[3].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(0, blocks[3].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(0, blocks[3].MaxCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[4].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(13, blocks[4].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(lastCommitId, blocks[4].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, blocks[4].MaxCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, blocks[5].NodeId);
+        UNIT_ASSERT_VALUES_EQUAL(14, blocks[5].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(32, blocks[5].MinCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, blocks[5].MaxCommitId);
     }
 }
 
