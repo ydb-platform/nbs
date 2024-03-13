@@ -107,7 +107,14 @@ message TStorageDiscoveryConfig
     message TPoolConfig
     {
         optional string PoolName = 1;
+
+        // The minimum allowed size of a device.
+        // If MinSize == 0 and Layout is specified then the minimum allowed size
+        // is Layout.HeaderSize + Layout.DeviceSize.
         optional uint64 MinSize = 2;
+
+        // The maximum allowed size of a device. If not specified, then the
+        // maximum size of the device is not limited.
         optional uint64 MaxSize = 3;
 
         optional TLayout Layout = 4;

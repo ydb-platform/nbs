@@ -240,10 +240,27 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
 
     for (const auto& path: config.GetPathConfigs()) {
         for (const auto& pool: path.GetPoolConfigs()) {
-            if (pool.HasLayout() && !pool.GetLayout().GetDeviceSize()) {
-                STORAGE_WARN("Bad pool configuration: " << pool);
+            if (pool.HasLayout()) {
+                const auto& layout = pool.GetLayout();
 
-                return false;
+                if (!layout.GetDeviceSize()) {
+                    STORAGE_WARN(
+                        "Bad pool configuration: the device size is not set. "
+                        "Config: " << pool);
+
+                    return false;
+                }
+
+                if (pool.GetMinSize() && pool.GetMinSize() <
+                    layout.GetHeaderSize() + layout.GetDeviceSize())
+                {
+                    STORAGE_WARN(
+                        "Bad pool configuration: the min size is less than the "
+                        "minimum layout. "
+                        "Config: " << pool);
+
+                    return false;
+                }
             }
         }
     }
