@@ -7,6 +7,7 @@
 
 #include "checkpoint.h"
 #include "helpers.h"
+#include "rebase_logic.h"
 #include "session.h"
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
@@ -740,6 +741,8 @@ private:
         ui32 rangeId,
         const TPartialBlobId& blobId,
         const TVector<TBlock>& blocks);
+
+    TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
 
     //
     // Garbage

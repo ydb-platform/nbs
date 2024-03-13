@@ -4,11 +4,11 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRebaseResult RebaseMixedBlocks(
+TRebaseResult RebaseBlocks(
     TVector<TBlock>& blocks,
     ui64 lastCommitId,
-    TFindCheckpoint findCheckpoint,
-    TFindBlock findBlock)
+    const TFindCheckpoint& findCheckpoint,
+    const TFindBlock& findBlock)
 {
     TRebaseResult result;
 
