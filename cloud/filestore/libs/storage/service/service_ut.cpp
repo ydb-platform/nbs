@@ -1969,6 +1969,86 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(8, evGets);
         UNIT_ASSERT_VALUES_EQUAL(4, readDataResponses);
     }
+
+    Y_UNIT_TEST(ShouldPerformTwoStageWrites)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageWriteEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetTwoStageWriteEnabled(),
+                true);
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        ui32 putResultCount = 0;
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut: {
+                        using TResponse = TEvBlobStorage::TEvPut;
+                        auto* msg = event->template Get<TResponse>();
+                        if (msg->Buffer.Size() == DefaultBlockSize) {
+                            ++putResultCount;
+                        }
+                        return false;
+                    }
+                }
+
+                return false;
+            });
+
+        auto data = TString(DefaultBlockSize, 'A');
+
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+
+        auto& runtime = env.GetRuntime();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            runtime.GetCounter(TEvIndexTablet::EvIssueBlobResponse),
+            2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            runtime.GetCounter(TEvIndexTablet::EvMarkWriteCompletedRequest),
+            2);
+        UNIT_ASSERT_VALUES_EQUAL(putResultCount, 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            runtime.GetCounter(TEvIndexTabletPrivate::EvWriteBlobRequest),
+            0);
+        runtime.ClearCounters();
+        putResultCount = 0;
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

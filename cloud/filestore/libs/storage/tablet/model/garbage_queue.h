@@ -51,6 +51,7 @@ public:
      * missing.
      */
     void ReleaseCollectBarrier(ui64 commitId, bool allowMissing);
+    bool IsCollectBarrierAcquired(ui64 commitId) const;
 
     ui64 GetCollectCommitId() const;
 };

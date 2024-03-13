@@ -71,7 +71,7 @@ struct TEvIndexTablet
         EvIssueBlobResponse,
 
         EvMarkWriteCompletedRequest = EvBegin + 21,
-        EvMarkWriteCompletedResponse,   // unused, kept for consistency
+        EvMarkWriteCompletedResponse,
 
         EvEnd
     };

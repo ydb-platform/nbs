@@ -3934,9 +3934,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                              << stats.GetLastCollectCommitId());
         }
 
-        env.GetRuntime().DispatchEvents(
-            TDispatchOptions(),
-            TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
 
         createGarbage();
         // After the IssueBlobReleaseCollectBarrierTimeout has passed, we can
@@ -3949,7 +3947,187 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    // TODO(debnatkh): tests for TIndexTabletActor::HandleMarkWriteCompleted
+    TABLET_TEST(ShouldMarkWriteCompleted)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<NKikimr::TLogoBlobID> blobIds;
+        bool shouldDropPutResult = true;
+
+        // We can't make direct writes to BlobStorage, so we store the blob ids
+        // from an ordinary write and then use them in MarkWriteCompleted
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        // We intercept all PutResult events in order for tablet
+                        // to consider them as written. Nevertheless, these
+                        // blobs are already written and we will use them in
+                        // MarkWriteCompleted
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            blobIds.push_back(msg->Id);
+                        }
+                        if (shouldDropPutResult) {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TString data(block * BlockGroupSize * 2, '\0');
+        for (size_t i = 0; i < data.size(); ++i) {
+            // 77 and 256 are coprimes
+            data[i] = static_cast<char>(i % 77);
+        }
+
+        tablet.SendWriteDataRequest(handle, 0, data.size(), data.data());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+        shouldDropPutResult = false;
+
+        // We acquire commitId just so there is something to release on
+        // completion
+        auto commitId = tablet.IssueBlob(id, handle, TVector<ui64>{block})
+                            ->Record.GetCommitId();
+
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto handle2 = CreateHandle(tablet, id2);
+
+        Sort(blobIds.begin(), blobIds.end());
+
+        // Now we try to submit the same blobs for another node
+        auto request = tablet.CreateMarkWriteCompletedRequest(
+            id2,
+            handle2,
+            0,
+            data.size(),
+            blobIds,
+            commitId);
+
+        tablet.SendRequest(std::move(request));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+
+        auto readData = tablet.ReadData(handle2, 0, data.size());
+
+        // After MarkWriteCompleted, we should receive
+        // MarkWriteCompletedResponse
+        auto response = tablet.RecvMarkWriteCompletedResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        // validate, that no more BlobStorage requests were made
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(data, readData->Record.GetBuffer());
+    }
+
+    TABLET_TEST(ShouldRejectMarkWriteCompletedIfCollectBarrierIsAlreadyReleased)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<NKikimr::TLogoBlobID> blobIds;
+
+        // We can't make direct writes to BlobStorage, so we store the blob ids
+        // from an ordinary write and then use them in MarkWriteCompleted
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        // We intercept all PutResult events in order for tablet
+                        // to consider them as written. Nevertheless, these
+                        // blobs are already written and we will use them in
+                        // MarkWriteCompleted
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            blobIds.push_back(msg->Id);
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TString data(block * BlockGroupSize * 2, 'x');
+
+        tablet.SendWriteDataRequest(handle, 0, data.size(), data.data());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+
+        auto commitId = tablet.IssueBlob(id, handle, TVector<ui64>{block})
+                            ->Record.GetCommitId();
+
+        // We wait for the collect barrier lease to expire. We expect that the
+        // following MarkWriteCompleted request will be rejected
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
+
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto handle2 = CreateHandle(tablet, id2);
+
+        Sort(blobIds.begin(), blobIds.end());
+
+        tablet.SendMarkWriteCompletedRequest(
+            id2,
+            handle2,
+            0,
+            data.size(),
+            blobIds,
+            commitId);
+
+        auto response = tablet.RecvMarkWriteCompletedResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
 
 #undef TABLET_TEST
 }

@@ -1178,10 +1178,14 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
-        ui64 CommitId;
+        // Set in constructor only if the blob was already written outside of
+        // the tx
+        ui64 BlobCommitId;
         // This field is supposed to be used only for two-phase writes. It
         // contains blobs that were already written by the vhost.
         TVector<NKikimr::TLogoBlobID> BlobIds;
+
+        ui64 CommitId = InvalidCommitId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
@@ -1189,19 +1193,19 @@ struct TTxIndexTablet
         template <typename TDataRequest>
         TWriteData(
             TRequestInfoPtr requestInfo,
-                const ui32 writeBlobThreshold,
-                const TDataRequest& request,
-                TByteRange byteRange,
-                IBlockBufferPtr buffer,
-                ui64 commitId,
-                TVector<NKikimr::TLogoBlobID> blobIds)
+            const ui32 writeBlobThreshold,
+            const TDataRequest& request,
+            TByteRange byteRange,
+            IBlockBufferPtr buffer,
+            ui64 blobCommitId,
+            TVector<NKikimr::TLogoBlobID> blobIds)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
-            , CommitId(commitId)
+            , BlobCommitId(blobCommitId)
             , BlobIds(std::move(blobIds))
         {}
 
@@ -1215,10 +1219,11 @@ struct TTxIndexTablet
         bool ShouldWriteBlob() const
         {
             // skip fresh completely for large aligned writes
-            return ByteRange.IsAligned()
-                && ByteRange.Length >= WriteBlobThreshold
-                // TODO(debnatkh): support fresh blocks for two-phase writes
-                && !IsBlobAlreadyWritten();
+            return ByteRange.IsAligned() &&
+                   (ByteRange.Length >= WriteBlobThreshold
+                    // No need in fresh blob logic as we already have blobs
+                    // written
+                    || IsBlobAlreadyWritten());
         }
 
         bool IsBlobAlreadyWritten() const

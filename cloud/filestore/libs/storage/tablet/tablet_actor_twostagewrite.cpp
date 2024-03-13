@@ -43,13 +43,13 @@ void TIndexTabletActor::HandleIssueBlob(
         return RebootTabletOnCommitOverflow(ctx, "IssueBlob");
     }
 
-    AcquireCollectBarrier(commitId);
     // We schedule this event for the case if the client will not call
     // MarkWriteCompleted, due to connection loss. Thus we ensure that the
     // collect barrier will be released eventually.
     ctx.Schedule(
         Config->GetIssueBlobReleaseCollectBarrierTimeout(),
         new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId));
+    AcquireCollectBarrier(commitId);
 
     auto response = std::make_unique<TEvIndexTablet::TEvIssueBlobResponse>();
     for (auto [blobIndex, length]: Enumerate(msg->Record.GetLengths())) {
@@ -93,14 +93,6 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s %s: %s",
-        LogTag.c_str(),
-        "TwoStageWrite",
-        DumpMessage(msg->Record).c_str());
-
     if (!CompactionStateLoadStatus.Finished) {
         // TODO(debnatkh): Support two-stage write in case of unfinished
         // compaction state loading
@@ -111,6 +103,20 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
+
+    auto commitId = msg->Record.GetCommitId();
+    if (!IsCollectBarrierAcquired(commitId)) {
+        // The client has sent the MarkWriteCompleted request too late, after
+        // the lease has expired.
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvMarkWriteCompletedResponse>(
+                MakeError(E_REJECTED, "collect barrier expired"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+    // We acquire the collect barrier for the second time in order to prolong an
+    // already acquired lease.
+    AcquireCollectBarrier(commitId);
 
     const TByteRange range(
         msg->Record.GetOffset(),
@@ -167,8 +173,6 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         range,
         TString(msg->Record.GetLength(), 'A' + (msg->Record.GetOffset() % 26)));
 
-    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
-
     TVector<NKikimr::TLogoBlobID> blobIds;
     for (const auto& blobId: msg->Record.GetBlobIds()) {
         blobIds.push_back(LogoBlobIDFromLogoBlobID(blobId));
@@ -184,6 +188,8 @@ void TIndexTabletActor::HandleMarkWriteCompleted(
         "MarkWriteCompleted",
         blobIds[0].ToString().c_str(),
         blobIds.size());
+
+    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,

@@ -250,7 +250,7 @@ struct TEvIndexTabletPrivate
 
     struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
     {
-        bool ShouldReportStats = true;
+        bool WasTwoStageWrite = false;
     };
 
     //
@@ -582,6 +582,15 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // Release collect barrier
+    //
+
+    struct TReleaseCollectBarrier
+    {
+        ui64 CommitId;
+    };
+
+    //
     // Events declaration
     //
 
@@ -611,11 +620,6 @@ struct TEvIndexTabletPrivate
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
-
-    struct TReleaseCollectBarrier
-    {
-        ui64 CommitId;
-    };
 
     using TEvReleaseCollectBarrier =
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
