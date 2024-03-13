@@ -879,6 +879,17 @@ public:
         return request;
     }
 
+    auto CreateRestoreDiskRegistryStateRequest(
+        NProto::TDiskRegistryStateBackup backup,
+        bool force)
+    {
+        auto request = std::make_unique<TEvDiskRegistry::TEvRestoreDiskRegistryStateRequest>();
+        request->Record.MutableBackup()->Swap(&backup);
+        request->Record.SetForce(force);
+
+        return request;
+    }
+
     auto CreateFinishMigrationRequest(
         const TString& diskId,
         const TString& sourceId,

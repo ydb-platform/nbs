@@ -495,6 +495,10 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             disk.MigrationStartTs = disk.StateTs;
         }
 
+        if (disk.MigrationSource2Target.empty()) {
+            disk.MigrationStartTs = {};
+        }
+
         if (!config.GetFinishedMigrations().empty()) {
             ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskId);
             if (!seqNo) {
