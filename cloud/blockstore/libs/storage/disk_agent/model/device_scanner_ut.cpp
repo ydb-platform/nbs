@@ -274,6 +274,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         auto& def = *nvme.AddPoolConfigs();
         auto& layout = *def.MutableLayout();
+        // MinSize & MaxSize are not specified
         layout.SetHeaderSize(8_KB);
         layout.SetDeviceSize(2_KB);
         layout.SetDevicePadding(1_KB);
@@ -301,6 +302,8 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             return MakeError(S_OK);
         });
 
+        // NVMENBS01 was accepted because of implicit MinSize = 10Kb and
+        // the unlimited MaxSize.
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(1, r.size());
 
@@ -315,7 +318,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, pathIndex);
     }
 
-    Y_UNIT_TEST_F(ShouldIgnoreTooSmallDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldIgnoreDevicesThatAreTooSmall, TFixture)
     {
         PrepareFiles({
             { "dev/disk/by-partlabel/NVMENBS01", 9_KB },
@@ -327,6 +330,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         auto& def = *nvme.AddPoolConfigs();
         auto& layout = *def.MutableLayout();
+        // MinSize & MaxSize are not specified
         layout.SetHeaderSize(8_KB);
         layout.SetDeviceSize(2_KB);
         layout.SetDevicePadding(1_KB);
@@ -338,6 +342,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             return MakeError(S_OK);
         });
 
+        // NVMENBS01 wasn't accepted because of implicit MinSize = 10Kb
         UNIT_ASSERT_VALUES_EQUAL_C(E_NOT_FOUND, error.GetCode(), error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(0, success);
     }
