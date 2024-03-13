@@ -26,11 +26,13 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/keyring/endpoints.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <util/generic/guid.h>
 #include <util/folder/path.h>
 #include <util/generic/scope.h>
 
@@ -380,13 +382,18 @@ IEndpointManagerPtr CreateEndpointManager(
         bootstrap.Logging,
         CreateDefaultEncryptionKeyProvider());
 
+    auto timer = CreateWallClockTimer();
+    auto scheduler = CreateSchedulerStub();
+    auto requestStats = CreateRequestStatsStub();
+    auto volumeStats = CreateVolumeStatsStub();
+
     auto sessionManager = CreateSessionManager(
-        CreateWallClockTimer(),
-        CreateSchedulerStub(),
+        timer,
+        scheduler,
         bootstrap.Logging,
         CreateMonitoringServiceStub(),
-        CreateRequestStatsStub(),
-        CreateVolumeStatsStub(),
+        requestStats,
+        volumeStats,
         serverStats,
         bootstrap.Service,
         CreateDefaultStorageProvider(bootstrap.Service),
@@ -394,13 +401,22 @@ IEndpointManagerPtr CreateEndpointManager(
         bootstrap.Executor,
         sessionManagerOptions);
 
+    const TString dirPath = "./" + CreateGuidAsString();
+    auto endpointStorage = CreateFileEndpointStorage(dirPath);
+
     return NServer::CreateEndpointManager(
+        timer,
+        scheduler,
         bootstrap.Logging,
+        requestStats,
+        volumeStats,
         serverStats,
         bootstrap.Executor,
         std::move(endpointEventHandler),
         std::move(sessionManager),
+        std::move(endpointStorage),
         std::move(endpointListeners),
+        {}, // clientConfig
         std::move(nbdSocketSuffix));
 }
 
@@ -1025,14 +1041,23 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         TBootstrap bootstrap(CreateTestService(mountedVolumes));
 
+        const TString dirPath = "./" + CreateGuidAsString();
+        auto endpointStorage = CreateFileEndpointStorage(dirPath);
+
         auto sessionManager = std::make_shared<TTestSessionManager>();
         auto manager = NServer::CreateEndpointManager(
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
             bootstrap.Logging,
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             bootstrap.Executor,
             CreateEndpointEventProxy(),
             sessionManager,
+            endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
+            {}, // clientConfig
             ""  // NbdSocketSuffix
         );
 
