@@ -112,7 +112,7 @@ TString GetMonitoringNBSOverviewToTVUrl(const TDiagnosticsConfig& config)
            << data.MonitoringUrl << "/projects/" << data.MonitoringProject
            << "/dashboards/" << data.MonitoringNBSTVDashboard
            << "?from=now-1d&to=now&refresh=60000&p.cluster="
-           << data.MonitoringClusterName << "&p.host=cluster";
+           << data.MonitoringClusterName << "&p.host=" << GetShortHostName();
 }
 
 TString GetMonitoringYDBGroupUrl(
