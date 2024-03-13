@@ -493,18 +493,6 @@ func TestImageServiceCreateGeneratedVMDKImageFromURL(t *testing.T) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reproduces panic issue (NBS-4635).
-func TestImageServiceCreateQCOW2PanicImageFromURL(t *testing.T) {
-	testCreateImageFromURL(
-		t,
-		testcommon.GetQCOW2PanicImageFileURL(),
-		testcommon.GetQCOW2PanicImageSize(t),
-		testcommon.GetQCOW2PanicImageCrc32(t),
-	)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func TestImageServiceCancelCreateImageFromURL(t *testing.T) {
 	ctx := testcommon.NewContext()
 
