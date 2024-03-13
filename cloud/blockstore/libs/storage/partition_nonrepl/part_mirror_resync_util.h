@@ -2,11 +2,21 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 
+#include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <util/generic/size_literals.h>
 
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TReplicaDescriptor
+{
+    TString Name;
+    NActors::TActorId ActorId;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
