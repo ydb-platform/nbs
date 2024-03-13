@@ -980,7 +980,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);
+            // still 1 block - Compaction doesn't move unneeded blocks to its
+            // dst blobs
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), block);
         }
 
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -1001,7 +1003,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             // GarbageQueueSize remains the same since FlushBytes doesn't
             // generate any new blobs after UnlinkNode (leads to Truncate to
             // zero size)
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), block);
         }
 
         tablet.CollectGarbage();
@@ -1063,12 +1065,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
             UNIT_ASSERT_VALUES_EQUAL(
                 stats.GetGarbageQueueSize(),
-                2 * block + 2 * block
-            );  // new: 1 (x 2 blocks), garbage: 2 (x block)
+                1 * block + 2 * block
+            );  // new: 1 (x block), garbage: 2 (x block)
         }
 
         tablet.CollectGarbage();
@@ -1076,7 +1078,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
             UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 0);   // new: 0, garbage: 0
         }

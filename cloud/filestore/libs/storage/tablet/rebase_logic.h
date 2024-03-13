@@ -29,10 +29,10 @@ using TFindBlock = std::function<bool(ui64 nodeId, ui32 blockIndex)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRebaseResult RebaseMixedBlocks(
+TRebaseResult RebaseBlocks(
     TVector<TBlock>& blocks,
     ui64 lastCommitId,
-    TFindCheckpoint findCheckpoint,
-    TFindBlock findBlock);
+    const TFindCheckpoint& findCheckpoint,
+    const TFindBlock& findBlock);
 
 }   // namespace NCloud::NFileStore::NStorage
