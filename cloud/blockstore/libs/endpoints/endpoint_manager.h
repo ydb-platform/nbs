@@ -5,9 +5,12 @@
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
 #include <cloud/blockstore/libs/client/public.h>
-#include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/keyring/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -16,39 +19,39 @@ namespace NCloud::NBlockStore::NServer {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IEndpointManager
+    : public IStartable
+    , public IIncompleteRequestProvider
 {
     virtual ~IEndpointManager() = default;
 
-    virtual NThreading::TFuture<NProto::TStartEndpointResponse> StartEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) = 0;
+#define ENDPOINT_DECLARE_METHOD(name, ...)                                     \
+    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProto::T##name##Request> req) = 0;                    \
+// ENDPOINT_DECLARE_METHOD
 
-    virtual NThreading::TFuture<NProto::TStopEndpointResponse> StopEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStopEndpointRequest> request) = 0;
+    BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_DECLARE_METHOD)
 
-    virtual NThreading::TFuture<NProto::TListEndpointsResponse> ListEndpoints(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListEndpointsRequest> request) = 0;
+#undef ENDPOINT_DECLARE_METHOD
 
-    virtual NThreading::TFuture<NProto::TDescribeEndpointResponse> DescribeEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TDescribeEndpointRequest> request) = 0;
-
-    virtual NThreading::TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TRefreshEndpointRequest> request) = 0;
+    virtual NThreading::TFuture<void> RestoreEndpoints() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointManagerPtr CreateEndpointManager(
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
+    IRequestStatsPtr requestStats,
+    IVolumeStatsPtr volumeStats,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     IEndpointEventProxyPtr eventProxy,
     ISessionManagerPtr sessionManager,
+    IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
+    NProto::TClientConfig clientConfig,
     TString nbdSocketSuffix);
 
 bool AreSameStartEndpointRequests(
