@@ -2,6 +2,7 @@ RECURSE(
     analytics
     ci
     cms
+    csi_driver
     debug
     fs
     http_proxy
