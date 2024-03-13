@@ -1,7 +1,6 @@
 #include "tablet_state_impl.h"
 
 #include "profile_log_events.h"
-#include "rebase_logic.h"
 
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -580,21 +579,7 @@ bool TIndexTabletState::WriteMixedBlocks(
         Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blocks);
     }
 
-    auto rebaseResult = RebaseMixedBlocks(
-        blocks,
-        GetCurrentCommitId(),
-        [=] (ui64 nodeId, ui64 commitId) {
-            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
-        },
-        [=] (ui64 nodeId, ui32 blockIndex) {
-            return IntersectsWithFresh(
-                Impl->FreshBytes,
-                Impl->FreshBlocks,
-                GetBlockSize(),
-                nodeId,
-                blockIndex
-            );
-        });
+    auto rebaseResult = RebaseMixedBlocks(blocks);
 
     if (!rebaseResult.LiveBlocks) {
         AddGarbageBlob(db, blobId);
@@ -676,9 +661,32 @@ void TIndexTabletState::DeleteMixedBlocks(
     DecrementMixedBlocksCount(db, blocks.size());
 }
 
+TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) const
+{
+    return RebaseBlocks(
+        blocks,
+        GetCurrentCommitId(),
+        [=] (ui64 nodeId, ui64 commitId) {
+            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
+        },
+        [=] (ui64 nodeId, ui32 blockIndex) {
+            return IntersectsWithFresh(
+                Impl->FreshBytes,
+                Impl->FreshBlocks,
+                GetBlockSize(),
+                nodeId,
+                blockIndex
+            );
+        });
+}
+
 TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) const
 {
-    return Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
+    auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
+    for (auto& blob: blobs) {
+        RebaseMixedBlocks(blob.Blocks);
+    }
+    return blobs;
 }
 
 TMixedBlobMeta TIndexTabletState::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
@@ -808,21 +816,7 @@ void TIndexTabletState::RewriteMixedBlocks(
 
     Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blob.Blocks);
 
-    auto rebaseResult = RebaseMixedBlocks(
-        blob.Blocks,
-        GetCurrentCommitId(),
-        [=] (ui64 nodeId, ui64 commitId) {
-            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
-        },
-        [=] (ui64 nodeId, ui32 blockIndex) {
-            return IntersectsWithFresh(
-                Impl->FreshBytes,
-                Impl->FreshBlocks,
-                GetBlockSize(),
-                nodeId,
-                blockIndex
-            );
-        });
+    auto rebaseResult = RebaseMixedBlocks(blob.Blocks);
 
     if (!rebaseResult.LiveBlocks) {
         DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
