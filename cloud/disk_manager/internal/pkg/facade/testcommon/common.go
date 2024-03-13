@@ -160,23 +160,6 @@ func GetGeneratedVMDKImageCrc32(t *testing.T) uint32 {
 	return uint32(value)
 }
 
-func GetQCOW2PanicImageFileURL() string {
-	port := os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_FILE_SERVER_PORT")
-	return fmt.Sprintf("http://localhost:%v", port)
-}
-
-func GetQCOW2PanicImageSize(t *testing.T) uint64 {
-	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_SIZE"), 10, 64)
-	require.NoError(t, err)
-	return uint64(value)
-}
-
-func GetQCOW2PanicImageCrc32(t *testing.T) uint32 {
-	value, err := strconv.ParseUint(os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_CRC32"), 10, 32)
-	require.NoError(t, err)
-	return uint32(value)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func CancelOperation(
