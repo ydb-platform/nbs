@@ -499,12 +499,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto& path = *discoveryConfig.AddPathConfigs();
         path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
         auto& pool = *path.AddPoolConfigs();
-
         // the IDs of the generated devices will differ from those in the config
         pool.SetHashSuffix("random");
-
-        pool.SetMinSize(DefaultFileSize);
-        pool.SetMaxSize(DefaultFileSize);
 
         auto state = CreateDiskAgentStateNull(
             CreateNullConfig({
@@ -1369,9 +1365,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 NProto::TStorageDiscoveryConfig discovery;
                 auto& path = *discovery.AddPathConfigs();
                 path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
-                auto& pool = *path.AddPoolConfigs();
-                pool.SetMinSize(DefaultFileSize);
-                pool.SetMaxSize(DefaultFileSize);
+                path.AddPoolConfigs();
 
                 return discovery;
             }(),
@@ -1449,8 +1443,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 // limit the number of devices to one
                 path.SetPathRegExp(TempDir.Path() / "nvme3n(1)");
                 auto& pool = *path.AddPoolConfigs();
-                pool.SetMinSize(DefaultFileSize);
-                pool.SetMaxSize(DefaultFileSize);
                 pool.SetPoolName("foo");
 
                 return discovery;
@@ -1526,7 +1518,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             path.SetMaxDeviceCount(8);
 
             auto& pool = *path.AddPoolConfigs();
-            pool.SetMinSize(DefaultFileSize);
             pool.SetMaxSize(10 * DefaultFileSize);
 
             auto& layout = *pool.MutableLayout();
@@ -1622,9 +1613,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             auto& path = *discovery.AddPathConfigs();
             path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
 
-            auto& pool = *path.AddPoolConfigs();
-            pool.SetMinSize(DefaultFileSize);
-            pool.SetMaxSize(DefaultFileSize);
+            path.AddPoolConfigs();
 
             auto state = CreateDiskAgentStateNull(
                 CreateNullConfig({

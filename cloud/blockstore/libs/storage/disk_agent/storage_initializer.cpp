@@ -233,14 +233,6 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
 
     for (const auto& path: config.GetPathConfigs()) {
         for (const auto& pool: path.GetPoolConfigs()) {
-            if (!pool.GetMinSize() && !pool.HasLayout()) {
-                STORAGE_WARN(
-                    "Bad pool configuration: the min size is not set. "
-                    "Config: " << pool);
-
-                return false;
-            }
-
             if (pool.HasLayout()) {
                 const auto& layout = pool.GetLayout();
 
