@@ -32,7 +32,7 @@ void BuildVolumeReallocateButton(
             <input
                 class='btn btn-primary'
                 type='button'
-                value='Reallocate'
+                value='Reallocate volume'
                 title="Initiate update volume config"
                 data-toggle='modal'
                 data-target='#fire-reallocate%s'
@@ -228,7 +228,7 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLEH() { out << "Block size"; }
                     TABLEH() { out << "Block count"; }
                     TABLEH() { out << "Size"; }
-                    TABLEH() { out << "PhysicalOffset"; }
+                    TABLEH() { out << "Physical offset"; }
                     TABLEH() { out << "Transport id"; }
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "DiskId"; }
@@ -593,6 +593,11 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             DIV() { out << "Acquire in progress"; }
         }
 
+        DIV()
+        {
+            BuildVolumeReallocateButton(out, TabletID(), id);
+        }
+
         const bool isNonrepl = info.Replicas.empty();
 
         auto makeHeaderCells = [&] (const ui32 replicaNo) {
@@ -821,7 +826,6 @@ void TDiskRegistryActor::RenderDiskList(IOutputStream& out) const
                     TABLEH() { out << "Disk"; }
                     TABLEH() { out << "State"; }
                     TABLEH() { out << "State Timestamp"; }
-                    TABLEH() { out << "Action"; }
                 }
             }
 
@@ -833,9 +837,6 @@ void TDiskRegistryActor::RenderDiskList(IOutputStream& out) const
                     TABLED() { DumpDiskLink(out, TabletID(), id); }
                     TABLED() { DumpDiskState(out, diskInfo.State); }
                     TABLED() { out << diskInfo.StateTs; }
-                    TABLED() {
-                        BuildVolumeReallocateButton(out, TabletID(), id);
-                    }
                 }
             }
         }
