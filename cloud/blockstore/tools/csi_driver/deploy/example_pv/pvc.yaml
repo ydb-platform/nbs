@@ -12,3 +12,4 @@ spec:
     limits:
       storage: 1Gi
   storageClassName: nbs-csi-sc
+  volumeName: my-pv

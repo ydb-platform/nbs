@@ -84,12 +84,27 @@ func (c *nbsServerControllerService) CreateVolume(
 		)
 	}
 
+	var baseDiskID string
+	var baseDiskCheckpointID string
+	if req.Parameters != nil {
+		for key, value := range req.Parameters {
+			if key == "base-disk-id" {
+				baseDiskID = value
+			}
+			if key == "base-disk-checkpoint-id" {
+				baseDiskCheckpointID = value
+			}
+		}
+	}
+
 	diskId := req.Name
 	createVolumeRequest := &nbsblockstorepublicapi.TCreateVolumeRequest{
-		DiskId:           diskId,
-		BlockSize:        diskBlockSize,
-		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
-		StorageMediaKind: nbsstoragecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+		DiskId:               diskId,
+		BlockSize:            diskBlockSize,
+		BlocksCount:          uint64(requiredBytes) / uint64(diskBlockSize),
+		StorageMediaKind:     nbsstoragecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+		BaseDiskId:           baseDiskID,
+		BaseDiskCheckpointId: baseDiskCheckpointID,
 	}
 
 	_, err := c.nbsClient.CreateVolume(ctx, createVolumeRequest)
