@@ -217,11 +217,11 @@ message TStorageConfig
     optional uint32 NegativeEntryTimeout = 336;
     optional uint32 AttrTimeout = 337;
 
-    // Enables IssueBlob + WriteBlob + MarkWriteCompleted instead of WriteBlob
+    // Enables GenerateBlobs + WriteBlob + AddData instead of WriteBlob
     // for writing.
     optional bool TwoStageWriteEnabled = 338;
 
     // When issuing blobs, the tablet acquires collect barrier. In order to
     // release it in case of a client disconnect, this timeout is used.
-    optional uint32 IssueBlobReleaseCollectBarrierTimeout = 339;
+    optional uint32 GenerateBlobsReleaseCollectBarrierTimeout = 339;
 }

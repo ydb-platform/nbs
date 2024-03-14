@@ -371,9 +371,9 @@ message TDescribeSessionsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// IssueBlob request/response.
+// GenerateBlobs request/response.
 
-message TIssueBlobRequest
+message TGenerateBlobsRequest
 {
     // Optional request headers.
     NProto.THeaders Headers = 1;
@@ -387,17 +387,32 @@ message TIssueBlobRequest
     // IO handle.
     uint64 Handle = 4;
 
-    // Sizes of blobs needed to be issued.
-    repeated uint64 Lengths = 5;
+    // Starting offset for write. Expected to be aligned to the block size.
+    uint64 Offset = 5;
+
+    // Length of data to write.
+    uint64 Length = 6;
 }
 
-message TIssueBlobResponse
+message TGeneratedBlob
+{
+    // Blob id.
+    NKikimrProto.TLogoBlobID BlobId = 1;
+
+    // Offset
+    uint64 Offset = 2;
+
+    // Length
+    uint64 Length = 3;
+}
+
+message TGenerateBlobsResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Blob ids, in the same order as in the request.
-    repeated NKikimrProto.TLogoBlobID BlobIds = 2;
+    repeated TGeneratedBlob Blobs = 2;
 
     // Group id.
     uint32 BSGroupId = 3;
@@ -411,7 +426,7 @@ message TIssueBlobResponse
 
 // TwoStageWrite request/response.
 
-message TMarkWriteCompletedRequest
+message TAddDataRequest
 {
     // Optional request headers.
     NProto.THeaders Headers = 1;
@@ -438,7 +453,7 @@ message TMarkWriteCompletedRequest
     uint64 CommitId = 8;
 }
 
-message TMarkWriteCompletedResponse
+message TAddDataResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

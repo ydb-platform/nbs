@@ -24,8 +24,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
     xxx(DescribeData,               __VA_ARGS__)                               \
     xxx(DescribeSessions,           __VA_ARGS__)                               \
-    xxx(IssueBlob,                  __VA_ARGS__)                               \
-    xxx(MarkWriteCompleted,      __VA_ARGS__)                               \
+    xxx(GenerateBlobs,              __VA_ARGS__)                               \
+    xxx(AddData,                    __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,11 +67,11 @@ struct TEvIndexTablet
         EvDescribeSessionsRequest = EvBegin + 17,
         EvDescribeSessionsResponse,
 
-        EvIssueBlobRequest = EvBegin + 19,
-        EvIssueBlobResponse,
+        EvGenerateBlobsRequest = EvBegin + 19,
+        EvGenerateBlobsResponse,
 
-        EvMarkWriteCompletedRequest = EvBegin + 21,
-        EvMarkWriteCompletedResponse,
+        EvAddDataRequest = EvBegin + 21,
+        EvAddDataResponse,
 
         EvEnd
     };

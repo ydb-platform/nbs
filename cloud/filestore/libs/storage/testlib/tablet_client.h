@@ -557,22 +557,22 @@ public:
         return request;
     }
 
-    auto CreateIssueBlobRequest(
+    auto CreateGenerateBlobsRequest(
         ui64 nodeId,
         ui64 handle,
-        const TVector<ui64>& lengths)
+        ui64 offset,
+        ui64 length)
     {
         auto request =
-            CreateSessionRequest<TEvIndexTablet::TEvIssueBlobRequest>();
+            CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobsRequest>();
         request->Record.SetNodeId(nodeId);
         request->Record.SetHandle(handle);
-        for (auto len: lengths) {
-            request->Record.AddLengths(len);
-        }
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
         return request;
     }
 
-    auto CreateMarkWriteCompletedRequest(
+    auto CreateAddDataRequest(
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
@@ -581,7 +581,7 @@ public:
         ui64 commitId)
     {
         auto request = CreateSessionRequest<
-            TEvIndexTablet::TEvMarkWriteCompletedRequest>();
+            TEvIndexTablet::TEvAddDataRequest>();
         request->Record.SetNodeId(nodeId);
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);

@@ -97,6 +97,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
+    xxx(AddData,                            __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
@@ -1178,35 +1179,23 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
-        // Set in constructor only if the blob was already written outside of
-        // the tx
-        ui64 BlobCommitId;
-        // This field is supposed to be used only for two-phase writes. It
-        // contains blobs that were already written by the vhost.
-        TVector<NKikimr::TLogoBlobID> BlobIds;
-
         ui64 CommitId = InvalidCommitId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
 
-        template <typename TDataRequest>
         TWriteData(
-            TRequestInfoPtr requestInfo,
-            const ui32 writeBlobThreshold,
-            const TDataRequest& request,
-            TByteRange byteRange,
-            IBlockBufferPtr buffer,
-            ui64 blobCommitId,
-            TVector<NKikimr::TLogoBlobID> blobIds)
+                TRequestInfoPtr requestInfo,
+                const ui32 writeBlobThreshold,
+                const NProto::TWriteDataRequest& request,
+                TByteRange byteRange,
+                IBlockBufferPtr buffer)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
             , Buffer(std::move(buffer))
-            , BlobCommitId(blobCommitId)
-            , BlobIds(std::move(blobIds))
         {}
 
         void Clear()
@@ -1219,16 +1208,44 @@ struct TTxIndexTablet
         bool ShouldWriteBlob() const
         {
             // skip fresh completely for large aligned writes
-            return ByteRange.IsAligned() &&
-                   (ByteRange.Length >= WriteBlobThreshold
-                    // No need in fresh blob logic as we already have blobs
-                    // written
-                    || IsBlobAlreadyWritten());
+            return ByteRange.IsAligned() && ByteRange.Length >= WriteBlobThreshold;
         }
+    };
 
-        bool IsBlobAlreadyWritten() const
+    //
+    // AddData
+    //
+
+    struct TAddData : TSessionAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 Handle;
+        const TByteRange ByteRange;
+        TVector<NKikimr::TLogoBlobID> BlobIds;
+        ui64 CommitId = InvalidCommitId;
+
+        ui64 NodeId = InvalidNodeId;
+        TMaybe<TIndexTabletDatabase::TNode> Node;
+
+        TAddData(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TAddDataRequest& request,
+                TByteRange byteRange,
+                ui64 commitId,
+                TVector<NKikimr::TLogoBlobID> blobIds)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Handle(request.GetHandle())
+            , ByteRange(byteRange)
+            , BlobIds(std::move(blobIds))
+            , CommitId(commitId)
+        {}
+
+        void Clear()
         {
-            return !BlobIds.empty();
+            CommitId = InvalidCommitId;
+            NodeId = InvalidNodeId;
+            Node.Clear();
         }
     };
 

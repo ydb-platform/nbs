@@ -30,8 +30,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
     xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
     xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
-    xxx(FreshBytesCount,        __VA_ARGS__)                                  \
-    xxx(LastCollectCommitId,    __VA_ARGS__)                                  \
+    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
+    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
 // FILESTORE_TABLET_STATS
 
 #define FILESTORE_TABLET_SIMPLE_COUNTERS(xxx)                                  \

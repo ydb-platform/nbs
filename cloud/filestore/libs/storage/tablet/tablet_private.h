@@ -250,7 +250,6 @@ struct TEvIndexTabletPrivate
 
     struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
     {
-        bool WasTwoStageWrite = false;
     };
 
     //

@@ -15,6 +15,7 @@ SRCS(
     tablet_actor_accessnode.cpp
     tablet_actor_acquirelock.cpp
     tablet_actor_addblob.cpp
+    tablet_actor_adddata.cpp
     tablet_actor_allocatedata.cpp
     tablet_actor_change_storage_config.cpp
     tablet_actor_cleanup.cpp
@@ -59,13 +60,13 @@ SRCS(
     tablet_actor_testlock.cpp
     tablet_actor_throttling.cpp
     tablet_actor_truncate.cpp
-    tablet_actor_twostagewrite.cpp
     tablet_actor_unlinknode.cpp
     tablet_actor_updateconfig.cpp
     tablet_actor_waitready.cpp
     tablet_actor_writebatch.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
+    tablet_actor_writedata_actor.cpp
     tablet_actor_zerorange.cpp
     tablet_counters.cpp
     tablet_database.cpp
