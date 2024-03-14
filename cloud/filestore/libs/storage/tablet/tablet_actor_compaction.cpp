@@ -315,6 +315,31 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     if (BlobIndexOps.Empty()) {
         if (compactionScore >= Config->GetCompactionThreshold()) {
             BlobIndexOps.Push(EBlobIndexOp::Compaction);
+        } else if (Config->GetNewCompactionEnabled()) {
+            const auto& stats = GetFileSystemStats();
+            const auto compactionStats = GetCompactionMapStats(0);
+            const auto used = stats.GetUsedBlocksCount();
+            auto alive = stats.GetMixedBlocksCount();
+            if (alive > stats.GetGarbageBlocksCount()) {
+                alive -= stats.GetGarbageBlocksCount();
+            } else {
+                alive = 0;
+            }
+            const auto avgGarbagePercentage = used && alive > used
+                ? 100 * static_cast<double>(alive - used) / used
+                : 0;
+            const auto rangeCount = compactionStats.UsedRangesCount;
+            const auto avgCompactionScore = rangeCount
+                ? static_cast<double>(stats.GetMixedBlobsCount()) / rangeCount
+                : 0;
+            // TODO: use GarbageCompactionThreshold
+
+            const bool shouldCompact =
+                avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
+                || avgCompactionScore >= Config->GetCompactionThresholdAverage();
+            if (compactionScore > 1 && shouldCompact) {
+                BlobIndexOps.Push(EBlobIndexOp::Compaction);
+            }
         }
 
         if (cleanupScore >= Config->GetCleanupThreshold()) {
