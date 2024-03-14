@@ -285,6 +285,20 @@ func (client *safeClient) CreateCheckpoint(
 	return err
 }
 
+func (client *safeClient) GetCheckpointStatus(
+	ctx context.Context,
+	diskId string,
+	checkpointId string,
+) (protos.ECheckpointStatus, error) {
+	req := &protos.TGetCheckpointStatusRequest{
+		DiskId:       diskId,
+		CheckpointId: checkpointId,
+	}
+
+	resp, err := client.Impl.GetCheckpointStatus(ctx, req)
+	return resp.CheckpointStatus, err
+}
+
 func (client *safeClient) DeleteCheckpoint(
 	ctx context.Context,
 	diskId string,
