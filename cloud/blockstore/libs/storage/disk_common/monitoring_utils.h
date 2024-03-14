@@ -10,10 +10,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum EDeviceStateFlags : uint16_t
 {
-    NONE = 0,
-    FRESH = 1 << 0,
-    DISABLED = 1 << 1,
-    DIRTY = 1 << 2,
+    NONE      = 0,
+    FRESH     = 1 << 0,
+    DISABLED  = 1 << 1,
+    DIRTY     = 1 << 2,
     SUSPENDED = 1 << 3,
 };
 
