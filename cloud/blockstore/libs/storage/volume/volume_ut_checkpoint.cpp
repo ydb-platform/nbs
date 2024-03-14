@@ -1905,9 +1905,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             1
         );
-
         volume.CreateCheckpoint("c1", false, true);
-
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
@@ -1930,13 +1928,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 response->GetError().GetFlags(),
                 NProto::EF_SILENT));
         }
+
+        volume.CreateCheckpoint("c2");
+        volume.DeleteCheckpointData("c2");
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             2
         );
-        volume.CreateCheckpoint("c2", false, true);
-        volume.DeleteCheckpointData("c2");
 
         {
             // Read from checkpoint without data failed
