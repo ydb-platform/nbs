@@ -174,7 +174,7 @@ struct TTestEnv
                 actorId,
                 TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
             );
-            Replicas.push_back({name, actorId});
+            Replicas.push_back({name, static_cast<ui32>(i), actorId});
         }
 
         auto dummy = std::make_unique<TDummyActor>();

@@ -15,6 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TReplicaDescriptor
 {
     TString Name;
+    ui32 ReplicaIndex = 0;
     NActors::TActorId ActorId;
 };
 
