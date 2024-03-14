@@ -1515,8 +1515,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(6, stats.GetMixedBlocksCount());
         }
 
-        TString expected;
-        expected.ReserveAndResize(1_MB);
+        TString expected(1_MB, 0);
         memset(expected.begin(), 'a', block);
         memset(expected.begin() + block, 'b', block);
         memset(expected.begin() + 256_KB, 'a', block);
@@ -1527,7 +1526,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 1_MB);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+            UNIT_ASSERT_EQUAL(expected, buffer);
         }
 
         tablet.DestroyHandle(handle);
@@ -1618,15 +1617,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
         }
 
-        TString expected;
-        expected.ReserveAndResize(1_MB);
+        TString expected(1_MB, 0);
         memset(expected.begin(), 'b', 512_KB);
         memset(expected.begin() + 512_KB, 'a', 256_KB);
 
         {
             auto response = tablet.ReadData(handle, 0, 1_MB);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+            UNIT_ASSERT_EQUAL(expected, buffer);
         }
 
         tablet.DestroyHandle(handle);
