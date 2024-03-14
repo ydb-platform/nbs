@@ -1884,6 +1884,78 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotReadFromCheckpointWithoutData)
+    {
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            1
+        );
+
+        volume.CreateCheckpoint("c1", false, true);
+
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            2
+        );
+
+        {
+            // Read from checkpoint without data failed
+            volume.SendReadBlocksRequest(
+                GetBlockRangeById(0),
+                clientInfo.GetClientId(),
+                "c1");
+
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "checkpoint not found: \"c1\"",
+                response->GetError().GetMessage());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_SILENT));
+        }
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, 1024),
+            clientInfo.GetClientId(),
+            2
+        );
+        volume.CreateCheckpoint("c2", false, true);
+        volume.DeleteCheckpointData("c2");
+
+        {
+            // Read from checkpoint without data failed
+            volume.SendReadBlocksRequest(
+                GetBlockRangeById(0),
+                clientInfo.GetClientId(),
+                "c2");
+
+            auto response = volume.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "checkpoint not found: \"c2\"",
+                response->GetError().GetMessage());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_SILENT));
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotRejectRZRequestsDuringSinglePartionCheckpointCreation)
     {
         NProto::TStorageServiceConfig config;

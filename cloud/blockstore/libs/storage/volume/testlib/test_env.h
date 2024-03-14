@@ -393,7 +393,8 @@ public:
 
     std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
         const TString& checkpointId,
-        bool isLight = false);
+        bool isLight = false,
+        bool withoutData = false);
 
     std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
         const TString& checkpointId);
