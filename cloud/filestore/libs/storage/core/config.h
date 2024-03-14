@@ -67,6 +67,10 @@ public:
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
     ui32 GetCompactionThreshold() const;
+    ui32 GetGarbageCompactionThreshold() const;
+    ui32 GetCompactionThresholdAverage() const;
+    ui32 GetGarbageCompactionThresholdAverage() const;
+    bool GetNewCompactionEnabled() const;
     ui32 GetCollectGarbageThreshold() const;
     ui32 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
