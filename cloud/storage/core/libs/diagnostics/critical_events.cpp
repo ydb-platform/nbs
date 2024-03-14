@@ -51,7 +51,13 @@ TString ReportCriticalEvent(
     if (message) {
         fullMessage << ":" << message;
     }
-    Cerr << fullMessage << Endl;
+
+    if (!verifyDebug || message) {
+        // Write message and \n in one call. This will reduce the chance of
+        // shuffling with writings of other threads.
+        Cerr << fullMessage + '\n';
+        Cerr.Flush();
+    }
 
     return fullMessage;
 }
