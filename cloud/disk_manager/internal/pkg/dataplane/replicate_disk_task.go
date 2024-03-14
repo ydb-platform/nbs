@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -51,6 +52,11 @@ func (t *replicateDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	useLightCheckpoint, err := t.useLightCheckpoint(ctx)
+	if err != nil {
+		return err
+	}
+
 	for {
 		_, currentCheckpointID, _ := t.getCheckpointIDs(execCtx)
 		err := t.deleteProxyOverlayDisk(
@@ -78,7 +84,7 @@ func (t *replicateDiskTask) Run(
 			return nil
 		}
 
-		err = t.updateCheckpoints(ctx, execCtx, t.request.UseLightCheckpoint)
+		err = t.updateCheckpoints(ctx, execCtx, useLightCheckpoint)
 		if err != nil {
 			return err
 		}
@@ -252,6 +258,28 @@ func (t *replicateDiskTask) checkReplicationProgress(
 	}
 
 	return nil
+}
+
+func (t *replicateDiskTask) useLightCheckpoint(
+	ctx context.Context,
+) (bool, error) {
+
+	client, err := t.nbsFactory.GetClient(ctx, t.request.SrcDisk.ZoneId)
+	if err != nil {
+		return false, err
+	}
+
+	diskParams, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return false, err
+	}
+
+	diskKind := diskParams.StorageMediaKind
+
+	return diskKind == types.DiskKind_DISK_KIND_SSD_NONREPLICATED ||
+		diskKind == types.DiskKind_DISK_KIND_SSD_MIRROR2 ||
+		diskKind == types.DiskKind_DISK_KIND_SSD_MIRROR3 ||
+		diskKind == types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 }
 
 func (t *replicateDiskTask) replicate(

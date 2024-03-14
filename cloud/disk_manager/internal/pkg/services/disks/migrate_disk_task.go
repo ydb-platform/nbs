@@ -333,17 +333,6 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	diskMeta, err := t.resourceStorage.GetDiskMeta(ctx, t.request.Disk.DiskId)
-	if err != nil {
-		return err
-	}
-
-	useLightCheckpoint :=
-		diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_NONREPLICATED) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_MIRROR2) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_MIRROR3) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_HDD_NONREPLICATED)
-
 	replicateTaskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
 		"dataplane.ReplicateDisk",
@@ -355,8 +344,7 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 				DiskId: t.request.Disk.DiskId,
 				ZoneId: t.request.DstZoneId,
 			},
-			FillGeneration:     t.state.FillGeneration,
-			UseLightCheckpoint: useLightCheckpoint,
+			FillGeneration: t.state.FillGeneration,
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
 			IgnoreBaseDisk:      len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
 			UseProxyOverlayDisk: t.disksConfig.GetUseProxyOverlayDiskInReplicateDiskTask(),
