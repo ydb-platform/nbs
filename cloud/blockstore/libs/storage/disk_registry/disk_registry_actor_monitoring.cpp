@@ -261,7 +261,9 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                         out << FormatByteSize(bytes);
                     }
                     TABLED() {
-                        out << FormatByteSize(device.GetPhysicalOffset());
+                        out << device.GetPhysicalOffset() << " ("
+                            << FormatByteSize(device.GetPhysicalOffset())
+                            << ")";
                     }
                     TABLED() { out << device.GetTransportId(); }
                     TABLED() {
