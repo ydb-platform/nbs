@@ -1903,14 +1903,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            1
-        );
+            1);
         volume.CreateCheckpoint("c1", false, true);
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             // Read from checkpoint without data failed
@@ -1934,8 +1932,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
-            2
-        );
+            2);
 
         {
             // Read from checkpoint without data failed
