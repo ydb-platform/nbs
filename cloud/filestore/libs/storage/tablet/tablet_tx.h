@@ -1179,8 +1179,8 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         /*const*/ IBlockBufferPtr Buffer;
-        ui64 CommitId = InvalidCommitId;
 
+        ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
 
@@ -1208,7 +1208,8 @@ struct TTxIndexTablet
         bool ShouldWriteBlob() const
         {
             // skip fresh completely for large aligned writes
-            return ByteRange.IsAligned() && ByteRange.Length >= WriteBlobThreshold;
+            return ByteRange.IsAligned()
+                && ByteRange.Length >= WriteBlobThreshold;
         }
     };
 
