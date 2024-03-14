@@ -47,7 +47,7 @@ IOutputStream& DumpDiskState(
 IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
-    uint16_t flags,
+    EDeviceStateFlags flags,
     TString suffix)
 {
     switch (state) {

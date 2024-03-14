@@ -17,6 +17,17 @@ enum EDeviceStateFlags : uint16_t
     SUSPENDED = 1 << 3,
 };
 
+inline EDeviceStateFlags operator|(EDeviceStateFlags a, EDeviceStateFlags b)
+{
+    return static_cast<EDeviceStateFlags>(
+        static_cast<uint16_t>(a) | static_cast<uint16_t>(b));
+}
+
+inline EDeviceStateFlags& operator|=(EDeviceStateFlags& a, EDeviceStateFlags b)
+{
+    return a = a | b;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IOutputStream& DumpAgentState(
@@ -30,7 +41,7 @@ IOutputStream& DumpDiskState(
 IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
-    uint16_t flags = EDeviceStateFlags::NONE,
+    EDeviceStateFlags flags = EDeviceStateFlags::NONE,
     TString suffix = "");
 
 }   // namespace NCloud::NBlockStore::NStorage

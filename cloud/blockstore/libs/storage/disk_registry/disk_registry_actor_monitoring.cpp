@@ -22,11 +22,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uint16_t GetDeviceStateFlags(
+EDeviceStateFlags GetDeviceStateFlags(
     const TDiskRegistryState& state,
     const TString& deviceUUID)
 {
-    uint16_t deviceStateFlags = EDeviceStateFlags::NONE;
+    EDeviceStateFlags deviceStateFlags = EDeviceStateFlags::NONE;
     if (state.IsDirtyDevice(deviceUUID)) {
         deviceStateFlags |= EDeviceStateFlags::DIRTY;
     }
@@ -668,7 +668,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
             }
             TABLED() {
-                uint16_t flags =
+                EDeviceStateFlags flags =
                     GetDeviceStateFlags(*State, device.GetDeviceUUID());
                 if (FindPtr(
                         info.MasterDiskId ? masterDiskInfo.DeviceReplacementIds
