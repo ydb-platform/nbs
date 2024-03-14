@@ -1596,25 +1596,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlobsCount());
-            // we still have 1280_KB of data
+            // now we have 1_MB of data
             UNIT_ASSERT_VALUES_EQUAL(
-                1280_KB / block,
+                1_MB / block,
                 stats.GetMixedBlocksCount());
-            // but 256_KB of it is marked as garbage
-            UNIT_ASSERT_VALUES_EQUAL(
-                256_KB / block,
-                stats.GetGarbageBlocksCount());
-        }
-
-        tablet.Compaction(GetMixedRangeIndex(id, 0));
-
-        {
-            auto response = tablet.GetStorageStats();
-            const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetMixedBlobsCount());
-            // after the second Compaction we have 1_MB of non-garbage data
-            UNIT_ASSERT_VALUES_EQUAL(1_MB / block, stats.GetMixedBlocksCount());
+            // 0 garbage blocks
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+            // 1280_KB new (written by user)
+            // 256_KB new (rewritten by Compaction)
+            // 512_KB garbage (marked after Compaction)
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, stats.GetGarbageQueueSize());
         }
 
         TString expected(1_MB, 0);
