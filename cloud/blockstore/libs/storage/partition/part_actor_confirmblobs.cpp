@@ -282,6 +282,9 @@ void TPartitionActor::CompleteConfirmBlobs(
     const auto duration =
         CyclesToDurationSafe(GetCycleCount() - args.StartCycleCount);
 
+    PartCounters->RequestCounters.ConfirmBlobs.AddRequest(
+        duration.MicroSeconds());
+
     IProfileLog::TSysReadWriteRequest request;
     request.RequestType = ESysRequestType::ConfirmBlobs;
     request.Duration = duration;
