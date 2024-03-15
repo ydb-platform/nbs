@@ -3138,7 +3138,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             GetBlockContent(42));
     }
 
-    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDisk)
+    void DoShouldCreateCheckpointWithShadowDisk(
+        NProto::EStorageMediaKind mediaKind)
     {
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
@@ -3163,8 +3164,407 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         };
         runtime->SetObserverFunc(countAllocateDeallocateDiskRequest);
 
-        const auto expectedBlockCount =
-            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        const ui64 expectedBlockCount = 32768;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            mediaKind,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Write all '1' to block 1.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        {   // Validate checkpoint state (not ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::NOT_READY,
+                status->Record.GetCheckpointStatus());
+        }
+
+        auto tryWriteBlock = [&](ui64 blockIndx, ui8 content) -> bool
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId(),
+                GetBlockContent(content));
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Request WriteBlocks intersects with currently migrated "
+                    "range",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            return true;
+        };
+
+        auto tryReadBlock =
+            [&](ui64 blockIndx, ui8 content, const TString& checkpoint) -> bool
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId(),
+                checkpoint);
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't read from checkpoint \"c1\" while the data is being "
+                    "filled in.",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            const auto& bufs = response->Record.GetBlocks().GetBuffers();
+            UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(content), bufs[0]);
+            return true;
+        };
+
+        // The index of the block that is recorded during the filling of the
+        // shadow disk. We use it later to check the contents of the disk and
+        // the checkpoint.
+        ui64 blockIndxToVerify = 0;
+
+        // Writes to the disk are not blocked. But may overlap with migrating
+        // blocks.
+        for (ui64 i = 0;; ++i) {
+            ui64 blockIndx = i % expectedBlockCount;
+            ui8 content = i % 256;
+
+            // We are trying to write the block to the disk. It may fail if it
+            // intersects with the current migrated range.
+            if (tryWriteBlock(blockIndx, content)) {
+                // We save the index of the successfully written block with
+                // non-zero data to check the contents of the disk and the
+                // checkpoint later.
+                if (content != 0 && blockIndxToVerify == 0) {
+                    blockIndxToVerify = blockIndx;
+                }
+
+                // Reading from disk should always be successful.
+                UNIT_ASSERT(tryReadBlock(blockIndx, content, ""));
+
+                // Reading from the checkpoint will be successful when the
+                // checkpoint preparation is completed.
+                if (tryReadBlock(0, 0, "c1")) {
+                    // Validate checkpoint state (ready).
+                    auto status = volume.GetCheckpointStatus("c1");
+                    UNIT_ASSERT_EQUAL(
+                        NProto::ECheckpointStatus::READY,
+                        status->Record.GetCheckpointStatus());
+                    break;
+                }
+
+                // Validate checkpoint state (not ready).
+                auto status = volume.GetCheckpointStatus("c1");
+                UNIT_ASSERT_EQUAL(
+                    NProto::ECheckpointStatus::NOT_READY,
+                    status->Record.GetCheckpointStatus());
+            }
+
+            // Advance migration.
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+
+        // Check that the recording to the disk has happened.
+        UNIT_ASSERT_UNEQUAL(0, blockIndxToVerify);
+
+        // Read block blockIndxToVerify from disk. It should contain valid data.
+        UNIT_ASSERT(
+            tryReadBlock(blockIndxToVerify, blockIndxToVerify % 256, ""));
+
+        // Write all '0' to block blockIndxToVerify.
+        UNIT_ASSERT(tryWriteBlock(blockIndxToVerify, 0));
+
+        // Read block blockIndxToVerify from the disk. It should contain all
+        // '0'.
+        UNIT_ASSERT(tryReadBlock(blockIndxToVerify, 0, ""));
+
+        // Read block blockIndxToVerify from checkpoint. It should contain valid
+        // data.
+        UNIT_ASSERT(
+            tryReadBlock(blockIndxToVerify, blockIndxToVerify % 256, "c1"));
+
+        // Delete checkpoint data.
+        volume.DeleteCheckpointData("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, deallocateRequestCount);
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Read from checkpoint without data should fail.
+        {
+             auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                "c1");
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+        }
+
+        // Delete checkpoint.
+        volume.DeleteCheckpoint("c1");
+        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, deallocateRequestCount);
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Write OK.
+        UNIT_ASSERT(tryWriteBlock(0, 4));
+
+        // Read block 0 from the disk. It should contain all '4'.
+        UNIT_ASSERT(tryReadBlock(0, 4, ""));
+    }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskNonrepl)
+    {
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror2)
+    {
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror3)
+    {
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskHddNonrepl)
+    {
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+    }
+
+    void ShouldRetryWhenAcquiringShadowDisk(ui32 requestMessage, ui32 responseMessage)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        bool simulateNondelivery = true;
+        bool simulateErrorResponse = true;
+        auto describeDiskRequestsFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == requestMessage &&
+                simulateNondelivery)
+            {   // Simulate non-delivery describe message to DiskRegistry.
+                auto sendTo = event->Sender;
+                runtime.Send(
+                    new IEventHandle(
+                        sendTo,
+                        sendTo,
+                        event->ReleaseBase().Release(),
+                        0,
+                        event->Cookie,
+                        nullptr),
+                    0);
+                simulateNondelivery = false;
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+
+            if (event->GetTypeRewrite() == responseMessage &&
+                simulateErrorResponse)
+            {   // Simulate response with error from DiskRegistry.
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvDescribeDiskResponse)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
+                    msg->Record.MutableError()->SetCode(E_REJECTED);
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvAcquireDiskResponse)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
+                    msg->Record.MutableError()->SetCode(E_REJECTED);
+                }
+                simulateErrorResponse = false;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        runtime->SetObserverFunc(describeDiskRequestsFilter);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Wait for shadow disk become ready.
+        for (;;) {
+            // Validate checkpoint state (ready).
+            auto status =
+                volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus();
+
+            if (status == NProto::ECheckpointStatus::READY) {
+                break;
+            }
+
+            if (status == NProto::ECheckpointStatus::ERROR) {
+                UNIT_ASSERT_C(false, "Got error status for checkpoint");
+            }
+
+            // Advance shadow disk fill.
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+
+        // Check that interceptions of messages have occurred.
+        UNIT_ASSERT(!simulateNondelivery);
+        UNIT_ASSERT(!simulateErrorResponse);
+    }
+
+    Y_UNIT_TEST(ShouldRetryDescribeShadowDisk)
+    {
+        ShouldRetryWhenAcquiringShadowDisk(
+            TEvDiskRegistry::EvDescribeDiskRequest,
+            TEvDiskRegistry::EvDescribeDiskResponse);
+    }
+
+    Y_UNIT_TEST(ShouldRetryAcquireShadowDisk)
+    {
+        ShouldRetryWhenAcquiringShadowDisk(
+            TEvDiskRegistry::EvAcquireDiskRequest,
+            TEvDiskRegistry::EvAcquireDiskResponse);
+    }
+
+    Y_UNIT_TEST(ShouldStopAcquiringAfterTimeout)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked(2000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        auto describeDiskRequestsFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDescribeDiskResponse)
+            {   // Simulate response with error from DiskRegistry.
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
+                msg->Record.MutableError()->SetCode(E_REJECTED);
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        runtime->SetObserverFunc(describeDiskRequestsFilter);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Wait for shadow disk enter to the error state.
+        for (;;) {
+            auto status =
+                volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus();
+
+            if (status == NProto::ECheckpointStatus::READY) {
+                UNIT_ASSERT_C(false, "Got ready status for checkpoint");
+            }
+
+            if (status == NProto::ECheckpointStatus::ERROR) {
+                break;
+            }
+
+            // Advance time.
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldBlockWritesWhenReAcquire)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillBandwidth(1);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
@@ -3185,93 +3585,220 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        // Write some data.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            clientInfo.GetClientId(),
-            GetBlockContent(1));
+        auto tryWriteBlock = [&](ui64 blockIndx, ui8 content) -> bool
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId(),
+                GetBlockContent(content));
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't write to source disk while shadow disk \"vol0c1\" "
+                    "not ready yet.",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            return true;
+        };
 
-        UNIT_ASSERT_VALUES_EQUAL(0, allocateRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
+        auto tryReadBlock = [&](ui64 blockIndx) -> bool
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId());
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                return false;
+            }
+            return true;
+        };
 
         // Create checkpoint.
         volume.CreateCheckpoint("c1");
-        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, deallocateRequestCount);
 
-        // Writes to the disk are not blocked.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            clientInfo.GetClientId(),
-            GetBlockContent(2));
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
 
-        {   // Validate checkpoint state (not ready).
-            auto status = volume.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::NOT_READY,
-                status->Record.GetCheckpointStatus());
+        // We check that attempts to write to the disk are not blocked.
+        UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
+
+        {   // Emulate partial disk fill
+            using EReason =
+                TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
+
+            auto request = std::make_unique<
+                TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
+                "c1",
+                EReason::FillProgressUpdate,
+                128,
+                expectedBlockCount);
+
+            volume.SendToPipe(std::move(request));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
         }
 
-        using EReason =
-            TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
-        // Set Checkpoint fill in progress.
-        volume.UpdateShadowDiskState(
-            "c1",
-            EReason::FillProgressUpdate,
-            10,
-            expectedBlockCount);
+        // Steal the acquire response.
+        // We will return it later to complete the shadow disk acquiring.
+        std::unique_ptr<IEventHandle> stolenAcquireResponse;
+        auto stealAcquireResponse =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                stolenAcquireResponse.reset(event.Release());
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
 
-        {   // Validate checkpoint state (not ready).
-            auto status = volume.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::NOT_READY,
-                status->Record.GetCheckpointStatus());
-        }
+        // Reboot volume tablet.
+        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
+        volume.ReconnectPipe();
 
-        volume.UpdateShadowDiskState(
-            "c1",
-            EReason::FillCompleted,
-            expectedBlockCount,
-            expectedBlockCount);
+        // Check that the acquire response was stolen.
+        UNIT_ASSERT(stolenAcquireResponse);
+        runtime->SetObserverFunc(oldFilter);
 
-        {   // Validate checkpoint state (ready).
-            auto status = volume.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::READY,
-                status->Record.GetCheckpointStatus());
-        }
+        // We check that attempts to write to the disk are blocked. Since the
+        // shadow disk is partially filled, and the shadow disk acquiring has
+        // not completed yet.
+        UNIT_ASSERT(!tryWriteBlock(expectedBlockCount - 1, 0));
+        UNIT_ASSERT(tryReadBlock(expectedBlockCount - 1));
 
-        // Writes to the disk are not blocked.
-        volume.WriteBlocks(
-            TBlockRange64::MakeOneBlock(0),
-            clientInfo.GetClientId(),
-            GetBlockContent(2));
+        // Return stolen acquire response. The acquiring should be completed.
+        runtime->Send(stolenAcquireResponse.release());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
 
-        // TODO(drbasic) read from checkpoint (success).
-
-        // Delete checkpoint data.
-        volume.DeleteCheckpointData("c1");
-        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, deallocateRequestCount);
-
-        {   // Validate checkpoint state (error).
-            auto status = volume.GetCheckpointStatus("c1");
-            UNIT_ASSERT_EQUAL(
-                NProto::ECheckpointStatus::ERROR,
-                status->Record.GetCheckpointStatus());
-        }
-
-        // Delete checkpoint.
-        volume.DeleteCheckpoint("c1");
-        UNIT_ASSERT_VALUES_EQUAL(1, allocateRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, deallocateRequestCount);
-
-        {   // Checkpoint state not found for deleted checkpoint.
-            volume.SendGetCheckpointStatusRequest("c1");
-            auto response = volume.RecvGetCheckpointStatusResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
-        }
+        // We check that attempts to write to the disk are not blocked.
+        UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
+        UNIT_ASSERT(tryReadBlock(expectedBlockCount - 1));
     }
+
+    Y_UNIT_TEST(ShouldBlockWritesWhenReAcquireForShortTime)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillBandwidth(1);
+        config.SetMaxAcquireShadowDiskTotalTimeoutWhenBlocked(5000);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto tryWriteBlock = [&](ui64 blockIndx, ui8 content) -> bool
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientInfo.GetClientId(),
+                GetBlockContent(content));
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't write to source disk while shadow disk \"vol0c1\" "
+                    "not ready yet.",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            return true;
+        };
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // We check that attempts to write to the disk are not blocked.
+        UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
+
+        {   // Emulate partial disk fill
+            using EReason =
+                TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
+
+            auto request = std::make_unique<
+                TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
+                "c1",
+                EReason::FillProgressUpdate,
+                128,
+                expectedBlockCount);
+
+            volume.SendToPipe(std::move(request));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        }
+
+        // Steal the acquire response.
+        std::unique_ptr<IEventHandle> stolenAcquireResponse;
+        auto stealAcquireResponse =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                stolenAcquireResponse.reset(event.Release());
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+        };
+        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+
+        // Reboot volume tablet.
+        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
+        volume.ReconnectPipe();
+
+        // Check that the acquire response was stolen.
+        UNIT_ASSERT(stolenAcquireResponse);
+        runtime->SetObserverFunc(oldFilter);
+
+        // We check that attempts to write to the disk are blocked. Since the
+        // shadow disk is partially filled, and the shadow disk acquiring has
+        // not completed yet.
+        UNIT_ASSERT(!tryWriteBlock(expectedBlockCount - 1, 0));
+
+        // Wait MaxAcquireShadowDiskTotalTimeoutWhenBlocked timeout.
+        // After that shadow disk enter to the error state and writes to the
+        // source disk will be allowed.
+        runtime->DispatchEvents(
+            {},
+            TDuration::MilliSeconds(
+                config.GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked()));
+
+        UNIT_ASSERT_EQUAL(
+            NProto::ECheckpointStatus::ERROR,
+            volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus());
+
+        // We check that attempts to write to the disk are not blocked.
+        UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
