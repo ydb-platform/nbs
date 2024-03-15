@@ -100,10 +100,11 @@ const (
 
 type CheckpointStatus uint32
 
-const ( // Must be in same order as protos.ECheckpointStatus.
+const (
 	CheckpointStatusNotReady CheckpointStatus = iota
 	CheckpointStatusReady
 	CheckpointStatusError
+	CheckpointStatusUnknown
 )
 
 type CheckpointParams struct {
