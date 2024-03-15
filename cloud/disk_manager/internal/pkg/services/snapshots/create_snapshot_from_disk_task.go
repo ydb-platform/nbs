@@ -391,12 +391,17 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointStatusReady(
 	if err != nil {
 		return err
 	}
+	logging.Debug(
+		ctx,
+		"Current CheckpointStatus: %v",
+		status,
+	)
 
 	switch status {
 	case nbs.CheckpointStatusNotReady:
 		return errors.NewInterruptExecutionError()
 
-	case nbs.CheckpointStatusError:
+	case nbs.CheckpointStatusError, nbs.CheckpointStatusUnknown:
 		err := nbsClient.DeleteCheckpoint(
 			ctx,
 			diskID,
@@ -406,6 +411,9 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointStatusReady(
 			return err
 		}
 		return errors.NewRetriableErrorf("Failed to create checkpoint for disk %s.", diskID)
+
+	case nbs.CheckpointStatusReady:
+		// Nothing to do.
 	}
 
 	return nil
