@@ -98,6 +98,11 @@ func (t *createSnapshotFromDiskTask) run(
 		return nil, err
 	}
 
+	err = t.validateCheckpointStatus(ctx, nbsClient, disk.DiskId, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+
 	baseSnapshotID := snapshotMeta.BaseSnapshotID
 	baseCheckpointID := snapshotMeta.BaseCheckpointID
 
@@ -371,4 +376,37 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 		Size:        t.state.SnapshotSize,
 		StorageSize: t.state.SnapshotStorageSize,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) validateCheckpointStatus(
+	ctx context.Context,
+	nbsClient nbs.Client,
+	diskID string,
+	checkpointID string,
+) error {
+
+	status, err := nbsClient.GetCheckpointStatus(ctx, diskID, checkpointID)
+	if err != nil {
+		return err
+	}
+
+	switch status {
+	case nbs.CheckpointStatusNotReady:
+		return errors.NewInterruptExecutionError()
+
+	case nbs.CheckpointStatusError:
+		err := nbsClient.DeleteCheckpoint(
+			ctx,
+			diskID,
+			checkpointID,
+		)
+		if err != nil {
+			return err
+		}
+		return errors.NewRetriableErrorf("Failed to create checkpoint for disk %s.", diskID)
+	}
+
+	return nil
 }
