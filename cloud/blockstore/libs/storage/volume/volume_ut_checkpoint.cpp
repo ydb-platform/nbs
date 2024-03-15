@@ -3359,10 +3359,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     }
 
-    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror)
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror2)
     {
         DoShouldCreateCheckpointWithShadowDisk(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror3)
+    {
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskHddNonrepl)
@@ -3553,6 +3559,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillBandwidth(1);
         auto runtime = PrepareTestActorRuntime(config);
 
         const ui64 expectedBlockCount = 32768;
@@ -3631,6 +3638,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 expectedBlockCount);
 
             volume.SendToPipe(std::move(request));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
         }
 
         // Steal the acquire response.
@@ -3675,6 +3683,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillBandwidth(1);
         config.SetMaxAcquireShadowDiskTotalTimeoutWhenBlocked(5000);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -3740,6 +3749,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 expectedBlockCount);
 
             volume.SendToPipe(std::move(request));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
         }
 
         // Steal the acquire response.

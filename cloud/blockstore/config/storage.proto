@@ -928,7 +928,7 @@ message TStorageServiceConfig
     optional string CachedDiskAgentSessionsPath = 351;
 
     // Max bandwidth used for shadow disk fill in MiB/s (actual bandwidth is x2
-    //  due to the need to read and write).
+    // due to the need to read and write).
     optional uint32 MaxShadowDiskFillBandwidth = 352;
     // Minimum delay between shadow disk acquire attempts when writes to the
     // source disk are blocked (in ms).

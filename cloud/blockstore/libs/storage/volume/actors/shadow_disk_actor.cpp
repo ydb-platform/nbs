@@ -96,7 +96,7 @@ public:
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
         bool readOlyMount,
-        bool isWritesToSourceBlocked,
+        bool areWritesToSourceBlocked,
         ui64 mountSeqNumber,
         ui32 generation,
         TActorId parentActor);
@@ -153,7 +153,7 @@ TAcquireShadowDiskActor::TAcquireShadowDiskActor(
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
         bool readOnlyMount,
-        bool isWritesToSourceBlocked,
+        bool areWritesToSourceBlocked,
         ui64 mountSeqNumber,
         ui32 generation,
         TActorId parentActor)
@@ -161,7 +161,7 @@ TAcquireShadowDiskActor::TAcquireShadowDiskActor(
     , AcquireReason(acquireReason)
     , ReadOnlyMount(readOnlyMount)
     , TotalTimeout(
-          isWritesToSourceBlocked
+          areWritesToSourceBlocked
               ? config->GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked()
               : config->GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked())
     , ParentActor(parentActor)
@@ -169,10 +169,10 @@ TAcquireShadowDiskActor::TAcquireShadowDiskActor(
     , Generation(generation)
     , ShadowDiskDevices(shadowDiskDevices)
     , RetryDelayProvider(
-          isWritesToSourceBlocked
+          areWritesToSourceBlocked
               ? config->GetMinAcquireShadowDiskRetryDelayWhenBlocked()
               : config->GetMinAcquireShadowDiskRetryDelayWhenNonBlocked(),
-          isWritesToSourceBlocked
+          areWritesToSourceBlocked
               ? config->GetMaxAcquireShadowDiskRetryDelayWhenBlocked()
               : config->GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked())
 {
@@ -768,8 +768,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
     if (State == EActorState::WaitAcquireForRead) {
-        STORAGE_CHECK_PRECONDITION(Acquired());
-
         // Ready to serve checkpoint reads.
         State = EActorState::CheckpointReady;
     } else {
@@ -779,7 +777,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 
         // Ready to fill shadow disk with data.
         State = EActorState::Preparing;
-        STORAGE_CHECK_PRECONDITION(Acquired());
 
         TNonreplicatedPartitionMigrationCommonActor::InitWork(
             ctx,
@@ -798,6 +795,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
                 SrcConfig->GetBlockCount()));
     }
 
+    STORAGE_CHECK_PRECONDITION(Acquired());
     SchedulePeriodicalReAcquire(ctx);
 }
 

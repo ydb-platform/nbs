@@ -12,7 +12,6 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/interconnect/types.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -91,17 +90,17 @@ private:
     const TString ShadowDiskId;
     const ui64 MountSeqNumber = 0;
     const ui32 Generation = 0;
-    const TActorId VolumeActorId;
-    const TActorId SrcActorId;
+    const NActors::TActorId VolumeActorId;
+    const NActors::TActorId SrcActorId;
 
     TNonreplicatedPartitionConfigPtr DstConfig;
-    TActorId DstActorId;
+    NActors::TActorId DstActorId;
     ui64 ProcessedBlockCount = 0;
 
     EActorState State = EActorState::Error;
     std::optional<TMigrationTimeoutCalculator> TimeoutCalculator;
 
-    TActorId AcquireActorId;
+    NActors::TActorId AcquireActorId;
     // The list of devices received on first acquire.
     TDevices ShadowDiskDevices;
 
@@ -117,8 +116,8 @@ public:
         ui64 mountSeqNumber,
         ui32 generation,
         TNonreplicatedPartitionConfigPtr srcConfig,
-        TActorId volumeActorId,
-        TActorId srcActorId,
+        NActors::TActorId volumeActorId,
+        NActors::TActorId srcActorId,
         const TActiveCheckpointInfo& checkpointInfo);
 
     ~TShadowDiskActor() override;

@@ -19,9 +19,8 @@ TMigrationTimeoutCalculator::TMigrationTimeoutCalculator(
 TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     TBlockRange64 nextProcessingRange) const
 {
-
     // migration range is 4_MB
-    const auto migrationFactorPerAgent = MaxMigrationBandwidthMiBs / 4;
+    const auto migrationFactorPerAgent = MaxMigrationBandwidthMiBs / 4.0;
 
     if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
         return TDuration::Seconds(1) / migrationFactorPerAgent;
@@ -41,7 +40,7 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
 
     const auto factor =
         Max(migrationFactorPerAgent * agentDeviceCount / ExpectedDiskAgentSize,
-            1U);
+            1.0);
 
     return TDuration::Seconds(1) / factor;
 }
