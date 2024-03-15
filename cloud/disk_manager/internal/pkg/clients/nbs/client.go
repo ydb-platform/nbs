@@ -723,7 +723,7 @@ func (c *client) GetCheckpointStatus(
 ) (CheckpointStatus, error) {
 
 	status, err := c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
-	return CheckpointStatus(status), err
+	return CheckpointStatus(status), wrapError(err)
 }
 
 func (c *client) DeleteCheckpoint(
