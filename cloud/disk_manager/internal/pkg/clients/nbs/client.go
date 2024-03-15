@@ -551,6 +551,19 @@ func parseCheckpointStatus(protoType protos.ECheckpointStatus) CheckpointStatus 
 	}
 }
 
+func (m CheckpointStatus) String() string {
+	switch m {
+	case CheckpointStatusNotReady:
+		return "CheckpointStatusNotReady"
+	case CheckpointStatusReady:
+		return "CheckpointStatusReady"
+	case CheckpointStatusError:
+		return "CheckpointStatusError"
+	default:
+		return "CheckpointStatusUnknown"
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c *client) Ping(ctx context.Context) (err error) {
