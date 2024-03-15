@@ -74,75 +74,59 @@ public:
         ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
     }
 
-    void Bootstrap(const TActorContext& ctx);
+    void Bootstrap(const TActorContext& ctx)
+    {
+        Become(&TThis::StateWork);
+
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Session Cache Actor started");
+    }
 
 private:
-    STFUNC(StateWork);
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(
+                NActors::TEvents::TEvPoisonPill,
+                HandlePoisonPill)
+
+            HFunc(
+                TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest,
+                HandleUpdateSessionCache)
+
+            default:
+                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+                break;
+        }
+    }
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        Die(ctx);
+    }
 
     void HandleUpdateSessionCache(
         const TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest::TPtr& ev,
-        const TActorContext& ctx);
-};
+        const TActorContext& ctx)
+    {
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Update the session cache");
 
-////////////////////////////////////////////////////////////////////////////////
+        auto* msg = ev->Get();
 
-void TSessionCacheActor::Bootstrap(const TActorContext& ctx)
-{
-    Become(&TThis::StateWork);
+        SaveSessionCache(CachePath, msg->Sessions);
 
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::DISK_AGENT_WORKER,
-        "Session Cache Actor started");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TSessionCacheActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-
-    Die(ctx);
-}
-
-void TSessionCacheActor::HandleUpdateSessionCache(
-    const TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Update the session cache");
-
-    auto* msg = ev->Get();
-
-    SaveSessionCache(CachePath, msg->Sessions);
-
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>());
-}
-
-STFUNC(TSessionCacheActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(
-            NActors::TEvents::TEvPoisonPill,
-            HandlePoisonPill)
-
-        HFunc(
-            TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest,
-            HandleUpdateSessionCache)
-
-        default:
-            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
-            break;
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>());
     }
-}
+};
 
 }   // namespace
 

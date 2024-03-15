@@ -156,7 +156,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
-            // a new reading session or an update of a recently restored session
+            // a new session or an update of a recently restored session
             if (s == ds.ReaderSessions.end() || !s->LastActivityTs) {
                 somethingHasChanged = true;
             }
