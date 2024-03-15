@@ -104,7 +104,6 @@ const (
 	CheckpointStatusNotReady CheckpointStatus = iota
 	CheckpointStatusReady
 	CheckpointStatusError
-	CheckpointStatusUnknown
 )
 
 type CheckpointParams struct {

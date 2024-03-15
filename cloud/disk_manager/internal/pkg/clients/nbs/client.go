@@ -547,7 +547,7 @@ func parseCheckpointStatus(protoType protos.ECheckpointStatus) CheckpointStatus 
 	case protos.ECheckpointStatus_ERROR:
 		return CheckpointStatusError
 	default:
-		return CheckpointStatusUnknown
+		return CheckpointStatusError
 	}
 }
 

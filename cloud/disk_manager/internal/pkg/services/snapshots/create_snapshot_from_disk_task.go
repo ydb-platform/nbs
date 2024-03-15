@@ -407,9 +407,6 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 
 	case nbs.CheckpointStatusReady:
 		// Nothing to do.
-
-	case nbs.CheckpointStatusUnknown:
-		return errors.NewNonRetriableErrorf("Unknown checkpoint status")
 	}
 
 	return nil
