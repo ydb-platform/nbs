@@ -401,19 +401,15 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointStatusReady(
 	case nbs.CheckpointStatusNotReady:
 		return errors.NewInterruptExecutionError()
 
-	case nbs.CheckpointStatusError, nbs.CheckpointStatusUnknown:
-		err := nbsClient.DeleteCheckpoint(
-			ctx,
-			diskID,
-			checkpointID,
-		)
-		if err != nil {
-			return err
-		}
-		return errors.NewRetriableErrorf("Failed to create checkpoint for disk %s.", diskID)
+	case nbs.CheckpointStatusError:
+		_ = nbsClient.DeleteCheckpoint(ctx, diskID, checkpointID)
+		return errors.NewRetriableErrorf("GetCheckpointStatus returned an error.")
 
 	case nbs.CheckpointStatusReady:
 		// Nothing to do.
+
+	case nbs.CheckpointStatusUnknown:
+		return errors.NewNonRetriableErrorf("Unknown checkpoint status")
 	}
 
 	return nil
