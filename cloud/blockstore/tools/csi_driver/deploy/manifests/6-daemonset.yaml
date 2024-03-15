@@ -92,9 +92,7 @@ spec:
             type: DirectoryOrCreate
         - name: sockets-dir
           hostPath:
-            path: /run/nbsd/sockets/
+            path: /run/nbsd/sockets
             type: DirectoryOrCreate
       imagePullSecrets:
         - name: nbs-puller-secret
-      tolerations:
-      - operator: Exists
