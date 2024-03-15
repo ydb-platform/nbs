@@ -290,6 +290,7 @@ func (client *safeClient) GetCheckpointStatus(
 	diskId string,
 	checkpointId string,
 ) (protos.ECheckpointStatus, error) {
+
 	req := &protos.TGetCheckpointStatusRequest{
 		DiskId:       diskId,
 		CheckpointId: checkpointId,
