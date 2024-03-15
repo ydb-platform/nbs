@@ -4,6 +4,7 @@
 
 #include "storage_with_stats.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
@@ -130,6 +131,24 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // UpdateSessionCache
+    //
+
+    struct TUpdateSessionCacheRequest
+    {
+        TVector<NProto::TDiskAgentDeviceSession> Sessions;
+
+        TUpdateSessionCacheRequest() = default;
+        explicit TUpdateSessionCacheRequest(
+                TVector<NProto::TDiskAgentDeviceSession> sessions)
+            : Sessions(std::move(sessions))
+        {}
+    };
+
+    struct TUpdateSessionCacheResponse
+    {};
+
+    //
     // Events declaration
     //
 
@@ -143,6 +162,8 @@ struct TEvDiskAgentPrivate
         EvSecureEraseCompleted,
         EvWriteOrZeroCompleted,
         EvReportDelayedDiskAgentConfigMismatch,
+
+        BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd
     };
@@ -167,6 +188,8 @@ struct TEvDiskAgentPrivate
     using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
         TReportDelayedDiskAgentConfigMismatch,
         EvReportDelayedDiskAgentConfigMismatch>;
+
+    BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
