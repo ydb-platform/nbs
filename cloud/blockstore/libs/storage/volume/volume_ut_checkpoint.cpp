@@ -3385,13 +3385,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         bool simulateNondelivery = true;
         bool simulateErrorResponse = true;
-        auto describeDiskRequestsFilter = [&](TAutoPtr<IEventHandle>& event)
+        auto describeDiskRequestsFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() == requestMessage &&
                 simulateNondelivery)
             {   // Simulate non-delivery describe message to DiskRegistry.
                 auto sendTo = event->Sender;
-                runtime->Send(
+                runtime.Send(
                     new IEventHandle(
                         sendTo,
                         sendTo,
@@ -3423,7 +3424,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 }
                 simulateErrorResponse = false;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime->SetObserverFunc(describeDiskRequestsFilter);
 
@@ -3498,7 +3499,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         auto runtime = PrepareTestActorRuntime(config);
 
-        auto describeDiskRequestsFilter = [&](TAutoPtr<IEventHandle>& event)
+        auto describeDiskRequestsFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvDescribeDiskResponse)
@@ -3507,7 +3509,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
                 msg->Record.MutableError()->SetCode(E_REJECTED);
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime->SetObserverFunc(describeDiskRequestsFilter);
 
@@ -3644,7 +3646,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Steal the acquire response.
         // We will return it later to complete the shadow disk acquiring.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
@@ -3652,7 +3655,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 stolenAcquireResponse.reset(event.Release());
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
 
@@ -3754,7 +3757,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Steal the acquire response.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
@@ -3762,7 +3766,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 stolenAcquireResponse.reset(event.Release());
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
 

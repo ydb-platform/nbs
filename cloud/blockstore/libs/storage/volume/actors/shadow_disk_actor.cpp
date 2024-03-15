@@ -768,8 +768,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
     if (State == EActorState::WaitAcquireForRead) {
-        STORAGE_CHECK_PRECONDITION(Acquired());
-
         // Ready to serve checkpoint reads.
         State = EActorState::CheckpointReady;
     } else {
@@ -779,7 +777,6 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 
         // Ready to fill shadow disk with data.
         State = EActorState::Preparing;
-        STORAGE_CHECK_PRECONDITION(Acquired());
 
         TNonreplicatedPartitionMigrationCommonActor::InitWork(
             ctx,
@@ -798,6 +795,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
                 SrcConfig->GetBlockCount()));
     }
 
+    STORAGE_CHECK_PRECONDITION(Acquired());
     SchedulePeriodicalReAcquire(ctx);
 }
 
