@@ -226,4 +226,9 @@ message TStorageConfig
     optional uint32 GarbageCompactionThresholdAverage = 340;
     // Enables 3 aforementioned thresholds.
     optional bool NewCompactionEnabled = 341;
+
+    // Threshold for average CleanupScore for the whole FS.
+    optional uint32 CleanupThresholdAverage = 342;
+    // Enables the aforementioned threshold.
+    optional bool NewCleanupEnabled = 343;
 }

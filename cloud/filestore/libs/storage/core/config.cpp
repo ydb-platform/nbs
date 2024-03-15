@@ -29,6 +29,8 @@ namespace {
     xxx(MaxBlobSize,                        ui32,   4_MB                      )\
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
+    xxx(CleanupThresholdAverage,            ui32,   64                        )\
+    xxx(NewCleanupEnabled,                  bool,   false                     )\
     xxx(CompactionThreshold,                ui32,   20                        )\
     xxx(GarbageCompactionThreshold,         ui32,   100                       )\
     xxx(CompactionThresholdAverage,         ui32,   4                         )\
