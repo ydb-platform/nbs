@@ -98,7 +98,7 @@ func (t *createSnapshotFromDiskTask) run(
 		return nil, err
 	}
 
-	err = t.ensureCheckpointStatusReady(ctx, nbsClient, disk.DiskId, checkpointID)
+	err = t.ensureCheckpointReady(ctx, nbsClient, disk.DiskId, checkpointID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +380,7 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *createSnapshotFromDiskTask) ensureCheckpointStatusReady(
+func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 	ctx context.Context,
 	nbsClient nbs.Client,
 	diskID string,
