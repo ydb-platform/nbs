@@ -8,6 +8,28 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EDeviceStateFlags : uint16_t
+{
+    NONE      = 0,
+    FRESH     = 1 << 0,
+    DISABLED  = 1 << 1,
+    DIRTY     = 1 << 2,
+    SUSPENDED = 1 << 3,
+};
+
+inline EDeviceStateFlags operator|(EDeviceStateFlags a, EDeviceStateFlags b)
+{
+    return static_cast<EDeviceStateFlags>(
+        static_cast<uint16_t>(a) | static_cast<uint16_t>(b));
+}
+
+inline EDeviceStateFlags& operator|=(EDeviceStateFlags& a, EDeviceStateFlags b)
+{
+    return a = a | b;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 IOutputStream& DumpAgentState(
     IOutputStream& out,
     NProto::EAgentState state);
@@ -19,8 +41,7 @@ IOutputStream& DumpDiskState(
 IOutputStream& DumpDeviceState(
     IOutputStream& out,
     NProto::EDeviceState state,
-    bool isFresh = false,
-    bool isDisabled = false,
+    EDeviceStateFlags flags = EDeviceStateFlags::NONE,
     TString suffix = "");
 
 }   // namespace NCloud::NBlockStore::NStorage
