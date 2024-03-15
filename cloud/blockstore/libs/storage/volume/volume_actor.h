@@ -642,6 +642,10 @@ private:
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
+    void HandleUpdateShadowDiskStateRequest(
+        const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleTabletStatus(
         const TEvBootstrapper::TEvStatus::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -916,6 +920,12 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    NActors::TActorId WrapNonreplActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId nonreplicatedActorId,
+        std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    void RestartDiskRegistryBasedPartition(const NActors::TActorContext& ctx);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

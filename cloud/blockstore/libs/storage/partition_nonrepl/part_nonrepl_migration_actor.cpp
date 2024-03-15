@@ -40,7 +40,10 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
     , RdmaClient(std::move(rdmaClient))
-    , TimeoutCalculator(Config, SrcConfig)
+    , TimeoutCalculator(
+          Config->GetMaxMigrationBandwidth(),
+          Config->GetExpectedDiskAgentSize(),
+          SrcConfig)
 {}
 
 void TNonreplicatedPartitionMigrationActor::OnBootstrap(
