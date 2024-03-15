@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
+#include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
+
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -22,87 +24,133 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError SaveSessionCache(
+    const TString& path,
+    const TVector<NProto::TDiskAgentDeviceSession>& sessions)
+{
+    try {
+        NProto::TDiskAgentDeviceSessionCache proto;
+        proto.MutableSessions()->Reserve(static_cast<int>(sessions.size()));
+
+        // saving only updated sessions
+        for (const auto& session: sessions) {
+            if (session.GetLastActivityTs()) {
+                *proto.MutableSessions()->Add() = session;
+            }
+        }
+
+        const TString tmpPath {path + ".tmp"};
+
+        SerializeToTextFormat(proto, tmpPath);
+
+        if (!NFs::Rename(tmpPath, path)) {
+            char buf[64] = {};
+            const auto ec = errno;
+
+            return MakeError(
+                MAKE_SYSTEM_ERROR(ec),
+                strerror_r(ec, buf, sizeof(buf))
+            );
+        }
+    } catch (...) {
+        return MakeError(E_FAIL, CurrentExceptionMessage());
+    }
+
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TSessionCacheActor
     : public TActorBootstrapped<TSessionCacheActor>
 {
 private:
     const TString CachePath;
 
-    TVector<NProto::TDiskAgentDeviceSession> Sessions;
-    TRequestInfoPtr RequestInfo;
-    NActors::IEventBasePtr Response;
-
 public:
-    TSessionCacheActor(
-            TVector<NProto::TDiskAgentDeviceSession> sessions,
-            TString cachePath,
-            TRequestInfoPtr requestInfo,
-            NActors::IEventBasePtr response)
+    explicit TSessionCacheActor(TString cachePath)
         : CachePath {std::move(cachePath)}
-        , Sessions {std::move(sessions)}
-        , RequestInfo {std::move(requestInfo)}
-        , Response {std::move(response)}
     {
         ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
     }
 
     void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleUpdateSessionCache(
+        const TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TSessionCacheActor::Bootstrap(const TActorContext& ctx)
 {
-    try {
-        NProto::TDiskAgentDeviceSessionCache proto;
-        proto.MutableSessions()->Assign(
-            std::make_move_iterator(Sessions.begin()),
-            std::make_move_iterator(Sessions.end())
-        );
+    Become(&TThis::StateWork);
 
-        const TString tmpPath {CachePath + ".tmp"};
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT_WORKER,
+        "Session Cache Actor started");
+}
 
-        SerializeToTextFormat(proto, tmpPath);
+////////////////////////////////////////////////////////////////////////////////
 
-        if (!NFs::Rename(tmpPath, CachePath)) {
-            char buf[64] = {};
+void TSessionCacheActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
 
-            const auto ec = errno;
-            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)}
-                << strerror_r(ec, buf, sizeof(buf));
-        }
-    } catch (...) {
-        LOG_ERROR_S(
-            ctx,
-            ActivityType,
-            "Can't update session cache: " << CurrentExceptionMessage());
+    Die(ctx);
+}
 
-        ReportDiskAgentSessionCacheUpdateError();
-    }
+void TSessionCacheActor::HandleUpdateSessionCache(
+    const TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Update the session cache");
+
+    auto* msg = ev->Get();
+
+    SaveSessionCache(CachePath, msg->Sessions);
 
     NCloud::Reply(
         ctx,
-        *RequestInfo,
-        std::move(Response));
+        *ev,
+        std::make_unique<TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>());
+}
 
-    Die(ctx);
+STFUNC(TSessionCacheActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            NActors::TEvents::TEvPoisonPill,
+            HandlePoisonPill)
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest,
+            HandleUpdateSessionCache)
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+            break;
+    }
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateSessionCacheActor(
-    TVector<NProto::TDiskAgentDeviceSession> sessions,
-    TString cachePath,
-    TRequestInfoPtr requestInfo,
-    NActors::IEventBasePtr response)
+std::unique_ptr<IActor> CreateSessionCacheActor(TString cachePath)
 {
-    return std::make_unique<TSessionCacheActor>(
-        std::move(sessions),
-        std::move(cachePath),
-        std::move(requestInfo),
-        std::move(response));
+    return std::make_unique<TSessionCacheActor>(std::move(cachePath));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

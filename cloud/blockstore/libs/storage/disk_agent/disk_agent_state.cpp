@@ -865,7 +865,7 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             const auto [_, error] = client.AcquireDevices(
                 uuids,
                 session.GetClientId(),
-                TInstant::MicroSeconds(session.GetLastActivityTs()),
+                TInstant {},
                 session.GetReadOnly()
                     ? NProto::VOLUME_ACCESS_READ_ONLY
                     : NProto::VOLUME_ACCESS_READ_WRITE,

@@ -39,6 +39,7 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(ws.MountSeqNumber);
+                session.SetLastActivityTs(ws.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -51,6 +52,7 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(rs.MountSeqNumber);
+                session.SetLastActivityTs(rs.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -154,12 +156,15 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
+            // a new reading session or an update of a recently restored session
+            if (s == ds.ReaderSessions.end() || !s->LastActivityTs) {
+                somethingHasChanged = true;
+            }
+
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
                 STORAGE_INFO("Device %s was acquired by client %s for reading.",
                     uuid.Quote().c_str(), clientId.c_str());
-
-                somethingHasChanged = true;
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
@@ -179,7 +184,9 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
-            if (ds.WriterSession.MountSeqNumber != mountSeqNumber) {
+            if (ds.WriterSession.MountSeqNumber != mountSeqNumber
+                || !ds.WriterSession.LastActivityTs)
+            {
                 somethingHasChanged = true;
             }
 

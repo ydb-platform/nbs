@@ -3744,6 +3744,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         // acquire a bunch of devices
 
+        const auto acquireTs = Runtime.GetCurrentTime();
+
         diskAgent.AcquireDevices(
             TVector { devices[0], devices[1] },
             "writer-1",
@@ -3794,7 +3796,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
@@ -3811,7 +3815,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
@@ -3830,7 +3836,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
                 // VolumeGeneration was updated by reader-1
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(!session.GetReadOnly());
             }
         }
@@ -3868,7 +3876,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
             UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
             UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-            UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                acquireTs.MicroSeconds(),
+                session.GetLastActivityTs());
             UNIT_ASSERT(session.GetReadOnly());
         }
     }

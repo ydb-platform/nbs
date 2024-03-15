@@ -121,6 +121,8 @@ void TDiskAgentActor::HandleInitAgentCompleted(
 
     SendRegisterRequest(ctx);
     ScheduleUpdateStats(ctx);
+
+    RunSessionCacheActor(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

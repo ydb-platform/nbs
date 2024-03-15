@@ -111,20 +111,31 @@ void TDiskAgentActor::UpdateActorStats()
     }
 }
 
-void TDiskAgentActor::UpdateSessionCacheAndRespond(
-    const NActors::TActorContext& ctx,
-    TRequestInfoPtr requestInfo,
-    NActors::IEventBasePtr response)
+void TDiskAgentActor::UpdateSessionCache(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Update the session cache");
+    if (!SessionCacheActor) {
+        return;
+    }
 
-    auto actor = NDiskAgent::CreateSessionCacheActor(
-        State->GetSessions(),
-        GetCachedSessionsPath(),
-        std::move(requestInfo),
-        std::move(response));
+    NCloud::Send<TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest>(
+        ctx,
+        SessionCacheActor,
+        0,  // cookie
+        State->GetSessions());
+}
 
-    ctx.Register(
+void TDiskAgentActor::RunSessionCacheActor(const TActorContext& ctx)
+{
+    auto path = GetCachedSessionsPath();
+    if (path.empty()) {
+        return;
+    }
+
+    auto actor = NDiskAgent::CreateSessionCacheActor(std::move(path));
+
+    // Starting SessionCacheActor on the IO pool to avoid file operations in the
+    // User pool
+    SessionCacheActor = ctx.Register(
         actor.release(),
         TMailboxType::HTSwap,
         NKikimr::AppData()->IOPoolId);
@@ -142,7 +153,7 @@ TString TDiskAgentActor::GetCachedSessionsPath() const
 void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
     const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::TPtr&
         ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
@@ -161,6 +172,11 @@ void TDiskAgentActor::HandlePoisonPill(
     if (StatsActor) {
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, StatsActor);
         StatsActor = {};
+    }
+
+    if (SessionCacheActor) {
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, SessionCacheActor);
+        SessionCacheActor = {};
     }
 
     State->StopTarget();
@@ -250,6 +266,8 @@ STFUNC(TDiskAgentActor::StateWork)
         HFunc(
             TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
             HandleReportDelayedDiskAgentConfigMismatch);
+
+        IgnoreFunc(TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse);
 
         default:
             if (!HandleRequests(ev)) {
