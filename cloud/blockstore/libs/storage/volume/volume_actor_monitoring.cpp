@@ -971,7 +971,20 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "Disk Id"; }
-                    TABLED() { out << volumeConfig.GetDiskId(); }
+                    TABLED() {
+                        const auto mediaKind =
+                            State->GetConfig().GetStorageMediaKind();
+                        if (DiskRegistryTabletId &&
+                            IsDiskRegistryMediaKind(mediaKind))
+                        {
+                            out << "<a href='?action=disk&TabletID="
+                                << DiskRegistryTabletId
+                                << "&DiskID=" << volumeConfig.GetDiskId()
+                                << "'>" << volumeConfig.GetDiskId() << "</a>";
+                        } else {
+                            out << volumeConfig.GetDiskId();
+                        }
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "Base Disk Id"; }
