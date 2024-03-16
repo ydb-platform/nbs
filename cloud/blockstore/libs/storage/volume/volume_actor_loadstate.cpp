@@ -186,6 +186,10 @@ void TVolumeActor::CompleteLoadState(
         TabletID(),
         GetLoadTime().MicroSeconds());
 
+    ctx.Send(
+        MakeDiskRegistryProxyServiceId(),
+        new TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest());
+
     SignalTabletActive(ctx);
     ScheduleProcessUpdateVolumeConfig(ctx);
     ScheduleAllocateDiskIfNeeded(ctx);

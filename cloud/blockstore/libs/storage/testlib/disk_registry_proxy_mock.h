@@ -10,7 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 
 #include <contrib/ydb/core/mind/local.h>
-
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -138,6 +138,10 @@ private:
             HFunc(
                 TEvService::TEvCmsActionRequest,
                 HandleCmsAction);
+
+            HFunc(
+                TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest,
+                HandleGetDrTabletInfo);
 
             IgnoreFunc(NKikimr::TEvLocal::TEvTabletMetrics);
 
@@ -965,6 +969,19 @@ private:
             *ev,
             std::make_unique<
                 TEvService::TEvCmsActionResponse>());
+    }
+
+    void HandleGetDrTabletInfo(
+        const TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const ui64 testDiskRegistryTabletId =
+            NKikimr::MakeTabletID(0, NKikimr::MakeDefaultHiveID(0), 1);
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse>(
+                testDiskRegistryTabletId));
     }
 };
 
