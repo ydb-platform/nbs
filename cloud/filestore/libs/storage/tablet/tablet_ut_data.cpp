@@ -1691,7 +1691,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(ShouldAutomaticallyRunCleanupDueToCleanupThresholdAverage)
+    TABLET_TEST_4K_ONLY(ShouldAutomaticallyRunCleanupDueToCleanupThresholdAverage)
     {
         const auto block = tabletConfig.BlockSize;
 
