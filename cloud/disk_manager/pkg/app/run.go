@@ -83,7 +83,6 @@ func run(
 
 	logger := logging.NewLogger(config.LoggingConfig)
 	ctx = logging.SetLogger(ctx, logger)
-	ctx = logging.WithFields(ctx, logging.NewComponentField(logging.ComponentApp))
 
 	if len(hostname) == 0 {
 		hostname, err = os.Hostname()

@@ -17,24 +17,15 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func withComponentLoggingField(ctx context.Context) context.Context {
-	return logging.WithFields(
-		ctx,
-		logging.NewComponentField(logging.ComponentNfs),
-	)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 type errorLogger struct {
 }
 
 func (l *errorLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Error(withComponentLoggingField(ctx), fmt.Sprint(v...))
+	logging.Error(ctx, fmt.Sprint(v...))
 }
 
 func (l *errorLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Error(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
+	logging.Error(ctx, fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,11 +34,11 @@ type warnLogger struct {
 }
 
 func (l *warnLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Warn(withComponentLoggingField(ctx), fmt.Sprint(v...))
+	logging.Warn(ctx, fmt.Sprint(v...))
 }
 
 func (l *warnLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Warn(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
+	logging.Warn(ctx, fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,11 +47,11 @@ type infoLogger struct {
 }
 
 func (l *infoLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Info(withComponentLoggingField(ctx), fmt.Sprint(v...))
+	logging.Info(ctx, fmt.Sprint(v...))
 }
 
 func (l *infoLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Info(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
+	logging.Info(ctx, fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,11 +60,11 @@ type debugLogger struct {
 }
 
 func (l *debugLogger) Print(ctx context.Context, v ...interface{}) {
-	logging.Debug(withComponentLoggingField(ctx), fmt.Sprint(v...))
+	logging.Debug(ctx, fmt.Sprint(v...))
 }
 
 func (l *debugLogger) Printf(ctx context.Context, format string, v ...interface{}) {
-	logging.Debug(withComponentLoggingField(ctx), fmt.Sprintf(format, v...))
+	logging.Debug(ctx, fmt.Sprintf(format, v...))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

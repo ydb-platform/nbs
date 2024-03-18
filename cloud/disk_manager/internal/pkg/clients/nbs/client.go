@@ -1278,7 +1278,7 @@ func (c *client) GetChangedBytes(
 		}
 
 		logging.Debug(
-			logging.WithFields(ctx, logging.NewComponentField(logging.ComponentNbs)),
+			ctx,
 			"GetChangedBlocks diff for "+
 				"diskID %v, "+
 				"startIndex %v, "+

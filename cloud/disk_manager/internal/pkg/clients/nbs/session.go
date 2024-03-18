@@ -151,10 +151,6 @@ func (s *Session) init(ctx context.Context) error {
 
 	rediscoverCtx, cancel := context.WithCancel(context.Background())
 	rediscoverCtx = logging.SetLogger(rediscoverCtx, logging.GetLogger(ctx))
-	rediscoverCtx = logging.WithFields(
-		rediscoverCtx,
-		logging.NewComponentField(logging.ComponentNbs),
-	)
 	s.cancelRediscover = cancel
 
 	go func() {
