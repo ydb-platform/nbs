@@ -13,6 +13,16 @@ void TIndexTabletActor::HandleDestroySession(
     const TEvIndexTablet::TEvDestroySessionRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     const auto& clientId = GetClientId(msg->Record);

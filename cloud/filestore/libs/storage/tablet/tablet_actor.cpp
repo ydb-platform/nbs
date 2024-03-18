@@ -319,6 +319,17 @@ void TIndexTabletActor::ResetThrottlingPolicy()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
+{
+    if (!CompactionStateLoadStatus.Finished) {
+        return MakeError(E_REJECTED, "compaction state not loaded yet");
+    }
+
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
