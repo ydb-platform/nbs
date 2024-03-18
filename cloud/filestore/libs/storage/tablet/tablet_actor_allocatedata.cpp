@@ -60,6 +60,16 @@ void TIndexTabletActor::HandleAllocateData(
     const TEvService::TEvAllocateDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvAllocateDataResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto validator = [&] (const NProto::TAllocateDataRequest& request) {
         return ValidateRequest(request, GetBlockSize());
     };

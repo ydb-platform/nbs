@@ -18,6 +18,16 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
     const TEvIndexTabletPrivate::TEvDeleteCheckpointRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
