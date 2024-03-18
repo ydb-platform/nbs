@@ -74,6 +74,11 @@ class TDiskRegistryActor final
             const NProto::TError& error);
     };
 
+    struct TAdditionalColumn {
+        std::function<void(IOutputStream& out)> TitleInserter;
+        std::function<void(size_t index, IOutputStream& out)> DataInserter;
+    };
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -292,14 +297,15 @@ private:
     void RenderPoolRacks(IOutputStream& out, const TString& poolName) const;
     void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;
     void RenderConfig(IOutputStream& out, ui32 limit) const;
-    void RenderDirtyDeviceList(IOutputStream& out) const;
-    void RenderSuspendedDeviceList(IOutputStream& out) const;
+    void RenderDirtyDeviceList(IOutputStream& out, ui32 limit) const;
+    void RenderSuspendedDeviceList(IOutputStream& out, ui32 limit) const;
     void RenderAutomaticallyReplacedDeviceList(IOutputStream& out) const;
     template <typename TDevices>
     void RenderDevicesWithDetails(
         IOutputStream& out,
         const TDevices& devices,
-        const TString& title) const;
+        const TString& title,
+        const TVector<TAdditionalColumn>& additionalColumns = {}) const;
     void RenderBrokenDeviceList(IOutputStream& out, ui32 limit) const;
     void RenderDeviceHtmlInfo(IOutputStream& out, const TString& id) const;
     void RenderAgentHtmlInfo(IOutputStream& out, const TString& id) const;
@@ -381,6 +387,16 @@ private:
         TRequestInfoPtr requestInfo);
 
     void HandleHttpInfo_RenderAgentList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderDirtyDeviceList(
+        const NActors::TActorContext& ctx,
+        const TCgiParameters& params,
+        TRequestInfoPtr requestInfo);
+
+    void HandleHttpInfo_RenderSuspendedDeviceList(
         const NActors::TActorContext& ctx,
         const TCgiParameters& params,
         TRequestInfoPtr requestInfo);

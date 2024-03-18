@@ -223,7 +223,8 @@ template <typename TDevices>
 void TDiskRegistryActor::RenderDevicesWithDetails(
     IOutputStream& out,
     const TDevices& devices,
-    const TString& title) const
+    const TString& title,
+    const TVector<TAdditionalColumn>& additionalColumns) const
 {
     HTML(out) {
         if (title) {
@@ -247,10 +248,16 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                     TABLEH() { out << "Rdma endpoint"; }
                     TABLEH() { out << "DiskId"; }
                     TABLEH() { out << "Pool"; }
+                    for (const auto& additionalColumn: additionalColumns) {
+                        TABLEH() { additionalColumn.TitleInserter(out); }
+                    }
                 }
             }
 
-            for (const auto& device: devices) {
+            for (size_t index = 0; index < static_cast<size_t>(devices.size());
+                 ++index)
+            {
+                const auto& device = devices[index];
                 TABLER() {
                     TABLED() {
                         DumpDeviceLink(out, TabletID(), device.GetDeviceUUID());
@@ -299,6 +306,9 @@ void TDiskRegistryActor::RenderDevicesWithDetails(
                         }
                     }
                     TABLED() { out << device.GetPoolName(); }
+                    for (const auto& additionalColumn: additionalColumns) {
+                        TABLED() { additionalColumn.DataInserter(index, out); }
+                    }
                 }
             }
         }
@@ -322,13 +332,16 @@ void TDiskRegistryActor::RenderBrokenDeviceList(
     ui32 limit) const
 {
     auto brokenDevices = State->GetBrokenDevices();
+    if (brokenDevices.empty()) {
+        return;
+    }
 
     if (brokenDevices.size() > limit) {
         DumpActionLink(
             out,
             TabletID(),
             "RenderBrokenDeviceList",
-            "BrokenDevices",
+            "Broken devices",
             brokenDevices.size());
 
         return;
@@ -1495,7 +1508,7 @@ void TDiskRegistryActor::RenderPlacementGroupList(
             out,
             TabletID(),
             "RenderPlacementGroupList",
-            "PlacementGroups",
+            "Placement groups",
             State->GetPlacementGroups().size());
 
         return;
@@ -1948,56 +1961,131 @@ void TDiskRegistryActor::RenderConfig(IOutputStream& out, ui32 limit) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out) const
+void TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
 {
-    const auto devices = State->GetDirtyDevices();
+    Y_UNUSED(params);
 
-    HTML(out) {
-        TAG(TH3) { out << "Dirty devices"; DumpSize(out, devices); }
-
-        UL() {
-            for (const auto& device: devices) {
-                LI() {
-                    DumpDeviceLink(out, TabletID(), device.GetDeviceUUID());
-                    if (State->IsAutomaticallyReplaced(device.GetDeviceUUID()))
-                    {
-                        out << " Automatically replaced ";
-                    }
-                    out << " (#" << device.GetNodeId() << " )";
-                }
-            }
-        }
-    }
+    TStringStream out;
+    RenderDirtyDeviceList(out, Max<ui32>());
+    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
 }
 
-void TDiskRegistryActor::RenderSuspendedDeviceList(IOutputStream& out) const
+void TDiskRegistryActor::RenderDirtyDeviceList(IOutputStream& out, ui32 limit)
+    const
 {
-    const auto devices = State->GetSuspendedDevices();
-    if (devices.empty()) {
+    auto dirtyDevices = State->GetDirtyDevices();
+    if (dirtyDevices.empty()) {
         return;
     }
 
-    HTML(out) {
-        TAG(TH3) { out << "Suspended devices"; }
+    if (dirtyDevices.size() > limit) {
+        DumpActionLink(
+            out,
+            TabletID(),
+            "RenderDirtyDeviceList",
+            "Dirty devices",
+            dirtyDevices.size());
 
-        UL() {
-            for (const auto& device: devices) {
-                const auto& uuid = device.GetId();
-                LI() {
-                    DumpDeviceLink(out, TabletID(), uuid);
-                    if (device.GetResumeAfterErase()) {
-                        out << " [resuming]";
-                    }
-
-                    auto config = State->GetDevice(uuid);
-                    if (config.GetNodeId() != 0) {
-                        out << " (#" << config.GetNodeId() << " )";
-                    }
-                }
-            }
-        }
+        return;
     }
+
+    TVector<TAdditionalColumn> additionalColumns;
+    additionalColumns.push_back(TAdditionalColumn{
+        .TitleInserter = [](IOutputStream& out)
+        { out << "Automatically replaced"; },
+        .DataInserter =
+            [&dirtyDevices, this](size_t index, IOutputStream& out)
+        {
+            if (dirtyDevices.size() <= index) {
+                Y_DEBUG_ABORT_UNLESS(false);
+                out << "null";
+                return;
+            }
+            if (State->IsAutomaticallyReplaced(
+                    dirtyDevices[index].GetDeviceUUID())) {
+                out << "Yes";
+            } else {
+                out << "No";
+            }
+        }});
+
+    RenderDevicesWithDetails(
+        out,
+        dirtyDevices,
+        "Dirty Devices",
+        additionalColumns);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    TStringStream out;
+    RenderSuspendedDeviceList(out, Max<ui32>());
+    SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TDiskRegistryActor::RenderSuspendedDeviceList(
+    IOutputStream& out,
+    ui32 limit) const
+{
+    const auto suspendedDevices = State->GetSuspendedDevices();
+    if (suspendedDevices.empty()) {
+        return;
+    }
+
+    if (suspendedDevices.size() > limit) {
+        DumpActionLink(
+            out,
+            TabletID(),
+            "RenderSuspendedDeviceList",
+            "Suspended devices",
+            suspendedDevices.size());
+        return;
+    }
+
+    TVector<NProto::TDeviceConfig> suspendedDeviceConfigs;
+    suspendedDeviceConfigs.reserve(suspendedDevices.size());
+    for (const auto& suspendedDevice: suspendedDevices) {
+        suspendedDeviceConfigs.push_back(
+            State->GetDevice(suspendedDevice.GetId()));
+    }
+
+    TVector<TAdditionalColumn> additionalColumns;
+    additionalColumns.push_back(TAdditionalColumn{
+        .TitleInserter = [](IOutputStream& out)
+        { out << "Resume after erase"; },
+        .DataInserter =
+            [&suspendedDevices](size_t index, IOutputStream& out)
+        {
+            if (suspendedDevices.size() <= index) {
+                Y_DEBUG_ABORT_UNLESS(false);
+                out << "null";
+                return;
+            }
+            if (suspendedDevices[index].GetResumeAfterErase()) {
+                out << "Yes";
+            } else {
+                out << "No";
+            }
+        }});
+
+    RenderDevicesWithDetails(
+        out,
+        suspendedDeviceConfigs,
+        "Suspended Devices",
+        additionalColumns);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::RenderAutomaticallyReplacedDeviceList(
     IOutputStream& out) const
@@ -2064,11 +2152,11 @@ void TDiskRegistryActor::RenderHtmlInfo(TInstant now, IOutputStream& out) const
 
             RenderConfig(out, 20);
 
-            RenderDirtyDeviceList(out);
+            RenderDirtyDeviceList(out, 20);
 
-            RenderBrokenDeviceList(out, 30);
+            RenderBrokenDeviceList(out, 20);
 
-            RenderSuspendedDeviceList(out);
+            RenderSuspendedDeviceList(out, 20);
 
             RenderAutomaticallyReplacedDeviceList(out);
         } else {
@@ -2129,17 +2217,18 @@ void TDiskRegistryActor::HandleHttpInfo(
         {"disk",   &TDiskRegistryActor::HandleHttpInfo_RenderDiskHtmlInfo    },
 
         {"RenderDisks", &TDiskRegistryActor::HandleHttpInfo_RenderDisks},
-        {
-            "RenderBrokenDeviceList",
-            &TDiskRegistryActor::HandleHttpInfo_RenderBrokenDeviceList
-        },
-        {
-            "RenderPlacementGroupList",
-            &TDiskRegistryActor::HandleHttpInfo_RenderPlacementGroupList
-        },
+        {"RenderBrokenDeviceList",
+         &TDiskRegistryActor::HandleHttpInfo_RenderBrokenDeviceList},
+        {"RenderPlacementGroupList",
+         &TDiskRegistryActor::HandleHttpInfo_RenderPlacementGroupList},
         {"RenderRacks", &TDiskRegistryActor::HandleHttpInfo_RenderRacks},
-        {"RenderAgentList", &TDiskRegistryActor::HandleHttpInfo_RenderAgentList},
+        {"RenderAgentList",
+         &TDiskRegistryActor::HandleHttpInfo_RenderAgentList},
         {"RenderConfig", &TDiskRegistryActor::HandleHttpInfo_RenderConfig},
+        {"RenderDirtyDeviceList",
+         &TDiskRegistryActor::HandleHttpInfo_RenderDirtyDeviceList},
+        {"RenderSuspendedDeviceList",
+         &TDiskRegistryActor::HandleHttpInfo_RenderSuspendedDeviceList},
     }};
 
     auto* msg = ev->Get();
