@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
+#include <library/cpp/iterator/enumerate.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -4067,10 +4068,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         auto readData = tablet.ReadData(handle2, 0, data.size());
 
-        // After AddData, we should receive
-        // AddDataResponse
+        // After AddData, we should receive AddDataResponse
         auto response = tablet.RecvAddDataResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        // Use DescribeData to check that proper blobs were added
+        auto describe = tablet.DescribeData(handle2, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(describe->Record.BlobPiecesSize(), 2);
+        for (auto [i, blobPiece]: Enumerate(describe->Record.GetBlobPieces())) {
+            UNIT_ASSERT_VALUES_EQUAL(1, blobPiece.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                i * (block * BlockGroupSize),
+                blobPiece.GetRanges(0).GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL(0, blobPiece.GetRanges(0).GetBlobOffset());
+            UNIT_ASSERT_VALUES_EQUAL(
+                block * BlockGroupSize,
+                blobPiece.GetRanges(0).GetLength());
+
+            auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
+            UNIT_ASSERT_VALUES_EQUAL(blobId, blobIds[i]);
+        }
 
         // validate, that no more BlobStorage requests were made
         UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
@@ -4104,17 +4121,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         TVector<NKikimr::TLogoBlobID> blobIds;
 
-        // We can't make direct writes to BlobStorage, so we store the blob ids
-        // from an ordinary write and then use them in AddData
         env.GetRuntime().SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPutResult: {
-                        // We intercept all PutResult events in order for tablet
-                        // to consider them as written. Nevertheless, these
-                        // blobs are already written and we will use them in
-                        // AddData
                         auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
                         if (msg->Id.Channel() >=
                             TIndexTabletSchema::DataChannel) {

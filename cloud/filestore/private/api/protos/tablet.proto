@@ -404,6 +404,9 @@ message TGeneratedBlob
 
     // Length
     uint64 Length = 3;
+
+    // Group id.
+    uint32 BSGroupId = 4;
 }
 
 message TGenerateBlobsResponse
@@ -413,9 +416,6 @@ message TGenerateBlobsResponse
 
     // Blob ids, in the same order as in the request.
     repeated TGeneratedBlob Blobs = 2;
-
-    // Group id.
-    uint32 BSGroupId = 3;
 
     // AcquireCollectBarrier has been executed for this commit id.
     uint64 CommitId = 4;

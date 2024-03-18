@@ -270,12 +270,9 @@ void TIndexTabletActor::HandleGenerateBlobs(
             generatedBlob->MutableBlobId());
         generatedBlob->SetOffset(offset);
         generatedBlob->SetLength(length);
-
-        if (blobIndex == 0) {
-            response->Record.SetBSGroupId(Info()->GroupFor(
-                partialBlobId.Channel(),
-                partialBlobId.Generation()));
-        }
+        generatedBlob->SetBSGroupId(Info()->GroupFor(
+            partialBlobId.Channel(),
+            partialBlobId.Generation()));
         offset += length;
     }
 
