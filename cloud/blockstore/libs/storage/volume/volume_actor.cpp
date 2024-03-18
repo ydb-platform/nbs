@@ -168,7 +168,7 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
     }
 
     if (!VolumeSelfCounters) {
-        VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);
+        VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
     }
 }
 

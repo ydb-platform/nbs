@@ -33,10 +33,10 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
     const bool encryptedDiskRegistryBasedDisk =
-        IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
+        State->IsDiskRegistryMediaKind() &&
         volumeConfig.GetEncryptionDesc().GetMode() != NProto::NO_ENCRYPTION;
     const bool overlayDiskRegistryBasedDisk =
-        IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind()) &&
+        State->IsDiskRegistryMediaKind() &&
         !State->GetBaseDiskId().Empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
@@ -146,7 +146,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
 
     // TODO: NBS-3228: remove checks for disk registry based disks after normal
     // checkpoints for disk registry based disks are implemented completely.
-    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (!State->IsDiskRegistryMediaKind()) {
         return false;
     }
 
