@@ -130,6 +130,73 @@ Y_UNIT_TEST_SUITE(TMergeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSplitFreshBlockRangeFromRelativeToGlobalIndices)
+    {
+        NProto::TFreshBlockRange freshData;
+        freshData.SetStartIndex(5);
+        freshData.SetBlocksCount(8);
+        freshData.MutableBlocksContent()->append(TString(1024, 'X'));
+
+        NProto::TDescribeBlocksResponse dst;
+        SplitFreshBlockRangeFromRelativeToGlobalIndices(
+            freshData,
+            &dst,
+            4, // blocksPerStripe
+            128, // blockSize
+            2, // partitionsCount
+            0 // partitionId
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(3, dst.FreshBlockRangesSize());
+
+        const auto& range1 = dst.GetFreshBlockRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(9, range1.GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(3, range1.GetBlocksCount());
+
+        const auto& range2 = dst.GetFreshBlockRanges(1);
+        UNIT_ASSERT_VALUES_EQUAL(16, range2.GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(4, range2.GetBlocksCount());
+
+        TString actualContent;
+        for (size_t i = 0; i < dst.FreshBlockRangesSize(); ++i) {
+            const auto& freshRange = dst.GetFreshBlockRanges(i);
+            actualContent += freshRange.GetBlocksContent();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1024, actualContent.size());
+        for (size_t i = 0; i < actualContent.size(); i++) {
+            UNIT_ASSERT_VALUES_EQUAL('X', actualContent[i]);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSplitBlobPieceRangeFromRelativeToGlobalIndices)
+    {
+        NProto::TRangeInBlob rangeInBlob;
+        rangeInBlob.SetBlobOffset(10);
+        rangeInBlob.SetBlockIndex(13);
+        rangeInBlob.SetBlocksCount(1024);
+        
+        NProto::TBlobPiece dst;
+        SplitBlobPieceRangeFromRelativeToGlobalIndices(
+            rangeInBlob,
+            &dst,
+            4, // blocksPerStripe
+            2, // partitionsCount
+            0 // partitionId
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(257, dst.RangesSize());
+
+        const auto& range1 = dst.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(10, range1.GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(25, range1.GetBlockIndex());
+        UNIT_ASSERT_VALUES_EQUAL(3, range1.GetBlocksCount());
+
+        const auto& range2 = dst.GetRanges(1);
+        UNIT_ASSERT_VALUES_EQUAL(13, range2.GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(32, range2.GetBlockIndex());
+        UNIT_ASSERT_VALUES_EQUAL(4, range2.GetBlocksCount());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

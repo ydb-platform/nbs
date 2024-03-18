@@ -877,100 +877,13 @@ private:
             return;
         }
 
-        for (const auto& freshBlockRange: src.GetFreshBlockRanges()) {
-            SplitFreshBlockRangeFromRelativeToGlobalIndices(
-                freshBlockRange,
-                requestNo,
-                &dst);
-        }
-
-        const auto& srcBlobPieces = src.GetBlobPieces();
-
-        for (const auto& blobPiece: srcBlobPieces) {
-            NProto::TBlobPiece dstBlobPiece;
-            dstBlobPiece.MutableBlobId()->CopyFrom(blobPiece.GetBlobId());
-            dstBlobPiece.SetBSGroupId(blobPiece.GetBSGroupId());
-
-            for (const auto& srcRange: blobPiece.GetRanges()) {
-                SplitBlobPieceRangeFromRelativeToGlobalIndices(
-                    srcRange,
-                    requestNo,
-                    &dstBlobPiece);
-            }
-            dst.MutableBlobPieces()->Add(std::move(dstBlobPiece));
-        }
-    }
-
-    void SplitFreshBlockRangeFromRelativeToGlobalIndices(
-        const NProto::TFreshBlockRange& srcRange,
-        ui32 requestNo,
-        NProto::TDescribeBlocksResponse* dst)
-    {
-        const ui32 startIndex = srcRange.GetStartIndex();
-        ui32 blocksCount = 0;
-
-        while (blocksCount < srcRange.GetBlocksCount()) {
-            const auto index = RelativeToGlobalIndex(
-                BlocksPerStripe,
-                startIndex + blocksCount,
-                PartitionsCount,
-                PartitionRequests[requestNo].PartitionId);
-
-            const auto stripeRange = CalculateStripeRange(BlocksPerStripe, index);
-
-            const auto rangeBlocksCount = std::min(
-                static_cast<ui64>(stripeRange.End) - index + 1,
-                static_cast<ui64>(srcRange.GetBlocksCount()) - blocksCount);
-
-            NProto::TFreshBlockRange dstRange;
-            dstRange.SetStartIndex(index);
-            dstRange.SetBlocksCount(rangeBlocksCount);
-
-            const ui64 bytesCount = rangeBlocksCount * BlockSize;
-            dstRange.MutableBlocksContent()->resize(bytesCount);
-            auto dstRangePtr = const_cast<char*>(dstRange.MutableBlocksContent()->Data());
-            std::memcpy(
-                dstRangePtr,
-                &srcRange.GetBlocksContent()[blocksCount * BlockSize],
-                bytesCount);
-
-            blocksCount += rangeBlocksCount;
-
-            dst->MutableFreshBlockRanges()->Add(std::move(dstRange));
-        }
-    }
-
-    void SplitBlobPieceRangeFromRelativeToGlobalIndices(
-        const NProto::TRangeInBlob& srcRange,
-        ui32 requestNo,
-        NProto::TBlobPiece* dstBlobPiece)
-    {
-        const ui32 blobOffset = srcRange.GetBlobOffset();
-        const ui32 blockIndex = srcRange.GetBlockIndex();
-        ui32 blocksCount = 0;
-
-        while (blocksCount < srcRange.GetBlocksCount()) {
-            const auto index = RelativeToGlobalIndex(
-                BlocksPerStripe,
-                blockIndex + blocksCount,
-                PartitionsCount,
-                PartitionRequests[requestNo].PartitionId);
-
-            const auto stripeRange = CalculateStripeRange(BlocksPerStripe, index);
-
-            const auto rangeBlocksCount = std::min(
-                static_cast<ui64>(stripeRange.End) - index + 1,
-                static_cast<ui64>(srcRange.GetBlocksCount()) - blocksCount);
-
-            NProto::TRangeInBlob dstRange;
-            dstRange.SetBlobOffset(blobOffset + blocksCount);
-            dstRange.SetBlockIndex(index);
-            dstRange.SetBlocksCount(rangeBlocksCount);
-            
-            blocksCount += rangeBlocksCount;
-
-            dstBlobPiece->MutableRanges()->Add(std::move(dstRange));
-        }
+        MergeDescribeBlocksResponse(
+            src,
+            dst,
+            BlocksPerStripe,
+            BlockSize,
+            PartitionsCount,
+            PartitionRequests[requestNo].PartitionId);
     }
 
     template <typename T>
