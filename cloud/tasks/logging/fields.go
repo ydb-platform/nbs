@@ -17,13 +17,9 @@ type Field = log.Field
 
 const ComponentYDB = "YDB"
 const ComponentS3 = "S3"
-const ComponentNbs = "NBS"
-const ComponentNfs = "NFS"
-const ComponentRunners = "RUNNERS"
-const ComponentScheduler = "SCHEDULER"
+const ComponentTaskRunner = "TASK_RUNNER"
+const ComponentTaskScheduler = "TASK_SCHEDULER"
 const ComponentTask = "TASK"
-const ComponentApp = "APP"
-const ComponentClient = "CLIENT"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -83,8 +79,24 @@ func NewImageIDField(value string) Field {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func WithFields(ctx context.Context, fields ...Field) context.Context {
-	return ctxlog.WithFields(ctx, fields...)
+func WithComponent(ctx context.Context, value string) context.Context {
+	return WithFields(ctx, NewComponentField(value))
+}
+
+func WithTaskID(ctx context.Context, value string) context.Context {
+	return WithFields(ctx, NewTaskIDField(value))
+}
+
+func WithDiskID(ctx context.Context, value string) context.Context {
+	return WithFields(ctx, NewDiskIDField(value))
+}
+
+func WithSnapshotID(ctx context.Context, value string) context.Context {
+	return WithFields(ctx, NewSnapshotIDField(value))
+}
+
+func WithImageID(ctx context.Context, value string) context.Context {
+	return WithFields(ctx, NewImageIDField(value))
 }
 
 func WithCommonFields(ctx context.Context) context.Context {
@@ -107,5 +119,9 @@ func WithCommonFields(ctx context.Context) context.Context {
 
 	fields = append(fields, log.String(syslogIdentifierKey, "disk-manager"))
 
+	return ctxlog.WithFields(ctx, fields...)
+}
+
+func WithFields(ctx context.Context, fields ...Field) context.Context {
 	return ctxlog.WithFields(ctx, fields...)
 }

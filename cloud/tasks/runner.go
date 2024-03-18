@@ -292,10 +292,9 @@ func (r *runnerForRun) run(
 	}()
 
 	return task.Run(
-		logging.WithFields(
-			ctx,
-			logging.NewTaskIDField(execCtx.GetTaskID()),
-			logging.NewComponentField(logging.ComponentTask),
+		logging.WithTaskID(
+			logging.WithComponent(ctx, logging.ComponentTask),
+			execCtx.GetTaskID(),
 		),
 		execCtx,
 	)
@@ -368,10 +367,9 @@ func (r *runnerForCancel) executeTask(
 	)
 
 	err := task.Cancel(
-		logging.WithFields(
-			ctx,
-			logging.NewTaskIDField(execCtx.GetTaskID()),
-			logging.NewComponentField(logging.ComponentTask),
+		logging.WithTaskID(
+			logging.WithComponent(ctx, logging.ComponentTask),
+			execCtx.GetTaskID(),
 		),
 		execCtx,
 	)

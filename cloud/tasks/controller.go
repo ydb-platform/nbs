@@ -102,10 +102,7 @@ func NewController(
 	host string,
 ) Controller {
 
-	runContext := logging.WithFields(
-		ctx,
-		logging.NewComponentField(logging.ComponentRunners),
-	)
+	runContext := logging.WithComponent(ctx, logging.ComponentTaskRunner)
 
 	return &controller{
 		runContext:            runContext,

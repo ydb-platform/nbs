@@ -22,14 +22,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func withComponentLoggingField(
-	ctx context.Context,
-) context.Context {
-
-	return logging.WithFields(
-		ctx,
-		logging.NewComponentField(logging.ComponentScheduler),
-	)
+func withComponentLoggingField(ctx context.Context) context.Context {
+	return logging.WithComponent(ctx, logging.ComponentTaskScheduler)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
