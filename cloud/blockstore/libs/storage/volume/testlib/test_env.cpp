@@ -369,11 +369,18 @@ std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> TVolumeClient::CreateDescri
 std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
 TVolumeClient::CreateCreateCheckpointRequest(
     const TString& checkpointId,
-    bool isLight)
+    bool isLight,
+    bool withoutData)
 {
     auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
     request->Record.SetCheckpointId(checkpointId);
-    request->Record.SetIsLight(isLight);
+    if (withoutData) {
+        request->Record.SetCheckpointType(NProto::ECheckpointType::WITHOUT_DATA);
+    } else if (isLight) {
+        request->Record.SetCheckpointType(NProto::ECheckpointType::LIGHT);
+    } else {
+        request->Record.SetCheckpointType(NProto::ECheckpointType::NORMAL);
+    }
     return request;
 }
 

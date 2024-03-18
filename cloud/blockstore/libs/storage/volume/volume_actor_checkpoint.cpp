@@ -139,6 +139,7 @@ private:
     const TActorId VolumeActorId;
     const TPartitionDescrs PartitionDescrs;
     const TRequestTraceInfo TraceInfo;
+    const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
 
     ui32 DrainResponses = 0;
@@ -157,6 +158,7 @@ public:
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk);
 
     void Bootstrap(const TActorContext& ctx);
@@ -229,6 +231,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
@@ -238,6 +241,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , VolumeActorId(volumeActorId)
     , PartitionDescrs(std::move(partitionDescrs))
     , TraceInfo(std::move(traceInfo))
+    , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {}
@@ -688,6 +692,13 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
     const auto selfId = TBase::SelfId();
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record.SetCheckpointId(CheckpointId);
+    if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
+        request->Record.SetCheckpointType(
+            RequestType == ECheckpointRequestType::CreateWithoutData
+                ? NProto::ECheckpointType::WITHOUT_DATA
+                : NProto::ECheckpointType::NORMAL
+        );
+    }
 
     ForkTraces(request->CallContext);
 
@@ -1156,6 +1167,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1180,6 +1192,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1198,6 +1211,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
