@@ -3421,6 +3421,184 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldNotAllowTruncateDuringCompactionMapLoading)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        bool intercepted = false;
+        TAutoPtr<IEventHandle> loadChunk;
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    if (!intercepted) {
+                        intercepted = true;
+                        loadChunk = event.Release();
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        // testing file size change - may trigger compaction map update via a
+        // truncate call
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(4 * block);
+        tablet.SendSetNodeAttrRequest(args);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // testing some other requests that can potentially trigger compaction
+        // map update
+        tablet.SendAllocateDataRequest(0, 0, 0, 0);
+        {
+            auto response = tablet.RecvAllocateDataResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendDestroyCheckpointRequest("c");
+        {
+            auto response = tablet.RecvDestroyCheckpointResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendDestroyHandleRequest(0);
+        {
+            auto response = tablet.RecvDestroyHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendDestroySessionRequest(0);
+        {
+            auto response = tablet.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendTruncateRequest(0, 0);
+        {
+            auto response = tablet.RecvTruncateResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendUnlinkNodeRequest(0, "", false);
+        {
+            auto response = tablet.RecvUnlinkNodeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        tablet.SendZeroRangeRequest(0, 0, 0);
+        {
+            auto response = tablet.RecvZeroRangeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // checking that our state wasn't changed
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 0);
+        }
+
+        UNIT_ASSERT(loadChunk);
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+
+        // compaction map should be loaded now - SetNodeAttr should succeed
+        tablet.SendSetNodeAttrRequest(args);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // we have some used blocks now
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 0);
+        }
+
+        intercepted = false;
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        // truncate to 0 size should not succeed before compaction map gets
+        // loaded as well
+        args.SetSize(0);
+        tablet.SendSetNodeAttrRequest(args);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // state not changed
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 0);
+        }
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        // compaction map loaded - truncate request allowed
+        tablet.SendSetNodeAttrRequest(args);
+        {
+            auto response = tablet.RecvSetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // we should see some deletion markers now
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedBlocksCount(), 0);
+            // we have some deletion markers in one of the ranges now
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedCompactionRanges(), 1);
+        }
+    }
+
     TABLET_TEST(ShouldDeduplicateOutOfOrderCompactionMapChunkLoads)
     {
         const auto block = tabletConfig.BlockSize;
