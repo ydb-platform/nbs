@@ -59,14 +59,14 @@ type DiskModel struct {
 }
 
 type DiskParams struct {
-	BlockSize        uint32
-	BlocksCount      uint64
-	StorageMediaKind types.DiskKind
-	EncryptionDesc   *types.EncryptionDesc
-	CloudID          string
-	FolderID         string
-	BaseDiskID       string
-	IsFillFinished   bool
+	BlockSize      uint32
+	BlocksCount    uint64
+	Kind           types.DiskKind
+	EncryptionDesc *types.EncryptionDesc
+	CloudID        string
+	FolderID       string
+	BaseDiskID     string
+	IsFillFinished bool
 
 	IsDiskRegistryBasedDisk bool
 }

@@ -274,7 +274,7 @@ func (t *replicateDiskTask) useLightCheckpoint(
 		return false, err
 	}
 
-	diskKind := diskParams.StorageMediaKind
+	diskKind := diskParams.Kind
 
 	return diskKind == types.DiskKind_DISK_KIND_SSD_NONREPLICATED ||
 		diskKind == types.DiskKind_DISK_KIND_SSD_MIRROR2 ||

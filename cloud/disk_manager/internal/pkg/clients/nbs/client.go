@@ -77,13 +77,16 @@ func getStorageMediaKind(
 	}
 }
 
-func getDiskKindByStorageMediaKind(
-	diskKind core_protos.EStorageMediaKind,
+func getDiskKind(
+	mediaKind core_protos.EStorageMediaKind,
 ) (types.DiskKind, error) {
 
-	switch diskKind {
+	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_DEFAULT:
-		return types.DiskKind_DISK_KIND_HDD, nil
+		return 0, errors.NewNonRetriableErrorf(
+			"unsupported media kind %v",
+			mediaKind,
+		)
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD:
 		return types.DiskKind_DISK_KIND_SSD, nil
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID:
@@ -102,8 +105,8 @@ func getDiskKindByStorageMediaKind(
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
-			"unknown disk kind %v",
-			diskKind,
+			"unknown media kind %v",
+			mediaKind,
 		)
 	}
 }
@@ -997,20 +1000,20 @@ func (c *client) Describe(
 		return DiskParams{}, err
 	}
 
-	diskKind, err := getDiskKindByStorageMediaKind(volume.StorageMediaKind)
+	diskKind, err := getDiskKind(volume.StorageMediaKind)
 	if err != nil {
 		return DiskParams{}, err
 	}
 
 	return DiskParams{
-		BlockSize:        volume.BlockSize,
-		BlocksCount:      volume.BlocksCount,
-		StorageMediaKind: diskKind,
-		EncryptionDesc:   encryptionDesc,
-		CloudID:          volume.CloudId,
-		FolderID:         volume.FolderId,
-		BaseDiskID:       volume.BaseDiskId,
-		IsFillFinished:   volume.IsFillFinished,
+		BlockSize:      volume.BlockSize,
+		BlocksCount:    volume.BlocksCount,
+		Kind:           diskKind,
+		EncryptionDesc: encryptionDesc,
+		CloudID:        volume.CloudId,
+		FolderID:       volume.FolderId,
+		BaseDiskID:     volume.BaseDiskId,
+		IsFillFinished: volume.IsFillFinished,
 
 		IsDiskRegistryBasedDisk: isDiskRegistryBasedDisk(volume.StorageMediaKind),
 	}, nil
