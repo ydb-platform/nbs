@@ -344,6 +344,18 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 
         if (cleanupScore >= Config->GetCleanupThreshold()) {
             BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+        } else if (Config->GetNewCleanupEnabled()) {
+            const auto& stats = GetFileSystemStats();
+            const auto compactionStats = GetCompactionMapStats(0);
+            const auto rangeCount = compactionStats.UsedRangesCount;
+            const auto avgCleanupScore = rangeCount
+                ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
+                : 0;
+            const bool shouldCleanup =
+                avgCleanupScore >= Config->GetCleanupThresholdAverage();
+            if (cleanupScore && shouldCleanup) {
+                BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+            }
         }
 
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()) {
