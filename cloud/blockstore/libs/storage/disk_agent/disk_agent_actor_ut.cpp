@@ -18,6 +18,8 @@
 
 #include <util/folder/tempdir.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -26,6 +28,8 @@ using namespace NServer;
 using namespace NThreading;
 
 using namespace NDiskAgentTest;
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -4064,6 +4068,25 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.WaitReady();
 
         UNIT_ASSERT_EQUAL(0, *cacheRestoreError);
+    }
+
+    Y_UNIT_TEST_F(ShouldSwitchToIdleModeWithoutDevices, TFixture)
+    {
+        auto config = CreateDiskAgentConfig();
+
+        config.MutableStorageDiscoveryConfig()
+            ->MutablePathConfigs(0)
+            ->SetPathRegExp(TempDir.Path() / "non-existent([0-9]{2})");
+
+        auto env = TTestEnvBuilder(Runtime)
+            .With(std::move(config))
+            .Build();
+
+        TDiskAgentClient diskAgent(Runtime);
+        diskAgent.WaitReady();
+
+        Runtime.AdvanceCurrentTime(1min);
+        Runtime.DispatchEvents({}, 10ms);
     }
 }
 
