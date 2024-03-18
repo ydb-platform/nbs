@@ -386,6 +386,7 @@ public:
     {
         NProto::TError Error;
         TVector<TString> RemovedClientIds;
+        bool ForceTabletRestart = false;
 
         TAddClientResult() = default;
 
@@ -625,6 +626,8 @@ private:
     bool CanAcceptClient(
         ui64 newFillSeqNumber,
         ui64 proposedFillGeneration);
+
+    bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 

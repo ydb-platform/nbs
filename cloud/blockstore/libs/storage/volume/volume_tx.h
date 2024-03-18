@@ -232,6 +232,7 @@ struct TTxVolume
         TInstant WriterLastActivityTimestamp;
         bool WriterChanged = false;
         NProto::TError Error;
+        bool ForceTabletRestart = false;
 
         TAddClient(
                 TRequestInfoPtr requestInfo,
@@ -249,6 +250,7 @@ struct TTxVolume
             WriterLastActivityTimestamp = {};
             WriterChanged = false;
             Error.Clear();
+            ForceTabletRestart = false;
         }
     };
 

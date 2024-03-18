@@ -5219,6 +5219,234 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, sessionActorDeathCnt);
     }
+
+    Y_UNIT_TEST(ShouldRestartVolumeTabletOnLocalMountDifferentNodes)
+    {
+        TTestEnv env(1, 2);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx1);
+        TServiceClient service2(runtime, nodeIdx2);
+
+        service1.CreateVolume(DefaultDiskId);
+
+        {
+            auto statResponseBefore = service1.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 1" << std::endl;
+            auto response = service1.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service1.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration() + 1,
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+
+        {
+            auto statResponseBefore = service2.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 2" << std::endl;
+            auto response = service2.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED,
+                1
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service2.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration() + 1,
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRestartVolumeTabletOnLocalMountSingleNode)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx);
+        TServiceClient service2(runtime, nodeIdx);
+
+        service1.CreateVolume(DefaultDiskId);
+
+        {
+            auto statResponseBefore = service1.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 1" << std::endl;
+            auto response = service1.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED,
+                0,
+                NProto::TEncryptionDesc(),
+                1,
+                1
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service1.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration() + 1,
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+
+        {
+            auto statResponseBefore = service2.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 2" << std::endl;
+            auto response = service2.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED,
+                1,
+                NProto::TEncryptionDesc(),
+                1,
+                2
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service2.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration(),
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRestartVolumeTabletOnLocalMountSingleNodeRemoteMount)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
+            env,
+            unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx);
+        TServiceClient service2(runtime, nodeIdx);
+
+        service1.CreateVolume(DefaultDiskId);
+
+        {
+            auto statResponseBefore = service1.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 1" << std::endl;
+            auto response = service1.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_REMOTE,
+                NProto::MF_THROTTLING_DISABLED
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service1.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration(),
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+
+        {
+            auto statResponseBefore = service2.StatVolume(DefaultDiskId);
+
+            std::cerr << "MOUNT 2" << std::endl;
+            auto response = service2.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_REMOTE,
+                NProto::MF_THROTTLING_DISABLED
+            );
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason()
+            );
+
+            auto statResponseAfter = service2.StatVolume(DefaultDiskId);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                statResponseBefore->Record.GetVolumeGeneration(),
+                statResponseAfter->Record.GetVolumeGeneration(),
+                "Expect that volume has restarted"
+            );
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
