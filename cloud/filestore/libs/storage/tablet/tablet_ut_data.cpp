@@ -3785,6 +3785,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 static_cast<ui32>(stats.GetBlobIndexOpState()));
         }
 
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
         tablet.DestroyHandle(handle);
     }
 
@@ -3877,6 +3880,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 static_cast<ui32>(EOperationState::Idle),
                 static_cast<ui32>(stats.GetFlushState()));
         }
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
 
         tablet.DestroyHandle(handle);
     }
