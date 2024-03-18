@@ -2,19 +2,17 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
-
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
-
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-#include <contrib/ydb/library/actors/core/events.h>
-#include <contrib/ydb/library/actors/core/log.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/system/fs.h>
+
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 using namespace NActors;
 
@@ -39,7 +37,7 @@ NProto::TError SaveSessionCache(
             }
         }
 
-        const TString tmpPath {path + ".tmp"};
+        const TString tmpPath{path + ".tmp"};
 
         SerializeToTextFormat(proto, tmpPath);
 
@@ -49,8 +47,7 @@ NProto::TError SaveSessionCache(
 
             return MakeError(
                 MAKE_SYSTEM_ERROR(ec),
-                strerror_r(ec, buf, sizeof(buf))
-            );
+                strerror_r(ec, buf, sizeof(buf)));
         }
     } catch (...) {
         return MakeError(E_FAIL, CurrentExceptionMessage());
@@ -61,15 +58,14 @@ NProto::TError SaveSessionCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSessionCacheActor
-    : public TActorBootstrapped<TSessionCacheActor>
+class TSessionCacheActor: public TActorBootstrapped<TSessionCacheActor>
 {
 private:
     const TString CachePath;
 
 public:
     explicit TSessionCacheActor(TString cachePath)
-        : CachePath {std::move(cachePath)}
+        : CachePath{std::move(cachePath)}
     {
         ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
     }
@@ -88,16 +84,16 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(
-                NActors::TEvents::TEvPoisonPill,
-                HandlePoisonPill)
+            HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
             HFunc(
                 TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest,
-                HandleUpdateSessionCache)
+                HandleUpdateSessionCache);
 
             default:
-                HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT_WORKER);
+                HandleUnexpectedEvent(
+                    ev,
+                    TBlockStoreComponents::DISK_AGENT_WORKER);
                 break;
         }
     }
@@ -115,7 +111,10 @@ private:
         const TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest::TPtr& ev,
         const TActorContext& ctx)
     {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Update the session cache");
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT_WORKER,
+            "Update the session cache");
 
         auto* msg = ev->Get();
 
@@ -124,7 +123,8 @@ private:
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>());
+            std::make_unique<
+                TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>());
     }
 };
 

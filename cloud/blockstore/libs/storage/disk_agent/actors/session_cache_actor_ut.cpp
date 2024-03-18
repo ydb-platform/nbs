@@ -1,15 +1,14 @@
 #include "session_cache_actor.h"
 
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent_private.h>
-
 #include <cloud/storage/core/libs/common/proto_helpers.h>
-
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
 #include <util/system/fs.h>
+
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <chrono>
 
@@ -22,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TActorSystem
-    : NActors::TTestActorRuntimeBase
+struct TActorSystem: NActors::TTestActorRuntimeBase
 {
     void Start()
     {
@@ -38,11 +36,11 @@ struct TActorSystem
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
-    const TString CachedSessionsPath = TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TString CachedSessionsPath =
+        TempDir.Path() / "nbs-disk-agent-sessions.txt";
 
     TActorSystem ActorSystem;
     TActorId SessionCacheActor;
@@ -68,7 +66,8 @@ struct TFixture
             SessionCacheActor,
             EdgeActor,
             std::make_unique<TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest>(
-                std::move(sessions)).release());
+                std::move(sessions))
+                .release());
 
         auto response = ActorSystem.GrabEdgeEvent<
             TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse>();
@@ -88,8 +87,7 @@ struct TFixture
 
         return TVector<NProto::TDiskAgentDeviceSession>(
             std::make_move_iterator(proto.MutableSessions()->begin()),
-            std::make_move_iterator(proto.MutableSessions()->end())
-        );
+            std::make_move_iterator(proto.MutableSessions()->end()));
     }
 };
 
@@ -119,7 +117,7 @@ Y_UNIT_TEST_SUITE(TSessionCacheActorTest)
             reader.SetDiskId("vol0");
             reader.SetLastActivityTs(42);
 
-            UpdateSessionCache({ writer, reader });
+            UpdateSessionCache({writer, reader});
         }
 
         {
@@ -143,14 +141,14 @@ Y_UNIT_TEST_SUITE(TSessionCacheActorTest)
             reader.SetDiskId("vol0");
             reader.SetLastActivityTs(2000);
 
-            UpdateSessionCache({ writer, reader });
+            UpdateSessionCache({writer, reader});
         }
 
         {
             auto sessions = LoadSessionCache();
 
             UNIT_ASSERT_VALUES_EQUAL(2, sessions.size());
-            SortBy(sessions, [] (auto& s) { return s.GetClientId(); });
+            SortBy(sessions, [](auto& s) { return s.GetClientId(); });
 
             UNIT_ASSERT_VALUES_EQUAL("client-1", sessions[0].GetClientId());
             UNIT_ASSERT_VALUES_EQUAL(1000, sessions[0].GetLastActivityTs());

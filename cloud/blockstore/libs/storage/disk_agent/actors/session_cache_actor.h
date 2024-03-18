@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
