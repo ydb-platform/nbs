@@ -22,6 +22,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/apps/version
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/library/grpc/client

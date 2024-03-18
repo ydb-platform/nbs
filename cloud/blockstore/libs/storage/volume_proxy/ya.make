@@ -10,7 +10,6 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     contrib/ydb/library/actors/core
     contrib/ydb/core/tablet
-    contrib/ydb/core/testlib
 )
 
 END()
