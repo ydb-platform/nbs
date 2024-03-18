@@ -1691,6 +1691,93 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST_4K_ONLY(ShouldAutomaticallyRunCleanupDueToCleanupThresholdAverage)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNewCleanupEnabled(true);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCleanupThresholdAverage(3);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // allocating 4 compaction ranges
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(1_MB);
+        tablet.SetNodeAttr(args);
+
+        tablet.WriteData(handle, 0, 2 * block, 'a');
+        tablet.WriteData(handle, 256_KB, 3 * block, 'b');
+        tablet.WriteData(handle, 512_KB, 3 * block, 'c');
+        tablet.WriteData(handle, 768_KB, 3 * block, 'd');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 11);
+        }
+
+        tablet.WriteData(handle, 2 * block, 2 * block, 'e');
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 5);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletionMarkersCount(), 9);
+        }
+
+        {
+            auto response = tablet.ReadData(handle, 0, 2 * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'a'));
+        }
+
+        {
+            auto response = tablet.ReadData(handle, 2 * block, 2 * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
+        }
+
+        {
+            auto response = tablet.ReadData(handle, 256_KB, 3 * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'b'));
+        }
+
+        {
+            auto response = tablet.ReadData(handle, 512_KB, 3 * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'c'));
+        }
+
+        {
+            auto response = tablet.ReadData(handle, 768_KB, 3 * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT(CompareBuffer(buffer, 3 * block, 'd'));
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldAutomaticallyRunCollectGarbage)
     {
         const auto block = tabletConfig.BlockSize;

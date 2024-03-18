@@ -66,6 +66,8 @@ public:
 
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
+    ui32 GetCleanupThresholdAverage() const;
+    bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
     ui32 GetGarbageCompactionThreshold() const;
     ui32 GetCompactionThresholdAverage() const;
