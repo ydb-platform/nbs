@@ -386,6 +386,7 @@ void TVolumeActor::ExecuteAddClient(
         args.RequestInfo->Sender,
         now);
     args.Error = std::move(res.Error);
+    args.ForceTabletRestart = res.ForceTabletRestart;
 
     TVolumeDatabase db(tx.DB);
     db.WriteHistory(
@@ -488,6 +489,7 @@ void TVolumeActor::CompleteAddClient(
     *response->Record.MutableError() = std::move(args.Error);
     response->Record.SetTabletId(TabletID());
     response->Record.SetClientId(clientId);
+    response->Record.SetForceTabletRestart(args.ForceTabletRestart);
 
     auto& volumeConfig = State->GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();

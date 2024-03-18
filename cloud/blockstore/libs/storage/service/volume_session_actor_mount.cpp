@@ -666,6 +666,11 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
             RequestVolumeStop(ctx);
             return;
         }
+
+        if (msg->Record.GetForceTabletRestart()) {
+            RequestVolumeStop(ctx);
+            return;
+        }
     } else if (VolumeStarted || error.GetCode() == E_BS_MOUNT_CONFLICT) {
         RequestVolumeStop(ctx);
         return;
