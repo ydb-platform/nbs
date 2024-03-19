@@ -2,6 +2,7 @@
 add_library(apps-version)
 
 target_link_libraries(version PUBLIC
+  core-driver_lib-version
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil

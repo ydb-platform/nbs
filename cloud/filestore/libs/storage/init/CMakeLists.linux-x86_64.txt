@@ -12,7 +12,7 @@ target_compile_options(libs-storage-init PRIVATE
   -DUSE_CURRENT_UDF_ABI_VERSION
 )
 target_link_libraries(libs-storage-init PUBLIC
-  apps-version
+  core-libs-version_ydb
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil

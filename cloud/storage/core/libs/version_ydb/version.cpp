@@ -1,4 +1,4 @@
-#include <contrib/ydb/core/driver_lib/version/version.h>
+#include <ydb/core/driver_lib/version/version.h>
 
 namespace NKikimr::NPDisk {
 extern const ui64 YdbDefaultPDiskSequence = 0;
