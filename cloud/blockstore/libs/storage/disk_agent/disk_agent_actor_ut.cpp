@@ -20,8 +20,6 @@
 
 #include <util/folder/tempdir.h>
 
-#include <chrono>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -30,8 +28,6 @@ using namespace NServer;
 using namespace NThreading;
 
 using namespace NDiskAgentTest;
-
-using namespace std::chrono_literals;
 
 namespace {
 
