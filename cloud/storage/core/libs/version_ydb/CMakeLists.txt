@@ -7,7 +7,7 @@ target_link_libraries(version PUBLIC
   yutil
   library-cpp-svnversion
   ydb-core-protos
-  core-driver_lib-version
+  ydb-core-driver_lib-version
 )
 
 target_sources(core-libs-version_ydb PRIVATE

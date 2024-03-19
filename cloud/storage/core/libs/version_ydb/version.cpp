@@ -1,16 +1,19 @@
 #include <ydb/core/driver_lib/version/version.h>
 
-namespace NKikimr::NPDisk {
-extern const ui64 YdbDefaultPDiskSequence = 0;
-}
-
 NKikimrConfig::TCurrentCompatibilityInfo
 NKikimr::TCompatibilityInfo::MakeCurrent()
 {
-    using TCurrentConstructor = NKikimr::TCompatibilityInfo::TProtoConstructor::
-        TCurrentCompatibilityInfo;
+    using namespace NKikimr;
+    using TCurrentConstructor =
+        TCompatibilityInfo::TProtoConstructor::TCurrentCompatibilityInfo;
+    using TVersionConstructor =
+        NKikimr::TCompatibilityInfo::TProtoConstructor::TVersion;
 
     return TCurrentConstructor{
         .Application = "nbs",
+        .Version = TVersionConstructor{
+            .Year = 23,
+            .Major = 3,
+        }
     }.ToPB();
 }
