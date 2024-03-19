@@ -297,7 +297,7 @@ void TVolumeState::FillDeviceInfo(NProto::TVolume& volume) const
 
 bool TVolumeState::IsDiskRegistryMediaKind() const
 {
-    return GetConfig().GetStorageMediaKind();
+    return NCloud::IsDiskRegistryMediaKind(Config->GetStorageMediaKind());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
