@@ -672,8 +672,8 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
         };
         DIV_CLASS("row") {
-            const bool isDiskRegistryMediaKind = IsDiskRegistryMediaKind(
-                State->GetConfig().GetStorageMediaKind());
+            const bool isDiskRegistryMediaKind =
+                State->IsDiskRegistryMediaKind();
             TAG(TH3) { out << "CheckpointRequests"; }
             TABLE_SORTABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
