@@ -21,6 +21,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
     State = std::make_unique<TDiskAgentState>(
         Config,
         AgentConfig,
+        RdmaConfig,
         Spdk,
         Allocator,
         StorageProvider,

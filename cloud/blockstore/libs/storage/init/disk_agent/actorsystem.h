@@ -32,6 +32,7 @@ struct TDiskAgentActorSystemArgs
 
     TStorageConfigPtr StorageConfig;
     TDiskAgentConfigPtr DiskAgentConfig;
+    NRdma::TRdmaConfigPtr RdmaConfig;
     TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
 
     ILoggingServicePtr Logging;

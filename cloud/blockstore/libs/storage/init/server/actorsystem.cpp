@@ -279,6 +279,7 @@ public:
             auto diskAgent = CreateDiskAgent(
                 Args.StorageConfig,
                 Args.DiskAgentConfig,
+                Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
                 Args.AioStorageProvider,

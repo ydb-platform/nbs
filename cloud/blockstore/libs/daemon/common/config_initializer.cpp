@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -85,6 +86,31 @@ void TConfigInitializerCommon::InitDiskAgentConfig()
         std::move(diskAgentConfig),
         Rack
     );
+}
+
+void TConfigInitializerCommon::InitRdmaConfig()
+{
+    NProto::TRdmaConfig rdmaConfig;
+
+    if (Options->RdmaConfig) {
+        ParseProtoTextFromFileRobust(Options->RdmaConfig, rdmaConfig);
+    } else {
+        // no rdma config file is given fallback to legacy config
+        if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
+            rdmaConfig.SetServerEnabled(true);
+            const auto& rdmaTarget = DiskAgentConfig->DeprecatedGetRdmaTarget();
+            rdmaConfig.MutableServer()->CopyFrom(rdmaTarget.GetServer());
+        }
+
+        if (ServerConfig->DeprecatedGetRdmaClientEnabled()) {
+            rdmaConfig.SetClientEnabled(true);
+            rdmaConfig.MutableClient()->CopyFrom(
+                ServerConfig->DeprecatedGetRdmaClientConfig());
+        }
+    }
+
+    RdmaConfig =
+        std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
 
 void TConfigInitializerCommon::InitDiskRegistryProxyConfig()

@@ -11,6 +11,7 @@ using namespace NActors;
 IActorPtr CreateDiskAgent(
     TStorageConfigPtr config,
     TDiskAgentConfigPtr agentConfig,
+    NRdma::TRdmaConfigPtr rdmaConfig,
     NSpdk::ISpdkEnvPtr spdk,
     ICachingAllocatorPtr allocator,
     IStorageProviderPtr storageProvider,
@@ -23,6 +24,7 @@ IActorPtr CreateDiskAgent(
     return std::make_unique<TDiskAgentActor>(
         std::move(config),
         std::move(agentConfig),
+        std::move(rdmaConfig),
         std::move(spdk),
         std::move(allocator),
         std::move(storageProvider),

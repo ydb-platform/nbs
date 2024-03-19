@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -167,15 +168,9 @@ public:
     }
 };
 
-NRdma::TServerConfigPtr CreateRdmaServerConfig(
-    NStorage::TDiskAgentConfig& agent)
+NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
 {
-    const auto& target = agent.GetRdmaTarget();
-
-    if (target.HasServer()) {
-        return std::make_shared<NRdma::TServerConfig>(target.GetServer());
-    }
-    return std::make_shared<NRdma::TServerConfig>();
+    return std::make_shared<NRdma::TServerConfig>(config.GetServer());
 }
 
 }   // namespace
@@ -267,10 +262,10 @@ void TBootstrap::InitProfileLog()
     }
 }
 
-void TBootstrap::InitRdmaServer(NStorage::TDiskAgentConfig& config)
+void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
 {
     try {
-        if (config.HasRdmaTarget()) {
+        if (config.GetServerEnabled()) {
             RdmaServer = ServerModuleFactories->RdmaServerFactory(
                 Logging,
                 Monitoring,
@@ -321,6 +316,9 @@ void TBootstrap::InitKikimrService()
     }
 
     Configs->InitDiskAgentConfig();
+    // InitRdmaConfig should be called after InitDiskAgentConfig
+    // to backport legacy RDMA config
+    Configs->InitRdmaConfig();
 
     STORAGE_INFO("Configs initialized");
 
@@ -378,7 +376,9 @@ void TBootstrap::InitKikimrService()
                 break;
         }
 
-        InitRdmaServer(config);
+        if (Configs->RdmaConfig) {
+            InitRdmaServer(*Configs->RdmaConfig);
+        }
     }
 
     Allocator = CreateCachingAllocator(
@@ -409,6 +409,7 @@ void TBootstrap::InitKikimrService()
     args.AppConfig = Configs->KikimrConfig;
     args.StorageConfig = Configs->StorageConfig;
     args.DiskAgentConfig = Configs->DiskAgentConfig;
+    args.RdmaConfig = Configs->RdmaConfig;
     args.DiskRegistryProxyConfig = Configs->DiskRegistryProxyConfig;
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
