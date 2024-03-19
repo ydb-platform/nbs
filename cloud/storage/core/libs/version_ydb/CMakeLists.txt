@@ -1,7 +1,7 @@
 
 add_library(core-libs-version_ydb)
 
-target_link_libraries(version PUBLIC
+target_link_libraries(core-libs-version_ydb PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
