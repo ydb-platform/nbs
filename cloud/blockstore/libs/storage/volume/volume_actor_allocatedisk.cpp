@@ -219,8 +219,7 @@ void TVolumeActor::HandleAllocateDiskIfNeeded(
 void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 {
     if (State && !DiskAllocationScheduled) {
-        const auto mediaKind = State->GetConfig().GetStorageMediaKind();
-        if (!IsDiskRegistryMediaKind(mediaKind)) {
+        if (!State->IsDiskRegistryMediaKind()) {
             return;
         }
 

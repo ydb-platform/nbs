@@ -103,6 +103,8 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
+
     auto* msg = ev->Get();
 
     if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
@@ -145,7 +147,7 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 
     auto& info = State->GetPartitionStatInfos().front();
     if (!info.LastCounters) {
-        info.LastCounters = CreatePartitionDiskCounters(CountersPolicy);
+        info.LastCounters = CreatePartitionDiskCounters(State->CountersPolicy());
     }
 
     info.LastCounters->Add(*msg->DiskCounters);
@@ -155,9 +157,6 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
 
     TVolumeDatabase::TPartStats partStats;
     partStats.Stats = info.CachedCountersProto;
-
-    auto kind = State->GetConfig().GetStorageMediaKind();
-    Y_DEBUG_ABORT_UNLESS(IsDiskRegistryMediaKind(kind));
 
     ExecuteTx<TSavePartStats>(
         ctx,
@@ -171,6 +170,8 @@ void TVolumeActor::HandlePartCounters(
     const TEvStatsService::TEvVolumePartCounters::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(!State->IsDiskRegistryMediaKind());
+
     auto* msg = ev->Get();
 
     auto requestInfo = CreateRequestInfo(
@@ -190,7 +191,7 @@ void TVolumeActor::HandlePartCounters(
 
     auto& info = State->GetPartitionStatInfos()[index];
     if (!info.LastCounters) {
-        info.LastCounters = CreatePartitionDiskCounters(CountersPolicy);
+        info.LastCounters = CreatePartitionDiskCounters(State->CountersPolicy());
         info.LastMetrics = std::move(msg->BlobLoadMetrics);
     }
 
@@ -204,8 +205,6 @@ void TVolumeActor::HandlePartCounters(
 
     TVolumeDatabase::TPartStats partStats;
 
-    auto kind = State->GetConfig().GetStorageMediaKind();
-    Y_DEBUG_ABORT_UNLESS(!IsDiskRegistryMediaKind(kind));
     partStats.Id = State->GetPartitions()[index].TabletId;
     partStats.Stats = info.CachedCountersProto;
 
@@ -266,7 +265,7 @@ void TVolumeActor::CompleteSavePartStats(
 
 void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 {
-    auto stats = CreatePartitionDiskCounters(CountersPolicy);
+    auto stats = CreatePartitionDiskCounters(State->CountersPolicy());
     ui64 systemCpu = 0;
     ui64 userCpu = 0;
     // XXX - we need to "manually" calculate total channel history
@@ -384,7 +383,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         State->GetMeta().GetMigrations().size() == 0);
 
     SendVolumeSelfCounters(ctx);
-    VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);
+    VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
 }
 
 void TVolumeActor::HandleGetVolumeLoadInfo(

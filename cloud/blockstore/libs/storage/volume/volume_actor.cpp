@@ -153,6 +153,8 @@ void TVolumeActor::ReportTabletState(const TActorContext& ctx)
 
 void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(State);
+
     Y_UNUSED(ctx);
 
     if (!Counters) {
@@ -168,7 +170,7 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
     }
 
     if (!VolumeSelfCounters) {
-        VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);
+        VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
     }
 }
 
@@ -238,7 +240,6 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         "[%lu] Activated executor",
         TabletID());
 
-    RegisterCounters(ctx);
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower) {

@@ -248,7 +248,6 @@ private:
 
     bool ShuttingDown = false;
 
-    EPublishingPolicy CountersPolicy = EPublishingPolicy::All;
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
     struct TAcquireReleaseDiskRequest
