@@ -16,6 +16,8 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 
+#include <contrib/ydb/library/actors/core/mon.h>
+
 #include <util/folder/tempdir.h>
 
 #include <chrono>
@@ -55,6 +57,54 @@ TFsPath TryGetRamDrivePath()
         ? GetSystemTempDir()
         : p;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct THttpGetRequest: NMonitoring::IHttpRequest
+{
+    TCgiParameters CgiParameters;
+    THttpHeaders HttpHeaders;
+
+    const char* GetURI() const override
+    {
+        return "";
+    }
+
+    const char* GetPath() const override
+    {
+        return "";
+    }
+
+    const TCgiParameters& GetParams() const override
+    {
+        return CgiParameters;
+    }
+
+    const TCgiParameters& GetPostParams() const override
+    {
+        return CgiParameters;
+    }
+
+    TStringBuf GetPostContent() const override
+    {
+        return {};
+    }
+
+    HTTP_METHOD GetMethod() const override
+    {
+        return HTTP_METHOD_GET;
+    }
+
+    const THttpHeaders& GetHeaders() const override
+    {
+        return HttpHeaders;
+    }
+
+    TString GetRemoteAddr() const override
+    {
+        return {};
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -4078,15 +4128,26 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             ->MutablePathConfigs(0)
             ->SetPathRegExp(TempDir.Path() / "non-existent([0-9]{2})");
 
-        auto env = TTestEnvBuilder(Runtime)
-            .With(std::move(config))
-            .Build();
+        auto env = TTestEnvBuilder(Runtime).With(std::move(config)).Build();
 
         TDiskAgentClient diskAgent(Runtime);
         diskAgent.WaitReady();
 
-        Runtime.AdvanceCurrentTime(1min);
-        Runtime.DispatchEvents({}, 10ms);
+        THttpGetRequest httpRequest;
+        NMonitoring::TMonService2HttpRequest monService2HttpRequest{
+            nullptr,
+            &httpRequest,
+            nullptr,
+            nullptr,
+            "",
+            nullptr};
+
+        diskAgent.SendRequest(
+            MakeDiskAgentServiceId(),
+            std::make_unique<NMon::TEvHttpInfo>(monService2HttpRequest));
+
+        auto response = diskAgent.RecvResponse<NMon::TEvHttpInfoRes>();
+        UNIT_ASSERT_STRING_CONTAINS(response->Answer, "Unregistered (Idle)");
     }
 }
 
