@@ -69,3 +69,15 @@ message TGetDiskRegistryTabletInfoResponse
 {
     uint64 TabletId = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// DiskRegistrySetWritableState request/response.
+
+message TDiskRegistrySetWritableStateRequest
+{
+    bool State = 1;
+}
+
+message TDiskRegistrySetWritableStateResponse
+{
+}
