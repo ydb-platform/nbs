@@ -109,7 +109,7 @@ func (s *nodeService) NodeStageVolume(
 		ClientId:         s.clientID,
 		DeviceName:       req.VolumeId,
 		IpcType:          ipcType,
-		VhostQueuesCount: 8,
+		VhostQueuesCount: 160,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
 		Persistent:       true,
@@ -208,14 +208,17 @@ func (s *nodeService) nodePublishVolumeForFileSystem(
 	source := filepath.Join(s.podSocketsDir, req.VolumeId)
 	target := req.TargetPath
 
-	mnt := req.VolumeCapability.GetMount()
-	for _, flag := range mnt.MountFlags {
-		mountOptions = append(mountOptions, flag)
-	}
-
 	fsType := "ext4"
-	if mnt.FsType != "" {
-		fsType = mnt.FsType
+
+	mnt := req.VolumeCapability.GetMount()
+	if mnt != nil {
+		for _, flag := range mnt.MountFlags {
+			mountOptions = append(mountOptions, flag)
+		}
+
+		if mnt.FsType != "" {
+			fsType = mnt.FsType
+		}
 	}
 
 	return s.mount(source, target, fsType, mountOptions...)
