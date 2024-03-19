@@ -1904,7 +1904,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
             1);
-        volume.CreateCheckpoint("c1", false, true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::WITHOUT_DATA);
         volume.WriteBlocks(
             TBlockRange64::WithLength(0, 1024),
             clientInfo.GetClientId(),
@@ -2099,7 +2099,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2131,7 +2131,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::MakeClosedInterval(1022, 1023),
             clientInfo.GetClientId(),
             2);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         auto popCountStr = [](const TString& s) {
             ui64 count = 0;
@@ -2214,7 +2214,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),
             2);
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2239,7 +2239,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         // checkpoint creation should be idempotent
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2254,7 +2254,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
 
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2268,7 +2268,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         // checkpoint creation should be idempotent
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2281,7 +2281,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000010, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2311,7 +2311,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000000, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c4", true);
+        volume.CreateCheckpoint("c4", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2368,7 +2368,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
 
@@ -2385,7 +2385,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2399,7 +2399,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2453,20 +2453,20 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         volume.WriteBlocks(
             TBlockRange64::MakeOneBlock(0),
             clientInfo.GetClientId(),
             2);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
 
         volume.RebootTablet();
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
 
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2479,7 +2479,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c4", true);
+        volume.CreateCheckpoint("c4", NProto::ECheckpointType::LIGHT);
 
         // should not see changes earlier than checkpoint c3
         {
@@ -2537,12 +2537,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2624,12 +2624,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2642,7 +2642,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00000001, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2667,8 +2667,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         volume.RebootTablet();
 
-        volume.CreateCheckpoint("c1", true);
-        volume.CreateCheckpoint("c4", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
+        volume.CreateCheckpoint("c4", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2682,9 +2682,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c3", true);
-        volume.CreateCheckpoint("c5", true);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
+        volume.CreateCheckpoint("c5", NProto::ECheckpointType::LIGHT);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2734,11 +2734,11 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(1), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
@@ -2807,7 +2807,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(2), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c4", true);
+        volume.CreateCheckpoint("c4", NProto::ECheckpointType::LIGHT);
         {
             volume.SendGetChangedBlocksRequest(
                 TBlockRange64::MakeClosedInterval(0, 1023),
@@ -2818,7 +2818,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(3), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c5", true);
+        volume.CreateCheckpoint("c5", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2870,7 +2870,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(4), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c6", true);
+        volume.CreateCheckpoint("c6", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2884,7 +2884,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(5), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c7", true);
+        volume.CreateCheckpoint("c7", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -2934,10 +2934,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo);
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeOneBlock(0), clientInfo.GetClientId(), 2);
-        volume.CreateCheckpoint("c2", false);
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::NORMAL);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
 
         {
             volume.SendGetChangedBlocksRequest(
@@ -3021,7 +3021,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvGetChangedBlocksResponse()->GetStatus());
         }
 
-        volume.CreateCheckpoint("c1", true);
+        volume.CreateCheckpoint("c1", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1), clientInfo.GetClientId(), 1);
 
         {
@@ -3045,7 +3045,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c2", true);
+        volume.CreateCheckpoint("c2", NProto::ECheckpointType::LIGHT);
 
         {
             auto response = volume.GetChangedBlocks(
@@ -3092,7 +3092,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
-        volume.CreateCheckpoint("c3", true);
+        volume.CreateCheckpoint("c3", NProto::ECheckpointType::LIGHT);
         volume.WriteBlocks(TBlockRange64::MakeClosedInterval(0, 1), clientInfo.GetClientId(), 1);
 
         {
@@ -3174,7 +3174,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.AddClient(clientInfo);
 
         const TString checkpointId = "c1";
-        volume.CreateCheckpoint(checkpointId, true);
+        volume.CreateCheckpoint(checkpointId, NProto::ECheckpointType::LIGHT);
 
         {   // Validate checkpoint state (ready).
             auto status = volume.GetCheckpointStatus("c1");
