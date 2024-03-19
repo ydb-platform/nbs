@@ -323,7 +323,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT(!drState->WritableState);
 
-        NProto::TSetWritableStateRequest request;
+        NPrivateProto::TDiskRegistrySetWritableStateRequest request;
         request.SetState(true);
 
         TString buf;
