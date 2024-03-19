@@ -219,6 +219,33 @@ public:
     {}
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceConnectionFactory final
+    : public IDeviceConnectionFactory
+{
+private:
+    const ILoggingServicePtr Logging;
+    const TDuration Timeout;
+
+public:
+    TDeviceConnectionFactory(ILoggingServicePtr logging, TDuration timeout)
+        : Logging(std::move(logging))
+        , Timeout(std::move(timeout))
+    {}
+
+    IDeviceConnectionPtr Create(
+        TNetworkAddress connectAddress,
+        TString deviceName) override
+    {
+        return CreateDeviceConnection(
+            Logging,
+            std::move(connectAddress),
+            std::move(deviceName),
+            Timeout);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +266,15 @@ IDeviceConnectionPtr CreateDeviceConnection(
 IDeviceConnectionPtr CreateDeviceConnectionStub()
 {
     return std::make_shared<TDeviceConnectionStub>();
+}
+
+IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+    ILoggingServicePtr logging,
+    TDuration timeout)
+{
+    return std::make_shared<TDeviceConnectionFactory>(
+        std::move(logging),
+        std::move(timeout));
 }
 
 }   // namespace NCloud::NBlockStore::NBD
