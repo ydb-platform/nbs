@@ -189,7 +189,7 @@ void TVolumeState::Reset()
     UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
 
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
+    if (IsDiskRegistryMediaKind()) {
         if (Meta.GetDevices().size()) {
             PartitionStatInfos.emplace_back(
                 EPublishingPolicy::DiskRegistryBased);
@@ -295,6 +295,11 @@ void TVolumeState::FillDeviceInfo(NProto::TVolume& volume) const
         volume);
 }
 
+bool TVolumeState::IsDiskRegistryMediaKind() const
+{
+    return NCloud::IsDiskRegistryMediaKind(Config->GetStorageMediaKind());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
@@ -327,7 +332,7 @@ void TVolumeState::SetPartitionsState(TPartitionInfo::EState state)
 
 TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
 {
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
+    if (IsDiskRegistryMediaKind()) {
         ui64 bytes = 0;
         for (const auto& device: Meta.GetDevices()) {
             bytes += device.GetBlocksCount() * device.GetBlockSize();
@@ -809,6 +814,12 @@ void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+EPublishingPolicy TVolumeState::CountersPolicy() const
+{
+    return IsDiskRegistryMediaKind() ? EPublishingPolicy::DiskRegistryBased
+                                     : EPublishingPolicy::Repl;
+}
+
 bool TVolumeState::FindPartitionStatInfoByOwner(
     const TActorId& actorId,
     ui32& index) const
@@ -824,7 +835,7 @@ bool TVolumeState::FindPartitionStatInfoByOwner(
 
 TPartitionStatInfo* TVolumeState::GetPartitionStatInfoById(ui64 id)
 {
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
+    if (IsDiskRegistryMediaKind()) {
         if (id >= PartitionStatInfos.size()) {
             return nullptr;
         }

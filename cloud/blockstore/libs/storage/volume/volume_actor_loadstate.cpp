@@ -153,17 +153,10 @@ void TVolumeActor::CompleteLoadState(
             "[%lu] State initialization finished",
             TabletID());
 
+        RegisterCounters(ctx);
         RegisterVolume(ctx);
 
-        const bool isDiskRegistryBased =
-            IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind());
-        if (isDiskRegistryBased) {
-            CountersPolicy = EPublishingPolicy::DiskRegistryBased;
-        } else {
-            CountersPolicy = EPublishingPolicy::Repl;
-        }
-
-        if (isDiskRegistryBased || PendingRequests.size()) {
+        if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
         } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
             && !Config->GetDisableStartPartitionsForGc())

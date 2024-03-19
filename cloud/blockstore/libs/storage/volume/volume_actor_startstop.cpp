@@ -292,7 +292,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
 
 void TVolumeActor::RestartDiskRegistryBasedPartition(const TActorContext& ctx)
 {
-    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (!State->IsDiskRegistryMediaKind()) {
         return;
     }
 
@@ -314,7 +314,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
         SendBootExternalRequest(ctx, partition);
     }
 
-    if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (State->IsDiskRegistryMediaKind()) {
         SetupDiskRegistryBasedPartitions(ctx);
 
         if (State->Ready()) {

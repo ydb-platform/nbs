@@ -315,7 +315,7 @@ template <typename TMethod>
 NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
     typename TMethod::TRequest::ProtoRecordType& record) const
 {
-    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (!State->IsDiskRegistryMediaKind()) {
         return {};
     }
 
@@ -574,7 +574,7 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
-    if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (State->IsDiskRegistryMediaKind()) {
         if (State->GetMeta().GetDevices().empty()) {
             replyError(MakeError(E_REJECTED, TStringBuilder()
                 << "Storage not allocated for volume: "

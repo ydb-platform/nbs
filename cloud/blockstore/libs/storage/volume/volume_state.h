@@ -257,6 +257,8 @@ public:
 
     void FillDeviceInfo(NProto::TVolume& volume) const;
 
+    bool IsDiskRegistryMediaKind() const;
+
     //
     // Partitions
     //
@@ -316,6 +318,12 @@ public:
     {
         return NonreplicatedPartitionConfig;
     }
+
+    //
+    // PartitionStat
+    //
+
+    EPublishingPolicy CountersPolicy() const;
 
     bool FindPartitionStatInfoByOwner(const NActors::TActorId& actorId, ui32& index) const;
 
