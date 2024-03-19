@@ -153,6 +153,7 @@ void TVolumeActor::CompleteLoadState(
             "[%lu] State initialization finished",
             TabletID());
 
+        RegisterCounters(ctx);
         RegisterVolume(ctx);
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {

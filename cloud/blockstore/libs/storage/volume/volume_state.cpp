@@ -814,7 +814,8 @@ void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EPublishingPolicy TVolumeState::CountersPolicy() const {
+EPublishingPolicy TVolumeState::CountersPolicy() const
+{
     return IsDiskRegistryMediaKind() ? EPublishingPolicy::DiskRegistryBased
                                      : EPublishingPolicy::Repl;
 }

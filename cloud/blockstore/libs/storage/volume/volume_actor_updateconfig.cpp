@@ -342,6 +342,7 @@ void TVolumeActor::CompleteUpdateConfig(
         ));
 
         ResetThrottlingPolicy();
+        RegisterCounters(ctx);
         RegisterVolume(ctx);
     }
 
