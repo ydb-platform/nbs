@@ -143,6 +143,7 @@ private:
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
+    STFUNC(StateIdle);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,

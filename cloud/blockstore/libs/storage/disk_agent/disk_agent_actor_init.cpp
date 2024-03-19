@@ -117,6 +117,17 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
 
+    if (msg->Configs.empty()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "No devices: become idle");
+
+        Become(&TThis::StateIdle);
+
+        return;
+    }
+
     Become(&TThis::StateWork);
 
     SendRegisterRequest(ctx);

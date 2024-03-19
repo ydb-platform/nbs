@@ -29,10 +29,14 @@ void TDiskAgentActor::HandleHttpInfo(
     TStringStream out;
 
     HTML(out) {
-        if (RegistrationInProgress) {
-            DIV() { out << "Registration in progress"; }
+        if (CurrentStateFunc() == &TThis::StateIdle) {
+            DIV() { out << "Unregistered (Idle)"; }
         } else {
-            DIV() { out << "Registered"; }
+            if (RegistrationInProgress) {
+                DIV() { out << "Registration in progress"; }
+            } else {
+                DIV() { out << "Registered"; }
+            }
         }
 
         TAG(TH3) { out << "Devices"; }

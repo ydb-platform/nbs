@@ -182,11 +182,6 @@ void TDiskAgentActor::SendRegisterRequest(const TActorContext& ctx)
         return;
     }
 
-    if (State->GetDevicesCount() == 0) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT, "No devices to register");
-        return;
-    }
-
     RegistrationInProgress = true;
     NCloud::Send(
         ctx,
