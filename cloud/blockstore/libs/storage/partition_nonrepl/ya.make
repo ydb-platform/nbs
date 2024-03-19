@@ -71,8 +71,6 @@ PEERDIR(
     library/cpp/containers/ring_buffer
 
     ydb/core/base
-    ydb/core/testlib
-    ydb/core/testlib/basics
     library/cpp/actors/core
 )
 

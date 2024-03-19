@@ -9,6 +9,7 @@
 
 add_library(core-testlib-actors)
 target_link_libraries(core-testlib-actors PUBLIC
+  apps-version
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil

@@ -39,7 +39,6 @@ PEERDIR(
     library/cpp/actors/util
 
     ydb/core/base
-    ydb/core/driver_lib/run
     ydb/core/load_test
     ydb/core/mind
     ydb/core/mon

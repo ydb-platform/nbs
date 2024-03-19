@@ -9,6 +9,7 @@
 
 add_library(version)
 target_link_libraries(version PUBLIC
+  apps-version
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
