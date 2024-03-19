@@ -11,12 +11,11 @@
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
+#include <library/cpp/actors/core/mon.h>
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
-
-#include <contrib/ydb/library/actors/core/mon.h>
 
 #include <util/folder/tempdir.h>
 
