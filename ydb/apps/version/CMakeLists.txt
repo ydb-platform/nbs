@@ -5,6 +5,7 @@ target_link_libraries(version PUBLIC
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
+  ydb-core-driver_lib-version
 )
 
 target_sources(apps-version PRIVATE
