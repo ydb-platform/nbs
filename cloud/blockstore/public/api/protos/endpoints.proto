@@ -88,8 +88,13 @@ message TStartEndpointRequest
     // Restore endpoint after restart
     bool Persistent = 24;
 
-    // The device file (e.g. "/dev/nbd0") which nbd-client connected to.
-    string NbdDeviceFile = 25;
+    oneof NbdDevice {
+        // The device file (e.g. "/dev/nbd0") which nbd-client will connect to.
+        string NbdDeviceFile = 25;
+
+        // Use any free nbd device file which nbd-client will connect to.
+        bool UseFreeNbdDeviceFile = 26;
+    }
 }
 
 message TStartEndpointResponse
@@ -99,6 +104,9 @@ message TStartEndpointResponse
 
     // Volume information.
     TVolume Volume = 2;
+
+    // The device file (e.g. "/dev/nbd0") which nbd-client connected to.
+    string NbdDeviceFile = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

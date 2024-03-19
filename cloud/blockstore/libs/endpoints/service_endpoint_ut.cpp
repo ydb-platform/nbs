@@ -269,8 +269,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ ipcType, listener }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         NProto::TStartEndpointRequest request;
@@ -361,8 +361,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             sessionManager,
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         auto endpointService = CreateMultipleEndpointService(
@@ -566,8 +566,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -606,9 +606,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {}, // listeners
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            {},         // listeners
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -643,9 +643,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateEndpointEventProxy(),
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            {}, // listeners
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            {},         // listeners
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         endpointManager->RestoreEndpoints().Wait();
@@ -709,8 +709,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         auto restoreFuture = endpointManager->RestoreEndpoints();
@@ -787,8 +787,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         auto future = endpointManager->ListKeyrings(
@@ -942,8 +942,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         auto unixSocket = "testSocket";
@@ -1059,8 +1059,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             std::make_shared<TTestSessionManager>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
-            {}, // clientConfig
-            ""  // nbdSocketSuffix
+            nullptr,    // nbdDeviceFactory
+            {}          // options
         );
 
         endpointManager->Start();

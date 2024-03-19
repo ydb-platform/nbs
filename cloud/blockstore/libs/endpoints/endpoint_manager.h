@@ -2,11 +2,13 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
+#include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
@@ -39,6 +41,15 @@ struct IEndpointManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEndpointManagerOptions
+{
+    NProto::TClientConfig ClientConfig;
+    TString NbdSocketSuffix;
+    TString NbdDevicePrefix = "/dev/nbd";
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IEndpointManagerPtr CreateEndpointManager(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -51,8 +62,8 @@ IEndpointManagerPtr CreateEndpointManager(
     ISessionManagerPtr sessionManager,
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
-    NProto::TClientConfig clientConfig,
-    TString nbdSocketSuffix);
+    NBD::IDeviceConnectionFactoryPtr nbdDeviceFactory,
+    TEndpointManagerOptions options);
 
 bool AreSameStartEndpointRequests(
     const NProto::TStartEndpointRequest& left,

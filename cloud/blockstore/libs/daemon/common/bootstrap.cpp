@@ -39,6 +39,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -496,6 +497,11 @@ void TBootstrapBase::Init()
     }
     STORAGE_INFO("EndpointStorage initialized");
 
+    TEndpointManagerOptions endpointManagerOptions = {
+        .ClientConfig = Configs->EndpointConfig->GetClientConfig(),
+        .NbdSocketSuffix = Configs->ServerConfig->GetNbdSocketSuffix(),
+    };
+
     EndpointManager = CreateEndpointManager(
         Timer,
         Scheduler,
@@ -508,8 +514,8 @@ void TBootstrapBase::Init()
         std::move(sessionManager),
         std::move(endpointStorage),
         std::move(endpointListeners),
-        Configs->EndpointConfig->GetClientConfig(),
-        Configs->ServerConfig->GetNbdSocketSuffix());
+        NBD::CreateDeviceConnectionFactory(Logging, TDuration::Days(1)),
+        std::move(endpointManagerOptions));
 
     STORAGE_INFO("EndpointManager initialized");
 
