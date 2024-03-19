@@ -79,7 +79,6 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
-    contrib/ydb/core/testlib/basics
 )
 
 END()
