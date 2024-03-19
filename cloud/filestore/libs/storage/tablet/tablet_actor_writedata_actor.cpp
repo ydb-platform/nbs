@@ -127,9 +127,14 @@ void TWriteDataActor::ReplyAndDie(
     if (SkipBlobStorage) {
         NCloud::Send(
             ctx,
+            // We try to release commit barrier twice: once for the lock
+            // acquired at the GenerateBlob request and once for the lock
+            // acquired at the AddData request. Though, the first lock is
+            // scheduled to be released, it is better to release it as
             Tablet,
             std::make_unique<TEvIndexTabletPrivate::TEvReleaseCollectBarrier>(
-                CommitId));
+                CommitId,
+                2));
     } else {
         using TCompletion = TEvIndexTabletPrivate::TEvWriteDataCompleted;
         auto response = std::make_unique<TCompletion>(error);

@@ -481,9 +481,11 @@ void TIndexTabletActor::HandleReleaseCollectBarrier(
 {
     Y_UNUSED(ctx);
     auto commitId = ev->Get()->CommitId;
-    // allowMissing is set to true, because the barrier may already be released
-    // by a completed two-stage write operation
-    ReleaseCollectBarrier(commitId, true);
+    for (ui32 i = 0; i < ev->Get()->Count; ++i) {
+        // allowMissing is set to true, because the barrier may already be released
+        // by a completed two-stage write operation
+        ReleaseCollectBarrier(commitId, true);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

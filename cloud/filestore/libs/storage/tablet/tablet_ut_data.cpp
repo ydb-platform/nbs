@@ -3925,7 +3925,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletConfig);
         tablet.InitSession("client", "session");
 
-        auto createGarbage = [&]
+        auto moveBarrier = [&tablet, block]
         {
             auto node =
                 CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -3934,10 +3934,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tablet.Flush();
             tablet.DestroyHandle(handle);
             tablet.UnlinkNode(RootNodeId, "test", false);
-            tablet.Flush();
             tablet.CollectGarbage();
         };
-        createGarbage();
+        moveBarrier();
 
         ui64 lastCollectGarbage = 0;
         {
@@ -3954,26 +3953,114 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto blobs = tablet.GenerateBlobs(node, handle, 0, block);
         auto commitId = blobs->Record.GetCommitId();
 
-        createGarbage();
+        moveBarrier();
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_LE_C(
-                stats.GetLastCollectCommitId(),
-                commitId,
-                "commitId: " << commitId << ", stats.GetLastCollectCommitId(): "
-                             << stats.GetLastCollectCommitId());
+            UNIT_ASSERT_LE(stats.GetLastCollectCommitId(), commitId);
         }
 
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
 
-        createGarbage();
+        moveBarrier();
         // After the GenerateBlobsReleaseCollectBarrierTimeout has passed, we
         // can observe that the last collect garbage has moved beyond the commit
         // id of the issued blob.
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+
+        // Now we validate that the barrier is released even if the TX fails
+        TVector<NKikimr::TLogoBlobID> blobIds;
+
+        NProto::TError error;
+        error.SetCode(E_REJECTED);
+
+        auto filter = [&](auto& runtime, auto& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    using TResponse = TEvBlobStorage::TEvPutResult;
+                    auto* msg = event->template Get<TResponse>();
+                    if (msg->Id.Channel() >= TIndexTabletSchema::DataChannel) {
+                        blobIds.push_back(msg->Id);
+                    }
+                    return false;
+                }
+                case TEvIndexTabletPrivate::EvWriteBlobResponse: {
+                    using TResponse =
+                        TEvIndexTabletPrivate::TEvWriteBlobResponse;
+                    auto* msg = event->template Get<TResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+            }
+
+            return false;
+        };
+
+        env.GetRuntime().SetEventFilter(filter);
+
+        auto generateResult =
+            tablet.GenerateBlobs(node, handle, 0, block * BlockGroupSize);
+        commitId = generateResult->Record.GetCommitId();
+
+        // intercepted blob was successfully written to BlobStorage, yet the
+        // following operation is expected to fail
+        tablet.AssertWriteDataFailed(handle, 0, block * BlockGroupSize, 'x');
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // because we use handle + 1 instead of handle, it is expected that the
+        // handler will fail will fail
+        tablet.AssertAddDataFailed(
+            node,
+            handle + 1,
+            0,
+            block * BlockGroupSize,
+            blobIds,
+            commitId);
+
+        moveBarrier();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            // We expect that upon failre the barrier was released, thus moving
+            // the last collect garbage beyond the commit id of the issued blob
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+
+        node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+        handle = CreateHandle(tablet, node, "", TCreateHandleArgs::RDNLY);
+
+
+        // now we do the same thing, but expect HandleAddData to execute tx, yet
+        // the tx to fail
+        generateResult =
+            tablet.GenerateBlobs(node, handle, 0, block * BlockGroupSize);
+        commitId = generateResult->Record.GetCommitId();
+
+        tablet.AssertAddDataFailed(
+            node,
+            handle,
+            0,
+            block * BlockGroupSize,
+            blobIds,
+            commitId);
+
+        moveBarrier();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            // We expect that upon failre the barrier was released, thus moving
+            // the last collect garbage beyond the commit id of the issued blob
             UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
         }
     }

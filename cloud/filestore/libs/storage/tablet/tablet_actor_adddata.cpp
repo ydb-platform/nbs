@@ -94,11 +94,21 @@ void TIndexTabletActor::CompleteTx_AddData(
 {
     RemoveTransaction(*args.RequestInfo);
 
+    bool actorStarted = false;
+    Y_DEFER
+    {
+        // Same as in HandleAddData
+        if (!actorStarted) {
+            ReleaseCollectBarrier(args.CommitId);
+            ReleaseCollectBarrier(args.CommitId, true);
+        }
+    };
+
     auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TAddData& args)
     {
         auto response =
-            std::make_unique<TEvService::TEvWriteDataResponse>(args.Error);
-        CompleteResponse<TEvService::TWriteDataMethod>(
+            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(args.Error);
+        CompleteResponse<TEvIndexTablet::TAddDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
             ctx);
@@ -159,6 +169,7 @@ void TIndexTabletActor::CompleteTx_AddData(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+    actorStarted = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -237,7 +248,7 @@ void TIndexTabletActor::HandleGenerateBlobs(
     // collect barrier will be released eventually.
     ctx.Schedule(
         Config->GetGenerateBlobsReleaseCollectBarrierTimeout(),
-        new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId));
+        new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
     AcquireCollectBarrier(commitId);
 
     TByteRange range(
@@ -313,6 +324,19 @@ void TIndexTabletActor::HandleAddData(
     // We acquire the collect barrier for the second time in order to prolong an
     // already acquired lease.
     AcquireCollectBarrier(commitId);
+    bool txStarted = false;
+    Y_DEFER
+    {
+        // Until the tx is started, it is this method's responsibility to
+        // release the collect barrier
+        if (!txStarted) {
+            ReleaseCollectBarrier(commitId);
+            // The second one is used to release the barrier, acquired in
+            // GenerateBlobs method. Though it will be eventually released upon
+            // lease expiration, it is better to release it as soon as possible.
+            ReleaseCollectBarrier(commitId, true);
+        }
+    };
 
     const TByteRange range(
         msg->Record.GetOffset(),
@@ -384,6 +408,7 @@ void TIndexTabletActor::HandleAddData(
         range,
         msg->Record.GetCommitId(),
         std::move(blobIds));
+    txStarted = true;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

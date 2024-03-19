@@ -587,6 +587,7 @@ struct TEvIndexTabletPrivate
     struct TReleaseCollectBarrier
     {
         ui64 CommitId;
+        ui32 Count;
     };
 
     //
