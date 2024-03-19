@@ -2,14 +2,11 @@
 add_library(apps-version)
 
 target_link_libraries(version PUBLIC
-  core-driver_lib-version
+  ydb-core-driver_lib-version
   contrib-libs-linux-headers
   contrib-libs-cxxsupp
   yutil
-  contrib-libs-protobuf
-  cpp-actors-interconnect
   library-cpp-svnversion
-  ydb-core-protos
 )
 
 target_sources(apps-version PRIVATE
