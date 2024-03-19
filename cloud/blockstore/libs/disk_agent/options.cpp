@@ -24,6 +24,11 @@ TOptions::TOptions()
         .RequiredArgument("FILE")
         .StoreResult(&FeaturesConfig);
 
+    Opts.AddLongOption("rdma-file")
+        .RequiredArgument("FILE")
+        .DefaultValue("")
+        .StoreResult(&RdmaConfig);
+
     Opts.AddLongOption("syslog-service")
         .RequiredArgument("STR")
         .StoreResult(&SysLogService);

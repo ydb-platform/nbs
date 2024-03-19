@@ -293,4 +293,15 @@ void TServerAppConfig::DumpHtml(IOutputStream& out) const
 #undef BLOCKSTORE_CONFIG_DUMP
 }
 
+bool TServerAppConfig::DeprecatedGetRdmaClientEnabled() const
+{
+    return GetRdmaClientEnabled();
+}
+
+const NProto::TRdmaClient&
+TServerAppConfig::DeprecatedGetRdmaClientConfig() const
+{
+    return ServerConfig->GetRdmaClientConfig();
+}
+
 }   // namespace NCloud::NBlockStore::NServer

@@ -55,12 +55,17 @@ public:
         return Config.GetNvmeTarget();
     }
 
-    auto GetRdmaTarget()
+    auto GetRdmaEndpoint()
+    {
+        return Config.GetRdmaTarget().GetEndpoint();
+    }
+
+    auto DeprecatedGetRdmaTarget()
     {
         return Config.GetRdmaTarget();
     }
 
-    auto HasRdmaTarget()
+    auto DeprecatedHasRdmaTarget()
     {
         return Config.HasRdmaTarget();
     }

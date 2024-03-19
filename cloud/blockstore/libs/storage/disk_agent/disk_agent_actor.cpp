@@ -21,6 +21,7 @@ using namespace NKikimr;
 TDiskAgentActor::TDiskAgentActor(
         TStorageConfigPtr config,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -31,6 +32,7 @@ TDiskAgentActor::TDiskAgentActor(
         NNvme::INvmeManagerPtr nvmeManager)
     : Config(std::move(config))
     , AgentConfig(std::move(agentConfig))
+    , RdmaConfig(std::move(rdmaConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))

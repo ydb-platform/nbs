@@ -355,6 +355,7 @@ TTestEnv TTestEnvBuilder::Build()
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
+        nullptr,    // rdmaConfig
         Spdk,
         allocator,
         StorageProvider,

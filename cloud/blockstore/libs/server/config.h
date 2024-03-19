@@ -120,13 +120,17 @@ public:
     ui32 GetMaxReadIops() const;
     ui32 GetMaxWriteIops() const;
     TDuration GetMaxBurstTime() const;
-    bool GetRdmaClientEnabled() const;
+    bool DeprecatedGetRdmaClientEnabled() const;
+    const NProto::TRdmaClient& DeprecatedGetRdmaClientConfig() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
+
+private:
+    bool GetRdmaClientEnabled() const;
 };
 
 }   // namespace NCloud::NBlockStore::NServer
