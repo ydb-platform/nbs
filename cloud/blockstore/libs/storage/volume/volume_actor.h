@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -322,6 +323,8 @@ private:
     TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
 
     ui32 MultipartitionWriteAndZeroRequestsInProgress = 0;
+
+    ui64 DiskRegistryTabletId = 0;
 
     // requests in progress
     THashSet<NActors::TActorId> Actors;
@@ -644,6 +647,10 @@ private:
 
     void HandleUpdateShadowDiskStateRequest(
         const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDrTabletInfoResponse(
+        const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleTabletStatus(
