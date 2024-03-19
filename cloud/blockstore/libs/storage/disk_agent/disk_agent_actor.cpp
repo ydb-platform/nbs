@@ -259,4 +259,21 @@ STFUNC(TDiskAgentActor::StateWork)
     }
 }
 
+STFUNC(TDiskAgentActor::StateIdle)
+{
+    UpdateActorStatsSampled();
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
+
+        HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
+
+        BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskAgent)
+
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::DISK_AGENT);
+            break;
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
