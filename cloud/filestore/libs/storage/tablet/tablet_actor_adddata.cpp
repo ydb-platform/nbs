@@ -94,18 +94,11 @@ void TIndexTabletActor::CompleteTx_AddData(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    bool actorStarted = false;
-    Y_DEFER
-    {
-        // Same as in HandleAddData
-        if (!actorStarted) {
-            ReleaseCollectBarrier(args.CommitId);
-            ReleaseCollectBarrier(args.CommitId, true);
-        }
-    };
-
     auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TAddData& args)
     {
+        ReleaseCollectBarrier(args.CommitId);
+        ReleaseCollectBarrier(args.CommitId, true);
+
         auto response =
             std::make_unique<TEvIndexTablet::TEvAddDataResponse>(args.Error);
         CompleteResponse<TEvIndexTablet::TAddDataMethod>(
@@ -169,7 +162,6 @@ void TIndexTabletActor::CompleteTx_AddData(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
-    actorStarted = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

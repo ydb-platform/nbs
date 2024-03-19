@@ -130,7 +130,8 @@ void TWriteDataActor::ReplyAndDie(
             // We try to release commit barrier twice: once for the lock
             // acquired at the GenerateBlob request and once for the lock
             // acquired at the AddData request. Though, the first lock is
-            // scheduled to be released, it is better to release it as
+            // scheduled to be released, it is better to release it as early as
+            // possible.
             Tablet,
             std::make_unique<TEvIndexTabletPrivate::TEvReleaseCollectBarrier>(
                 CommitId,
