@@ -130,6 +130,17 @@ func (s *nodeService) NodeStageVolume(
 		return nil, err
 	}
 
+	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
+	// "If the disk.img image file has not been created manually before starting a VM
+	// then it will be created automatically with the PersistentVolumeClaim size."
+	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
+	diskImgPath := filepath.Join(endpointDir, "disk.img")
+	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0660)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to create disk.img: %+v", err)
+	}
+	file.Close()
+
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
