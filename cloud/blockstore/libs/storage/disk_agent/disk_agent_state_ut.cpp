@@ -152,6 +152,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
     return std::make_unique<TDiskAgentState>(
         CreateStorageConfig(),
         std::move(config),
+        nullptr,    // rdmaConfig
         NSpdk::CreateEnvStub(),
         CreateTestAllocator(),
         nullptr,   // storageProvider
@@ -341,6 +342,7 @@ struct TFiles
         return std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             std::move(config),
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -510,6 +512,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -721,6 +724,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 TDiskAgentState state(
                     CreateStorageConfig(),
                     config,
+                    nullptr,    // rdmaConfig
                     nullptr,    // spdk
                     CreateTestAllocator(),
                     std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -791,6 +795,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack"),
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -1210,6 +1215,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TDiskAgentState state(
             CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1367,6 +1373,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1446,6 +1453,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto state = std::make_unique<TDiskAgentState>(
             CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1525,6 +1533,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     .DiscoveryConfig = discoveryConfig,
                     .CachedConfigPath = CachedConfigPath
                 }),
+                nullptr,    // rdmaConfig
                 nullptr,    // spdk
                 CreateTestAllocator(),
                 std::make_shared<TTestStorageProvider>(storageState),

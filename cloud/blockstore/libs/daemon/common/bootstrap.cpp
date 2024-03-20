@@ -628,6 +628,9 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitEndpointConfig();
     Configs->InitHostPerformanceProfile();
     Configs->InitDiskAgentConfig();
+    // InitRdmaConfig should be called after InitDiskAgentConfig and
+    // InitServerConfig to backport legacy RDMA config
+    Configs->InitRdmaConfig();
     Configs->InitDiskRegistryProxyConfig();
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();

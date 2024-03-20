@@ -17,6 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 NActors::IActorPtr CreateDiskAgent(
     TStorageConfigPtr config,
     TDiskAgentConfigPtr agentConfig,
+    NRdma::TRdmaConfigPtr rdmaConfig,
     NSpdk::ISpdkEnvPtr spdk,
     ICachingAllocatorPtr allocator,
     IStorageProviderPtr storageProvider,

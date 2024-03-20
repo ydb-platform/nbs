@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     client.cpp
+    config.cpp
     probes.cpp
     protobuf.cpp
     protocol.cpp

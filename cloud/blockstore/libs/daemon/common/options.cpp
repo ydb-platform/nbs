@@ -47,6 +47,11 @@ TOptionsCommon::TOptionsCommon()
         .RequiredArgument("FILE")
         .StoreResult(&DiscoveryConfig);
 
+    Opts.AddLongOption("rdma-file")
+        .RequiredArgument("FILE")
+        .DefaultValue("")
+        .StoreResult(&RdmaConfig);
+
     Opts.AddLongOption("temporary-server", "run temporary server for blue-green deployment")
         .NoArgument()
         .StoreTrue(&TemporaryServer);

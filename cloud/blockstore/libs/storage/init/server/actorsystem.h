@@ -41,6 +41,7 @@ struct TServerActorSystemArgs
     TDiagnosticsConfigPtr DiagnosticsConfig;
     TStorageConfigPtr StorageConfig;
     TDiskAgentConfigPtr DiskAgentConfig;
+    NRdma::TRdmaConfigPtr RdmaConfig;
     TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
 
     ILoggingServicePtr Logging;

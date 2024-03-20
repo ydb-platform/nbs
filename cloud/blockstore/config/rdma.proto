@@ -43,3 +43,14 @@ message TRdmaTarget
     TRdmaEndpoint Endpoint = 1;
     TRdmaServer Server = 2;
 }
+
+message TRdmaConfig
+{
+    bool ClientEnabled = 1;
+
+    TRdmaClient Client = 2;
+
+    bool ServerEnabled = 3;
+
+    TRdmaServer Server = 4;
+}

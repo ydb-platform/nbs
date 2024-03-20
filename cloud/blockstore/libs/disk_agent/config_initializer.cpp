@@ -3,6 +3,7 @@
 #include "options.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -202,6 +203,25 @@ void TConfigInitializer::InitFeaturesConfig()
 
     FeaturesConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig);
+}
+
+void TConfigInitializer::InitRdmaConfig()
+{
+    NProto::TRdmaConfig rdmaConfig;
+
+    if (Options->RdmaConfig) {
+        ParseProtoTextFromFileRobust(Options->RdmaConfig, rdmaConfig);
+    } else {
+        // no rdma config file is given fallback to legacy config
+        if (DiskAgentConfig->DeprecatedHasRdmaTarget()) {
+            rdmaConfig.SetServerEnabled(true);
+            const auto& rdmaTarget = DiskAgentConfig->DeprecatedGetRdmaTarget();
+            rdmaConfig.MutableServer()->CopyFrom(rdmaTarget.GetServer());
+        }
+    }
+
+    RdmaConfig =
+        std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
 
 NKikimrConfig::TLogConfig TConfigInitializer::GetLogConfig() const

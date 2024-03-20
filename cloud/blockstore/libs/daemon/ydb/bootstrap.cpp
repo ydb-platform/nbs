@@ -26,6 +26,7 @@
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/service_auth.h>
@@ -80,15 +81,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::TClientConfigPtr CreateRdmaClientConfig(const TServerAppConfigPtr app)
+NRdma::TClientConfigPtr CreateRdmaClientConfig(
+    const NRdma::TRdmaConfigPtr config)
 {
-    const auto& server = app->GetServerConfig();
-
-    if (server->HasRdmaClientConfig()) {
-        return std::make_shared<NRdma::TClientConfig>(server->GetRdmaClientConfig());
-    };
-
-    return std::make_shared<NRdma::TClientConfig>();
+    return std::make_shared<NRdma::TClientConfig>(config->GetClient());
 }
 
 }   // namespace
@@ -183,11 +179,11 @@ void TBootstrapYdb::InitSpdk()
 void TBootstrapYdb::InitRdmaClient()
 {
     try {
-        if (Configs->ServerConfig->GetRdmaClientEnabled()) {
+        if (Configs->RdmaConfig->GetClientEnabled()) {
             RdmaClient = ServerModuleFactories->RdmaClientFactory(
                 Logging,
                 Monitoring,
-                CreateRdmaClientConfig(Configs->ServerConfig));
+                CreateRdmaClientConfig(Configs->RdmaConfig));
 
             STORAGE_INFO("RDMA client initialized");
         }
@@ -243,6 +239,9 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     Configs->InitDiskAgentConfig();
+    // InitRdmaConfig should be called after InitDiskAgentConfig and
+    // InitServerConfig to backport legacy RDMA config
+    Configs->InitRdmaConfig();
 
     STORAGE_INFO("Configs initialized");
 
@@ -495,6 +494,7 @@ void TBootstrapYdb::InitKikimrService()
     args.DiagnosticsConfig = Configs->DiagnosticsConfig;
     args.StorageConfig = Configs->StorageConfig;
     args.DiskAgentConfig = Configs->DiskAgentConfig;
+    args.RdmaConfig = Configs->RdmaConfig;
     args.DiskRegistryProxyConfig = Configs->DiskRegistryProxyConfig;
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;

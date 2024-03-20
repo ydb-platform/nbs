@@ -93,7 +93,7 @@ private:
     void InitProfileLog();
     void InitKikimrService();
 
-    void InitRdmaServer(NStorage::TDiskAgentConfig& config);
+    void InitRdmaServer(NRdma::TRdmaConfig& config);
 };
 
 }   // namespace NCloud::NBlockStore::NServer

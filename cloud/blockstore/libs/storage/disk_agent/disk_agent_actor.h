@@ -45,6 +45,7 @@ class TDiskAgentActor final
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
+    const NRdma::TRdmaConfigPtr RdmaConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -78,6 +79,7 @@ public:
     TDiskAgentActor(
         TStorageConfigPtr config,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
