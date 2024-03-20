@@ -17,4 +17,6 @@ RECURSE(
     uds
     user_stats
     version
+    version_ydb
+    vhost-client
 )

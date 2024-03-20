@@ -30,6 +30,7 @@ PEERDIR(
     ydb/core/tx/coordinator
     ydb/core/tx/mediator
     ydb/core/tx/schemeshard
+    ydb/library/keys
 )
 
 END()
