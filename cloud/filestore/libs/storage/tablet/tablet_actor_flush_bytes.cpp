@@ -829,7 +829,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    ReleaseCollectBarrier(msg->CollectCommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
     WorkerActors.erase(ev->Sender);
 
     auto requestInfo = CreateRequestInfo(

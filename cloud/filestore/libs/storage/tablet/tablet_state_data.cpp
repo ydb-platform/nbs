@@ -921,9 +921,10 @@ void TIndexTabletState::AcquireCollectBarrier(ui64 commitId)
     Impl->GarbageQueue.AcquireCollectBarrier(commitId);
 }
 
-void TIndexTabletState::ReleaseCollectBarrier(ui64 commitId)
+// returns true if the barrier was present
+bool TIndexTabletState::TryReleaseCollectBarrier(ui64 commitId)
 {
-    Impl->GarbageQueue.ReleaseCollectBarrier(commitId);
+    return Impl->GarbageQueue.TryReleaseCollectBarrier(commitId);
 }
 
 ui64 TIndexTabletState::GetCollectCommitId() const

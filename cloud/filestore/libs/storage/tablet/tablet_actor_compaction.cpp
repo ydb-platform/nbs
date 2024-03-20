@@ -664,7 +664,7 @@ void TIndexTabletActor::HandleCompactionCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     BlobIndexOpState.Complete();
     EnqueueBlobIndexOpIfNeeded(ctx);
