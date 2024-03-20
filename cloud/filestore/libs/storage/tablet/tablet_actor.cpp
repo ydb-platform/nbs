@@ -3,7 +3,6 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
-
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -354,6 +353,12 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
 
     return NProto::TError{};
 }
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
+    const TActorContext& ctx,
+    const NProto::TWriteDataRequest& request,
+    const TByteRange& range);
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -149,8 +149,6 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 {
     const auto* msg = ev->Get();
 
-
-
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     WorkerActors.erase(ev->Sender);
