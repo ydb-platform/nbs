@@ -68,7 +68,7 @@ protected:
     NSpdk::ISpdkEnvPtr Spdk;
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr AioStorageProvider;
-    IEndpointServicePtr EndpointService;
+    IEndpointManagerPtr EndpointManager;
     IEndpointEventProxyPtr EndpointEventHandler;
     NRdma::IServerPtr RdmaServer;
     NRdma::IClientPtr RdmaClient;

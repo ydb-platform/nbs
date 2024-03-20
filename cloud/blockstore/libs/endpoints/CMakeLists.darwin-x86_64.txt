@@ -17,6 +17,7 @@ target_link_libraries(blockstore-libs-endpoints PUBLIC
   blockstore-libs-common
   blockstore-libs-diagnostics
   blockstore-libs-encryption
+  blockstore-libs-nbd
   blockstore-libs-service
   blockstore-libs-validation
   core-libs-coroutine
