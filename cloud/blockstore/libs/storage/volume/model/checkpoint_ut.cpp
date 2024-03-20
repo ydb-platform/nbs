@@ -710,7 +710,11 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             store.SetCheckpointRequestSaved(request.RequestId);
             store.SetCheckpointRequestInProgress(request.RequestId);
             bool success = validityStatus != ECheckpointRequestValidityStatus::Invalid;
-            store.SetCheckpointRequestFinished(request.RequestId, success, "");
+            store.SetCheckpointRequestFinished(
+                request.RequestId,
+                success,
+                TString(),   // ShadowDiskId
+                EShadowDiskState::None);
         };
 
         struct Step {
