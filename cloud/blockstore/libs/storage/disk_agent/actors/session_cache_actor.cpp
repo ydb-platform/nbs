@@ -123,13 +123,8 @@ private:
 
         auto* msg = ev->Get();
 
-        const auto now = ctx.Now();
-        const auto deadline = now - ReleaseInactiveSessionsTimeout;
-        Y_DEBUG_ABORT_UNLESS(
-            deadline,
-            "%s - %s",
-            ToString(now).c_str(),
-            ToString(ReleaseInactiveSessionsTimeout).c_str());
+        const auto deadline = ctx.Now() - ReleaseInactiveSessionsTimeout;
+        Y_DEBUG_ABORT_UNLESS(deadline);
 
         SaveSessionCache(CachePath, msg->Sessions, deadline);
 

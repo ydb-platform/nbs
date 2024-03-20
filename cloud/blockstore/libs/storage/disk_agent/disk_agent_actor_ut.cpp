@@ -62,7 +62,9 @@ struct TFixture
     : public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
-    const TString CachedSessionsPath = TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TString CachedSessionsPath =
+        TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TDuration ReleaseInactiveSessionsTimeout = 10s;
 
     TTestBasicRuntime Runtime;
     NMonitoring::TDynamicCountersPtr Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
@@ -92,6 +94,8 @@ struct TFixture
         config.SetCachedSessionsPath(CachedSessionsPath);
         config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         config.SetAcquireRequired(true);
+        config.SetReleaseInactiveSessionsTimeout(
+            ReleaseInactiveSessionsTimeout.MilliSeconds());
 
         return config;
     }
@@ -3916,6 +3920,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "e85cd1d217c3239507fc0cd180a075fd"
         };
 
+        const auto initialTs = Now();
+
         {
             NProto::TDiskAgentDeviceSessionCache cache;
             auto& writeSession = *cache.AddSessions();
@@ -3926,6 +3932,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             writeSession.SetMountSeqNumber(42);
             writeSession.SetDiskId("vol0");
             writeSession.SetVolumeGeneration(1000);
+            writeSession.SetLastActivityTs(initialTs.MicroSeconds());
 
             auto& reader1 = *cache.AddSessions();
             reader1.SetClientId("reader-1");
@@ -3934,6 +3941,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             reader1.SetReadOnly(true);
             reader1.SetDiskId("vol0");
             reader1.SetVolumeGeneration(1000);
+            reader1.SetLastActivityTs(initialTs.MicroSeconds());
 
             auto& reader2 = *cache.AddSessions();
             reader2.SetClientId("reader-2");
@@ -3942,6 +3950,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             reader2.SetReadOnly(true);
             reader2.SetDiskId("vol1");
             reader2.SetVolumeGeneration(2000);
+            reader2.SetLastActivityTs(initialTs.MicroSeconds());
 
             SerializeToTextFormat(cache, CachedSessionsPath);
         }
@@ -3955,6 +3964,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto env = TTestEnvBuilder(Runtime)
             .With(CreateDiskAgentConfig())
             .Build();
+
+        Runtime.UpdateCurrentTime(initialTs + 3s);
 
         TDiskAgentClient diskAgent(Runtime);
         diskAgent.WaitReady();
@@ -4016,10 +4027,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
-        // advance current time to make all sessions stale
-        Runtime.AdvanceCurrentTime(15s);
+        // make all sessions stale
+        Runtime.AdvanceCurrentTime(ReleaseInactiveSessionsTimeout);
 
-        // Acquiring of writer-1 should trigger an update of the session cache
         const auto acquireTs = Runtime.GetCurrentTime();
 
         diskAgent.AcquireDevices(
