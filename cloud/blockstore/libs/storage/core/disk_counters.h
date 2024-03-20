@@ -85,6 +85,7 @@ enum class EPublishingPolicy
     xxx(TrimFreshLog,                                              __VA_ARGS__)\
     xxx(AddConfirmedBlobs,                                         __VA_ARGS__)\
     xxx(AddUnconfirmedBlobs,                                       __VA_ARGS__)\
+    xxx(ConfirmBlobs,                                              __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
 
 #define BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(xxx, ...)                   \
