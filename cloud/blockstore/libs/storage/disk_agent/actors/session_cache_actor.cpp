@@ -24,15 +24,16 @@ namespace {
 
 NProto::TError SaveSessionCache(
     const TString& path,
-    const TVector<NProto::TDiskAgentDeviceSession>& sessions)
+    const TVector<NProto::TDiskAgentDeviceSession>& sessions,
+    TInstant deadline)
 {
     try {
         NProto::TDiskAgentDeviceSessionCache proto;
         proto.MutableSessions()->Reserve(static_cast<int>(sessions.size()));
 
-        // saving only updated sessions
+        // saving only active sessions
         for (const auto& session: sessions) {
-            if (session.GetLastActivityTs()) {
+            if (session.GetLastActivityTs() > deadline.MicroSeconds()) {
                 *proto.MutableSessions()->Add() = session;
             }
         }
@@ -62,10 +63,14 @@ class TSessionCacheActor: public TActorBootstrapped<TSessionCacheActor>
 {
 private:
     const TString CachePath;
+    const TDuration ReleaseInactiveSessionsTimeout;
 
 public:
-    explicit TSessionCacheActor(TString cachePath)
+    TSessionCacheActor(
+        TString cachePath,
+        TDuration releaseInactiveSessionsTimeout)
         : CachePath{std::move(cachePath)}
+        , ReleaseInactiveSessionsTimeout{releaseInactiveSessionsTimeout}
     {
         ActivityType = TBlockStoreComponents::DISK_AGENT_WORKER;
     }
@@ -118,7 +123,15 @@ private:
 
         auto* msg = ev->Get();
 
-        SaveSessionCache(CachePath, msg->Sessions);
+        const auto now = ctx.Now();
+        const auto deadline = now - ReleaseInactiveSessionsTimeout;
+        Y_DEBUG_ABORT_UNLESS(
+            deadline,
+            "%s - %s",
+            ToString(now).c_str(),
+            ToString(ReleaseInactiveSessionsTimeout).c_str());
+
+        SaveSessionCache(CachePath, msg->Sessions, deadline);
 
         NCloud::Reply(
             ctx,
@@ -132,9 +145,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<IActor> CreateSessionCacheActor(TString cachePath)
+std::unique_ptr<IActor> CreateSessionCacheActor(
+    TString cachePath,
+    TDuration releaseInactiveSessionsTimeout)
 {
-    return std::make_unique<TSessionCacheActor>(std::move(cachePath));
+    return std::make_unique<TSessionCacheActor>(
+        std::move(cachePath),
+        releaseInactiveSessionsTimeout);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

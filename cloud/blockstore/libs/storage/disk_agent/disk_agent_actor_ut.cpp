@@ -18,6 +18,8 @@
 
 #include <util/folder/tempdir.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -26,6 +28,8 @@ using namespace NServer;
 using namespace NThreading;
 
 using namespace NDiskAgentTest;
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -3754,6 +3758,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto env =
             TTestEnvBuilder(Runtime).With(CreateDiskAgentConfig()).Build();
 
+        Runtime.AdvanceCurrentTime(1h);
+
         TDiskAgentClient diskAgent(Runtime);
         diskAgent.WaitReady();
 
@@ -3860,6 +3866,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 UNIT_ASSERT(!session.GetReadOnly());
             }
         }
+
+        Runtime.AdvanceCurrentTime(5s);
 
         diskAgent.ReleaseDevices(
             TVector{devices[0], devices[1]},
@@ -4007,6 +4015,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             auto error = Read(diskAgent, "reader-2", devices[3]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
         }
+
+        // advance current time to make all sessions stale
+        Runtime.AdvanceCurrentTime(15s);
 
         // Acquiring of writer-1 should trigger an update of the session cache
         const auto acquireTs = Runtime.GetCurrentTime();

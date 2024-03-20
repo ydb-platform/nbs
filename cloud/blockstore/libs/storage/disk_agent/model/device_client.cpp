@@ -156,8 +156,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
-            // a new session or an update of a recently restored session
-            if (s == ds.ReaderSessions.end() || !s->LastActivityTs) {
+            // a new session or activation of a stale session
+            if (s == ds.ReaderSessions.end() ||
+                s->LastActivityTs + ReleaseInactiveSessionsTimeout <= now)
+            {
                 somethingHasChanged = true;
             }
 
@@ -184,8 +186,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
-            if (ds.WriterSession.MountSeqNumber != mountSeqNumber
-                || !ds.WriterSession.LastActivityTs)
+            if (ds.WriterSession.MountSeqNumber != mountSeqNumber ||
+                ds.WriterSession.LastActivityTs +
+                        ReleaseInactiveSessionsTimeout <=
+                    now)
             {
                 somethingHasChanged = true;
             }

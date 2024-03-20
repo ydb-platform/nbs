@@ -11,6 +11,8 @@ namespace NCloud::NBlockStore::NStorage::NDiskAgent {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<NActors::IActor> CreateSessionCacheActor(TString cachePath);
+std::unique_ptr<NActors::IActor> CreateSessionCacheActor(
+    TString cachePath,
+    TDuration releaseInactiveSessionsTimeout);
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskAgent

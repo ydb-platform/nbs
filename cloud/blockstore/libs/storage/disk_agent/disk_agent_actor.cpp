@@ -131,7 +131,9 @@ void TDiskAgentActor::RunSessionCacheActor(const TActorContext& ctx)
         return;
     }
 
-    auto actor = NDiskAgent::CreateSessionCacheActor(std::move(path));
+    auto actor = NDiskAgent::CreateSessionCacheActor(
+        std::move(path),
+        AgentConfig->GetReleaseInactiveSessionsTimeout());
 
     // Starting SessionCacheActor on the IO pool to avoid file operations in the
     // User pool

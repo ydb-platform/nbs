@@ -865,8 +865,7 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             const auto [_, error] = client.AcquireDevices(
                 uuids,
                 session.GetClientId(),
-                TInstant::Zero(),   // zero means that this session has been
-                                    // restored from the cache
+                TInstant::MicroSeconds(session.GetLastActivityTs()),
                 session.GetReadOnly() ? NProto::VOLUME_ACCESS_READ_ONLY
                                       : NProto::VOLUME_ACCESS_READ_WRITE,
                 session.GetMountSeqNumber(),

@@ -41,6 +41,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     const TTempDir TempDir;
     const TString CachedSessionsPath =
         TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TDuration ReleaseInactiveSessionsTimeout = 10s;
 
     TActorSystem ActorSystem;
     TActorId SessionCacheActor;
@@ -52,8 +53,11 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         EdgeActor = ActorSystem.AllocateEdgeActor();
 
-        SessionCacheActor = ActorSystem.Register(
-            CreateSessionCacheActor(CachedSessionsPath).release());
+        SessionCacheActor =
+            ActorSystem.Register(CreateSessionCacheActor(
+                                     CachedSessionsPath,
+                                     ReleaseInactiveSessionsTimeout)
+                                     .release());
 
         ActorSystem.DispatchEvents(
             {.FinalEvents = {{TEvents::TSystem::Bootstrap}}},
@@ -101,21 +105,27 @@ Y_UNIT_TEST_SUITE(TSessionCacheActorTest)
     {
         UNIT_ASSERT(!NFs::Exists(CachedSessionsPath));
 
+        ActorSystem.AdvanceCurrentTime(1h);
+
         UpdateSessionCache({});
 
         UNIT_ASSERT(NFs::Exists(CachedSessionsPath));
         UNIT_ASSERT(LoadSessionCache().empty());
 
+        const auto updateTs1 = ActorSystem.GetCurrentTime();
+
         {
             NProto::TDiskAgentDeviceSession writer;
             writer.SetClientId("client-1");
             writer.SetDiskId("vol0");
+            writer.SetLastActivityTs(
+                (updateTs1 - ReleaseInactiveSessionsTimeout).MicroSeconds());
 
             NProto::TDiskAgentDeviceSession reader;
             reader.SetClientId("client-2");
             reader.SetReadOnly(true);
             reader.SetDiskId("vol0");
-            reader.SetLastActivityTs(42);
+            reader.SetLastActivityTs(updateTs1.MicroSeconds());
 
             UpdateSessionCache({writer, reader});
         }
@@ -123,23 +133,29 @@ Y_UNIT_TEST_SUITE(TSessionCacheActorTest)
         {
             auto sessions = LoadSessionCache();
 
-            // writer was dropped because of LastActivityTs == 0
+            // writer session was dropped because it was stale
             UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
             UNIT_ASSERT_VALUES_EQUAL("client-2", sessions[0].GetClientId());
-            UNIT_ASSERT_VALUES_EQUAL(42, sessions[0].GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                updateTs1.MicroSeconds(),
+                sessions[0].GetLastActivityTs());
         }
+
+        ActorSystem.AdvanceCurrentTime(3s);
+
+        const auto updateTs2 = ActorSystem.GetCurrentTime();
 
         {
             NProto::TDiskAgentDeviceSession writer;
             writer.SetClientId("client-1");
             writer.SetDiskId("vol0");
-            writer.SetLastActivityTs(1000);
+            writer.SetLastActivityTs(updateTs2.MicroSeconds());
 
             NProto::TDiskAgentDeviceSession reader;
             reader.SetClientId("client-2");
             reader.SetReadOnly(true);
             reader.SetDiskId("vol0");
-            reader.SetLastActivityTs(2000);
+            reader.SetLastActivityTs(updateTs2.MicroSeconds());
 
             UpdateSessionCache({writer, reader});
         }
@@ -151,10 +167,14 @@ Y_UNIT_TEST_SUITE(TSessionCacheActorTest)
             SortBy(sessions, [](auto& s) { return s.GetClientId(); });
 
             UNIT_ASSERT_VALUES_EQUAL("client-1", sessions[0].GetClientId());
-            UNIT_ASSERT_VALUES_EQUAL(1000, sessions[0].GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                updateTs2.MicroSeconds(),
+                sessions[0].GetLastActivityTs());
 
             UNIT_ASSERT_VALUES_EQUAL("client-2", sessions[1].GetClientId());
-            UNIT_ASSERT_VALUES_EQUAL(2000, sessions[1].GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                updateTs2.MicroSeconds(),
+                sessions[1].GetLastActivityTs());
         }
 
         UpdateSessionCache({});
