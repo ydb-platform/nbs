@@ -373,15 +373,12 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const TVolumeDatabase::TPartStats PartStats;
-        const bool IsReplicatedVolume;
 
         TSavePartStats(
                 TRequestInfoPtr requestInfo,
-                TVolumeDatabase::TPartStats partStats,
-                bool isReplicatedVolume)
+                TVolumeDatabase::TPartStats partStats)
             : RequestInfo(std::move(requestInfo))
             , PartStats(std::move(partStats))
-            , IsReplicatedVolume(isReplicatedVolume)
         {}
 
         void Clear()

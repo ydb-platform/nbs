@@ -503,7 +503,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
             for (ui32 i = 0; i < 2; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].Id);
+                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].TabletId);
                 const auto& stat = stats[i].Stats;
                 UNIT_ASSERT_VALUES_EQUAL(1 * i, stat.GetMixedBytesCount());
                 UNIT_ASSERT_VALUES_EQUAL(2 * i, stat.GetMergedBytesCount());
@@ -552,7 +552,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
             for (ui32 i = 0; i < 2; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].Id);
+                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].TabletId);
                 const auto& stat = stats[i].Stats;
                 UNIT_ASSERT_VALUES_EQUAL(1 * i, stat.GetMixedBytesCount());
                 UNIT_ASSERT_VALUES_EQUAL(2 * i, stat.GetMergedBytesCount());
