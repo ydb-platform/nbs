@@ -44,4 +44,120 @@ void MergeStripedBitMask(
     }
 }
 
+void MergeDescribeBlocksResponse(
+    NProto::TDescribeBlocksResponse& src,
+    NProto::TDescribeBlocksResponse& dst,
+    const ui32 blocksPerStripe,
+    const ui32 blockSize,
+    const ui32 partitionsCount,
+    const ui32 partitionId)
+{
+    for (const auto& freshBlockRange: src.GetFreshBlockRanges()) {
+        SplitFreshBlockRangeFromRelativeToGlobalIndices(
+            freshBlockRange,
+            blocksPerStripe,
+            blockSize,
+            partitionsCount,
+            partitionId,
+            &dst);
+    }
+
+    const auto& srcBlobPieces = src.GetBlobPieces();
+
+    for (const auto& blobPiece: srcBlobPieces) {
+        NProto::TBlobPiece dstBlobPiece;
+        dstBlobPiece.MutableBlobId()->CopyFrom(blobPiece.GetBlobId());
+        dstBlobPiece.SetBSGroupId(blobPiece.GetBSGroupId());
+
+        for (const auto& srcRange: blobPiece.GetRanges()) {
+            SplitBlobPieceRangeFromRelativeToGlobalIndices(
+                srcRange,
+                blocksPerStripe,
+                partitionsCount,
+                partitionId,
+                &dstBlobPiece);
+        }
+        dst.MutableBlobPieces()->Add(std::move(dstBlobPiece));
+    }
+}
+
+void SplitFreshBlockRangeFromRelativeToGlobalIndices(
+    const NProto::TFreshBlockRange& srcRange,
+    const ui32 blocksPerStripe,
+    const ui32 blockSize,
+    const ui32 partitionsCount,
+    const ui32 partitionId,
+    NProto::TDescribeBlocksResponse* dst)
+{
+    const ui32 startIndex = srcRange.GetStartIndex();
+    ui32 blocksCount = 0;
+    
+    const char* srcRangePtr = srcRange.GetBlocksContent().Data();
+    while (blocksCount < srcRange.GetBlocksCount()) {
+        const auto index = RelativeToGlobalIndex(
+            blocksPerStripe,
+            startIndex + blocksCount,
+            partitionsCount,
+            partitionId);
+
+        const auto stripeRange = CalculateStripeRange(blocksPerStripe, index);
+
+        const auto rangeBlocksCount = std::min(
+            static_cast<ui64>(stripeRange.End) - index + 1,
+            static_cast<ui64>(srcRange.GetBlocksCount()) - blocksCount);
+
+        NProto::TFreshBlockRange dstRange;
+        dstRange.SetStartIndex(index);
+        dstRange.SetBlocksCount(rangeBlocksCount);
+
+        const ui64 bytesCount = rangeBlocksCount * blockSize;
+        dstRange.MutableBlocksContent()->resize(bytesCount);
+        char* dstRangePtr = dstRange.MutableBlocksContent()->begin();
+        std::memcpy(
+            dstRangePtr,
+            srcRangePtr,
+            bytesCount);
+
+        srcRangePtr += bytesCount;
+        blocksCount += rangeBlocksCount;
+
+        dst->MutableFreshBlockRanges()->Add(std::move(dstRange));
+    }
+}
+
+void SplitBlobPieceRangeFromRelativeToGlobalIndices(
+    const NProto::TRangeInBlob& srcRange,
+    const ui32 blocksPerStripe,
+    const ui32 partitionsCount,
+    const ui32 partitionId,
+    NProto::TBlobPiece* dstBlobPiece)
+{
+    const ui32 blobOffset = srcRange.GetBlobOffset();
+    const ui32 blockIndex = srcRange.GetBlockIndex();
+    ui32 blocksCount = 0;
+
+    while (blocksCount < srcRange.GetBlocksCount()) {
+        const auto index = RelativeToGlobalIndex(
+            blocksPerStripe,
+            blockIndex + blocksCount,
+            partitionsCount,
+            partitionId);
+
+        const auto stripeRange = CalculateStripeRange(blocksPerStripe, index);
+
+        const auto rangeBlocksCount = std::min(
+            static_cast<ui64>(stripeRange.End) - index + 1,
+            static_cast<ui64>(srcRange.GetBlocksCount()) - blocksCount);
+
+        NProto::TRangeInBlob dstRange;
+        dstRange.SetBlobOffset(blobOffset + blocksCount);
+        dstRange.SetBlockIndex(index);
+        dstRange.SetBlocksCount(rangeBlocksCount);
+        
+        blocksCount += rangeBlocksCount;
+
+        dstBlobPiece->MutableRanges()->Add(std::move(dstRange));
+    }
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
