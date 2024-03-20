@@ -391,6 +391,7 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 	if err != nil {
 		return err
 	}
+
 	logging.Debug(
 		ctx,
 		"Current CheckpointStatus: %v",
