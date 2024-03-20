@@ -325,7 +325,7 @@ TVolumeState::FindPartitionIndex(NActors::TActorId owner) const
 std::optional<ui64>
 TVolumeState::FindPartitionTabletId(NActors::TActorId owner) const
 {
-    for (const auto & partition : Partitions) {
+    for (const auto& partition: Partitions) {
         if (partition.Owner == owner) {
             return partition.TabletId;
         }
@@ -856,6 +856,17 @@ TPartitionStatInfo* TVolumeState::GetPartitionStatInfoByTabletId(ui64 tabletId)
 
     for (auto& statInfo: PartitionStatInfos) {
         if (statInfo.TabletId == tabletId) {
+            return &statInfo;
+        }
+    }
+    return nullptr;
+}
+
+TPartitionStatInfo*
+TVolumeState::GetPartitionStatByDiskId(const TString& diskId)
+{
+    for (auto& statInfo: PartitionStatInfos) {
+        if (statInfo.DiskId == diskId) {
             return &statInfo;
         }
     }

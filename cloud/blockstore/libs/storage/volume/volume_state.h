@@ -332,8 +332,7 @@ public:
 
     TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
 
-    TPartitionStatInfo*
-    GetPartitionStatForShadowDisk(const TString& shadowDiskId);
+    TPartitionStatInfo* GetPartitionStatByDiskId(const TString& diskId);
 
     std::span<const TPartitionStatInfo> GetPartitionStatInfos() const
     {

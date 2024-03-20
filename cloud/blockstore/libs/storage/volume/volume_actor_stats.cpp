@@ -131,10 +131,9 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         msg->CallContext
     );
 
-    const bool doesPartitionBelongToDisk =
-        State->GetDiskRegistryBasedPartitionActor() == ev->Sender ||
-        State->GetDiskId() == msg->DiskId;
-    if (!doesPartitionBelongToDisk) {
+    auto* statInfo = State->GetPartitionStatByDiskId(msg->DiskId);
+
+    if (!statInfo) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::VOLUME,
@@ -145,18 +144,20 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
         return;
     }
 
-    auto& info = State->GetPartitionStatInfos().front();
-    if (!info.LastCounters) {
-        info.LastCounters = CreatePartitionDiskCounters(State->CountersPolicy());
+    if (!statInfo->LastCounters) {
+        statInfo->LastCounters =
+            CreatePartitionDiskCounters(State->CountersPolicy());
     }
 
-    info.LastCounters->Add(*msg->DiskCounters);
+    statInfo->LastCounters->Add(*msg->DiskCounters);
 
-    UpdateCachedStats(*msg->DiskCounters, info.CachedCounters);
-    CopyPartCountersToCachedStats(*msg->DiskCounters, info.CachedCountersProto);
+    UpdateCachedStats(*msg->DiskCounters, statInfo->CachedCounters);
+    CopyPartCountersToCachedStats(
+        *msg->DiskCounters,
+        statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
-    partStats.Stats = info.CachedCountersProto;
+    partStats.Stats = statInfo->CachedCountersProto;
 
     ExecuteTx<TSavePartStats>(
         ctx,
