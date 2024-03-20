@@ -137,12 +137,12 @@ void TVolumeActor::CompleteLoadState(
         ResetThrottlingPolicy();
 
         for (const auto& partStats: args.PartStats) {
-            const auto& stats = partStats.Stats;
-
             // info doesn't have to be always present
             // see NBS-1668#603e955e319cc33b747904fb
-            if (auto* info = State->GetPartitionStatInfoById(partStats.Id)) {
-                CopyCachedStatsToPartCounters(stats, *info);
+            if (auto* info =
+                    State->GetPartitionStatInfoByTabletId(partStats.TabletId))
+            {
+                CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
         }
 

@@ -1606,8 +1606,8 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                     }
                 }
 
-                auto& infos = State->GetPartitionStatInfos();
-                if (infos && infos.front().LastCounters) {
+                auto infos = State->GetPartitionStatInfos();
+                if (!infos.empty() && infos.front().LastCounters) {
                     const auto& counters = infos.front().LastCounters;
                     TABLER() {
                         TABLED() { out << "HasBrokenDevice"; }

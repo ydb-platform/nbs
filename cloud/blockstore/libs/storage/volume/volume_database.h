@@ -87,7 +87,9 @@ public:
 
     struct TPartStats
     {
-        ui64 Id = 0;
+        // For DiskRegistry-based always 0.
+        // For BlobStorage-based TabletId used.
+        ui64 TabletId = 0;
         NProto::TCachedPartStats Stats;
     };
 

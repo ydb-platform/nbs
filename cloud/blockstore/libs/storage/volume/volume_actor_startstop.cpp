@@ -574,7 +574,6 @@ void TVolumeActor::HandleTabletStatus(
     switch (msg->Status) {
         case TEvBootstrapper::STARTED:
             partition->SetStarted(msg->TabletUser);
-            Y_ABORT_UNLESS(State->SetPartitionStatActor(msg->TabletId, msg->TabletUser));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

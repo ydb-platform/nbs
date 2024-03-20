@@ -161,9 +161,7 @@ void TVolumeActor::HandleDiskRegistryBasedPartCounters(
     ExecuteTx<TSavePartStats>(
         ctx,
         std::move(requestInfo),
-        std::move(partStats),
-        false
-    );
+        std::move(partStats));
 }
 
 void TVolumeActor::HandlePartCounters(
@@ -180,40 +178,44 @@ void TVolumeActor::HandlePartCounters(
         msg->CallContext
     );
 
-    ui32 index = 0;
-    if (!State->FindPartitionStatInfoByOwner(ev->Sender, index)) {
-        LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
+    auto tabletId = State->FindPartitionTabletId(ev->Sender);
+    auto* statInfo =
+        tabletId ? State->GetPartitionStatInfoByTabletId(*tabletId) : nullptr;
+    if (!statInfo) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),
             State->GetDiskId().Quote().c_str());
         return;
     }
 
-    auto& info = State->GetPartitionStatInfos()[index];
-    if (!info.LastCounters) {
-        info.LastCounters = CreatePartitionDiskCounters(State->CountersPolicy());
-        info.LastMetrics = std::move(msg->BlobLoadMetrics);
+    if (!statInfo->LastCounters) {
+        statInfo->LastCounters =
+            CreatePartitionDiskCounters(State->CountersPolicy());
+        statInfo->LastMetrics = std::move(msg->BlobLoadMetrics);
     }
 
-    info.LastSystemCpu += msg->VolumeSystemCpu;
-    info.LastUserCpu += msg->VolumeUserCpu;
+    statInfo->LastSystemCpu += msg->VolumeSystemCpu;
+    statInfo->LastUserCpu += msg->VolumeUserCpu;
 
-    info.LastCounters->Add(*msg->DiskCounters);
+    statInfo->LastCounters->Add(*msg->DiskCounters);
 
-    UpdateCachedStats(*msg->DiskCounters, info.CachedCounters);
-    CopyPartCountersToCachedStats(*msg->DiskCounters, info.CachedCountersProto);
+    UpdateCachedStats(*msg->DiskCounters, statInfo->CachedCounters);
+    CopyPartCountersToCachedStats(
+        *msg->DiskCounters,
+        statInfo->CachedCountersProto);
 
     TVolumeDatabase::TPartStats partStats;
 
-    partStats.Id = State->GetPartitions()[index].TabletId;
-    partStats.Stats = info.CachedCountersProto;
+    partStats.TabletId = statInfo->TabletId;
+    partStats.Stats = statInfo->CachedCountersProto;
 
     ExecuteTx<TSavePartStats>(
         ctx,
         std::move(requestInfo),
-        std::move(partStats),
-        true
-    );
+        std::move(partStats));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -238,10 +240,11 @@ void TVolumeActor::ExecuteSavePartStats(
     Y_UNUSED(ctx);
 
     TVolumeDatabase db(tx.DB);
-    if (args.IsReplicatedVolume) {
-        db.WritePartStats(args.PartStats.Id, args.PartStats.Stats);
+    if (State->IsDiskRegistryMediaKind()) {
+        db.WriteNonReplPartStats(args.PartStats.TabletId, args.PartStats.Stats);
     } else {
-        db.WriteNonReplPartStats(args.PartStats.Id, args.PartStats.Stats);
+        Y_DEBUG_ABORT_UNLESS(args.PartStats.TabletId);
+        db.WritePartStats(args.PartStats.TabletId, args.PartStats.Stats);
     }
 }
 
@@ -252,7 +255,7 @@ void TVolumeActor::CompleteSavePartStats(
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] Part %lu stats saved",
         TabletID(),
-        args.PartStats.Id);
+        args.PartStats.TabletId);
 
     NCloud::Send(
         ctx,

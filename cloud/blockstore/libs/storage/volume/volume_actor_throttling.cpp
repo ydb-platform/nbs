@@ -133,16 +133,20 @@ void TVolumeActor::HandleBackpressureReport(
     const NPartition::TEvPartition::TEvBackpressureReport::TPtr& ev,
     const TActorContext& ctx)
 {
-    ui32 index = State->GetPartitions().size();
-    if (!State->FindPartitionStatInfoByOwner(ev->Sender, index)) {
-        LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
+    auto index = State->FindPartitionIndex(ev->Sender);
+    if (!index) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
             "Partition %s for disk %s backpressure report not found",
             ToString(ev->Sender).c_str(),
             State->GetDiskId().Quote().c_str());
+
+        index = State->GetPartitions().size();
     }
 
     auto& policy = State->AccessThrottlingPolicy();
-    policy.OnBackpressureReport(ctx.Now(), *ev->Get(), index);
+    policy.OnBackpressureReport(ctx.Now(), *ev->Get(), *index);
 }
 
 void TVolumeActor::HandleWakeup(

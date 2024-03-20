@@ -79,7 +79,9 @@ struct THistoryLogItem
 
 struct TPartitionStatInfo
 {
-    NActors::TActorId Owner = {};
+    const TString DiskId;
+    const ui64 TabletId;
+
     TPartitionDiskCountersPtr LastCounters = {};
     TPartitionDiskCounters CachedCounters;
     NProto::TCachedPartStats CachedCountersProto;
@@ -87,8 +89,13 @@ struct TPartitionStatInfo
     ui64 LastUserCpu = 0;
     NBlobMetrics::TBlobLoadMetrics LastMetrics;
 
-    TPartitionStatInfo(EPublishingPolicy countersPolicy)
-        : CachedCounters(countersPolicy)
+    TPartitionStatInfo(
+            const TString& diskId,
+            const ui64 tabletId,
+            EPublishingPolicy countersPolicy)
+        : DiskId(diskId)
+        , TabletId(tabletId)
+        , CachedCounters(countersPolicy)
     {}
 };
 
@@ -269,7 +276,8 @@ public:
     }
 
     TPartitionInfo* GetPartition(ui64 tabletId);
-    bool FindPartitionIndex(ui64 tabletId, ui32& index) const;
+    std::optional<ui32> FindPartitionIndex(NActors::TActorId owner) const;
+    std::optional<ui64> FindPartitionTabletId(NActors::TActorId owner) const;
 
     //
     // State
@@ -302,12 +310,7 @@ public:
 
     void SetDiskRegistryBasedPartitionActor(
         const NActors::TActorId& actor,
-        TNonreplicatedPartitionConfigPtr config)
-    {
-        PartitionStatInfos[0].Owner = actor;
-        DiskRegistryBasedPartitionActor = actor;
-        NonreplicatedPartitionConfig = std::move(config);
-    }
+        TNonreplicatedPartitionConfigPtr config);
 
     const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
     {
@@ -325,18 +328,19 @@ public:
 
     EPublishingPolicy CountersPolicy() const;
 
-    bool FindPartitionStatInfoByOwner(const NActors::TActorId& actorId, ui32& index) const;
+    void CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
 
-    TPartitionStatInfo* GetPartitionStatInfoById(ui64 id);
+    TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
 
-    bool SetPartitionStatActor(ui64 id, const NActors::TActorId& actor);
+    TPartitionStatInfo*
+    GetPartitionStatForShadowDisk(const TString& shadowDiskId);
 
-    const TVector<TPartitionStatInfo>& GetPartitionStatInfos() const
+    std::span<const TPartitionStatInfo> GetPartitionStatInfos() const
     {
         return PartitionStatInfos;
     }
 
-    TVector<TPartitionStatInfo>& GetPartitionStatInfos()
+    std::span<TPartitionStatInfo> GetPartitionStatInfos()
     {
         return PartitionStatInfos;
     }
