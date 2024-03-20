@@ -133,10 +133,10 @@ bool TVolumeActor::HandleRequest(
         return false;
     }
 
-    // Should always forward request via TPartitionRequestActor for 
+    // Should always forward request via TPartitionRequestActor for
     // DesribeBlocks method and multi-partitioned volume.
     if (State->GetPartitions().size() == 1 ||
-        (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>)) 
+        (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>))
     {
         ev->Get()->Record = std::move(partitionRequests.front().Event->Record);
         SendRequestToPartition<TMethod>(
