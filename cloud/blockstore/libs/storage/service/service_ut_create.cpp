@@ -700,6 +700,65 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCreateVolumeWithMultipartitionBaseDisk)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetBytesPerPartition(2_GB);
+        config.SetBytesPerPartitionSSD(1_GB);
+        config.SetMultipartitionVolumesEnabled(true);
+        config.SetBytesPerStripe(16_MB);
+        config.SetMaxPartitionsPerVolume(2);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        {
+            service.CreateVolume(
+                "baseDisk",
+                2_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "", // folderId
+                "", // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),  // placementGroupId
+                0,          // placementPartitionIndex
+                0,  // partitionsCount
+                NProto::TEncryptionSpec()
+            );
+
+            auto response = service.DescribeVolume("baseDisk");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetVolume().GetPartitionsCount());
+
+            service.CreateVolume(
+                "vol0",
+                2_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                TString(),  // folderId
+                TString(),  // cloudId
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                NProto::TVolumePerformanceProfile(),
+                TString(),  // placementGroupId
+                0,          // placementPartitionIndex
+                0,  // partitionsCount
+                NProto::TEncryptionSpec(),
+                false,  // isSystem
+                "baseDisk",
+                "baseDiskCheckpointId",
+                0,  // fillGeneration
+                true  // isProxyOverlay
+            );
+
+            response = service.DescribeVolume("vol0");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetVolume().GetPartitionsCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateEncryptedVolume)
     {
         TTestEnv env;

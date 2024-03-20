@@ -73,6 +73,8 @@ message TPartitionConfig
 
     // Optional tablet id of base volume.
     uint64 BaseDiskTabletId = 17;
+
+    bool IsProxyOverlay = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

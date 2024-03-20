@@ -234,7 +234,7 @@ void TPartitionActor::CompleteLoadState(
             State->AccessStats().SetLogicalUsedBlocksCount(
                 State->GetLogicalUsedBlocks().Count()
             );
-        } else {
+        } else if (!partitionConfig.GetIsProxyOverlay()) {
             State->GetLogicalUsedBlocks().Update(State->GetUsedBlocks(), 0);
             State->AccessStats().SetLogicalUsedBlocksCount(
                 State->AccessStats().GetUsedBlocksCount()
@@ -287,11 +287,11 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
 
         Suicide(ctx);
         return;
-    } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] LoadState completed",
-            TabletID());
     }
+    
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu] LoadState completed",
+        TabletID());
 
     for (const auto& block: msg->Record.GetUsedBlocks()) {
         State->GetLogicalUsedBlocks().Merge(

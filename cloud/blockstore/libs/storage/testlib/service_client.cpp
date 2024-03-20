@@ -57,7 +57,8 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     bool isSystem,
     const TString& baseDiskId,
     const TString& baseDiskCheckpointId,
-    ui64 fillGeneration)
+    ui64 fillGeneration,
+    bool isProxyOverlay)
 {
     auto request = std::make_unique<TEvService::TEvCreateVolumeRequest>();
     PrepareRequestHeaders(*request);
@@ -76,6 +77,7 @@ std::unique_ptr<TEvService::TEvCreateVolumeRequest> TServiceClient::CreateCreate
     request->Record.SetBaseDiskId(baseDiskId);
     request->Record.SetBaseDiskCheckpointId(baseDiskCheckpointId);
     request->Record.SetFillGeneration(fillGeneration);
+    request->Record.SetIsProxyOverlay(isProxyOverlay);
     return request;
 }
 

@@ -153,6 +153,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     config.SetBaseDiskCheckpointId(Request.GetBaseDiskCheckpointId());
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
+    config.SetIsProxyOverlay(Request.GetIsProxyOverlay());
 
     TVolumeParams volumeParams;
     volumeParams.BlockSize = GetBlockSize();
