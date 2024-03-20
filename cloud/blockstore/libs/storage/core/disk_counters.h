@@ -355,6 +355,7 @@ struct THistogramRequestCounters
     TLowResCounter TrimFreshLog{EPublishingPolicy::Repl};
     TLowResCounter AddConfirmedBlobs{EPublishingPolicy::Repl};
     TLowResCounter AddUnconfirmedBlobs{EPublishingPolicy::Repl};
+    TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl};
 
     // BlobStorage based with kind and size
     TLowResCounter WriteBlob{
@@ -377,6 +378,7 @@ struct THistogramRequestCounters
         MakeMeta<&THistogramRequestCounters::TrimFreshLog>(),
         MakeMeta<&THistogramRequestCounters::AddConfirmedBlobs>(),
         MakeMeta<&THistogramRequestCounters::AddUnconfirmedBlobs>(),
+        MakeMeta<&THistogramRequestCounters::ConfirmBlobs>(),
 
         MakeMeta<&THistogramRequestCounters::WriteBlob>(),
         MakeMeta<&THistogramRequestCounters::ReadBlob>(),
