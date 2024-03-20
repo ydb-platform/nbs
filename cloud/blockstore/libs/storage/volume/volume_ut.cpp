@@ -3689,7 +3689,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(4, range2.GetBlockIndex());
         UNIT_ASSERT_VALUES_EQUAL(2, range2.GetBlocksCount());
 
-        range = TBlockRange64::WithLength(9216, 256);
+        range = TBlockRange64::WithLength(9000, 256);
         volume.WriteBlocks(range, clientInfo.GetClientId(), 'Y');
         
         request = volume.CreateDescribeBlocksRequest(
@@ -3706,7 +3706,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, message2.BlobPiecesSize());
 
         const auto& freshBlockRange1 = message2.GetFreshBlockRanges(0);
-        UNIT_ASSERT_VALUES_EQUAL(9216, freshBlockRange1.GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(9000, freshBlockRange1.GetStartIndex());
         UNIT_ASSERT_VALUES_EQUAL(1, freshBlockRange1.GetBlocksCount());
 
         TString actualContent;

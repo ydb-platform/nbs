@@ -55,11 +55,11 @@ void MergeDescribeBlocksResponse(
     for (const auto& freshBlockRange: src.GetFreshBlockRanges()) {
         SplitFreshBlockRangeFromRelativeToGlobalIndices(
             freshBlockRange,
-            &dst,
             blocksPerStripe,
             blockSize,
             partitionsCount,
-            partitionId);
+            partitionId,
+            &dst);
     }
 
     const auto& srcBlobPieces = src.GetBlobPieces();
@@ -72,10 +72,10 @@ void MergeDescribeBlocksResponse(
         for (const auto& srcRange: blobPiece.GetRanges()) {
             SplitBlobPieceRangeFromRelativeToGlobalIndices(
                 srcRange,
-                &dstBlobPiece,
                 blocksPerStripe,
                 partitionsCount,
-                partitionId);
+                partitionId,
+                &dstBlobPiece);
         }
         dst.MutableBlobPieces()->Add(std::move(dstBlobPiece));
     }
@@ -83,15 +83,16 @@ void MergeDescribeBlocksResponse(
 
 void SplitFreshBlockRangeFromRelativeToGlobalIndices(
     const NProto::TFreshBlockRange& srcRange,
-    NProto::TDescribeBlocksResponse* dst,
     const ui32 blocksPerStripe,
     const ui32 blockSize,
     const ui32 partitionsCount,
-    const ui32 partitionId)
+    const ui32 partitionId,
+    NProto::TDescribeBlocksResponse* dst)
 {
     const ui32 startIndex = srcRange.GetStartIndex();
     ui32 blocksCount = 0;
-
+    
+    const char* srcRangePtr = srcRange.GetBlocksContent().Data();
     while (blocksCount < srcRange.GetBlocksCount()) {
         const auto index = RelativeToGlobalIndex(
             blocksPerStripe,
@@ -111,12 +112,13 @@ void SplitFreshBlockRangeFromRelativeToGlobalIndices(
 
         const ui64 bytesCount = rangeBlocksCount * blockSize;
         dstRange.MutableBlocksContent()->resize(bytesCount);
-        auto dstRangePtr = const_cast<char*>(dstRange.MutableBlocksContent()->Data());
+        char* dstRangePtr = dstRange.MutableBlocksContent()->begin();
         std::memcpy(
             dstRangePtr,
-            &srcRange.GetBlocksContent()[blocksCount * blockSize],
+            srcRangePtr,
             bytesCount);
 
+        srcRangePtr += bytesCount;
         blocksCount += rangeBlocksCount;
 
         dst->MutableFreshBlockRanges()->Add(std::move(dstRange));
@@ -125,10 +127,10 @@ void SplitFreshBlockRangeFromRelativeToGlobalIndices(
 
 void SplitBlobPieceRangeFromRelativeToGlobalIndices(
     const NProto::TRangeInBlob& srcRange,
-    NProto::TBlobPiece* dstBlobPiece,
     const ui32 blocksPerStripe,
     const ui32 partitionsCount,
-    const ui32 partitionId)
+    const ui32 partitionId,
+    NProto::TBlobPiece* dstBlobPiece)
 {
     const ui32 blobOffset = srcRange.GetBlobOffset();
     const ui32 blockIndex = srcRange.GetBlockIndex();

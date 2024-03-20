@@ -140,12 +140,11 @@ Y_UNIT_TEST_SUITE(TMergeTest)
         NProto::TDescribeBlocksResponse dst;
         SplitFreshBlockRangeFromRelativeToGlobalIndices(
             freshData,
-            &dst,
             4, // blocksPerStripe
             128, // blockSize
             2, // partitionsCount
-            0 // partitionId
-        );
+            0, // partitionId
+            &dst);
 
         UNIT_ASSERT_VALUES_EQUAL(3, dst.FreshBlockRangesSize());
 
@@ -179,11 +178,10 @@ Y_UNIT_TEST_SUITE(TMergeTest)
         NProto::TBlobPiece dst;
         SplitBlobPieceRangeFromRelativeToGlobalIndices(
             rangeInBlob,
-            &dst,
             4, // blocksPerStripe
             2, // partitionsCount
-            0 // partitionId
-        );
+            0, // partitionId
+            &dst);
 
         UNIT_ASSERT_VALUES_EQUAL(257, dst.RangesSize());
 
