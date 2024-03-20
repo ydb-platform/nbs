@@ -13,7 +13,6 @@ PEERDIR(
 
     cloud/storage/core/libs/daemon
 
-    ydb/core/driver_lib/run
     ydb/core/security
 
     library/cpp/getopt

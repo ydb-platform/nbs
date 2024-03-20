@@ -18,7 +18,6 @@ PEERDIR(
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/iam/iface
 
-    ydb/core/driver_lib/run
     ydb/core/security
 
     library/cpp/getopt

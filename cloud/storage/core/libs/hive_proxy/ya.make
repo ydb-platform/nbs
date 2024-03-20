@@ -24,8 +24,6 @@ PEERDIR(
     ydb/core/mind
     ydb/core/tablet
     ydb/core/tablet_flat
-    ydb/core/testlib
-    ydb/core/testlib/basics
 
     library/cpp/actors/core
 )

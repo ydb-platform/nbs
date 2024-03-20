@@ -6,6 +6,7 @@ TIMEOUT(300)
 SIZE(MEDIUM)
 
 PEERDIR(
+    ydb/apps/version
     ydb/core/driver_lib/version
 )
 

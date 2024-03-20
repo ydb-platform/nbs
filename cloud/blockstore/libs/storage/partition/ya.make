@@ -76,7 +76,6 @@ PEERDIR(
     ydb/core/scheme
     ydb/core/tablet
     ydb/core/tablet_flat
-    ydb/core/testlib/basics
     library/cpp/actors/core
 )
 

@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(apps)
 add_subdirectory(core)
 add_subdirectory(library)
 add_subdirectory(public)

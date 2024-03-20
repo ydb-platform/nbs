@@ -17,8 +17,6 @@ PEERDIR(
     ydb/core/mon
     ydb/core/tablet
     ydb/core/tablet_flat
-    ydb/core/testlib
-    ydb/core/testlib/basics
 )
 
 END()
