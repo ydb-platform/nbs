@@ -404,7 +404,7 @@ func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
 
 	case nbs.CheckpointStatusError:
 		_ = nbsClient.DeleteCheckpoint(ctx, diskID, checkpointID)
-		return errors.NewRetriableErrorf("GetCheckpointStatus returned an error.")
+		return errors.NewRetriableErrorf("Filling the NRD disk replica ended with an error.")
 
 	case nbs.CheckpointStatusReady:
 		// Nothing to do.
