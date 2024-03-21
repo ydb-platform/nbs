@@ -46,12 +46,7 @@ public:
     //
 
     void AcquireCollectBarrier(ui64 commitId);
-    /**
-     * @param allowMissing If true, there will not be an abort if the barrier is
-     * missing.
-     */
-    void ReleaseCollectBarrier(ui64 commitId, bool allowMissing);
-    bool IsCollectBarrierAcquired(ui64 commitId) const;
+    [[ nodiscard ]] bool TryReleaseCollectBarrier(ui64 commitId);
 
     ui64 GetCollectCommitId() const;
 };

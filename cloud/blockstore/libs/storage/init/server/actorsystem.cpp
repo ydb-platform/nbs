@@ -228,6 +228,7 @@ public:
 
         auto storageUserStats =
             NCloud::NStorage::NUserStats::CreateStorageUserStats(
+                TBlockStoreComponents::USER_STATS,
                 "blockstore",
                 "BlockStore",
                 Args.UserCounterProviders);
@@ -278,6 +279,7 @@ public:
             auto diskAgent = CreateDiskAgent(
                 Args.StorageConfig,
                 Args.DiskAgentConfig,
+                Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
                 Args.AioStorageProvider,

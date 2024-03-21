@@ -7,6 +7,7 @@
 
 #include "checkpoint.h"
 #include "helpers.h"
+#include "rebase_logic.h"
 #include "session.h"
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
@@ -25,6 +26,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -233,6 +235,9 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind kind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
+
+    TChannelsStats CalculateChannelsStats() const;
 
     void RegisterUnwritableChannel(ui32 channel);
     void RegisterChannelToMove(ui32 channel);
@@ -737,6 +742,8 @@ private:
         const TPartialBlobId& blobId,
         const TVector<TBlock>& blocks);
 
+    TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
+
     //
     // Garbage
     //
@@ -758,8 +765,7 @@ public:
     }
 
     void AcquireCollectBarrier(ui64 commitId);
-    void ReleaseCollectBarrier(ui64 commitId, bool allowMissing = false);
-    bool IsCollectBarrierAcquired(ui64 commitId) const;
+    bool TryReleaseCollectBarrier(ui64 commitId);
 
     ui64 GetCollectCommitId() const;
 

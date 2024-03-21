@@ -24,6 +24,7 @@ namespace {
 template <bool Index>
 class TCheckIndexVisitor final
     : public IBlocksIndexVisitor
+    , public IExtendedBlocksIndexVisitor
 {
 private:
     TTxPartition::TCheckIndex& Args;
@@ -46,6 +47,18 @@ public:
         }
 
         return true;
+    }
+
+    bool Visit(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        ui32 checksum) override
+    {
+        Y_UNUSED(checksum);
+
+        return Visit(blockIndex, commitId, blobId, blobOffset);
     }
 };
 
@@ -165,7 +178,10 @@ bool TPartitionActor::PrepareCheckIndex(
     );
 
     TCheckIndexVisitor<false> visitorBlobs(args);
-    ready &= db.FindBlocksInBlobsIndex(visitorBlobs, args.BlockRange);
+    ready &= db.FindBlocksInBlobsIndex(
+        visitorBlobs,
+        State->GetMaxBlocksInBlob(),
+        args.BlockRange);
 
     return ready;
 }

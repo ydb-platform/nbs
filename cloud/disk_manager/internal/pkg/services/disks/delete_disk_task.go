@@ -141,7 +141,6 @@ func (t *deleteDiskTask) Cancel(
 
 func (t *deleteDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.DeleteDiskMetadata{

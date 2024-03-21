@@ -395,7 +395,7 @@ void TFlushBytesActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TFlushBytesActor::ReplyAndDie(
@@ -829,7 +829,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    ReleaseCollectBarrier(msg->CollectCommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
     WorkerActors.erase(ev->Sender);
 
     auto requestInfo = CreateRequestInfo(

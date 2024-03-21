@@ -152,6 +152,25 @@ Y_UNIT_TEST_SUITE(TStripeTest)
         UNIT_ASSERT_VALUES_EQUAL(75, RelativeToGlobalIndex(10, 25, 3, 1));
     }
 
+    Y_UNIT_TEST(ShouldCalculateStripeRange)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(TBlockRange64::WithLength(0, 10)),
+            DescribeRange(CalculateStripeRange(10, 0)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(TBlockRange64::WithLength(0, 10)),
+            DescribeRange(CalculateStripeRange(10, 5)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(TBlockRange64::WithLength(10, 10)),
+            DescribeRange(CalculateStripeRange(10, 15)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DescribeRange(TBlockRange64::WithLength(10, 10)),
+            DescribeRange(CalculateStripeRange(10, 19)));
+    }
+
     Y_UNIT_TEST(ShouldCalculateRequestCount)
     {
         UNIT_ASSERT_VALUES_EQUAL(

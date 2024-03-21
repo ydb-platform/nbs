@@ -17,34 +17,26 @@ bool ProbabilityMatch(double p, const TString& s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFeaturesConfig::TFeaturesConfig(
-        NProto::TFeaturesConfig config)
+TFeaturesConfig::TFeatureInfo::TFeatureInfo(NProto::TFeatureConfig config)
+    : Whitelist(config.GetWhitelist())
+    , Blacklist(config.GetBlacklist())
+    , Value(config.GetValue())
+{
+    double defaultProbability = config.HasBlacklist() && !config.HasWhitelist()
+        ? 1.0 : 0.0;
+
+    CloudProbability = config.HasCloudProbability()
+        ? config.GetCloudProbability() : defaultProbability;
+
+    FolderProbability = config.HasFolderProbability()
+        ? config.GetFolderProbability() : defaultProbability;
+}
+
+TFeaturesConfig::TFeaturesConfig(NProto::TFeaturesConfig config)
     : Config(std::move(config))
 {
     for (const auto& feature: Config.GetFeatures()) {
-        TFeatureInfo info;
-        info.IsBlacklist = feature.HasBlacklist();
-        info.CloudProbability = feature.GetCloudProbability();
-        info.FolderProbability = feature.GetFolderProbability();
-
-        const auto& cloudList = feature.HasBlacklist()
-            ? feature.GetBlacklist() : feature.GetWhitelist();
-
-        for (const auto& cloudId: cloudList.GetCloudIds()) {
-            info.CloudIds.emplace(cloudId);
-        }
-
-        for (const auto& folderId: cloudList.GetFolderIds()) {
-            info.FolderIds.emplace(folderId);
-        }
-
-        for (const auto& entityId: cloudList.GetEntityIds()) {
-            info.EntityIds.emplace(entityId);
-        }
-
-        info.Value = feature.GetValue();
-
-        Features.emplace(feature.GetName(), std::move(info));
+        Features.emplace(feature.GetName(), feature);
     }
 }
 
@@ -89,31 +81,27 @@ bool TFeaturesConfig::GetFeature(
     const TString& featureName,
     TString* value) const
 {
-    bool result = false;
-
     auto it = Features.find(featureName);
-    if (it != Features.end()) {
-        auto isBlacklist = it->second.IsBlacklist;
-        const bool probabilityMatch =
-            ProbabilityMatch(it->second.CloudProbability, cloudId)
-            || ProbabilityMatch(it->second.FolderProbability, folderId);
 
-        if (it->second.CloudIds.contains(cloudId)
-                || it->second.FolderIds.contains(folderId)
-                || it->second.EntityIds.contains(entityId)
-                || probabilityMatch)
-        {
-            result = !isBlacklist;
-        } else {
-            result = isBlacklist;
+    if (it != Features.end()) {
+        auto& feature = it->second;
+
+        if (feature.Blacklist.Contains(cloudId, folderId, entityId)) {
+            return false;
         }
 
-        if (result && value) {
-            *value = it->second.Value;
+        if (feature.Whitelist.Contains(cloudId, folderId, entityId) ||
+            ProbabilityMatch(feature.CloudProbability, cloudId) ||
+            ProbabilityMatch(feature.FolderProbability, folderId))
+        {
+            if (value) {
+                *value = feature.Value;
+            }
+            return true;
         }
     }
 
-    return result;
+    return false;
 }
 
 }   // namespace NCloud::NFeatures

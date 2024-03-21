@@ -1,5 +1,6 @@
 #pragma once
 
+#include "checksum_range.h"
 #include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -17,14 +18,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TResyncReplica
-{
-    TString Name;
-    NActors::TActorId ActorId;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TResyncRangeActor final
     : public NActors::TActorBootstrapped<TResyncRangeActor>
 {
@@ -32,39 +25,38 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
-    const TVector<TResyncReplica> Replicas;
+    const TVector<TReplicaDescriptor> Replicas;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
-    THashMap<int, ui64> Checksums;
     TVector<int> ActorsToResync;
     ui32 ResyncedCount = 0;
     TGuardedBuffer<TString> Buffer;
     TGuardedSgList SgList;
     NProto::TError Error;
 
-    TInstant ChecksumStartTs;
-    TDuration ChecksumDuration;
     TInstant ReadStartTs;
     TDuration ReadDuration;
     TInstant WriteStartTs;
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{
+        Range,
+        Replicas};
+
 public:
     TResyncRangeActor(
         TRequestInfoPtr requestInfo,
         ui32 blockSize,
         TBlockRange64 range,
-        TVector<TResyncReplica> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void ChecksumBlocks(const NActors::TActorContext& ctx);
-    void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
     void CompareChecksums(const NActors::TActorContext& ctx);
     void ReadBlocks(const NActors::TActorContext& ctx, int idx);
     void WriteBlocks(const NActors::TActorContext& ctx);

@@ -422,7 +422,7 @@ void TReadDataActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TReadDataActor::ReplyAndDie(
@@ -565,7 +565,7 @@ void TIndexTabletActor::HandleReadDataCompleted(
     const auto* msg = ev->Get();
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
     Metrics.ReadData.Count.fetch_add(msg->Count, std::memory_order_relaxed);

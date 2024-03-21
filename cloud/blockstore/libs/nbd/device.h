@@ -20,10 +20,27 @@ struct IDeviceConnection
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IDeviceConnectionFactory
+{
+    virtual ~IDeviceConnectionFactory() = default;
+
+    virtual IDeviceConnectionPtr Create(
+        TNetworkAddress connectAddress,
+        TString deviceName) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IDeviceConnectionPtr CreateDeviceConnection(
     ILoggingServicePtr logging,
     TNetworkAddress connectAddress,
     TString deviceName,
+    TDuration timeout);
+
+IDeviceConnectionPtr CreateDeviceConnectionStub();
+
+IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+    ILoggingServicePtr logging,
     TDuration timeout);
 
 }   // namespace NCloud::NBlockStore::NBD

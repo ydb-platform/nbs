@@ -1,5 +1,7 @@
 #include "disk_agent_actor.h"
 
+#include <contrib/ydb/core/base/appdata.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -25,6 +27,20 @@ void TDiskAgentActor::HandleReleaseDevices(
             record.GetHeaders().GetClientId(),
             record.GetDiskId(),
             record.GetVolumeGeneration());
+
+        // We should update the session cache (if it was configured) with every
+        // release request.
+        if (GetCachedSessionsPath()) {
+            UpdateSessionCacheAndRespond(
+                ctx,
+                CreateRequestInfo(
+                    ev->Sender,
+                    ev->Cookie,
+                    ev->Get()->CallContext),
+                std::move(response));
+
+            return;
+        }
     } catch (const TServiceError& e) {
         *response->Record.MutableError() = MakeError(e.GetCode(), e.what());
     }

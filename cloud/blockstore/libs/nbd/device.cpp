@@ -47,6 +47,8 @@ private:
     TSocket Socket;
     TFileHandle Device;
 
+    TAtomic ShouldStop = 0;
+
 public:
     TDeviceConnection(
             ILoggingServicePtr logging,
@@ -57,12 +59,17 @@ public:
         , ConnectAddress(connectAddress)
         , DeviceName(std::move(deviceName))
         , Timeout(timeout)
-    {}
+    {
+        Log = Logging->CreateLog("BLOCKSTORE_NBD");
+    }
+
+    ~TDeviceConnection()
+    {
+        Stop();
+    }
 
     void Start() override
     {
-        Log = Logging->CreateLog("BLOCKSTORE_NBD");
-
         ConnectSocket();
         ConnectDevice();
 
@@ -71,6 +78,10 @@ public:
 
     void Stop() override
     {
+        if (AtomicSwap(&ShouldStop, 1) == 1) {
+            return;
+        }
+
         DisconnectDevice();
 
         ISimpleThread::Join();
@@ -195,6 +206,46 @@ void TDeviceConnection::DisconnectDevice()
     // device will be closed when thread exit
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceConnectionStub final
+    : public IDeviceConnection
+{
+public:
+    void Start()
+    {}
+
+    void Stop()
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDeviceConnectionFactory final
+    : public IDeviceConnectionFactory
+{
+private:
+    const ILoggingServicePtr Logging;
+    const TDuration Timeout;
+
+public:
+    TDeviceConnectionFactory(ILoggingServicePtr logging, TDuration timeout)
+        : Logging(std::move(logging))
+        , Timeout(std::move(timeout))
+    {}
+
+    IDeviceConnectionPtr Create(
+        TNetworkAddress connectAddress,
+        TString deviceName) override
+    {
+        return CreateDeviceConnection(
+            Logging,
+            std::move(connectAddress),
+            std::move(deviceName),
+            Timeout);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -210,6 +261,20 @@ IDeviceConnectionPtr CreateDeviceConnection(
         std::move(connectAddress),
         std::move(deviceName),
         timeout);
+}
+
+IDeviceConnectionPtr CreateDeviceConnectionStub()
+{
+    return std::make_shared<TDeviceConnectionStub>();
+}
+
+IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+    ILoggingServicePtr logging,
+    TDuration timeout)
+{
+    return std::make_shared<TDeviceConnectionFactory>(
+        std::move(logging),
+        std::move(timeout));
 }
 
 }   // namespace NCloud::NBlockStore::NBD

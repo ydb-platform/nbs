@@ -39,6 +39,12 @@ using namespace NCloud::NBlockStore::NStorage::NPartition;
 
 using namespace NCloud::NStorage;
 
+namespace {
+
+constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const TVolumeActor::TStateInfo TVolumeActor::States[STATE_MAX] = {
@@ -147,6 +153,8 @@ void TVolumeActor::ReportTabletState(const TActorContext& ctx)
 
 void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(State);
+
     Y_UNUSED(ctx);
 
     if (!Counters) {
@@ -162,7 +170,7 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
     }
 
     if (!VolumeSelfCounters) {
-        VolumeSelfCounters = CreateVolumeSelfCounters(CountersPolicy);
+        VolumeSelfCounters = CreateVolumeSelfCounters(State->CountersPolicy());
     }
 }
 
@@ -232,7 +240,6 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         "[%lu] Activated executor",
         TabletID());
 
-    RegisterCounters(ctx);
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower) {
@@ -670,6 +677,28 @@ void TVolumeActor::HandleServerDestroyed(
     OnServicePipeDisconnect(ctx, msg->ServerId, now);
 }
 
+void TVolumeActor::HandleGetDrTabletInfoResponse(
+    const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest>();
+        TActivationContext::Schedule(
+            DRTabletIdRequestRetryInterval,
+            new IEventHandle(
+                MakeDiskRegistryProxyServiceId(),
+                SelfId(),
+                request.release()));
+        return;
+    }
+
+    DiskRegistryTabletId = msg->TabletId;
+}
+
 void TVolumeActor::ResetServicePipes(const TActorContext& ctx)
 {
     for (const auto& actor: State->ClearPipeServerIds(ctx.Now())) {
@@ -859,6 +888,10 @@ STFUNC(TVolumeActor::StateInit)
             TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
             HandleUpdateShadowDiskState);
 
+        HFunc(
+            TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
+            HandleGetDrTabletInfoResponse);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvVolume)
 
         default:
@@ -952,6 +985,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvUpdateShadowDiskStateRequest,
             HandleUpdateShadowDiskState);
 
+        HFunc(
+            TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,
+            HandleGetDrTabletInfoResponse);
+
         default:
             if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(ev, TBlockStoreComponents::VOLUME);
@@ -988,6 +1025,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation);
 
         IgnoreFunc(TEvVolumePrivate::TEvUpdateShadowDiskStateRequest);
+
+        IgnoreFunc(TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse);
 
         default:
             if (!RejectRequests(ev)) {

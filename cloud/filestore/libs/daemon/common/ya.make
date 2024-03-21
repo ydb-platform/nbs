@@ -19,6 +19,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/daemon
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/features
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version
 

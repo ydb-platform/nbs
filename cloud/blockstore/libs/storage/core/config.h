@@ -348,6 +348,10 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
+    bool IsAddingUnconfirmedBlobsFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
@@ -546,6 +550,17 @@ public:
     TDuration GetCachedAcquireRequestLifetime() const;
 
     ui32 GetUnconfirmedBlobCountHardLimit() const;
+
+    TString GetCachedDiskAgentConfigPath() const;
+    TString GetCachedDiskAgentSessionsPath() const;
+
+    ui32 GetMaxShadowDiskFillBandwidth() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
 };
 
 ui64 GetAllocationUnit(

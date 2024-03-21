@@ -1,5 +1,7 @@
 #include "client.h"
 
+#include <library/cpp/monlib/service/pages/templates.h>
+
 namespace NCloud::NBlockStore::NRdma {
 
 namespace {
@@ -44,4 +46,51 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
 
 #undef SET
 
+void TClientConfig::DumpHtml(IOutputStream& out) const
+{
+#define ENTRY(name, val, ...)                   \
+    TABLER() {                                  \
+        TABLED() { out << #name; }              \
+        TABLED() { out << val; }                \
+    }
+
+    HTML(out) {
+        TABLE_CLASS("table table-condensed") {
+            TABLEBODY() {
+                ENTRY(QueueSize, QueueSize);
+                ENTRY(MaxBufferSize, MaxBufferSize);
+                ENTRY(WaitMode, WaitMode);
+                ENTRY(PollerThreads, PollerThreads);
+                ENTRY(MaxReconnectDelay, MaxReconnectDelay.ToString());
+                ENTRY(MaxResponseDelay, MaxResponseDelay.ToString());
+                ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
+                ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
+            }
+        }
+    }
+#undef ENTRY
+}
+
 }   // namespace NCloud::NBlockStore::NRdma
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <>
+inline void Out<NCloud::NBlockStore::NRdma::EWaitMode>(
+    IOutputStream& o,
+    const NCloud::NBlockStore::NRdma::EWaitMode mode)
+{
+    switch (mode) {
+    case NCloud::NBlockStore::NRdma::EWaitMode::Poll:
+        o << "POLL";
+        break;
+
+    case NCloud::NBlockStore::NRdma::EWaitMode::BusyWait:
+        o << "BUSY_WAIT";
+        break;
+
+    case NCloud::NBlockStore::NRdma::EWaitMode::AdaptiveWait:
+        o << "ADAPTIVE_WAIT";
+        break;
+    }
+}

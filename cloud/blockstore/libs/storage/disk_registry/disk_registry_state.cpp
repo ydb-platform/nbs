@@ -495,6 +495,10 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             disk.MigrationStartTs = disk.StateTs;
         }
 
+        if (disk.MigrationSource2Target.empty()) {
+            disk.MigrationStartTs = {};
+        }
+
         if (!config.GetFinishedMigrations().empty()) {
             ui64 seqNo = NotificationSystem.GetDiskSeqNo(diskId);
             if (!seqNo) {
@@ -753,6 +757,15 @@ NProto::TError TDiskRegistryState::ValidateAgent(
             return MakeError(E_ARGUMENT, TStringBuilder()
                 << "all agent devices should come from the same rack, mismatch: "
                 << rack << " != " << device.GetRack());
+        }
+
+        if (device.GetState() != NProto::DEVICE_STATE_ONLINE &&
+            device.GetState() != NProto::DEVICE_STATE_ERROR)
+        {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "unexpected state of the device " << device.GetDeviceUUID()
+                << ": " << NProto::EDeviceState_Name(device.GetState())
+                << " (" << static_cast<ui32>(device.GetState()) << ")");
         }
     }
 

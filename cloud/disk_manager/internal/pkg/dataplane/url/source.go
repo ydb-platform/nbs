@@ -9,6 +9,7 @@ import (
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	url_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/qcow2"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vhd"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vmdk"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
@@ -246,6 +247,16 @@ func newImageMapReader(
 	case ImageFormatVMDK:
 		reader := vmdk.NewImageMapReader(urlReader)
 		err := reader.ReadHeader(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		urlReader.EnableCache()
+		return reader, nil
+
+	case ImageFormatVHD:
+		reader := vhd.NewImageMapReader(urlReader)
+		err := reader.ReadFooter(ctx)
 		if err != nil {
 			return nil, err
 		}

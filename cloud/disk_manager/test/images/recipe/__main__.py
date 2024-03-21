@@ -49,6 +49,9 @@ def start(argv):
     vhd_image_file_server = ImageFileServerLauncher(vhd_image_file_path)
     vhd_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT", str(vhd_image_file_server.port))
+    # size and crc32 after converting to raw image
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE", "117469184")
+    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32", "4215190084")
     image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
     set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
 
@@ -105,17 +108,6 @@ def start(argv):
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32", "2831814743")
         image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/windows_vmdk_stream_optimised_multiple_grains_image_map.json")
         set_env("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_MAP_FILE", image_map_file_path)
-
-    # reproduces panic issue (NBS-4635)
-    qcow2_panic_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/qcow2_images/panic.img")
-    if os.path.exists(qcow2_panic_image_file_path):
-        qcow2_panic_image_file_server = ImageFileServerLauncher(qcow2_panic_image_file_path)
-        qcow2_panic_image_file_server.start()
-        set_env("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_FILE_SERVER_PORT", str(qcow2_panic_image_file_server.port))
-        set_env("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_FILE_SIZE", "7348420608")
-        # size and crc32 after converting to raw image
-        set_env("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_SIZE", "21474836480")
-        set_env("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_CRC32", "3101932729")
 
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),

@@ -16,13 +16,6 @@ FROM_SANDBOX(
 
 FROM_SANDBOX(
     FILE
-    5274078903
-    RENAME RESOURCE
-    OUT_NOAUTO qcow2_images/panic.img
-)
-
-FROM_SANDBOX(
-    FILE
     4709742882
     RENAME RESOURCE
     OUT_NOAUTO vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk

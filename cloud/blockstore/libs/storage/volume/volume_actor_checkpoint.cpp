@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -138,6 +139,7 @@ private:
     const TActorId VolumeActorId;
     const TPartitionDescrs PartitionDescrs;
     const TRequestTraceInfo TraceInfo;
+    const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
 
     ui32 DrainResponses = 0;
@@ -156,6 +158,7 @@ public:
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk);
 
     void Bootstrap(const TActorContext& ctx);
@@ -228,6 +231,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
@@ -237,6 +241,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , VolumeActorId(volumeActorId)
     , PartitionDescrs(std::move(partitionDescrs))
     , TraceInfo(std::move(traceInfo))
+    , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
 {}
@@ -687,6 +692,13 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
     const auto selfId = TBase::SelfId();
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record.SetCheckpointId(CheckpointId);
+    if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
+        request->Record.SetCheckpointType(
+            RequestType == ECheckpointRequestType::CreateWithoutData
+                ? NProto::ECheckpointType::WITHOUT_DATA
+                : NProto::ECheckpointType::NORMAL
+        );
+    }
 
     ForkTraces(request->CallContext);
 
@@ -1155,6 +1167,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1179,6 +1192,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1197,6 +1211,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1331,12 +1346,26 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.Completed ? "completed" : "rejected",
         args.ShadowDiskId.Quote().c_str());
 
+    const bool needToDestroyShadowActor =
+        (request.ReqType == ECheckpointRequestType::Delete ||
+         request.ReqType == ECheckpointRequestType::DeleteData) &&
+         State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,
         args.ShadowDiskId,
         args.ShadowDiskState);
     CheckpointRequests.erase(request.RequestId);
+
+    const bool needToCreateShadowActor =
+        request.ReqType == ECheckpointRequestType::Create &&
+        !request.ShadowDiskId.Empty() &&
+        !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor || needToCreateShadowActor) {
+        RestartDiskRegistryBasedPartition(ctx);
+    }
 
     if (request.Type == ECheckpointType::Light) {
         const bool needReply =

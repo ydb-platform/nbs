@@ -45,7 +45,6 @@ func (t *clearReleasedSlotsTask) Cancel(
 
 func (t *clearReleasedSlotsTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

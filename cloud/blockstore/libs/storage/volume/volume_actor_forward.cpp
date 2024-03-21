@@ -27,6 +27,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+constexpr bool IsDescribeBlocksMethod =
+    std::is_same_v<T, TEvVolume::TDescribeBlocksMethod>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TMethod>
 bool CanForwardToPartition(ui32 partitionCount)
 {
@@ -127,7 +133,11 @@ bool TVolumeActor::HandleRequest(
         return false;
     }
 
-    if (partitionRequests.size() == 1) {
+    // Should always forward request via TPartitionRequestActor for
+    // DesribeBlocks method and multi-partitioned volume.
+    if (State->GetPartitions().size() == 1 ||
+        (partitionRequests.size() == 1 && !IsDescribeBlocksMethod<TMethod>))
+    {
         ev->Get()->Record = std::move(partitionRequests.front().Event->Record);
         SendRequestToPartition<TMethod>(
             ctx,
@@ -166,6 +176,7 @@ bool TVolumeActor::HandleRequest(
         volumeRequestId,
         blockRange,
         blocksPerStripe,
+        State->GetBlockSize(),
         State->GetPartitions().size(),
         std::move(partitionRequests),
         TRequestTraceInfo(isTraced, traceTs, TraceSerializer));
@@ -315,7 +326,7 @@ template <typename TMethod>
 NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
     typename TMethod::TRequest::ProtoRecordType& record) const
 {
-    if (!IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (!State->IsDiskRegistryMediaKind()) {
         return {};
     }
 
@@ -574,7 +585,7 @@ void TVolumeActor::ForwardRequest(
         return;
     }
 
-    if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (State->IsDiskRegistryMediaKind()) {
         if (State->GetMeta().GetDevices().empty()) {
             replyError(MakeError(E_REJECTED, TStringBuilder()
                 << "Storage not allocated for volume: "

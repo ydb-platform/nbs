@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
 
 
-logs_root="/var/www/build/logs"
-
-logs_dir="${logs_root}/run_$(date +%y_%m_%d__%H)" &&
-rm -rf "$logs_dir" &&
-mkdir -p "$logs_dir"
-
-exec 3>&1 4>&2
-trap 'exec 2>&4 1>&3' 0 1 2 3
-exec 1>"${logs_dir}/run_all.out" 2>&1
-
-d="/root"
-scripts="${d}/runner"
-nbspath="$d/github/blockstore/nbs"
-cwd=$(pwd)
-
 lockfile="/var/tmp/_run_all.lock"
 if { set -C; true 2>/dev/null > $lockfile; }; then
     # shellcheck disable=SC2064
@@ -24,6 +9,20 @@ else
     echo "lock file exists…"
     exit
 fi
+
+logs_root="/var/www/build/logs"
+
+logs_dir="${logs_root}/run_$(date +%y_%m_%d__%H)" &&
+rm -rf "$logs_dir" &&
+mkdir -p "$logs_dir"
+
+exec 3>&1 4>&2
+exec 1>"${logs_dir}/run_all.out" 2>&1
+
+d="/root"
+scripts="${d}/runner"
+nbspath="$d/github/blockstore/nbs"
+cwd=$(pwd)
 
 cd $nbspath &&
 git reset --hard &&

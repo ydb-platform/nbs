@@ -4,10 +4,21 @@
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
+
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NFileStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TChannelsStats
+{
+    ui32 WritableChannelCount = 0;
+    ui32 UnwritableChannelCount = 0;
+    ui32 ChannelsToMoveCount = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,6 +41,10 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind dataKind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
+
+    TChannelsStats CalculateChannelsStats() const;
 
     ui32 Size() const;
     bool Empty() const;

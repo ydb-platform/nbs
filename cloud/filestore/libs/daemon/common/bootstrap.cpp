@@ -217,6 +217,7 @@ void TBootstrapCommon::InitCommonConfigs()
     Configs->InitKikimrConfig();
     Configs->InitStorageConfig();
     Configs->InitDiagnosticsConfig();
+    Configs->InitFeaturesConfig();
 }
 
 void TBootstrapCommon::InitDiagnostics()

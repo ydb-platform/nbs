@@ -5,11 +5,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  ya_x86_64:
-    name: Build/test x86_64 using YA
+  build:
+    name: Build/test x86_64 using YA (relwithdebinfo)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
+      build_preset: relwithdebinfo
       cache_update_build: true
       cache_update_tests: false
       test_threads: 6

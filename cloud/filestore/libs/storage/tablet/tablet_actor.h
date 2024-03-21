@@ -89,6 +89,11 @@ private:
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
 
+        std::atomic<i64> ReassignCount{0};
+        std::atomic<i64> WritableChannelCount{0};
+        std::atomic<i64> UnwritableChannelCount{0};
+        std::atomic<i64> ChannelsToMoveCount{0};
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> MixedBytesCount{0};
@@ -150,7 +155,8 @@ private:
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
             const TCompactionMapStats& compactionStats,
-            const TSessionsStats& sessionsStats);
+            const TSessionsStats& sessionsStats,
+            const TChannelsStats& channelsStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
@@ -248,7 +254,7 @@ private:
             TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "tablet is dead"));
+                MakeError(E_REJECTED, "tablet is shutting down"));
 
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
@@ -281,7 +287,7 @@ private:
             TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_REJECTED, "request cancelled"));
+                MakeError(E_REJECTED, "tablet is shutting down"));
 
             NCloud::Reply(ctx, requestInfo, std::move(response));
         };
@@ -346,6 +352,14 @@ private:
     bool ThrottleIfNeeded(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    template <typename TRequest>
+    NProto::TError ValidateWriteRequest(
+        const NActors::TActorContext& ctx,
+        const TRequest& request,
+        const TByteRange& range);
+
+    NProto::TError IsDataOperationAllowed() const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

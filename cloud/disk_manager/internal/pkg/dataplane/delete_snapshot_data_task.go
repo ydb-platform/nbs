@@ -65,7 +65,6 @@ func (t *deleteSnapshotDataTask) Cancel(
 
 func (t *deleteSnapshotDataTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

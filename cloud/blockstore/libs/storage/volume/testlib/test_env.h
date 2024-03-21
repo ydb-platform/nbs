@@ -393,7 +393,7 @@ public:
 
     std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
         const TString& checkpointId,
-        bool isLight = false);
+        NProto::ECheckpointType checkpointType = NProto::ECheckpointType::NORMAL);
 
     std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
         const TString& checkpointId);

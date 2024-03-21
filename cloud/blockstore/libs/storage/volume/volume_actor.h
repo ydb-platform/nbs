@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -247,7 +248,6 @@ private:
 
     bool ShuttingDown = false;
 
-    EPublishingPolicy CountersPolicy = EPublishingPolicy::All;
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
     struct TAcquireReleaseDiskRequest
@@ -322,6 +322,8 @@ private:
     TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
 
     ui32 MultipartitionWriteAndZeroRequestsInProgress = 0;
+
+    ui64 DiskRegistryTabletId = 0;
 
     // requests in progress
     THashSet<NActors::TActorId> Actors;
@@ -642,6 +644,14 @@ private:
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
+    void HandleUpdateShadowDiskStateRequest(
+        const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDrTabletInfoResponse(
+        const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleTabletStatus(
         const TEvBootstrapper::TEvStatus::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -916,6 +926,12 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    NActors::TActorId WrapNonreplActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId nonreplicatedActorId,
+        std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    void RestartDiskRegistryBasedPartition(const NActors::TActorContext& ctx);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

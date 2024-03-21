@@ -543,26 +543,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldNotSendAcquireReleaseRequestsToUnavailableAgents)
     {
-        const auto agent1 = CreateAgentConfig("agent-1", {
-            Device("test", "uuid-1", "rack-1", 10_GB)
-        });
-
-        const auto agent2 = CreateAgentConfig("agent-2", {
-            Device("test", "uuid-2", "rack-2", 10_GB)
-        });
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("test", "uuid-1", "rack-1", 10_GB)
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("test", "uuid-2", "rack-2", 10_GB)
+            })
+        };
 
         auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2 })
+            .WithAgents(agents)
             .Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
 
-        RegisterAgents(*runtime, 2);
-        WaitForAgents(*runtime, 2);
-        WaitForSecureErase(*runtime, {agent1, agent2});
+        RegisterAndWaitForAgents(*runtime, agents);
 
         {
             auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
@@ -615,15 +614,36 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         breakAgent("agent-2");
 
+        // It is OK to successfully acquire empty device list
         {
             diskRegistry.SendAcquireDiskRequest("disk-1", "session-1");
             auto response = diskRegistry.RecvAcquireDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
+        }
+
+        // Let's acquire one more session
+        {
+            diskRegistry.SendAcquireDiskRequest(
+                "disk-1",
+                "session-2",
+                NProto::VOLUME_ACCESS_READ_ONLY);
+
+            auto response = diskRegistry.RecvAcquireDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.DevicesSize());
         }
 
         diskRegistry.ReleaseDisk("disk-1", "session-1");
+        diskRegistry.ReleaseDisk("disk-1", "session-2");
+
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_WARNING);
+        {
+            auto response = diskRegistry.AcquireDisk("disk-1", "session-1");
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+        }
     }
 
     Y_UNIT_TEST(ShouldAcquireReleaseSession)

@@ -175,7 +175,7 @@ void TWriteBatchActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TWriteBatchActor::ReplyAndDie(
@@ -286,7 +286,7 @@ void TIndexTabletActor::HandleWriteBatchCompleted(
             FormatError(msg->GetError()).c_str());
     }
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);

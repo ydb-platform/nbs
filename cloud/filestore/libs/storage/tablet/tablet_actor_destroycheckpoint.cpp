@@ -158,7 +158,7 @@ void TDestroyCheckpointActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TDestroyCheckpointActor::ReplyAndDie(
@@ -252,6 +252,16 @@ void TIndexTabletActor::HandleDestroyCheckpoint(
     const TEvService::TEvDestroyCheckpointRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDestroyCheckpointResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     const auto& checkpointId = msg->Record.GetCheckpointId();

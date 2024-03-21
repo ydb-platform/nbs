@@ -1,7 +1,7 @@
 cache:
   hosts:
     cachesrv00:
-      ansible_host: 195.242.17.155
+      ansible_host: 195.242.17.0
   vars:
     docker_install_compose: true
     docker_users:

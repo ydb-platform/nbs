@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    checksum_range.cpp
     config.cpp
     copy_range.cpp
     migration_timeout_calculator.cpp
@@ -71,8 +72,6 @@ PEERDIR(
     library/cpp/containers/ring_buffer
 
     contrib/ydb/core/base
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
     contrib/ydb/library/actors/core
 )
 

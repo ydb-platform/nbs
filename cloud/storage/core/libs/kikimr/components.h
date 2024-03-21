@@ -74,22 +74,4 @@ struct TStoragePrivateEvents
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE)");
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TStorageActivities
-{
-    enum
-    {
-#define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component = NKikimrServices::TActivity::CLOUD_STORAGE_##component,     \
-// STORAGE_DECLARE_COMPONENT
-
-        STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
-
-        AUTH = NKikimrServices::TActivity::BLOCKSTORE_AUTH,
-        USER_STATS = NKikimrServices::TActivity::BLOCKSTORE_USER_STATS
-#undef STORAGE_DECLARE_COMPONENT
-    };
-};
-
 }   // namespace NCloud

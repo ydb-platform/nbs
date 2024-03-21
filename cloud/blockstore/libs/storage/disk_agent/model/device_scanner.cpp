@@ -113,7 +113,19 @@ NProto::TError FindDevices(
 
                 const ui64 size = GetFileLength(path);
                 auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
-                    return pool.GetMinSize() <= size && size <= pool.GetMaxSize();
+                    ui64 minSize = pool.GetMinSize();
+
+                    if (!minSize && pool.HasLayout()) {
+                        minSize =
+                            pool.GetLayout().GetHeaderSize() +
+                            pool.GetLayout().GetDeviceSize();
+                    }
+
+                    const ui64 maxSize = pool.GetMaxSize()
+                        ? pool.GetMaxSize()
+                        : size;
+
+                    return minSize <= size && size <= maxSize;
                 });
 
                 if (!pool) {

@@ -89,6 +89,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
 
@@ -97,6 +98,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/tablet
     cloud/storage/core/libs/tablet/model
+    cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
     contrib/ydb/library/actors/core

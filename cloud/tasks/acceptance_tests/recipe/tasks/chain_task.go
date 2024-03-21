@@ -134,7 +134,6 @@ func (t *ChainTask) Cancel(
 
 func (t *ChainTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

@@ -15,11 +15,12 @@ enum ReplicateDiskTaskEvents {
 }
 
 message ReplicateDiskTaskRequest {
+    reserved 4;
+
     types.Disk SrcDisk = 1;
     types.Disk DstDisk = 2;
 
     uint64 FillGeneration = 3;
-    bool UseLightCheckpoint = 4; // Use light or withoutData checkpoint.
 
     bool IgnoreBaseDisk = 5;
     bool UseProxyOverlayDisk = 6;

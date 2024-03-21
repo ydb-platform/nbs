@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/storage/core/libs/common/format.h>
 
@@ -28,10 +29,14 @@ void TDiskAgentActor::HandleHttpInfo(
     TStringStream out;
 
     HTML(out) {
-        if (RegistrationInProgress) {
-            DIV() { out << "Registration in progress"; }
+        if (CurrentStateFunc() == &TThis::StateIdle) {
+            DIV() { out << "Unregistered (Idle)"; }
         } else {
-            DIV() { out << "Registered"; }
+            if (RegistrationInProgress) {
+                DIV() { out << "Registration in progress"; }
+            } else {
+                DIV() { out << "Registered"; }
+            }
         }
 
         TAG(TH3) { out << "Devices"; }
@@ -39,6 +44,11 @@ void TDiskAgentActor::HandleHttpInfo(
 
         TAG(TH3) { out << "Config"; }
         AgentConfig->DumpHtml(out);
+
+        if (RdmaServer) {
+            TAG(TH3) { out << "RdmaServer"; }
+            RdmaServer->DumpHtml(out);
+        }
     }
 
     NCloud::Reply(
@@ -80,8 +90,9 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                         DumpDeviceState(
                             out,
                             config.GetState(),
-                            false,
-                            State->IsDeviceDisabled(uuid));
+                            State->IsDeviceDisabled(uuid)
+                                ? EDeviceStateFlags::DISABLED
+                                : EDeviceStateFlags::NONE);
                     }
                     TABLED() {
                         if (config.GetStateTs()) {

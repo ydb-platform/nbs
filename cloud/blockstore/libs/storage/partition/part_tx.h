@@ -781,7 +781,12 @@ struct TTxPartition
             ui16 blobOffset)
         {
             Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
-            BlockMarks.push_back({ blobId, commitId, blockIndex, blobOffset });
+            BlockMarks.push_back({
+                blobId,
+                commitId,
+                blockIndex,
+                blobOffset,
+            });
         }
     };
 
@@ -800,6 +805,7 @@ struct TTxPartition
             ui64 CommitId = 0;
             ui32 BlockIndex = 0;
             ui16 BlobOffset = 0;
+            ui32 Checksum = 0;
         };
 
         TVector<TBlockMark> BlockMarks;
@@ -816,9 +822,18 @@ struct TTxPartition
             BlockMarks.clear();
         }
 
-        void MarkBlock(ui32 blockIndex, ui64 commitId, ui16 blobOffset)
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            ui16 blobOffset,
+            ui32 checksum)
         {
-            BlockMarks.push_back({ commitId, blockIndex, blobOffset });
+            BlockMarks.push_back({
+                commitId,
+                blockIndex,
+                blobOffset,
+                checksum,
+            });
         }
     };
 
@@ -1124,10 +1139,14 @@ struct TTxPartition
     struct TConfirmBlobs
     {
         const TRequestInfoPtr RequestInfo;
+        const ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
-        explicit TConfirmBlobs(TVector<TPartialBlobId> unrecoverableBlobs)
-            : UnrecoverableBlobs(std::move(unrecoverableBlobs))
+        TConfirmBlobs(
+                ui64 startCycleCount,
+                TVector<TPartialBlobId> unrecoverableBlobs)
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
 
         void Clear()

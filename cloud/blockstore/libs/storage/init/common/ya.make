@@ -9,6 +9,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/api
 
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/libs/version_ydb
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util

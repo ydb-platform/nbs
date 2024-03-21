@@ -58,7 +58,7 @@ class VirtualDevicesToIdMapper:
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
                 output += line
-                _logger.info("stdout: %s", line)
+                _logger.info("stdout: %s", line.rstrip())
             if stderr.channel.recv_exit_status():
                 stderr_lines = stderr.readlines()
                 stderr_str = ''.join(stderr_lines)
@@ -81,7 +81,7 @@ class VirtualDevicesToIdMapper:
         )
         return self.get_disk_id_to_device_path_mapping(udevadm_output)
 
-    def wait_for_disk_to_appear(self, disk_id: str, timeout_sec: int = 60) -> str:
+    def wait_for_disk_to_appear(self, disk_id: str, timeout_sec: int = 120) -> str:
         _logger.info(
             "Started waiting for disk %s to appear in the guest system, waiting for %d",
             disk_id,

@@ -217,11 +217,28 @@ message TStorageConfig
     optional uint32 NegativeEntryTimeout = 336;
     optional uint32 AttrTimeout = 337;
 
+    // Threshold for the number of garbage blocks in a compaction range that
+    // triggers automatic compaction.
+    optional uint32 GarbageCompactionThreshold = 338;
+    // Threshold for average CompactionScore for the whole FS.
+    optional uint32 CompactionThresholdAverage = 339;
+    // Threshold for average GarbageCompactionScore for the whole FS.
+    optional uint32 GarbageCompactionThresholdAverage = 340;
+    // Enables 3 aforementioned thresholds.
+    optional bool NewCompactionEnabled = 341;
+
+    // Threshold for average CleanupScore for the whole FS.
+    optional uint32 CleanupThresholdAverage = 342;
+    // Enables the aforementioned threshold.
+    optional bool NewCleanupEnabled = 343;
+
+
     // Enables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
     // for writing.
-    optional bool ThreeStageWriteEnabled = 338;
+    optional bool ThreeStageWriteEnabled = 344;
 
     // When issuing blob ids, the tablet a acquires collect barrier. In order
     // to release it in case of a client disconnect, this timeout is used.
-    optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 339;
+    optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 345;
+
 }

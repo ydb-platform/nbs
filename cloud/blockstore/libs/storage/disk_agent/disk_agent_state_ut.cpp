@@ -139,13 +139,23 @@ auto CreateNullConfig(TNullConfigParams params)
     return std::make_shared<TDiskAgentConfig>(std::move(config), "rack");
 }
 
+TStorageConfigPtr CreateStorageConfig()
+{
+    NProto::TStorageServiceConfig config;
+    return std::make_shared<TStorageConfig>(
+        std::move(config),
+        std::make_shared<NFeatures::TFeaturesConfig>());
+}
+
 auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 {
     return std::make_unique<TDiskAgentState>(
+        CreateStorageConfig(),
         std::move(config),
+        nullptr,    // rdmaConfig
         NSpdk::CreateEnvStub(),
         CreateTestAllocator(),
-        nullptr,    // storageProvider
+        nullptr,   // storageProvider
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
         CreateLoggingService("console"),
@@ -330,7 +340,9 @@ struct TFiles
     auto CreateDiskAgentStateNull(TDiskAgentConfigPtr config)
     {
         return std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             std::move(config),
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -462,28 +474,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             false); // checkSerialNumbers
     }
 
-    Y_UNIT_TEST_F(ShouldInitializeWithNull, TFiles)
-    {
-        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        InitCriticalEventsCounter(counters);
-
-        auto mismatch = counters->GetCounter(
-            "AppCriticalEvents/DiskAgentDeviceGeneratedConfigMismatch",
-            true);
-
-        UNIT_ASSERT_EQUAL(0, *mismatch);
-
-        auto state = CreateDiskAgentStateNull(
-            CreateNullConfig({ .Files = Nvme3s })
-        );
-
-        ShouldInitialize(
-            *state,
-            true); // checkSerialNumbers
-
-        UNIT_ASSERT_EQUAL(0, *mismatch);
-    }
-
     Y_UNIT_TEST_F(ShouldReportDeviceGeneratedConfigMismatch, TFiles)
     {
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
@@ -499,12 +489,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto& path = *discoveryConfig.AddPathConfigs();
         path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
         auto& pool = *path.AddPoolConfigs();
-
         // the IDs of the generated devices will differ from those in the config
         pool.SetHashSuffix("random");
-
-        pool.SetMinSize(DefaultFileSize);
-        pool.SetMaxSize(DefaultFileSize);
 
         auto state = CreateDiskAgentStateNull(
             CreateNullConfig({
@@ -524,7 +510,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto config = CreateNullConfig({ .Files = Nvme3s });
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -734,7 +722,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 auto config = std::make_shared<TDiskAgentConfig>(cfg, "rack");
 
                 TDiskAgentState state(
+                    CreateStorageConfig(),
                     config,
+                    nullptr,    // rdmaConfig
                     nullptr,    // spdk
                     CreateTestAllocator(),
                     std::make_shared<TStorageProvider>(THashSet<TString>{
@@ -803,7 +793,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         }
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack"),
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             NServer::CreateNullStorageProvider(),
@@ -1221,7 +1213,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
 
         TDiskAgentState state(
+            CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1369,9 +1363,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 NProto::TStorageDiscoveryConfig discovery;
                 auto& path = *discovery.AddPathConfigs();
                 path.SetPathRegExp(TempDir.Path() / "nvme3n([0-9])");
-                auto& pool = *path.AddPoolConfigs();
-                pool.SetMinSize(DefaultFileSize);
-                pool.SetMaxSize(DefaultFileSize);
+                path.AddPoolConfigs();
 
                 return discovery;
             }(),
@@ -1379,7 +1371,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1449,8 +1443,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 // limit the number of devices to one
                 path.SetPathRegExp(TempDir.Path() / "nvme3n(1)");
                 auto& pool = *path.AddPoolConfigs();
-                pool.SetMinSize(DefaultFileSize);
-                pool.SetMaxSize(DefaultFileSize);
                 pool.SetPoolName("foo");
 
                 return discovery;
@@ -1459,7 +1451,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         });
 
         auto state = std::make_unique<TDiskAgentState>(
+            CreateStorageConfig(),
             config,
+            nullptr,    // rdmaConfig
             nullptr,    // spdk
             CreateTestAllocator(),
             std::make_shared<TTestStorageProvider>(storageState),
@@ -1526,7 +1520,6 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             path.SetMaxDeviceCount(8);
 
             auto& pool = *path.AddPoolConfigs();
-            pool.SetMinSize(DefaultFileSize);
             pool.SetMaxSize(10 * DefaultFileSize);
 
             auto& layout = *pool.MutableLayout();
@@ -1535,10 +1528,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
 
         auto newState = [&] (auto discoveryConfig) {
             return std::make_unique<TDiskAgentState>(
+                CreateStorageConfig(),
                 CreateNullConfig({
                     .DiscoveryConfig = discoveryConfig,
                     .CachedConfigPath = CachedConfigPath
                 }),
+                nullptr,    // rdmaConfig
                 nullptr,    // spdk
                 CreateTestAllocator(),
                 std::make_shared<TTestStorageProvider>(storageState),
@@ -1622,8 +1617,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             auto& path = *discovery.AddPathConfigs();
             path.SetPathRegExp(TempDir.Path() / "NVMENBS([0-9]+)");
 
-            auto& pool = *path.AddPoolConfigs();
-            pool.SetMaxSize(DefaultFileSize);
+            path.AddPoolConfigs();
 
             auto state = CreateDiskAgentStateNull(
                 CreateNullConfig({
@@ -1643,6 +1637,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         auto state = createState();
 
         UNIT_ASSERT_EQUAL(0, *restoreError);
+
+        auto dumpSessionsToFile = [&] {
+            auto sessions = state->GetSessions();
+            NProto::TDiskAgentDeviceSessionCache cache;
+            cache.MutableSessions()->Assign(
+                std::make_move_iterator(sessions.begin()),
+                std::make_move_iterator(sessions.end()));
+
+            SerializeToTextFormat(cache, CachedSessionsPath);
+        };
 
         TVector<TString> devices;
         for (auto& d: state->GetDevices()) {
@@ -1681,72 +1685,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "vol1",
             2000);  // VolumeGeneration
 
-        // validate the cache file
-
-        {
-            NProto::TDiskAgentDeviceSessionCache cache;
-            ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
-
-            UNIT_ASSERT_VALUES_EQUAL(3, cache.SessionsSize());
-
-            SortBy(*cache.MutableSessions(), [] (auto& session) {
-                return session.GetClientId();
-            });
-
-            {
-                auto& session = *cache.MutableSessions(0);
-                Sort(*session.MutableDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL("reader-1", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[0], devices[1]}),
-                    session.GetDeviceIds());
-
-                // MountSeqNumber is not applicable to read sessions
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(session.GetReadOnly());
-            }
-
-            {
-                auto& session = *cache.MutableSessions(1);
-
-                UNIT_ASSERT_VALUES_EQUAL("reader-2", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[2], devices[3]}),
-                    session.GetDeviceIds());
-
-                // MountSeqNumber is not applicable to read sessions
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(session.GetReadOnly());
-            }
-
-            {
-                auto& session = *cache.MutableSessions(2);
-                Sort(*session.MutableDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
-                ASSERT_VECTORS_EQUAL(
-                    TVector({devices[0], devices[1]}),
-                    session.GetDeviceIds());
-
-                UNIT_ASSERT_VALUES_EQUAL(42, session.GetMountSeqNumber());
-                UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
-
-                // VolumeGeneration was updated by reader-1
-                UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
-                UNIT_ASSERT(!session.GetReadOnly());
-            }
-        }
+        dumpSessionsToFile();
 
         // restart
         state = createState();
@@ -1847,6 +1786,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             "writer-1",
             "vol0",
             1001);  // VolumeGeneration
+
+        dumpSessionsToFile();
 
         // remove reader-2's file
         TFsPath { state->GetDeviceName(devices[3]) }.DeleteIfExists();

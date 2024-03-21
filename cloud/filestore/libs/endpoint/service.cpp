@@ -331,10 +331,7 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 
     const auto& response = future.GetValue();
     if (SUCCEEDED(response.GetError().GetCode())) {
-        auto config = it->second.Config;
-        if (config.GetPersistent()) {
-            Storage->RemoveEndpoint(request.GetSocketPath());
-        }
+        Storage->RemoveEndpoint(request.GetSocketPath());
     }
 
     Endpoints.erase(it);

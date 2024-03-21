@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 
@@ -47,6 +48,15 @@ struct TRequestInfo
         , Cookie(cookie)
         , CallContext(std::move(callContext))
     {}
+
+    void CancelRequest(const NActors::TActorContext& ctx)
+    {
+        if (!CancelRoutine) {
+            ReportCancelRoutineIsNotSet();
+            return;
+        };
+        CancelRoutine(ctx, *this);
+    }
 
     void AddExecCycles(ui64 cycles)
     {
@@ -121,7 +131,7 @@ TRequestInfoPtr CreateRequestInfo(
         TRequestInfo& requestInfo)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "tablet is dead"));
+            MakeError(E_REJECTED, "tablet is shutting down"));
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };

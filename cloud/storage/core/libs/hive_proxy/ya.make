@@ -24,8 +24,6 @@ PEERDIR(
     contrib/ydb/core/mind
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
-    contrib/ydb/core/testlib
-    contrib/ydb/core/testlib/basics
 
     contrib/ydb/library/actors/core
 )

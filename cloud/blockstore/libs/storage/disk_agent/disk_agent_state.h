@@ -5,6 +5,8 @@
 #include "rdma_target.h"
 #include "storage_with_stats.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
+
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
@@ -40,7 +42,9 @@ private:
     };
 
 private:
+    const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
+    const NRdma::TRdmaConfigPtr RdmaConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -61,7 +65,9 @@ private:
 
 public:
     TDiskAgentState(
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -75,6 +81,7 @@ public:
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
+        TVector<TString> ConfigMismatchErrors;
         TDeviceGuard Guard;
     };
 
@@ -113,7 +120,9 @@ public:
     TVector<TDeviceClient::TSessionInfo> GetReaderSessions(
         const TString& uuid) const;
 
-    void AcquireDevices(
+    // @return `true` if any session has been updated (excluding `LastActivityTs`
+    // field) or a new one has been added.
+    bool AcquireDevices(
         const TVector<TString>& uuids,
         const TString& clientId,
         TInstant now,
@@ -127,6 +136,8 @@ public:
         const TString& clientId,
         const TString& diskId,
         ui32 volumeGeneration);
+
+    TVector<NProto::TDiskAgentDeviceSession> GetSessions() const;
 
     void DisableDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
@@ -160,7 +171,6 @@ private:
 
     void InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig);
 
-    void UpdateSessionCache(TDeviceClient& client) const;
     void RestoreSessions(TDeviceClient& client) const;
 };
 

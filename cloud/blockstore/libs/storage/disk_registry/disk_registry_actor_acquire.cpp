@@ -136,7 +136,7 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateAcquire);
 
     if (Devices.empty()) {
-        FinishAcquireDisk(ctx, MakeError(E_REJECTED, "nothing to acquire"));
+        FinishAcquireDisk(ctx, {});
         return;
     }
 
@@ -155,10 +155,10 @@ void TAcquireDiskActor::Bootstrap(const TActorContext& ctx)
     SentAcquireRequests.reserve(sentRequests.size());
     TInstant now = ctx.Now();
     for (auto& x: sentRequests) {
-        SentAcquireRequests.emplace_back(
+        SentAcquireRequests.push_back(TAgentAcquireDevicesCachedRequest{
             std::move(x.AgentId),
             std::move(x.Record),
-            now);
+            now});
     }
 }
 

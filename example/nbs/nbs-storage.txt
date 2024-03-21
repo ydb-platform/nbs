@@ -6,3 +6,4 @@ NonReplicatedMigrationStartAllowed: true
 AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
 NonReplicatedDontSuspendDevices: true
+UseShadowDisksForNonreplDiskCheckpoints: true

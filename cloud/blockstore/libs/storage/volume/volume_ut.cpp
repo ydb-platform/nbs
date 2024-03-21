@@ -3632,6 +3632,115 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleDescribeBlocksRequestForMultipartitionVolume)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD,
+            8192,  // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            2, // partitions count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        volume.AddClient(clientInfo);
+
+        auto range = TBlockRange64::WithLength(1, 8192);
+        volume.WriteBlocks(range, clientInfo.GetClientId(), 'X');
+
+        auto request = volume.CreateDescribeBlocksRequest(
+            range,
+            clientInfo.GetClientId()
+        );
+
+        volume.SendToPipe(std::move(request));
+        const auto response1 = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        const auto& message1 = response1->Record;
+
+        UNIT_ASSERT(SUCCEEDED(response1->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(0, message1.FreshBlockRangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(8, message1.BlobPiecesSize());
+
+        const auto& blobPiece1 = message1.GetBlobPieces(0);
+        UNIT_ASSERT_VALUES_EQUAL(513, blobPiece1.RangesSize());
+        const auto& range1 = blobPiece1.GetRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(0, range1.GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(1, range1.GetBlockIndex());
+        UNIT_ASSERT_VALUES_EQUAL(1, range1.GetBlocksCount());
+
+        const auto& range2 = blobPiece1.GetRanges(1);
+        UNIT_ASSERT_VALUES_EQUAL(1, range2.GetBlobOffset());
+        UNIT_ASSERT_VALUES_EQUAL(4, range2.GetBlockIndex());
+        UNIT_ASSERT_VALUES_EQUAL(2, range2.GetBlocksCount());
+
+        range = TBlockRange64::WithLength(9000, 256);
+        volume.WriteBlocks(range, clientInfo.GetClientId(), 'Y');
+
+        request = volume.CreateDescribeBlocksRequest(
+            range,
+            clientInfo.GetClientId()
+        );
+
+        volume.SendToPipe(std::move(request));
+        const auto response2 = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        const auto& message2 = response2->Record;
+
+        UNIT_ASSERT(SUCCEEDED(response2->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(256, message2.FreshBlockRangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, message2.BlobPiecesSize());
+
+        const auto& freshBlockRange1 = message2.GetFreshBlockRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(9000, freshBlockRange1.GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(1, freshBlockRange1.GetBlocksCount());
+
+        TString actualContent;
+        for (size_t i = 0; i < message2.FreshBlockRangesSize(); ++i) {
+            const auto& freshRange = message2.GetFreshBlockRanges(i);
+            actualContent += freshRange.GetBlocksContent();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(range.Size() * DefaultBlockSize, actualContent.size());
+        for (size_t i = 0; i < actualContent.size(); i++) {
+            UNIT_ASSERT_VALUES_EQUAL('Y', actualContent[i]);
+        }
+
+        range = TBlockRange64::WithLength(10000, 1);
+        volume.WriteBlocks(range, clientInfo.GetClientId(), 'Z');
+
+        request = volume.CreateDescribeBlocksRequest(
+            range,
+            clientInfo.GetClientId()
+        );
+
+        volume.SendToPipe(std::move(request));
+        const auto response3 = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+        const auto& message3 = response3->Record;
+
+        UNIT_ASSERT(SUCCEEDED(response3->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(1, message3.FreshBlockRangesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, message3.BlobPiecesSize());
+
+        const auto& freshBlockRange2 = message3.GetFreshBlockRanges(0);
+        UNIT_ASSERT_VALUES_EQUAL(10000, freshBlockRange2.GetStartIndex());
+        UNIT_ASSERT_VALUES_EQUAL(1, freshBlockRange2.GetBlocksCount());
+    }
+
     Y_UNIT_TEST(ShouldHandleGetUsedBlocksRequest)
     {
         auto runtime = PrepareTestActorRuntime();

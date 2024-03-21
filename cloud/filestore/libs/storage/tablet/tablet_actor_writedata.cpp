@@ -1,14 +1,11 @@
 #include "tablet_actor.h"
 #include "tablet_actor_writedata_actor.h"
 
-#include "helpers.h"
-
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/set.h>
 #include <util/generic/string.h>
@@ -20,7 +17,6 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -101,33 +97,9 @@ void TIndexTabletActor::HandleWriteData(
         }
     }
 
-    auto validator = [&] (const NProto::TWriteDataRequest& request) {
-        if (auto error = ValidateRange(range); HasError(error)) {
-            return error;
-        }
-
-        auto* handle = FindHandle(request.GetHandle());
-        if (!handle || handle->GetSessionId() != GetSessionId(request)) {
-            return ErrorInvalidHandle(request.GetHandle());
-        }
-
-        if (!IsWriteAllowed(BuildBackpressureThresholds())) {
-            if (CompactionStateLoadStatus.Finished
-                    && ++BackpressureErrorCount >=
-                    Config->GetMaxBackpressureErrorsBeforeSuicide())
-            {
-                LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER,
-                    "%s Suiciding after %u backpressure errors",
-                    LogTag.c_str(),
-                    BackpressureErrorCount);
-
-                Suicide(ctx);
-            }
-
-            return MakeError(E_REJECTED, "rejected due to backpressure");
-        }
-
-        return NProto::TError{};
+    auto validator = [&](const NProto::TWriteDataRequest& request)
+    {
+        return ValidateWriteRequest(ctx, request, range);
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
@@ -178,7 +150,7 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 {
     const auto* msg = ev->Get();
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);

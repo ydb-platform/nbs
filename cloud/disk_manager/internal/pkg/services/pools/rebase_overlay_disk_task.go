@@ -112,7 +112,6 @@ func (t *rebaseOverlayDiskTask) Cancel(
 
 func (t *rebaseOverlayDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

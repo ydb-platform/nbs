@@ -39,6 +39,21 @@ void TIndexTabletActor::HandleSetNodeAttr(
     const TEvService::TEvSetNodeAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
+    const auto flags = msg->Record.GetFlags();
+    if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
+        if (auto error = IsDataOperationAllowed(); HasError(error)) {
+            NCloud::Reply(
+                ctx,
+                *ev,
+                std::make_unique<TEvService::TEvSetNodeAttrResponse>(
+                    std::move(error)));
+
+            return;
+        }
+    }
+
     auto validator = [&] (const NProto::TSetNodeAttrRequest& request) {
         return ValidateRequest(request, GetBlockSize());
     };
@@ -46,7 +61,6 @@ void TIndexTabletActor::HandleSetNodeAttr(
     if (!AcceptRequest<TEvService::TSetNodeAttrMethod>(ev, ctx, validator)) {
         return;
     }
-    auto* msg = ev->Get();
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,

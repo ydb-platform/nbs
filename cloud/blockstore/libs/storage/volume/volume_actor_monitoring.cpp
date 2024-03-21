@@ -672,8 +672,8 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             }
         };
         DIV_CLASS("row") {
-            const bool isDiskRegistryMediaKind = IsDiskRegistryMediaKind(
-                State->GetConfig().GetStorageMediaKind());
+            const bool isDiskRegistryMediaKind =
+                State->IsDiskRegistryMediaKind();
             TAG(TH3) { out << "CheckpointRequests"; }
             TABLE_SORTABLE_CLASS("table table-bordered") {
                 TABLEHEAD() {
@@ -971,7 +971,20 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "Disk Id"; }
-                    TABLED() { out << volumeConfig.GetDiskId(); }
+                    TABLED() {
+                        const auto mediaKind =
+                            State->GetConfig().GetStorageMediaKind();
+                        if (DiskRegistryTabletId &&
+                            IsDiskRegistryMediaKind(mediaKind))
+                        {
+                            out << "<a href='?action=disk&TabletID="
+                                << DiskRegistryTabletId
+                                << "&DiskID=" << volumeConfig.GetDiskId()
+                                << "'>" << volumeConfig.GetDiskId() << "</a>";
+                        } else {
+                            out << volumeConfig.GetDiskId();
+                        }
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "Base Disk Id"; }
@@ -1593,8 +1606,8 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                     }
                 }
 
-                auto& infos = State->GetPartitionStatInfos();
-                if (infos && infos.front().LastCounters) {
+                auto infos = State->GetPartitionStatInfos();
+                if (!infos.empty() && infos.front().LastCounters) {
                     const auto& counters = infos.front().LastCounters;
                     TABLER() {
                         TABLED() { out << "HasBrokenDevice"; }

@@ -20,6 +20,7 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
@@ -319,6 +320,7 @@ public:
 
     // called from external thread
     void EnqueueRequest(TRequestPtr req) noexcept;
+    TString GetAddress() const;
 
     // called from CQ thread
     void HandleCompletionEvent(ibv_wc* wc) override;
@@ -454,7 +456,7 @@ TServerSession::~TServerSession()
     STORAGE_INFO("close session [send_magic=%X recv_magic=%X] to %s",
         SendMagic,
         RecvMagic,
-        NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get())).c_str());
+        GetAddress().c_str());
 
     Verbs->DestroyQP(Connection.get());
 
@@ -498,6 +500,11 @@ void TServerSession::EnqueueRequest(TRequestPtr req) noexcept
     if (Config->WaitMode == EWaitMode::Poll) {
         RequestEvent.Set();
     }
+}
+
+TString TServerSession::GetAddress() const
+{
+    return NVerbs::PrintAddress(rdma_get_peer_addr(Connection.get()));
 }
 
 bool TServerSession::HandleInputRequests()
@@ -1276,6 +1283,10 @@ public:
         }
     }
 
+    auto GetSessions() {
+        return Sessions.Get();
+    }
+
 private:
     bool ShouldStop() const
     {
@@ -1432,6 +1443,7 @@ public:
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
+    void DumpHtml(IOutputStream& out) const override;
 
 private:
     // called from external thread
@@ -1562,6 +1574,107 @@ void TServer::Listen(TServerEndpoint* endpoint)
 
     Verbs->BindAddress(endpoint->Connection.get(), addrinfo->ai_src_addr);
     Verbs->Listen(endpoint->Connection.get(), Config->Backlog);
+}
+
+// implements IServer
+void TServer::DumpHtml(IOutputStream& out) const
+{
+    HTML(out) {
+        TAG(TH4) { out << "Config"; }
+        Config->DumpHtml(out);
+
+        TAG(TH4) { out << "Counters"; }
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "QueuedRequests"; }
+                    TABLEH() { out << "ActiveRequests"; }
+                    TABLEH() { out << "CompletedRequests"; }
+                    TABLEH() { out << "ThrottledRequests"; }
+                    TABLEH() { out << "ActiveSend"; }
+                    TABLEH() { out << "ActiveRecv"; }
+                    TABLEH() { out << "ActiveRead"; }
+                    TABLEH() { out << "ActiveWrite"; }
+                    TABLEH() { out << "SendErrors"; }
+                    TABLEH() { out << "RecvErrors"; }
+                    TABLEH() { out << "ReadErrors"; }
+                    TABLEH() { out << "WriteErrors"; }
+                    TABLEH() { out << "UnexpectedCompletions"; }
+                }
+                TABLER() {
+                    TABLED() { out << Counters->QueuedRequests->Val(); }
+                    TABLED() { out << Counters->ActiveRequests->Val(); }
+                    TABLED() { out << Counters->CompletedRequests->Val(); }
+                    TABLED() { out << Counters->ThrottledRequests->Val(); }
+                    TABLED() { out << Counters->ActiveSend->Val(); }
+                    TABLED() { out << Counters->ActiveRecv->Val(); }
+                    TABLED() { out << Counters->ActiveRead->Val(); }
+                    TABLED() { out << Counters->ActiveWrite->Val(); }
+                    TABLED() { out << Counters->SendErrors->Val(); }
+                    TABLED() { out << Counters->RecvErrors->Val(); }
+                    TABLED() { out << Counters->ReadErrors->Val(); }
+                    TABLED() { out << Counters->WriteErrors->Val(); }
+                    TABLED() { out << Counters->UnexpectedCompletions->Val(); }
+                }
+            }
+        }
+
+        TAG(TH4) { out << "Endpoints"; }
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "Port"; }
+                }
+            }
+
+            with_lock (EndpointsLock) {
+                for (auto& ep : Endpoints) {
+                    TABLER() {
+                        TABLED() { out << ep->Host; }
+                        TABLED() { out << ep->Port; }
+                    }
+                }
+            }
+        }
+
+        for (size_t i = 0; i < CompletionPollers.size(); ++i) {
+            auto& poller = CompletionPollers[i];
+            auto sessions = poller->GetSessions();
+
+            if (sessions->empty()) {
+                continue;
+            }
+
+            TAG(TH4) {
+                out << "Poller-" << i << " ServerSessions"
+                    << " <font color=gray>" << sessions->size() << "</font>";
+            }
+
+            TABLE_SORTABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "Address"; }
+                        TABLEH() { out << "Magic"; }
+                    }
+                }
+
+                for (auto& session: *sessions) {
+                    TABLER() {
+                        TABLED() { out << session->GetAddress(); }
+                        TABLED()
+                        {
+                            Printf(
+                                out,
+                                "%08X:%08X",
+                                session->SendMagic,
+                                session->RecvMagic);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

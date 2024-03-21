@@ -304,6 +304,8 @@ TTestEnv TTestEnvBuilder::Build()
     // }
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
+    Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT, NLog::PRI_INFO);
+
     Runtime.SetRegistrationObserverFunc(
         [] (auto& runtime, const auto& parentId, const auto& actorId)
     {
@@ -353,6 +355,7 @@ TTestEnv TTestEnvBuilder::Build()
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
+        nullptr,    // rdmaConfig
         Spdk,
         allocator,
         StorageProvider,

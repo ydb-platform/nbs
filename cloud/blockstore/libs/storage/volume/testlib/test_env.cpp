@@ -369,11 +369,11 @@ std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> TVolumeClient::CreateDescri
 std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
 TVolumeClient::CreateCreateCheckpointRequest(
     const TString& checkpointId,
-    bool isLight)
+    NProto::ECheckpointType checkpointType)
 {
     auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
     request->Record.SetCheckpointId(checkpointId);
-    request->Record.SetIsLight(isLight);
+    request->Record.SetCheckpointType(checkpointType);
     return request;
 }
 
@@ -669,6 +669,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             0
         )
     );
+    runtime->EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
 
     runtime->AddLocalService(
         MakeDiskAgentServiceId(runtime->GetNodeId()),

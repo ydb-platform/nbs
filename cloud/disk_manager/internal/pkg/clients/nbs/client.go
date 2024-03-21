@@ -77,6 +77,40 @@ func getStorageMediaKind(
 	}
 }
 
+func getDiskKind(
+	mediaKind core_protos.EStorageMediaKind,
+) (types.DiskKind, error) {
+
+	switch mediaKind {
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_DEFAULT:
+		return 0, errors.NewNonRetriableErrorf(
+			"unsupported media kind %v",
+			mediaKind,
+		)
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD:
+		return types.DiskKind_DISK_KIND_SSD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID:
+		return types.DiskKind_DISK_KIND_HDD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD:
+		return types.DiskKind_DISK_KIND_HDD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED:
+		return types.DiskKind_DISK_KIND_SSD_NONREPLICATED, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2:
+		return types.DiskKind_DISK_KIND_SSD_MIRROR2, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
+		return types.DiskKind_DISK_KIND_SSD_LOCAL, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3:
+		return types.DiskKind_DISK_KIND_SSD_MIRROR3, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED:
+		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
+	default:
+		return 0, errors.NewNonRetriableErrorf(
+			"unknown media kind %v",
+			mediaKind,
+		)
+	}
+}
+
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -966,9 +1000,15 @@ func (c *client) Describe(
 		return DiskParams{}, err
 	}
 
+	diskKind, err := getDiskKind(volume.StorageMediaKind)
+	if err != nil {
+		return DiskParams{}, err
+	}
+
 	return DiskParams{
 		BlockSize:      volume.BlockSize,
 		BlocksCount:    volume.BlocksCount,
+		Kind:           diskKind,
 		EncryptionDesc: encryptionDesc,
 		CloudID:        volume.CloudId,
 		FolderID:       volume.FolderId,

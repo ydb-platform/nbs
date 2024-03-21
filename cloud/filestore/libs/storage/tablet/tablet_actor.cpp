@@ -181,6 +181,10 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
+    Metrics.ReassignCount.fetch_add(
+        channels.size(),
+        std::memory_order_relaxed);
+
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
@@ -271,7 +275,7 @@ void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
         TRequestInfo* requestInfo = ActiveTransactions.PopFront();
         TABLET_VERIFY(requestInfo->RefCount() >= 1);
 
-        requestInfo->CancelRoutine(ctx, *requestInfo);
+        requestInfo->CancelRequest(ctx);
         requestInfo->UnRef();
     }
 }
@@ -311,6 +315,61 @@ void TIndexTabletActor::ResetThrottlingPolicy()
     } else {
         Throttler->ResetPolicy(AccessThrottlingPolicy());
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TRequest>
+NProto::TError TIndexTabletActor::ValidateWriteRequest(
+    const TActorContext& ctx,
+    const TRequest& request,
+    const TByteRange& range)
+{
+    if (auto error = ValidateRange(range); HasError(error)) {
+        return error;
+    }
+
+    auto* handle = FindHandle(request.GetHandle());
+    if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        return ErrorInvalidHandle(request.GetHandle());
+    }
+
+    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+        if (CompactionStateLoadStatus.Finished &&
+            ++BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Suiciding after %u backpressure errors",
+                LogTag.c_str(),
+                BackpressureErrorCount);
+
+            Suicide(ctx);
+        }
+
+        return MakeError(E_REJECTED, "rejected due to backpressure");
+    }
+
+    return NProto::TError{};
+}
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
+    const TActorContext& ctx,
+    const NProto::TWriteDataRequest& request,
+    const TByteRange& range);
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
+{
+    if (!CompactionStateLoadStatus.Finished) {
+        return MakeError(E_REJECTED, "compaction state not loaded yet");
+    }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -636,7 +695,7 @@ void TIndexTabletActor::RebootTabletOnCommitOverflow(
     const TActorContext& ctx,
     const TString& request)
 {
-    LOG_ERROR(ctx, TFileStoreActivities::TABLET,
+    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
         "%s CommitId overflow in %s. Restarting",
         LogTag.c_str(),
         request.c_str());

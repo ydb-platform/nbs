@@ -1,0 +1,3 @@
+# There is a race between reading and writing 'allow_customize' on initialization
+# https://a.yandex-team.ru/arcadia/contrib/libs/openssl/crypto/mem.c?rev=r10239471#L204-210
+race:CRYPTO_malloc

@@ -51,7 +51,7 @@ func TestMigrateDiskTaskProgress(t *testing.T) {
 		state:             &protos.MigrateDiskTaskState{},
 	}
 
-	metadataRaw, err := task.GetMetadata(ctx, "migrate_task_id")
+	metadataRaw, err := task.GetMetadata(ctx)
 	require.NoError(t, err)
 
 	metadata, ok := metadataRaw.(*disk_manager.MigrateDiskMetadata)
@@ -84,7 +84,7 @@ func TestMigrateDiskTaskProgress(t *testing.T) {
 		UpdatedAt:        replicateDiskTaskUpdatedAt,
 	}, nil)
 
-	metadataRaw, err = task.GetMetadata(ctx, "migrate_task_id")
+	metadataRaw, err = task.GetMetadata(ctx)
 	require.NoError(t, err)
 
 	metadata, ok = metadataRaw.(*disk_manager.MigrateDiskMetadata)

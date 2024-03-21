@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/str.h>
@@ -18,7 +19,9 @@ using namespace NActors;
 void TDiskAgentActor::InitAgent(const TActorContext& ctx)
 {
     State = std::make_unique<TDiskAgentState>(
+        Config,
         AgentConfig,
+        RdmaConfig,
         Spdk,
         Allocator,
         StorageProvider,
@@ -50,7 +53,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
 
             auto response = std::make_unique<TCompletionEvent>(
                 std::move(r.Configs),
-                std::move(r.Errors));
+                std::move(r.Errors),
+                std::move(r.ConfigMismatchErrors));
 
             actorSystem->Send(
                 new IEventHandle(
@@ -85,6 +89,17 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT, error);
     }
 
+    // Crit events that reported on startup have issue with them being invisible
+    // on second restart. Here, we schedule the event to allow monitoring
+    // initially to read counters without event and then with the event.
+    for (const auto& configMismatchError: msg->ConfigMismatchErrors) {
+        const TDuration startupCritEventDelay = UpdateCountersInterval * 2;
+        ctx.Schedule(
+            startupCritEventDelay,
+            new TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch(
+                configMismatchError));
+    }
+
     if (const auto& error = msg->GetError(); HasError(error)) {
         LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT,
             "DiskAgent initialization failed. Error: " << FormatError(error).data());
@@ -102,6 +117,17 @@ void TDiskAgentActor::HandleInitAgentCompleted(
 
     // resend pending requests
     SendPendingRequests(ctx, PendingRequests);
+
+    if (msg->Configs.empty()) {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "No devices: become idle");
+
+        Become(&TThis::StateIdle);
+
+        return;
+    }
 
     Become(&TThis::StateWork);
 
