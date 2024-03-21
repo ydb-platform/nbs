@@ -24,6 +24,7 @@ class CmsEngine(object):
         self.__pssh = pssh
         self.__dir = test_data_dir
         self.__request_id = 0
+        self.__chowns = set()
 
     def execute(self, target, proto):
         logging.info(f'[cms.execute] {target} proto: {proto}')
@@ -33,6 +34,14 @@ class CmsEngine(object):
         tmp_file.flush()
 
         target_path = '~/cms_request_%s' % os.path.basename(tmp_file.name)
+
+        # to be able to copy files to hosts we need to invoke 'chown' on home
+        # folder
+        if target not in self.__chowns:
+            logging.info('[cms.execute] chown...')
+            output = self.__pssh.run("sudo chown $(whoami) .", target)
+            logging.info(f'[cms.execute] chown: {output}')
+            self.__chowns.add(target)
 
         self.__pssh.scp_to(target, tmp_file.name, target_path)
 
