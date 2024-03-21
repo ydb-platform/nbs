@@ -156,8 +156,8 @@ public:
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui32 siblingCount,
-        const NActors::TActorId& VolumeActorId);
-    ~TPartitionActor();
+        const NActors::TActorId& volumeActorId);
+    ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
     using TCounters = TPartitionCounters;

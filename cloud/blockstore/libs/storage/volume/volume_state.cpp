@@ -191,8 +191,7 @@ void TVolumeState::Reset()
 
     if (IsDiskRegistryMediaKind()) {
         if (Meta.GetDevices().size()) {
-            PartitionStatInfos.emplace_back(
-                EPublishingPolicy::DiskRegistryBased);
+            CreatePartitionStatInfo(GetDiskId(), 0);
         }
         const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
         if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {
@@ -205,7 +204,7 @@ void TVolumeState::Reset()
                 Meta.GetConfig(),
                 StorageConfig->GetTabletRebootCoolDownIncrement(),
                 StorageConfig->GetTabletRebootCoolDownMax());
-            PartitionStatInfos.emplace_back(EPublishingPolicy::Repl);
+            CreatePartitionStatInfo(GetDiskId(), tabletId);
         }
     }
 
@@ -312,15 +311,26 @@ TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
     return nullptr;
 }
 
-bool TVolumeState::FindPartitionIndex(ui64 tabletId, ui32& index) const
+std::optional<ui32>
+TVolumeState::FindPartitionIndex(NActors::TActorId owner) const
 {
     for (ui32 i = 0; i < Partitions.size(); ++i) {
-        if (Partitions[i].TabletId == tabletId) {
-            index = i;
-            return true;
+        if (Partitions[i].Owner == owner) {
+            return i;
         }
     }
-    return false;
+    return std::nullopt;
+}
+
+std::optional<ui64>
+TVolumeState::FindPartitionTabletId(NActors::TActorId owner) const
+{
+    for (const auto& partition: Partitions) {
+        if (partition.Owner == owner) {
+            return partition.TabletId;
+        }
+    }
+    return std::nullopt;
 }
 
 void TVolumeState::SetPartitionsState(TPartitionInfo::EState state)
@@ -400,6 +410,14 @@ TString TVolumeState::GetPartitionsError() const
         }
     }
     return out.Str();
+}
+
+void TVolumeState::SetDiskRegistryBasedPartitionActor(
+    const NActors::TActorId& actor,
+    TNonreplicatedPartitionConfigPtr config)
+{
+    DiskRegistryBasedPartitionActor = actor;
+    NonreplicatedPartitionConfig = std::move(config);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -820,43 +838,39 @@ EPublishingPolicy TVolumeState::CountersPolicy() const
                                      : EPublishingPolicy::Repl;
 }
 
-bool TVolumeState::FindPartitionStatInfoByOwner(
-    const TActorId& actorId,
-    ui32& index) const
+
+void TVolumeState::CreatePartitionStatInfo(
+    const TString& diskId,
+    ui64 tabletId)
 {
-    for (ui32 i = 0; i < PartitionStatInfos.size(); ++i) {
-        if (PartitionStatInfos[i].Owner == actorId) {
-            index = i;
-            return true;
-        }
-    }
-    return false;
+    PartitionStatInfos.push_back(
+        TPartitionStatInfo(diskId, tabletId, CountersPolicy()));
 }
 
-TPartitionStatInfo* TVolumeState::GetPartitionStatInfoById(ui64 id)
+TPartitionStatInfo* TVolumeState::GetPartitionStatInfoByTabletId(ui64 tabletId)
 {
     if (IsDiskRegistryMediaKind()) {
-        if (id >= PartitionStatInfos.size()) {
-            return nullptr;
-        }
-        return &PartitionStatInfos[id];
-    } else {
-        ui32 index = 0;
-        if (FindPartitionIndex(id, index)) {
-            return &PartitionStatInfos[index];
-        };
-        return nullptr;
+        Y_DEBUG_ABORT_UNLESS(tabletId == 0);
+        return &PartitionStatInfos.front();
     }
+
+    for (auto& statInfo: PartitionStatInfos) {
+        if (statInfo.TabletId == tabletId) {
+            return &statInfo;
+        }
+    }
+    return nullptr;
 }
 
-bool TVolumeState::SetPartitionStatActor(ui64 id, const TActorId& actor)
+TPartitionStatInfo*
+TVolumeState::GetPartitionStatByDiskId(const TString& diskId)
 {
-    ui32 index = 0;
-    if (FindPartitionIndex(id, index)) {
-        PartitionStatInfos[index].Owner = actor;
-        return true;
-    };
-    return false;
+    for (auto& statInfo: PartitionStatInfos) {
+        if (statInfo.DiskId == diskId) {
+            return &statInfo;
+        }
+    }
+    return nullptr;
 }
 
 bool TVolumeState::GetMuteIOErrors() const
