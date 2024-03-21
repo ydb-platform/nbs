@@ -57,7 +57,7 @@ bool ToPartitionRequests(
     Y_UNUSED(requests);
     Y_UNUSED(blockRange);
 
-    Y_ABORT_UNLESS(0);
+    ythrow TServiceError(E_NOT_IMPLEMENTED);
     return false;
 }
 
