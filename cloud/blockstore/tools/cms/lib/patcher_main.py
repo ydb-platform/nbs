@@ -22,8 +22,8 @@ class ModuleFactories:
     def make_conductor(self, test_data_dir: str):
         return self._conductor_maker(test_data_dir)
 
-    def make_pssh(self, robot: bool):
-        return self._pssh_maker(robot)
+    def make_pssh(self, robot: bool, cluster: str):
+        return self._pssh_maker(robot, cluster)
 
 
 class BgColors:
@@ -167,7 +167,7 @@ def do_main(module_factories: ModuleFactories, default_host_cfg_path: str):
         scp = libtools.ScpMock(args.test_data_dir)
         conductor = libconductor.ConductorMock(args.test_data_dir)
     else:
-        pssh = module_factories.make_pssh(args.robot)
+        pssh = module_factories.make_pssh(args.robot, cluster_config.cluster)
         cms_engine = libcms.CmsEngine(pssh, args.test_data_dir)
         scp = libtools.Scp(pssh, args.test_data_dir)
         conductor = module_factories.make_conductor(args.test_data_dir)
