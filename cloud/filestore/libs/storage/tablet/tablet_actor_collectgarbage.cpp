@@ -482,9 +482,9 @@ void TIndexTabletActor::HandleReleaseCollectBarrier(
     Y_UNUSED(ctx);
     auto commitId = ev->Get()->CommitId;
     for (ui32 i = 0; i < ev->Get()->Count; ++i) {
-        // allowMissing is set to true, because the barrier may already be released
-        // by a completed two-stage write operation
-        ReleaseCollectBarrier(commitId, true);
+        // We do not check if the barrier was acquired, because the barrier may
+        // already have been released by a completed two-stage write operation
+        TryReleaseCollectBarrier(commitId);
     }
 }
 

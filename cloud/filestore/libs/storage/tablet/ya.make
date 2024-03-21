@@ -66,7 +66,6 @@ SRCS(
     tablet_actor_writebatch.cpp
     tablet_actor_writeblob.cpp
     tablet_actor_writedata.cpp
-    tablet_actor_writedata_actor.cpp
     tablet_actor_zerorange.cpp
     tablet_counters.cpp
     tablet_database.cpp

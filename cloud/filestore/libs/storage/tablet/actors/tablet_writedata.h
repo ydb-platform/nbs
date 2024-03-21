@@ -29,6 +29,12 @@ private:
     const TWriteRange WriteRange;
     ui32 BlobsSize = 0;
 
+    // This parameter is used for a scenario, when there is already a blobId
+    // with data written to. In this case, we don't need to send requests to
+    // blobstorage. This field is used only for two-stage writes. For more info
+    // see See #539
+    bool SkipBlobStorage = false;
+
 public:
     TWriteDataActor(
         ITraceSerializerPtr traceSerializer,
@@ -37,7 +43,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
-        TWriteRange writeRange);
+        TWriteRange writeRange,
+        bool skipBlobStorage);
 
     void Bootstrap(const TActorContext& ctx);
 

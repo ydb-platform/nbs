@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/service.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
@@ -18,13 +19,14 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteDataActor::TWriteDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TWriteRange writeRange)
+    ITraceSerializerPtr traceSerializer,
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TVector<TMergedBlob> blobs,
+    TWriteRange writeRange,
+    bool skipBlobStorage)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , Tablet(tablet)
@@ -32,6 +34,7 @@ TWriteDataActor::TWriteDataActor(
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
+    , SkipBlobStorage(skipBlobStorage)
 {
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobContent.Size();
@@ -51,6 +54,13 @@ void TWriteDataActor::Bootstrap(const TActorContext& ctx)
 
 void TWriteDataActor::WriteBlob(const TActorContext& ctx)
 {
+    if (SkipBlobStorage) {
+        // In the case, when there is already a blobId with data written to,
+        // bypass BlobStorage access
+        AddBlob(ctx);
+        return;
+    }
+
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
         RequestInfo->CallContext
     );
@@ -114,8 +124,20 @@ void TWriteDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    {
-        // notify tablet
+    // notify tablet
+    if (SkipBlobStorage) {
+        NCloud::Send(
+            ctx,
+            // We try to release commit barrier twice: once for the lock
+            // acquired at the GenerateBlob request and once for the lock
+            // acquired at the AddData request. Though, the first lock is
+            // scheduled to be released, it is better to release it as early
+            // as possible.
+            Tablet,
+            std::make_unique<TEvIndexTabletPrivate::TEvReleaseCollectBarrier>(
+                CommitId,
+                2));
+    } else {
         using TCompletion = TEvIndexTabletPrivate::TEvWriteDataCompleted;
         auto response = std::make_unique<TCompletion>(error);
         response->CommitId = CommitId;
@@ -131,20 +153,32 @@ void TWriteDataActor::ReplyAndDie(
         "WriteData");
 
     if (RequestInfo->Sender != Tablet) {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s WriteData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
+        if (SkipBlobStorage) {
+            auto response = std::make_unique<TEvIndexTablet::TEvAddDataResponse>(error);
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s AddData: #%lu completed (%s)",
+                LogTag.c_str(),
+                RequestInfo->CallContext->RequestId,
+                FormatError(response->Record.GetError()).c_str());
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        } else {
+            auto response = std::make_unique<TEvService::TEvWriteDataResponse>(error);
+            LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+                "%s WriteData: #%lu completed (%s)",
+                LogTag.c_str(),
+                RequestInfo->CallContext->RequestId,
+                FormatError(response->Record.GetError()).c_str());
 
-        BuildTraceInfo(
-            TraceSerializer,
-            RequestInfo->CallContext,
-            response->Record);
-        BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
+            BuildTraceInfo(
+                TraceSerializer,
+                RequestInfo->CallContext,
+                response->Record);
+            BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
 
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+            NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        }
     }
 
     Die(ctx);

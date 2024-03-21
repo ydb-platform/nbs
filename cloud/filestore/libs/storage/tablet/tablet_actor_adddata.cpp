@@ -1,6 +1,6 @@
 #include "tablet_actor.h"
-#include "tablet_actor_writedata_actor.h"
 
+#include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -94,8 +94,8 @@ void TIndexTabletActor::CompleteTx_AddData(
 
     auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TAddData& args)
     {
-        ReleaseCollectBarrier(args.CommitId);
-        ReleaseCollectBarrier(args.CommitId, true);
+        TABLET_VERIFY(TryReleaseCollectBarrier(args.CommitId));
+        TryReleaseCollectBarrier(args.CommitId);
 
         auto response =
             std::make_unique<TEvIndexTablet::TEvAddDataResponse>(args.Error);
@@ -310,12 +310,12 @@ void TIndexTabletActor::HandleAddData(
         // Until the tx is started, it is this method's responsibility to
         // release the collect barrier
         if (!txStarted) {
-            ReleaseCollectBarrier(commitId);
+            TABLET_VERIFY(TryReleaseCollectBarrier(commitId));
             // The second one is used to release the barrier, acquired in
             // GenerateBlobIds method. Though it will be eventually released
             // upon lease expiration, it is better to release it as soon as
             // possible.
-            ReleaseCollectBarrier(commitId, true);
+            TryReleaseCollectBarrier(commitId);
         }
     };
 

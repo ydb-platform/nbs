@@ -4447,7 +4447,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         moveBarrier();
         // After the GenerateBlobIdsReleaseCollectBarrierTimeout has passed, we
         // can observe that the last collect garbage has moved beyond the commit
-        // id of the issued blob.
+        // id of the generated blob.
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
