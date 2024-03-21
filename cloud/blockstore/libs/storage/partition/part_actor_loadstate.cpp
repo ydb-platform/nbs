@@ -227,7 +227,9 @@ void TPartitionActor::CompleteLoadState(
     State->GetCleanupQueue().Add(args.CleanupQueue);
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
-
+    
+    // Disable logical used blocks calculation for proxy (system) overlay (with 
+    // base disk) disks.
     if (State->GetBaseDiskId() && !partitionConfig.GetIsSystem()) {
         if (args.ReadLogicalUsedBlocks) {
             State->GetLogicalUsedBlocks() = std::move(args.LogicalUsedBlocks);
