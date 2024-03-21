@@ -19,14 +19,14 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteDataActor::TWriteDataActor(
-    ITraceSerializerPtr traceSerializer,
-    TString logTag,
-    TActorId tablet,
-    TRequestInfoPtr requestInfo,
-    ui64 commitId,
-    TVector<TMergedBlob> blobs,
-    TWriteRange writeRange,
-    bool skipBlobStorage)
+        ITraceSerializerPtr traceSerializer,
+        TString logTag,
+        TActorId tablet,
+        TRequestInfoPtr requestInfo,
+        ui64 commitId,
+        TVector<TMergedBlob> blobs,
+        TWriteRange writeRange,
+        bool skipBlobStorage)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , Tablet(tablet)

@@ -17,7 +17,6 @@ struct IBlockBuffer
 
     virtual TStringBuf GetUnalignedHead() = 0;
     virtual TStringBuf GetBlock(size_t index) = 0;
-    virtual ui32 GetBlockSize() const = 0;
     virtual TStringBuf GetUnalignedTail() = 0;
     virtual void SetBlock(size_t index, TStringBuf block) = 0;
     virtual void ClearBlock(size_t index) = 0;

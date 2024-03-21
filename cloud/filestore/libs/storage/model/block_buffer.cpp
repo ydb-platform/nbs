@@ -44,11 +44,6 @@ public:
         return { ptr, ByteRange.BlockSize };
     }
 
-    ui32 GetBlockSize() const override
-    {
-        return ByteRange.BlockSize;
-    }
-
     void SetBlock(size_t index, TStringBuf block) override
     {
         Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
@@ -110,11 +105,6 @@ public:
         }
 
         return block;
-    }
-
-    ui32 GetBlockSize() const override
-    {
-        return ByteRange.BlockSize;
     }
 
     void SetBlock(size_t index, TStringBuf block) override

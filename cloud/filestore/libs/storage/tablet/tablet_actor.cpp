@@ -361,6 +361,12 @@ TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
     const NProto::TWriteDataRequest& request,
     const TByteRange& range);
 
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
+    const TActorContext& ctx,
+    const NProtoPrivate::TAddDataRequest& request,
+    const TByteRange& range);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError TIndexTabletActor::IsDataOperationAllowed() const

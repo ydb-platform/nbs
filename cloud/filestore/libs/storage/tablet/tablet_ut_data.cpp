@@ -4323,6 +4323,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
     }
 
+#define CHECK_GENERATED_BLOB(offset, length, expected)                       \
+    {                                                                        \
+        ui64 currentOffset = offset;                                         \
+        TVector<ui64> expectedSizes = expected;                              \
+        auto blobs = tablet.GenerateBlobIds(node, handle, offset, length);   \
+        auto commitId = blobs->Record.GetCommitId();                         \
+        const auto [generation, step] = ParseCommitId(commitId);             \
+        UNIT_ASSERT_VALUES_EQUAL(                                            \
+            blobs->Record.BlobsSize(),                                       \
+            expectedSizes.size());                                           \
+        for (size_t i = 0; i < expectedSizes.size(); ++i) {                  \
+            auto generatedBlob = blobs->Record.GetBlobs(i);                  \
+            auto blob = LogoBlobIDFromLogoBlobID(generatedBlob.GetBlobId()); \
+            UNIT_ASSERT_VALUES_EQUAL(blob.BlobSize(), expectedSizes[i]);     \
+            UNIT_ASSERT_VALUES_EQUAL(blob.Generation(), generation);         \
+            UNIT_ASSERT_VALUES_EQUAL(blob.Step(), step);                     \
+            UNIT_ASSERT_VALUES_EQUAL(                                        \
+                generatedBlob.GetLength(),                                   \
+                expectedSizes[i]);                                           \
+            UNIT_ASSERT_VALUES_EQUAL(                                        \
+                generatedBlob.GetOffset(),                                   \
+                currentOffset);                                              \
+            currentOffset += expectedSizes[i];                               \
+        }                                                                    \
+    }
+
     TABLET_TEST(ShouldGenerateBlobIds)
     {
         auto block = tabletConfig.BlockSize;
@@ -4344,51 +4370,32 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, node);
 
-        auto checkGeneratedBlob =
-            [&](ui64 offset, ui64 length, TVector<ui64> expectedSizes)
-        {
-            auto blobs = tablet.GenerateBlobIds(node, handle, offset, length);
-            auto commitId = blobs->Record.GetCommitId();
-
-            const auto [generation, step] = ParseCommitId(commitId);
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                blobs->Record.BlobsSize(),
-                expectedSizes.size());
-
-            for (size_t i = 0; i < expectedSizes.size(); ++i) {
-                auto generatedBlob = blobs->Record.GetBlobs(i);
-                auto blob = LogoBlobIDFromLogoBlobID(generatedBlob.GetBlobId());
-                UNIT_ASSERT_VALUES_EQUAL(blob.BlobSize(), expectedSizes[i]);
-                UNIT_ASSERT_VALUES_EQUAL(blob.Generation(), generation);
-                UNIT_ASSERT_VALUES_EQUAL(blob.Step(), step);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    generatedBlob.GetLength(),
-                    expectedSizes[i]);
-                UNIT_ASSERT_VALUES_EQUAL(generatedBlob.GetOffset(), offset);
-
-                offset += expectedSizes[i];
-            }
-        };
-
-        checkGeneratedBlob(0, block, {block});
-        checkGeneratedBlob(block, block, {block});
-        checkGeneratedBlob(3 * block, 2 * block, {2 * block});
-        checkGeneratedBlob(
+        CHECK_GENERATED_BLOB(0, block, TVector<ui64>{block});
+        CHECK_GENERATED_BLOB(block, block, TVector<ui64>{block});
+        CHECK_GENERATED_BLOB(3 * block, 2 * block, TVector<ui64>{2 * block});
+        CHECK_GENERATED_BLOB(
             BlockGroupSize * block / 2,
             block * BlockGroupSize,
-            {BlockGroupSize * block / 2, BlockGroupSize * block / 2});
-        checkGeneratedBlob(
+            (TVector<ui64>{
+                BlockGroupSize * block / 2,
+                BlockGroupSize * block / 2}));
+        CHECK_GENERATED_BLOB(
             3 * block * BlockGroupSize,
             3 * block * BlockGroupSize,
-            {block * BlockGroupSize,
-             block * BlockGroupSize,
-             block * BlockGroupSize});
-        checkGeneratedBlob(
+            (TVector<ui64>{
+                block * BlockGroupSize,
+                block * BlockGroupSize,
+                block * BlockGroupSize}));
+        CHECK_GENERATED_BLOB(
             block,
             2 * block * BlockGroupSize,
-            {block * (BlockGroupSize - 1), block * BlockGroupSize, block});
+            (TVector<ui64>{
+                block * (BlockGroupSize - 1),
+                block * BlockGroupSize,
+                block}));
     }
+
+#undef CHECK_GENERATED_BLOB
 
     TABLET_TEST(ShouldAcquireLockForCollectGarbageOnGenerateBlobIds)
     {

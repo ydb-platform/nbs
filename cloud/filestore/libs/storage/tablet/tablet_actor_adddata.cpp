@@ -15,6 +15,8 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NActors;
 
 using namespace NKikimr;
@@ -22,7 +24,6 @@ using namespace NKikimr::NTabletFlatExecutor;
 
 class TWriteDataActor;
 
-////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_AddData(
     const TActorContext& ctx,
@@ -282,13 +283,12 @@ void TIndexTabletActor::HandleAddData(
 {
     auto* msg = ev->Get();
 
-    if (!CompactionStateLoadStatus.Finished) {
-        // TODO(debnatkh): Support two-stage write in case of unfinished
-        // compaction state loading
-
-        auto response = std::make_unique<TEvIndexTablet::TEvAddDataResponse>(
-            MakeError(E_REJECTED, "compaction state not loaded yet"));
-        NCloud::Reply(ctx, *ev, std::move(response));
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(
+                std::move(error)));
         return;
     }
 
@@ -326,34 +326,7 @@ void TIndexTabletActor::HandleAddData(
 
     auto validator = [&](const NProtoPrivate::TAddDataRequest& request)
     {
-        if (auto error = ValidateRange(range); HasError(error)) {
-            return error;
-        }
-
-        auto* handle = FindHandle(request.GetHandle());
-        if (!handle || handle->GetSessionId() != GetSessionId(request)) {
-            return ErrorInvalidHandle(request.GetHandle());
-        }
-
-        if (!IsWriteAllowed(BuildBackpressureThresholds())) {
-            if (CompactionStateLoadStatus.Finished &&
-                ++BackpressureErrorCount >=
-                    Config->GetMaxBackpressureErrorsBeforeSuicide())
-            {
-                LOG_WARN(
-                    ctx,
-                    TFileStoreComponents::TABLET_WORKER,
-                    "%s Suiciding after %u backpressure errors",
-                    LogTag.c_str(),
-                    BackpressureErrorCount);
-
-                Suicide(ctx);
-            }
-
-            return MakeError(E_REJECTED, "rejected due to backpressure");
-        }
-
-        return NProto::TError{};
+        return ValidateWriteRequest(ctx, request, range);
     };
 
     if (!AcceptRequest<TEvIndexTablet::TAddDataMethod>(ev, ctx, validator)) {
