@@ -7,7 +7,6 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;

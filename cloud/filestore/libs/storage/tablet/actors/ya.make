@@ -1,6 +1,5 @@
 LIBRARY()
 
-
 SRCS(
     tablet_writedata.cpp
 )
