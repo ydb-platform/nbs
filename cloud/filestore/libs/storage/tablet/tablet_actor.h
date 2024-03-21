@@ -353,6 +353,12 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    template <typename TRequest>
+    NProto::TError ValidateWriteRequest(
+        const NActors::TActorContext& ctx,
+        const TRequest& request,
+        const TByteRange& range);
+
     NProto::TError IsDataOperationAllowed() const;
 
     void HandleWakeup(

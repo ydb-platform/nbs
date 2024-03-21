@@ -46,7 +46,7 @@ public:
     //
 
     void AcquireCollectBarrier(ui64 commitId);
-    void ReleaseCollectBarrier(ui64 commitId);
+    [[ nodiscard ]] bool TryReleaseCollectBarrier(ui64 commitId);
 
     ui64 GetCollectCommitId() const;
 };

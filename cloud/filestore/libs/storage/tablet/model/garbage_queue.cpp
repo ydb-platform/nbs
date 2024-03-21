@@ -182,15 +182,19 @@ void TGarbageQueue::AcquireCollectBarrier(ui64 commitId)
     }
 }
 
-void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
+bool TGarbageQueue::TryReleaseCollectBarrier(ui64 commitId)
 {
     {
         auto it = Impl->Barriers.find(commitId);
-        Y_ABORT_UNLESS(it != Impl->Barriers.end());
+        if (it == Impl->Barriers.end()) {
+            return false;
+        }
 
         auto& barrier = const_cast<TBarrier&>(*it);
 
-        Y_ABORT_UNLESS(barrier.RefCount > 0);
+        if (barrier.RefCount == 0) {
+            return false;
+        }
         --barrier.RefCount;
     }
 
@@ -208,6 +212,7 @@ void TGarbageQueue::ReleaseCollectBarrier(ui64 commitId)
 
         it = Impl->Barriers.erase(it);
     }
+    return true;
 }
 
 ui64 TGarbageQueue::GetCollectCommitId() const

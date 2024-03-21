@@ -319,6 +319,50 @@ void TIndexTabletActor::ResetThrottlingPolicy()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+NProto::TError TIndexTabletActor::ValidateWriteRequest(
+    const TActorContext& ctx,
+    const TRequest& request,
+    const TByteRange& range)
+{
+    if (auto error = ValidateRange(range); HasError(error)) {
+        return error;
+    }
+
+    auto* handle = FindHandle(request.GetHandle());
+    if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        return ErrorInvalidHandle(request.GetHandle());
+    }
+
+    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+        if (CompactionStateLoadStatus.Finished &&
+            ++BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Suiciding after %u backpressure errors",
+                LogTag.c_str(),
+                BackpressureErrorCount);
+
+            Suicide(ctx);
+        }
+
+        return MakeError(E_REJECTED, "rejected due to backpressure");
+    }
+
+    return NProto::TError{};
+}
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
+    const TActorContext& ctx,
+    const NProto::TWriteDataRequest& request,
+    const TByteRange& range);
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 {
     if (!CompactionStateLoadStatus.Finished) {
