@@ -228,13 +228,13 @@ void TPartitionActor::CompleteLoadState(
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
 
-    if (State->GetBaseDiskId()) {
+    if (State->GetBaseDiskId() && !partitionConfig.GetIsSystem()) {
         if (args.ReadLogicalUsedBlocks) {
             State->GetLogicalUsedBlocks() = std::move(args.LogicalUsedBlocks);
             State->AccessStats().SetLogicalUsedBlocksCount(
                 State->GetLogicalUsedBlocks().Count()
             );
-        } else if (!partitionConfig.GetIsProxyOverlay()) {
+        } else {
             State->GetLogicalUsedBlocks().Update(State->GetUsedBlocks(), 0);
             State->AccessStats().SetLogicalUsedBlocksCount(
                 State->AccessStats().GetUsedBlocksCount()

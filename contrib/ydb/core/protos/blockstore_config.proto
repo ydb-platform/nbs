@@ -133,8 +133,6 @@ message TVolumeConfig {
 
     // Mount requests with incorrect FillGeneration will be rejected unless filling is finished.
     optional uint64 FillGeneration = 51;
-
-    optional bool IsProxyOverlay = 52;
 }
 
 message TUpdateVolumeConfig {

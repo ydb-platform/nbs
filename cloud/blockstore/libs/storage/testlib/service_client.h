@@ -99,8 +99,7 @@ public:
         bool isSystem = false,
         const TString& baseDiskId = TString(),
         const TString& baseDiskCheckpointId = TString(),
-        ui64 fillGeneration = 0,
-        bool isProxyOverlay = false);
+        ui64 fillGeneration = 0);
 
     std::unique_ptr<TEvService::TEvDestroyVolumeRequest> CreateDestroyVolumeRequest(
         const TString& diskId = DefaultDiskId,

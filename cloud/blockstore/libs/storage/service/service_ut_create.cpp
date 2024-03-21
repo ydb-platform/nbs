@@ -700,7 +700,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateVolumeWithMultipartitionBaseDisk)
+    Y_UNIT_TEST(ShouldCreateSystemVolumeWithMultipartitionedBaseDisk)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -746,11 +746,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 0,          // placementPartitionIndex
                 0,  // partitionsCount
                 NProto::TEncryptionSpec(),
-                false,  // isSystem
+                true,  // isSystem
                 "baseDisk",
                 "baseDiskCheckpointId",
-                0,  // fillGeneration
-                true  // isProxyOverlay
+                0  // fillGeneration
             );
 
             response = service.DescribeVolume("vol0");
