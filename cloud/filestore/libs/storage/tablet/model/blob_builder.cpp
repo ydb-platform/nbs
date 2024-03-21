@@ -70,18 +70,16 @@ void TMergedBlobBuilder::Accept(
     const TBlock& block,
     ui32 blocksCount,
     ui32 blockOffset,
-    IBlockBuffer& buffer,
-    bool shouldFillBlobContent)
+    IBlockBuffer& buffer)
 {
     TString blobContent;
     blobContent.reserve(blocksCount * BlockSize);
 
     for (size_t i = 0; i < blocksCount; ++i) {
-        Y_ABORT_UNLESS(buffer.GetBlockSize() == BlockSize);
-        if (shouldFillBlobContent) {
-            auto blockData = buffer.GetBlock(blockOffset + i);
-            blobContent.append(blockData);
-        }
+        auto blockData = buffer.GetBlock(blockOffset + i);
+        Y_ABORT_UNLESS(blockData.size() == BlockSize);
+
+        blobContent.append(blockData);
     }
 
     BlocksCount += blocksCount;

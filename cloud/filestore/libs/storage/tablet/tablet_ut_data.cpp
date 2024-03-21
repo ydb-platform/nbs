@@ -3841,7 +3841,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
     }
 
-    TABLET_TEST(ShouldGenerateBlobs)
+    TABLET_TEST(ShouldGenerateBlobIds)
     {
         auto block = tabletConfig.BlockSize;
 
@@ -3865,7 +3865,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto checkGeneratedBlob =
             [&](ui64 offset, ui64 length, TVector<ui64> expectedSizes)
         {
-            auto blobs = tablet.GenerateBlobs(node, handle, offset, length);
+            auto blobs = tablet.GenerateBlobIds(node, handle, offset, length);
             auto commitId = blobs->Record.GetCommitId();
 
             const auto [generation, step] = ParseCommitId(commitId);
@@ -3908,7 +3908,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             {block * (BlockGroupSize - 1), block * BlockGroupSize, block});
     }
 
-    TABLET_TEST(ShouldAcquireLockForCollectGarbageOnGenerateBlobs)
+    TABLET_TEST(ShouldAcquireLockForCollectGarbageOnGenerateBlobIds)
     {
         auto block = tabletConfig.BlockSize;
 
@@ -3950,7 +3950,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
         ui64 handle = CreateHandle(tablet, node);
 
-        auto blobs = tablet.GenerateBlobs(node, handle, 0, block);
+        auto blobs = tablet.GenerateBlobIds(node, handle, 0, block);
         auto commitId = blobs->Record.GetCommitId();
 
         moveBarrier();
@@ -3963,7 +3963,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
 
         moveBarrier();
-        // After the GenerateBlobsReleaseCollectBarrierTimeout has passed, we
+        // After the GenerateBlobIdsReleaseCollectBarrierTimeout has passed, we
         // can observe that the last collect garbage has moved beyond the commit
         // id of the issued blob.
         {
@@ -4007,7 +4007,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.GetRuntime().SetEventFilter(filter);
 
         auto generateResult =
-            tablet.GenerateBlobs(node, handle, 0, block * BlockGroupSize);
+            tablet.GenerateBlobIds(node, handle, 0, block * BlockGroupSize);
         commitId = generateResult->Record.GetCommitId();
 
         // intercepted blob was successfully written to BlobStorage, yet the
@@ -4044,7 +4044,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // now we do the same thing, but expect HandleAddData to execute tx, yet
         // the tx to fail
         generateResult =
-            tablet.GenerateBlobs(node, handle, 0, block * BlockGroupSize);
+            tablet.GenerateBlobIds(node, handle, 0, block * BlockGroupSize);
         commitId = generateResult->Record.GetCommitId();
 
         tablet.AssertAddDataFailed(
@@ -4132,7 +4132,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // We acquire commitId just so there is something to release on
         // completion
-        auto commitId = tablet.GenerateBlobs(id, handle, 0, block)
+        auto commitId = tablet.GenerateBlobIds(id, handle, 0, block)
                             ->Record.GetCommitId();
 
         auto id2 =
@@ -4232,7 +4232,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
         UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
 
-        auto commitId = tablet.GenerateBlobs(id, handle, 0, block)
+        auto commitId = tablet.GenerateBlobIds(id, handle, 0, block)
                             ->Record.GetCommitId();
 
         // We wait for the collect barrier lease to expire. We expect that the

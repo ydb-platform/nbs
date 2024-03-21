@@ -371,9 +371,9 @@ message TDescribeSessionsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// GenerateBlobs request/response.
+// GenerateBlobIds request/response.
 
-message TGenerateBlobsRequest
+message TGenerateBlobIdsRequest
 {
     // Optional request headers.
     NProto.THeaders Headers = 1;
@@ -390,7 +390,7 @@ message TGenerateBlobsRequest
     // Starting offset for write. Expected to be aligned to the block size.
     uint64 Offset = 5;
 
-    // Length of data to write.
+    // Length of data to write. Expected to be aligned to the block size.
     uint64 Length = 6;
 }
 
@@ -409,7 +409,7 @@ message TGeneratedBlob
     uint32 BSGroupId = 4;
 }
 
-message TGenerateBlobsResponse
+message TGenerateBlobIdsResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
@@ -424,7 +424,7 @@ message TGenerateBlobsResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TwoStageWrite request/response.
+// ThreeStageWrite request/response.
 
 message TAddDataRequest
 {

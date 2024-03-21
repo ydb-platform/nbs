@@ -114,7 +114,7 @@ template void TIndexTabletActor::CompleteResponse<ns::T##name##Method>(         
 FILESTORE_SERVICE(FILESTORE_GENERATE_IMPL, TEvService)
 FILESTORE_GENERATE_IMPL(DescribeData, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(DescribeSessions, TEvIndexTablet)
-FILESTORE_GENERATE_IMPL(GenerateBlobs, TEvIndexTablet)
+FILESTORE_GENERATE_IMPL(GenerateBlobIds, TEvIndexTablet)
 FILESTORE_GENERATE_IMPL(AddData, TEvIndexTablet)
 
 #undef FILESTORE_GENERATE_IMPL

@@ -1,7 +1,6 @@
 #include "tablet_actor.h"
 #include "tablet_actor_writedata_actor.h"
 
-#include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -84,8 +83,7 @@ void TIndexTabletActor::ExecuteTx_AddData(
     TTransactionContext& tx,
     TTxIndexTablet::TAddData& args)
 {
-    FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
-    Y_UNUSED(ctx, tx);
+    Y_UNUSED(ctx, tx, args);
 }
 
 void TIndexTabletActor::CompleteTx_AddData(
@@ -109,15 +107,12 @@ void TIndexTabletActor::CompleteTx_AddData(
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     };
 
-    if (FAILED(args.Error.GetCode())) {
+    if (HasError(args.Error)) {
         reply(ctx, args);
         return;
     }
 
-    TMergedBlobBuilder builder(GetBlockSize());
-
-    IBlockBufferPtr buffer = CreateLazyBlockBuffer(args.ByteRange);
-
+    TVector<TMergedBlob> blobs;
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
@@ -131,15 +126,21 @@ void TIndexTabletActor::CompleteTx_AddData(
                 // correct CommitId will be assigned later in AddBlobs
                 InvalidCommitId,
                 InvalidCommitId};
-
-            builder.Accept(block, blocksCount, blockOffset, *buffer, false);
+            blobs.emplace_back(
+                TPartialBlobId(),   // need to generate BlobId later
+                block,
+                blocksCount,
+                "");
         });
 
-    auto blobs = builder.Finish();
-    TABLET_VERIFY(blobs);
-
-    // No need to assign blobIds as they are already assigned
-    TABLET_VERIFY(blobs.size() == args.BlobIds.size());
+    if (blobs.empty() || blobs.size() != args.BlobIds.size()) {
+        args.Error = MakeError(
+            MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+            TStringBuilder() << "blobs count mismatch: expected" << blobs.size()
+                             << " got " << args.BlobIds.size());
+        reply(ctx, args);
+        return;
+    }
 
     for (auto [targetBlob, srcBlob]: Zip(blobs, args.BlobIds)) {
         targetBlob.BlobId = TPartialBlobId(
@@ -174,28 +175,16 @@ namespace {
  */
 TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
 {
-    TVector<size_t> blobs;
+    TVector<ui64> blobs;
+    blobs.reserve(range.AlignedBlockCount() / BlockGroupSize + 1);
 
-    IBlockBufferPtr buffer = CreateLazyBlockBuffer(range);
-
-    TMergedBlobBuilder builder(blockSize);
     SplitRange(
         range.FirstAlignedBlock(),
         range.AlignedBlockCount(),
         BlockGroupSize,
-        [&](ui32 blockOffset, ui32 blocksCount)
-        {
-            TBlock block{
-                0,
-                IntegerCast<ui32>(range.FirstAlignedBlock() + blockOffset),
-                InvalidCommitId,
-                InvalidCommitId};
-            builder.Accept(block, blocksCount, blockOffset, *buffer, false);
-        });
+        [&](ui32 /*blockOffset*/, ui64 blocksCount)
+        { blobs.push_back(blocksCount * blockSize); });
 
-    for (const auto& blob: builder.Finish()) {
-        blobs.push_back(blob.BlocksCount * blockSize);
-    }
     return blobs;
 }
 
@@ -203,8 +192,8 @@ TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::HandleGenerateBlobs(
-    const TEvIndexTablet::TEvGenerateBlobsRequest::TPtr& ev,
+void TIndexTabletActor::HandleGenerateBlobIds(
+    const TEvIndexTablet::TEvGenerateBlobIdsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -214,7 +203,7 @@ void TIndexTabletActor::HandleGenerateBlobs(
         TFileStoreComponents::TABLET,
         "%s %s: %s",
         LogTag.c_str(),
-        "GenerateBlobs",
+        "GenerateBlobIds",
         DumpMessage(msg->Record).c_str());
 
     // It is up to the client to provide the aligned range, but we still verify
@@ -224,7 +213,7 @@ void TIndexTabletActor::HandleGenerateBlobs(
         msg->Record.GetOffset() % blockSize != 0)
     {
         auto response =
-            std::make_unique<TEvIndexTablet::TEvGenerateBlobsResponse>(
+            std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
                 MakeError(E_ARGUMENT, "unaligned range"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -232,14 +221,13 @@ void TIndexTabletActor::HandleGenerateBlobs(
 
     ui64 commitId = GenerateCommitId();
     if (commitId == InvalidCommitId) {
-        return RebootTabletOnCommitOverflow(ctx, "GenerateBlobs");
+        return RebootTabletOnCommitOverflow(ctx, "GenerateBlobIds");
     }
 
-    // We schedule this event for the case if the client will not call
-    // AddData, due to connection loss. Thus we ensure that the
-    // collect barrier will be released eventually.
+    // We schedule this event for the case if the client does not call AddData.
+    // Thus we ensure that the collect barrier will be released eventually.
     ctx.Schedule(
-        Config->GetGenerateBlobsReleaseCollectBarrierTimeout(),
+        Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
         new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
     AcquireCollectBarrier(commitId);
 
@@ -249,7 +237,7 @@ void TIndexTabletActor::HandleGenerateBlobs(
         blockSize);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvGenerateBlobsResponse>();
+        std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>();
     ui64 offset = range.Offset;
     for (auto [blobIndex, length]: Enumerate(SplitData(blockSize, range))) {
         TPartialBlobId partialBlobId;
@@ -261,7 +249,7 @@ void TIndexTabletActor::HandleGenerateBlobs(
             ReassignDataChannelsIfNeeded(ctx);
 
             auto response =
-                std::make_unique<TEvIndexTablet::TEvGenerateBlobsResponse>(
+                std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
                     MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
 
             NCloud::Reply(ctx, *ev, std::move(response));
@@ -313,8 +301,8 @@ void TIndexTabletActor::HandleAddData(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    // We acquire the collect barrier for the second time in order to prolong an
-    // already acquired lease.
+    // We acquire the collect barrier for the second time in order to prolong
+    // the already acquired lease
     AcquireCollectBarrier(commitId);
     bool txStarted = false;
     Y_DEFER
@@ -324,8 +312,9 @@ void TIndexTabletActor::HandleAddData(
         if (!txStarted) {
             ReleaseCollectBarrier(commitId);
             // The second one is used to release the barrier, acquired in
-            // GenerateBlobs method. Though it will be eventually released upon
-            // lease expiration, it is better to release it as soon as possible.
+            // GenerateBlobIds method. Though it will be eventually released
+            // upon lease expiration, it is better to release it as soon as
+            // possible.
             ReleaseCollectBarrier(commitId, true);
         }
     };
@@ -380,7 +369,13 @@ void TIndexTabletActor::HandleAddData(
         blobIds.push_back(LogoBlobIDFromLogoBlobID(blobId));
     }
 
-    TABLET_VERIFY(!blobIds.empty());
+    if (blobIds.empty()) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
+                E_ARGUMENT,
+                "empty list of blobs given in AddData request"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
 
     LOG_DEBUG(
         ctx,

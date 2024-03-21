@@ -557,14 +557,14 @@ public:
         return request;
     }
 
-    auto CreateGenerateBlobsRequest(
+    auto CreateGenerateBlobIdsRequest(
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
         ui64 length)
     {
         auto request =
-            CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobsRequest>();
+            CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
         request->Record.SetNodeId(nodeId);
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);

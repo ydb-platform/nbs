@@ -586,8 +586,15 @@ struct TEvIndexTabletPrivate
 
     struct TReleaseCollectBarrier
     {
+        // Commit id to release
         ui64 CommitId;
+        // Number of times to perform the release
         ui32 Count;
+
+        TReleaseCollectBarrier(ui64 commitId, ui32 count)
+            : CommitId(commitId)
+            , Count(count)
+        {}
     };
 
     //

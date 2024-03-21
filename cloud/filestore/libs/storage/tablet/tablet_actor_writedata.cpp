@@ -398,7 +398,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
                 InvalidCommitId
             };
 
-            builder.Accept(block, blocksCount, blockOffset, *args.Buffer, true);
+            builder.Accept(block, blocksCount, blockOffset, *args.Buffer);
         });
 
     auto blobs = builder.Finish();

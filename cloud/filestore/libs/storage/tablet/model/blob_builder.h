@@ -91,8 +91,7 @@ public:
         const TBlock& block,
         ui32 blocksCount,
         ui32 blockOffset,
-        IBlockBuffer& buffer,
-        bool shouldFillBlobContent);
+        IBlockBuffer& buffer);
 
     TVector<TMergedBlob> Finish();
 
