@@ -228,8 +228,10 @@ void TPartitionActor::CompleteLoadState(
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
     
-    // Disable logical used blocks calculation for proxy (system) overlay (with 
-    // base disk) disks because they are temporary and do not belong to user.
+    // We create proxy overlay disks with user's disk as base disk during
+    // snapshot creating or relocation. Logical used blocks metric calculation
+    // is not implemented for multipartitioned disks, so we need to disable this
+    // logic.
     if (State->GetBaseDiskId() && !partitionConfig.GetIsSystem()) {
         if (args.ReadLogicalUsedBlocks) {
             State->GetLogicalUsedBlocks() = std::move(args.LogicalUsedBlocks);
