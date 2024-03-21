@@ -286,7 +286,7 @@ void TIndexTabletActor::HandleWriteBatchCompleted(
             FormatError(msg->GetError()).c_str());
     }
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);

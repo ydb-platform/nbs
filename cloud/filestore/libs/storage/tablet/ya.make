@@ -87,6 +87,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
 

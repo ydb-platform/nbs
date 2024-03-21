@@ -377,7 +377,7 @@ void TIndexTabletActor::HandleFlushCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     FlushState.Complete();
 
     WorkerActors.erase(ev->Sender);

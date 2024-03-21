@@ -122,7 +122,7 @@ void TIndexTabletActor::CompleteTx_Cleanup(
 
     BlobIndexOpState.Complete();
     ReleaseMixedBlocks(args.RangeId);
-    ReleaseCollectBarrier(args.CollectBarrier);
+    TABLET_VERIFY(TryReleaseCollectBarrier(args.CollectBarrier));
 
     FILESTORE_TRACK(
         ResponseSent_Tablet,
