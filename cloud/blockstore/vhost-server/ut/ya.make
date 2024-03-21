@@ -20,6 +20,9 @@ SRCS(
 
     stats.cpp
     stats_ut.cpp
+
+    throttler.cpp
+    throttler_ut.cpp
 )
 
 ADDINCL(
@@ -30,6 +33,7 @@ PEERDIR(
     cloud/contrib/vhost
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/throttling
     cloud/storage/core/libs/vhost-client
 
     library/cpp/getopt

@@ -22,6 +22,7 @@ public:
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
+    void PrepareStop() override;
     void Stop() override;
     void ProcessQueue(
         ui32 queueIndex,
@@ -59,6 +60,10 @@ vhd_bdev_info TNullBackend::Init(const TOptions& options)
 
 void TNullBackend::Start()
 {}
+
+void TNullBackend::PrepareStop()
+{
+}
 
 void TNullBackend::Stop()
 {}
