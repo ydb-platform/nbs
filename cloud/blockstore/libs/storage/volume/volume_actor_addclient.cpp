@@ -365,6 +365,7 @@ void TVolumeActor::ExecuteAddClient(
     TTransactionContext& tx,
     TTxVolume::TAddClient& args)
 {
+    std::cerr << "ExecuteAddClient" << std::endl;
     Y_ABORT_UNLESS(State);
 
     auto now = ctx.Now();
@@ -446,10 +447,18 @@ void TVolumeActor::ExecuteAddClient(
                 State->LogRemoveClient(ctx.Now(), clientId, "Stale", {}));
         }
 
+        std::cerr << "Writing client" << std::endl;
         db.WriteClient(args.Info);
 
-        if (args.Info.GetFillGeneration() > 0 &&
-                IsReadWriteMode(args.Info.GetVolumeAccessMode())) {
+        // TODO:_ we rely on the fact that dm always mounts with positive fill seq no. Is it ok?
+        // TODO:_ can we rely on the fact that 'ordinary' mounts always have zero fill seq no?
+        // If it does not hold, than we will reboot tablet on every 'ordinary' mount.
+        // TODO:_ what if zero fill generations arrive before we finish fill?
+        // And will IsFillFinished update in meta after alter volume?
+        // TODO:_ can be simplified if we don't allow zero fill generation when fill is not finished
+        if (IsReadWriteMode(args.Info.GetVolumeAccessMode()) &&
+                (args.Info.GetFillGeneration() > 0 ||
+                State->GetMeta().GetVolumeConfig().GetIsFillFinished())) {
             State->UpdateFillSeqNumberInMeta(args.Info.GetFillSeqNumber());
             db.WriteMeta(State->GetMeta());
         }
@@ -460,6 +469,8 @@ void TVolumeActor::CompleteAddClient(
     const TActorContext& ctx,
     TTxVolume::TAddClient& args)
 {
+    std::cerr << "CompleteAddClient" << std::endl;
+
     Y_DEFER {
         PendingClientRequests.pop_front();
         ProcessNextPendingClientRequest(ctx);
@@ -485,6 +496,7 @@ void TVolumeActor::CompleteAddClient(
         clientId.Quote().data(),
         diskId.Quote().data());
 
+    std::cerr << "Creating TEvAddClientResponse" << std::endl;
     auto response = std::make_unique<TEvVolume::TEvAddClientResponse>();
     *response->Record.MutableError() = std::move(args.Error);
     response->Record.SetTabletId(TabletID());

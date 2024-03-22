@@ -846,9 +846,11 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     const TEvServicePrivate::TEvStartVolumeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    std::cerr << "HandleStartVolumeRequest" << std::endl;
     const auto& diskId = VolumeInfo->DiskId;
 
     if (!StartVolumeActor) {
+        std::cerr << "HandleStartVolumeRequest: !StartVolumeActor" << std::endl;
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
             "Starting volume %s locally",
             diskId.Quote().data());
@@ -870,6 +872,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     }
 
     if (VolumeInfo->State == TVolumeInfo::STOPPING) {
+        std::cerr << "HandleStartVolumeRequest: STOPPING" << std::endl;
         auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
             MakeError(E_REJECTED, TStringBuilder()
                 << "Volume " << diskId << " is being stopped"));
@@ -880,6 +883,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     }
 
     if (VolumeInfo->State == TVolumeInfo::STARTED) {
+        std::cerr << "HandleStartVolumeRequest: STARTED" << std::endl;
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
             "Volume is already started");
         auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
@@ -887,6 +891,7 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
+    std::cerr << "HandleStartVolumeRequest: HMM" << std::endl;
 }
 
 void TVolumeSessionActor::HandleVolumeTabletStatus(
