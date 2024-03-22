@@ -4,8 +4,8 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+
 #include <library/cpp/iterator/enumerate.h>
-#include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -22,10 +22,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAtomicCounter REQUEST_COUNT = {0};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
 private:
@@ -33,9 +29,11 @@ private:
     NProto::TWriteDataRequest WriteRequest;
     const TRequestInfoPtr RequestInfo;
 
-    // Issued blob id and asspciated data
-    NProtoPrivate::TIssueBlobResponse IssueBlobResponse;
-    NKikimr::TLogoBlobID BlobId;
+    // generated blob id and asspciated data
+    NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
+
+    // WriteData state
+    ui32 RemainingBlobsToWrite = 0;
 
 public:
     TWriteDataActor(
@@ -47,7 +45,8 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        auto request = std::make_unique<TEvIndexTablet::TEvIssueBlobRequest>();
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
         request->Record.SetFileSystemId(WriteRequest.GetFileSystemId());
@@ -59,9 +58,9 @@ public:
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "WriteDataActor started, data size: %lu, request: %s",
+            "WriteDataActor started, data size: %lu, offset: %lu",
             WriteRequest.GetBuffer().size(),
-            request->Record.DebugString().c_str());
+            WriteRequest.GetOffset());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
@@ -74,93 +73,113 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+            HFunc(
+                TEvIndexTablet::TEvGenerateBlobIdsResponse,
+                HandleGenerateBlobIdsResponse);
+
             HFunc(TEvBlobStorage::TEvPutResult, HandleWriteBlobResponse);
 
-            HFunc(
-                TEvIndexTablet::TEvIssueBlobResponse,
-                HandleIssueBlobResponse);
+            HFunc(TEvIndexTablet::TEvAddDataResponse, HandleAddDataResponse);
 
-            HFunc(TEvService::TEvWriteDataResponse, HandleWriteDataResponse)
+            HFunc(TEvService::TEvWriteDataResponse, HandleWriteDataResponse);
 
-                default
-                : HandleUnexpectedEvent(
-                      ev,
-                      TFileStoreComponents::SERVICE_WORKER);
-            break;
+            default:
+                HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE_WORKER);
+                break;
         }
     }
 
-    void HandleIssueBlobResponse(
-        const TEvIndexTablet::TEvIssueBlobResponse::TPtr& ev,
+    void HandleGenerateBlobIdsResponse(
+        const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
         const auto* msg = ev->Get();
 
-        // TODO(debnatkh): proper error handling
+        if (FAILED(msg->GetStatus())) {
+            WriteData(ctx, FormatError(msg->GetError()));
+            return;
+        }
 
-        IssueBlobResponse.CopyFrom(msg->Record);
-        BlobId = LogoBlobIDFromLogoBlobID(IssueBlobResponse.GetBlobId());
-
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "IssueBlob response received: %s, blobId: %s",
-            IssueBlobResponse.DebugString().c_str(),
-            BlobId.ToString().c_str());
-
-        auto request = std::make_unique<TEvBlobStorage::TEvPut>(
-            BlobId,
-            WriteRequest.GetBuffer(),
-            TInstant::Max());
-
-        NKikimr::TActorId proxy =
-            MakeBlobStorageProxyID(IssueBlobResponse.GetBSGroupId());
+        GenerateBlobIdsResponse.CopyFrom(msg->Record);
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Sending WriteBlob request to blob storage, blobId: %s, size: %lu",
-            BlobId.ToString().c_str(),
-            WriteRequest.GetBuffer().size());
+            "GenerateBlobIds response received: %s",
+            GenerateBlobIdsResponse.DebugString().c_str());
 
-        SendToBSProxy(ctx, proxy, request.release(), 57);
+        WriteBlobIfNeeded(ctx);
+    }
+
+    void WriteBlobIfNeeded(const TActorContext& ctx)
+    {
+        RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
+        if (RemainingBlobsToWrite == 0) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "there were no blobs in GenerateBlobIds response");
+            return ReplyAndDie(ctx);
+        }
+        ui64 offset = 0;
+
+        for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
+            NKikimr::TLogoBlobID blobId =
+                LogoBlobIDFromLogoBlobID(blob.GetBlobId());
+            auto request = std::make_unique<TEvBlobStorage::TEvPut>(
+                blobId,
+                TString(
+                    WriteRequest.GetBuffer().Data() + offset,
+                    blob.GetLength()),
+                TInstant::Max());
+            Y_ABORT_UNLESS(blobId.BlobSize() == blob.GetLength());
+            NKikimr::TActorId proxy =
+                MakeBlobStorageProxyID(blob.GetBSGroupId());
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Sending TEvPut request to blob storage, blobId: %s, size: "
+                "%lu, proxy: %s",
+                blobId.ToString().c_str(),
+                blob.GetLength(),
+                proxy.ToString().c_str());
+            SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
+            offset += blob.GetLength();
+        }
     }
 
     void HandleWriteBlobResponse(
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
-        // TODO(debnatkh): proper error handling
-
         const auto* msg = ev->Get();
-
-        Y_UNUSED(ctx);
-        LOG_DEBUG(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "WriteBlob response received: %s",
-            msg->ToString().c_str());
 
         if (msg->Status != NKikimrProto::OK) {
             const auto errorReason = FormatError(
                 MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
-            // TODO(debnatkh): proper fallback
-            LOG_ERROR(
+            LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "WriteBlob failed: %s",
+                "WriteData error: %s",
                 errorReason.c_str());
-        } else {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "WriteBlob response is OK");
+            return WriteData(ctx, errorReason);
         }
 
-        // Now we can send TEv to tablet
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "TEvPutResult response received: %s",
+            msg->ToString().c_str());
 
-        auto request =
-            std::make_unique<TEvIndexTablet::TEvMarkWriteCompletedRequest>();
+        --RemainingBlobsToWrite;
+        if (RemainingBlobsToWrite == 0) {
+            AddData(ctx);
+        }
+    }
+
+    void AddData(const TActorContext& ctx)
+    {
+        auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
 
         request->Record.MutableHeaders()->CopyFrom(WriteRequest.GetHeaders());
         request->Record.SetFileSystemId(WriteRequest.GetFileSystemId());
@@ -168,19 +187,59 @@ private:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(WriteRequest.GetBuffer().size());
-        LogoBlobIDFromLogoBlobID(BlobId, request->Record.MutableBlobId());
-        request->Record.SetCommitId(IssueBlobResponse.GetCommitId());
+        for (const auto& blobId: GenerateBlobIdsResponse.GetBlobs()) {
+            request->Record.AddBlobIds()->CopyFrom(blobId.GetBlobId());
+        }
+        request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
 
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Sending TwoStageWrite request to tablet, blobId: %s",
-            BlobId.ToString().c_str());
+            "Sending AddData request to tablet: %s",
+            request->Record.DebugString().c_str());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    }
 
-        // Once the request is completed, ServiceActor will be notified by the
-        // tablet (no, it will not)
+    void HandleAddDataResponse(
+        const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        if (FAILED(msg->GetStatus())) {
+            return WriteData(ctx, FormatError(msg->GetError()));
+        }
+
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+        Die(ctx);
+    }
+
+    /**
+     * @brief Fallback to regular write if two-stage write fails for any reason
+     */
+    void WriteData(const TActorContext& ctx, const TString& fallbackReason)
+    {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Falling back to WriteData for %lu, %lu, %lu (%lu bytes). Message: "
+            "%s",
+            WriteRequest.GetNodeId(),
+            WriteRequest.GetHandle(),
+            WriteRequest.GetOffset(),
+            WriteRequest.GetBuffer().size(),
+            fallbackReason.Quote().c_str());
+
+        auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
+        request->Record = std::move(WriteRequest);
+
+        // forward request through tablet proxy
+        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+
+        // Should i die here?
     }
 
     void HandleWriteDataResponse(
@@ -189,9 +248,34 @@ private:
     {
         auto* msg = ev->Get();
 
+        if (FAILED(msg->GetStatus())) {
+            HandleError(ctx, msg->GetError());
+            return;
+        }
+
+        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE, "WriteData succeeded");
+
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(msg->Record);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+        Die(ctx);
+    }
+
+    void ReplyAndDie(const TActorContext& ctx)
+    {
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+
+        Die(ctx);
+    }
+
+    void HandleError(const TActorContext& ctx, const NProto::TError& error)
+    {
+        auto response =
+            std::make_unique<TEvService::TEvWriteDataResponse>(error);
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        Die(ctx);
     }
 
     void HandlePoisonPill(

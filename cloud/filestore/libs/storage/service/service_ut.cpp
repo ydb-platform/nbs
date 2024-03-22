@@ -2047,7 +2047,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         return data;
     }
 
-    Y_UNIT_TEST(ShouldPerformTwoStageWrites)
+    Y_UNIT_TEST(ShouldPerformThreeStageWrites)
     {
         TTestEnv env;
 
@@ -2057,15 +2057,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageWriteEnabled(true);
-            newConfig.SetTwoStageWriteThreshold(1);
+            newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteThreshold(1);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetTwoStageWriteEnabled(),
+                response.GetStorageConfig().GetThreeStageWriteEnabled(),
                 true);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetTwoStageWriteThreshold(),
+                response.GetStorageConfig().GetThreeStageWriteThreshold(),
                 1);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
@@ -2154,7 +2154,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(error, (ui32)NProto::E_FS_NOSPC);
     }
 
-    Y_UNIT_TEST(ShouldNotUseTwoStageWriteForSmallOrUnaligned)
+    Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnaligned)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2167,11 +2167,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteEnabled(true);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetTwoStageWriteEnabled(),
+                response.GetStorageConfig().GetThreeStageWriteEnabled(),
                 true);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
@@ -2212,7 +2212,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(1, 128_KB);
     }
 
-    Y_UNIT_TEST(ShouldFallbackTwoStageWrite)
+    Y_UNIT_TEST(ShouldFallbackThreeStageWrite)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2244,11 +2244,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         {
             NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageWriteEnabled(true);
+            newConfig.SetThreeStageWriteEnabled(true);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
-                response.GetStorageConfig().GetTwoStageWriteEnabled(),
+                response.GetStorageConfig().GetThreeStageWriteEnabled(),
                 true);
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
