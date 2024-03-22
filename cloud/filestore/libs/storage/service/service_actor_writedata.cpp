@@ -29,7 +29,7 @@ private:
     NProto::TWriteDataRequest WriteRequest;
     const TRequestInfoPtr RequestInfo;
 
-    // generated blob id and asspciated data
+    // generated blob id and associated data
     NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
     // WriteData state
@@ -238,8 +238,6 @@ private:
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
-
-        // Should i die here?
     }
 
     void HandleWriteDataResponse(
@@ -309,7 +307,7 @@ void TStorageServiceActor::HandleWriteData(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
-    if (!filestore.GetFeatures().GetTwoStageWriteEnabled()) {
+    if (!filestore.GetFeatures().GetThreeStageWriteEnabled()) {
         // If two-stage write is disabled, forward the request to the tablet in
         // the same way as all other requests.
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
@@ -330,7 +328,7 @@ void TStorageServiceActor::HandleWriteData(
     if (msg->Record.GetOffset() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() >
-            filestore.GetFeatures().GetTwoStageWriteThreshold())
+            filestore.GetFeatures().GetThreeStageWriteEnabled())
     {
         LOG_DEBUG(
             ctx,
