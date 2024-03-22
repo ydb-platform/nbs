@@ -193,10 +193,8 @@ Y_UNIT_TEST_SUITE(TModel)
 
         // In this case answer will be STORAGE_MEDIA_HYBRID, because we cannot
         // initialize proto value with 0
-        // https://a.yandex-team.ru/arcadia/cloud/filestore/libs/storage/core/config.cpp?rev=r10218064#L139.
         //
         // In this case default value will be used.
-        // https://a.yandex-team.ru/arcadia/cloud/filestore/libs/storage/core/config.cpp?rev=r10218064#L80
         DO_TEST(
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_DEFAULT,

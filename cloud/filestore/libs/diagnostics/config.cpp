@@ -12,7 +12,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_DIAGNOSTICS_CONFIG(xxx)                                      \
-    xxx(BastionNameSuffix,  TString,    "ydb.bastion.cloud.yandex-team.ru"    )\
+    xxx(BastionNameSuffix,  TString,    ""    )\
     xxx(FilestoreMonPort,   ui32,       8767                                  )\
                                                                                \
     xxx(SamplingRate,               ui32,       0                             )\

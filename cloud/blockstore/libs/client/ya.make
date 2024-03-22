@@ -39,7 +39,7 @@ ENDIF()
 
 END()
 
-# Until https://st.yandex-team.ru/DEVTOOLSSUPPORT-25698 is not solved.
+# Until DEVTOOLSSUPPORT-25698 is not solved.
 IF (SANITIZER_TYPE == "address" OR SANITIZER_TYPE == "memory")
     RECURSE_FOR_TESTS(
         ut

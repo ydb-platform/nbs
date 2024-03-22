@@ -5,7 +5,7 @@ sudo apt -y install python3 python-is-python3 git build-essential autoconf autom
 cd $mountPath
 
 if [ "$cloneOriginalRepo" == true ]; then
-    # If cloneOriginalRepo is set to true, fetch stable version from original repo 
+    # If cloneOriginalRepo is set to true, fetch stable version from original repo
     git clone --depth=1 --branch v9.3 --single-branch https://git.savannah.gnu.org/git/coreutils.git
     cd coreutils
     ./bootstrap
@@ -13,7 +13,7 @@ else
     # If cloneOriginalRepo is set to false, fetch uploaded version to sanbox (for isolation and reproducibility purposes)
 
     # Download latest published resource with matching attribute
-    wget 'https://proxy.sandbox.yandex-team.ru/last/OTHER_RESOURCE?attrs={"name":"nbs_coreutils.tar"}' -O arch.tar
+    wget 'https://link/to/nbs_coreutils.tar' -O arch.tar
     tar xvf arch.tar
     cd coreutils
     git config --global --add safe.directory $$(pwd)

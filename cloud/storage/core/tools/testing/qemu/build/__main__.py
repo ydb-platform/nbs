@@ -203,7 +203,7 @@ if __name__ == '__main__':
         "--git",
         help="source of the qemu",
         action="store",
-        default="ssh://git@bb.yandex-team.ru/cloud/qemu.git")
+        default="ssh://git@github.com:qemu/qemu.git")
     parser.add_argument(
         "--git-tag",
         help="specific tag",

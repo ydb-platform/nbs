@@ -2,7 +2,7 @@ SIZE(LARGE)
 TIMEOUT(3600)
 
 # use ya:not_autocheck and ya:manual with sanitizers until we have sufficient
-# quota in the YC_NBS group: https://sandbox.yandex-team.ru/admin/groups/YC_NBS/general
+# quota in the YC_NBS group
 IF (SANITIZER_TYPE)
     TAG(
         ya:fat
