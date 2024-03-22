@@ -37,7 +37,7 @@ void TCache::ForgetNode(ui64 ino, size_t count)
     if (it == Nodes.end()) {
         // we lose our cache after restart, so we should expect forget requests
         // targeting nodes that are absent from our cache
-        // see https://st.yandex-team.ru/NBS-2102
+        // see NBS-2102
 
         return;
     }

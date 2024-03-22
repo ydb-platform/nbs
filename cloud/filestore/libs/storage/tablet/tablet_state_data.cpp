@@ -43,7 +43,7 @@ bool TIndexTabletState::EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request
 
 TWriteRequestList TIndexTabletState::DequeueWriteBatch()
 {
-    // TODO: deduplicate writes (https://st.yandex-team.ru/NBS-2161)
+    // TODO: deduplicate writes (NBS-2161)
     return std::move(Impl->WriteBatch);
 }
 

@@ -7,7 +7,7 @@ This script allows to build qcow2 image for local and cloud tests based on vanil
 - Create image
 
 ```
-./build-image --user root --ssh-key [nbs key](https://yav.yandex-team.ru/secret/sec-01g6n81wt8wc6ph8kagb5b33bf/explore/version/ver-01g6n81wtp52w8pacjp41xhrpg) --out ubuntu-2004-eternal.qcow
+./build-image --user root --ssh-key nbs-key --out ubuntu-2004-eternal.qcow
 ```
 
 - Upload it to the s3 bucket
@@ -22,14 +22,14 @@ curl -o /dev/null -# https://$BUCKET.storage.cloudil.com/$FILE -T $FILE -H "X-Ya
 
 - Create a new image out of s3 uploaded file via console
 
-- Update it for required cluster in [tests configs](https://a.yandex-team.ru/arcadia/cloud/blockstore/pylibs/clusters/test_config.py?rev=r10300383#L41-232)
+- Update it for required cluster in tests configs
 
 ### Building for local tests
 
 - Create image
 
 ```
-./build-image --user qemu --plain-pwd --ssh-key [nbs key](https://yav.yandex-team.ru/secret/sec-01g6n81wt8wc6ph8kagb5b33bf/explore/version/ver-01g6n81wtp52w8pacjp41xhrpg) --out rootfs.img
+./build-image --user qemu --plain-pwd --ssh-key nbs-key --out rootfs.img
 ```
 
 - Optionally compress image
@@ -43,4 +43,4 @@ qemu-img convert -c -p -f qcow2 -O qcow2 rootfs.img rootfs-compressed.img
 ya upload --ttl=inf -T NBS_QEMU_DISK_IMAGE -d 'Customized Ubuntu Cloud Image in QCOW2 format'
 ```
 
-- Update [resource](https://a.yandex-team.ru/arcadia/cloud/storage/core/tools/testing/qemu/image/ya.make?rev=r9706918#L8) in ya.make
+- Update [resource](https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/tools/testing/qemu/image/ya.make) in ya.make

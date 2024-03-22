@@ -288,10 +288,10 @@ void TBootstrap::InitClientConfig()
     if (Options) {
         if (!TryParseProtoTextFromString(Options, PluginConfig)) {
             // Legacy branch: parsing Options as config file path
-            // see https://st.yandex-team.ru/CLOUD-42448#5e9865329a07685298d47d78
+            // see CLOUD-42448
             if (!TryParseFromTextFormat(Options, PluginConfig)) {
                 // Legacy branch: parsing config as TClientConfig/TClientAppConfig
-                // see https://st.yandex-team.ru/NBS-503#5d2353a334894f001dd36b4a
+                // see NBS-503
                 if (TryParseFromTextFormat(Options, appConfig)) {
                     clientConfigParsed = true;
                 } else if (TryParseFromTextFormat(Options, *appConfig.MutableClientConfig())) {
