@@ -74,7 +74,8 @@ message TPartitionConfig
     // Optional tablet id of base volume.
     uint64 BaseDiskTabletId = 17;
 
-    // Indicates that partition does not belong to user directly, but used for system needs.
+    // Indicates that partition does not belong to the user directly, but is
+    // used for system needs.
     bool IsSystem = 18;
 }
 
