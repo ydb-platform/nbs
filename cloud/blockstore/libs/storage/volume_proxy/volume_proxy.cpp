@@ -122,6 +122,7 @@ private:
             , RefCount(refCount)
         {}
 
+        ui32 ConnectFailures = 0;
         ui64 TabletId = 0;
         int RefCount = 0;
     };
@@ -488,9 +489,21 @@ void TVolumeProxyActor::HandleConnect(
             msg->TabletId,
             FormatError(error).data());
 
+        if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+            it != BaseDiskIdToTabletId.end())
+        {
+            it->second.ConnectFailures++;
+        }
+
         CancelActiveRequests(ctx, *conn);
         DestroyConnection(ctx, *conn, error);
         return;
+    }
+
+    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+        it != BaseDiskIdToTabletId.end())
+    {
+        it->second.ConnectFailures = 0;
     }
 
     if (conn->State == FAILED) {
@@ -585,13 +598,16 @@ void TVolumeProxyActor::HandleRequest(
         {
             auto itr = BaseDiskIdToTabletId.find(diskId);
             if (itr != BaseDiskIdToTabletId.end()) {
-                PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
-                StartConnection(
-                    ctx,
-                    conn,
-                    itr->second.TabletId,
-                    "PartitionConfig");
-                break;
+                if (itr->second.ConnectFailures < Config->GetVolumeProxyCacheRetryLimit())
+                {
+                    PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
+                    StartConnection(
+                        ctx,
+                        conn,
+                        itr->second.TabletId,
+                        "PartitionConfig");
+                    break;
+                }
             }
 
             conn.State = RESOLVING;

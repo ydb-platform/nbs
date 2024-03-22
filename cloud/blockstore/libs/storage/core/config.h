@@ -561,6 +561,8 @@ public:
     TDuration GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked() const;
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked() const;
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
+
+    ui32 GetVolumeProxyCacheRetryLimit() const;
 };
 
 ui64 GetAllocationUnit(
