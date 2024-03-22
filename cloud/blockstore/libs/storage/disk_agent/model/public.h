@@ -17,5 +17,6 @@ using TDiskAgentConfigPtr = std::shared_ptr<TDiskAgentConfig>;
 constexpr TStringBuf BackgroundOpsClientId = "migration";
 constexpr TStringBuf CheckHealthClientId = "check-health";
 constexpr TStringBuf AnyWriterClientId = "any-writer";
+constexpr TStringBuf ShadowDiskClientId = "shadow-disk-client";
 
 }   // namespace NCloud::NBlockStore::NStorage
