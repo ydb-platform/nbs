@@ -101,6 +101,11 @@ func (s *nodeService) NodeStageVolume(
 		return nil, err
 	}
 
+	if req.VolumeContext["backend"] == "nfs" {
+		// TODO: start nfs endpoint using nfsClient
+		return nil, status.Error(codes.Unimplemented, "nfs backend is unimplemented yet")
+	}
+
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
 	startEndpointRequest := &nbsapi.TStartEndpointRequest{
@@ -200,6 +205,11 @@ func (s *nodeService) NodePublishVolume(
 	case *csi.VolumeCapability_Mount:
 		err = s.nodePublishVolumeForFileSystem(req, options)
 	case *csi.VolumeCapability_Block:
+		if req.VolumeContext["backend"] == "nfs" {
+			return nil, status.Error(
+				codes.InvalidArgument,
+				"'Block' volume mode is not supported for nfs backend")
+		}
 		err = s.nodePublishVolumeForBlock(req, options)
 	default:
 		return nil, status.Error(codes.InvalidArgument, "Unknown access type")
@@ -219,14 +229,17 @@ func (s *nodeService) nodePublishVolumeForFileSystem(
 	source := filepath.Join(s.podSocketsDir, req.VolumeId)
 	target := req.TargetPath
 
-	mnt := req.VolumeCapability.GetMount()
-	for _, flag := range mnt.MountFlags {
-		mountOptions = append(mountOptions, flag)
-	}
-
 	fsType := "ext4"
-	if mnt.FsType != "" {
-		fsType = mnt.FsType
+
+	mnt := req.VolumeCapability.GetMount()
+	if mnt != nil {
+		for _, flag := range mnt.MountFlags {
+			mountOptions = append(mountOptions, flag)
+		}
+
+		if mnt.FsType != "" {
+			fsType = mnt.FsType
+		}
 	}
 
 	return s.mount(source, target, fsType, mountOptions...)

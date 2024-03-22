@@ -84,6 +84,7 @@ func (c *nbsServerControllerService) CreateVolume(
 		)
 	}
 
+	volumeContext := make(map[string]string)
 	var baseDiskID string
 	var baseDiskCheckpointID string
 	if req.Parameters != nil {
@@ -93,6 +94,9 @@ func (c *nbsServerControllerService) CreateVolume(
 			}
 			if key == "base-disk-checkpoint-id" {
 				baseDiskCheckpointID = value
+			}
+			if key == "backend" {
+				volumeContext[key] = value
 			}
 		}
 	}
@@ -117,6 +121,7 @@ func (c *nbsServerControllerService) CreateVolume(
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
 		CapacityBytes: requiredBytes,
 		VolumeId:      diskId,
+		VolumeContext: volumeContext,
 	}}, nil
 }
 
