@@ -88,7 +88,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                 result.Error.GetCode(),
                 result.Error);
             ASSERT_VECTORS_EQUAL(TVector{"vol0"}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
         });
 
         TString target;

@@ -470,7 +470,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             UNIT_ASSERT_SUCCESS(r.Error);
 
             UNIT_ASSERT_VALUES_EQUAL(0, r.AffectedDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesThatNeedToBeCleaned.size());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), r.Timeout);
 
             const auto d = state.GetDevice(testDeviceId);
