@@ -11,24 +11,23 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlobUniqueIdWithRange
+struct TBlobToConfirm
 {
     ui64 UniqueId = 0;
     TBlockRange32 BlockRange;
 
-    TBlobUniqueIdWithRange() = default;
+    TBlobToConfirm() = default;
 
-    TBlobUniqueIdWithRange(ui64 uniqueId, const TBlockRange32& blockRange)
+    TBlobToConfirm(ui64 uniqueId, const TBlockRange32& blockRange)
         : UniqueId(uniqueId)
         , BlockRange(blockRange)
     {}
 };
 
-using TCommitIdToBlobUniqueIdWithRange =
-    THashMap<ui64, TVector<TBlobUniqueIdWithRange>>;
+using TCommitIdToBlobsToConfirm = THashMap<ui64, TVector<TBlobToConfirm>>;
 
 bool Overlaps(
-    const TCommitIdToBlobUniqueIdWithRange& blobs,
+    const TCommitIdToBlobsToConfirm& blobs,
     ui64 lowCommitId,
     ui64 highCommitId,
     const TBlockRange32& blockRange);

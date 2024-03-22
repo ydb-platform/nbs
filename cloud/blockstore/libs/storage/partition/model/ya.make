@@ -8,7 +8,7 @@ GENERATE_ENUM_SERIALIZATION(operation_status.h)
 SRCS(
     barrier.cpp
     blob_index.cpp
-    blob_unique_id_with_range.cpp
+    blob_to_confirm.cpp
     block.cpp
     block_index.cpp
     block_mask.cpp
