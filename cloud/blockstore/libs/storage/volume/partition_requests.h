@@ -14,6 +14,8 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
+
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -50,14 +52,20 @@ bool ToPartitionRequests(
     TVector<TPartitionRequest<TMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(partitions);
     Y_UNUSED(blockSize);
     Y_UNUSED(blocksPerStripe);
     Y_UNUSED(ev);
     Y_UNUSED(requests);
     Y_UNUSED(blockRange);
 
-    ythrow TServiceError(E_NOT_IMPLEMENTED);
+    Y_ABORT_UNLESS(!partitions.empty());
+    STORAGE_VERIFY_C(
+        false,
+        NCloud::TWellKnownEntityTypes::DISK,
+        partitions[0].PartitionConfig.GetDiskId(),
+        TStringBuilder() << "ToPartitionRequests not implemented for "
+            << TMethod::Name);
+
     return false;
 }
 
