@@ -15,6 +15,7 @@ struct TBlobToConfirm
 {
     ui64 UniqueId = 0;
     TBlockRange32 BlockRange;
+    TVector<ui32> Checksums;
 
     TBlobToConfirm() = default;
 
@@ -22,6 +23,16 @@ struct TBlobToConfirm
         : UniqueId(uniqueId)
         , BlockRange(blockRange)
     {}
+
+    TBlobToConfirm(
+            ui64 uniqueId,
+            const TBlockRange32& blockRange,
+            const TVector<ui32>& checksums)
+        : UniqueId(uniqueId)
+        , BlockRange(blockRange)
+        , Checksums(checksums)
+    {}
+
 };
 
 using TCommitIdToBlobsToConfirm = THashMap<ui64, TVector<TBlobToConfirm>>;

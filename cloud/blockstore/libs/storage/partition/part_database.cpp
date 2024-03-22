@@ -1281,6 +1281,7 @@ void TPartitionDatabase::WriteUnconfirmedBlob(
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
+    // TODO: persist blob checksums (issue-122)
     Table<TTable>()
         .Key(blobId.CommitId(), blobId.UniqueId())
         .Update(
