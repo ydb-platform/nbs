@@ -231,8 +231,6 @@ func (c *nbsServerControllerService) ControllerGetCapabilities(
 	req *csi.ControllerGetCapabilitiesRequest,
 ) (*csi.ControllerGetCapabilitiesResponse, error) {
 
-	log.Printf("csi.ControllerGetCapabilitiesRequest: %+v", req)
-
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: nbsServerControllerServiceCapabilities,
 	}, nil
