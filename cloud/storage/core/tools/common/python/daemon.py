@@ -79,12 +79,16 @@ class Daemon(object):
         self.__verify_process()
         logger.info("terminating process")
         self.__process.terminate()
+        self.__process.wait(check_exit_code=False)
+        self.__process = None
 
     # Should be guarded by self.__lock.
     def __kill_process(self):
         self.__verify_process()
         logger.info("killing process")
         self.__process.kill()
+        self.__process.wait(check_exit_code=False)
+        self.__process = None
 
     # Should be guarded by self.__lock.
     def __ping(self):
@@ -174,7 +178,6 @@ class Daemon(object):
                     self.__timer = None
 
                 self.__terminate_process()
-                self.__process = None
 
     def kill(self):
         with self.__lock:
@@ -184,7 +187,6 @@ class Daemon(object):
                     self.__timer = None
 
                 self.__kill_process()
-                self.__process = None
 
     @property
     def command(self):
