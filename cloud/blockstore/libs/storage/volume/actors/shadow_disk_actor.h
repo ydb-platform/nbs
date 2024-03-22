@@ -86,13 +86,15 @@ private:
     const NRdma::IClientPtr RdmaClient;
     const TNonreplicatedPartitionConfigPtr SrcConfig;
     const TString CheckpointId;
-    const TString SourceDiskId;
     const TString ShadowDiskId;
     const ui64 MountSeqNumber = 0;
     const ui32 Generation = 0;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId SrcActorId;
 
+    TString SourceDiskClientId;
+    TString OldSourceDiskClientId;
+    TString CurrentShadowDiskClientId;
     TNonreplicatedPartitionConfigPtr DstConfig;
     NActors::TActorId DstActorId;
     ui64 ProcessedBlockCount = 0;
@@ -112,7 +114,7 @@ public:
         NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
-        TString rwClientId,
+        TString sourceDiskClientId,
         ui64 mountSeqNumber,
         ui32 generation,
         TNonreplicatedPartitionConfigPtr srcConfig,
@@ -138,8 +140,8 @@ private:
     void AcquireShadowDisk(
         const NActors::TActorContext& ctx,
         EAcquireReason acquireReason);
-    void HandleAcquireDiskResponse(
-        const TEvDiskRegistry::TEvAcquireDiskResponse::TPtr& ev,
+    void HandleShadowDiskAcquired(
+        const TEvVolumePrivate::TEvShadowDiskAcquired::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void CreateShadowDiskConfig();
@@ -185,7 +187,7 @@ private:
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
-    bool HandleWriteZeroBlocks(
+    [[nodiscard]] bool HandleWriteZeroBlocks(
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -211,6 +213,10 @@ private:
 
     void HandleReacquireDisk(
         const TEvVolume::TEvReacquireDisk::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    [[nodiscard]] bool HandleRWClientIdChanged(
+        const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

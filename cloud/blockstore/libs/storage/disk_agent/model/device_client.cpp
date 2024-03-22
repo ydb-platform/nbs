@@ -118,9 +118,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                     > now)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Device " << uuid.Quote()
+                << "Error acquire device " << uuid.Quote()
+                << " with client " << clientId.Quote()
                 << " already acquired by another client: "
-                << deviceState->WriterSession.Id);
+                << deviceState->WriterSession.Id.Quote());
         }
     }
 
@@ -304,9 +305,21 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     }
 
     if (!acquired) {
-        return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-            << "Device " << uuid.Quote() << " not acquired by client " << clientId
-            << ", current active writer: " << deviceState->WriterSession.Id);
+        TStringBuilder allReaders;
+        for (const auto& reader: deviceState->ReaderSessions) {
+            bool isFirst = allReaders.Empty();
+            allReaders << reader.Id.Quote();
+            if (!isFirst) {
+                allReaders << ", ";
+            }
+        }
+        return MakeError(
+            E_BS_INVALID_SESSION,
+            TStringBuilder()
+                << "Device " << uuid.Quote() << " not acquired by client "
+                << clientId.Quote() << ", current active writer: "
+                << deviceState->WriterSession.Id.Quote()
+                << ", current readers: [" << allReaders << "]");
     }
 
     return {};

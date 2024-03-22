@@ -3863,6 +3863,278 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
     }
 
+    Y_UNIT_TEST(ShouldCreateShadowDiskWhenClientChanged)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto tryWriteBlock =
+            [&](ui64 blockIndx, const TString& clientId, ui8 content) -> bool
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientId,
+                GetBlockContent(content));
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Request WriteBlocks intersects with currently migrated "
+                    "range",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            return true;
+        };
+
+        auto tryReadBlock = [&](ui64 blockIndx,
+                                ui8 content,
+                                const TString& clientId,
+                                const TString& checkpoint) -> bool
+        {
+            auto request = volume.CreateReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(blockIndx),
+                clientId,
+                checkpoint);
+            volume.SendToPipe(std::move(request));
+            auto response =
+                volume.RecvResponse<TEvService::TEvReadBlocksResponse>();
+            if (response->GetStatus() != S_OK) {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "Can't read from checkpoint \"c1\" while the data is being "
+                    "filled in.",
+                    response->GetError().GetMessage());
+                return false;
+            }
+            const auto& bufs = response->Record.GetBlocks().GetBuffers();
+            UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
+            UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(content), bufs[0]);
+            return true;
+        };
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        {   // Validate checkpoint state (not ready).
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::NOT_READY,
+                status->Record.GetCheckpointStatus());
+        }
+
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo1);
+
+        // Check that we can write to the disk during the preparation of the
+        // shadow disk.
+        UNIT_ASSERT(tryWriteBlock(
+            expectedBlockCount - 1,
+            clientInfo1.GetClientId(),
+            '1'));
+        // Check that we can read from the disk during the preparation of the
+        // shadow disk.
+        UNIT_ASSERT(tryReadBlock(
+            expectedBlockCount - 1,
+            '1',
+            clientInfo1.GetClientId(),
+            ""));
+
+        // Disconnect client1 and create new one.
+        volume.RemoveClient(clientInfo1.GetClientId());
+        auto clientInfo2 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo2);
+
+        // Check that we can write to the disk during the preparation of the
+        // shadow disk with new client.
+        UNIT_ASSERT(tryWriteBlock(
+            expectedBlockCount - 1,
+            clientInfo2.GetClientId(),
+            '2'));
+        // Check that we can read from the disk during the preparation of the
+        // shadow disk with new client.
+        UNIT_ASSERT(tryReadBlock(
+            expectedBlockCount - 1,
+            '2',
+            clientInfo2.GetClientId(),
+            ""));
+
+        // Wait for checkpoint get ready.
+        for (;;) {
+            auto status = volume.GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Check that we still can write to the disk.
+        UNIT_ASSERT(tryWriteBlock(
+            0,
+            clientInfo2.GetClientId(),
+            'x'));
+        // Check that we still can read from the disk.
+        UNIT_ASSERT(tryReadBlock(
+            expectedBlockCount - 1,
+            '2',
+            clientInfo2.GetClientId(),
+            ""));
+
+        // Check that we can now read from checkpoint.
+        UNIT_ASSERT(tryReadBlock(0, 0, clientInfo2.GetClientId(), "c1"));
+        UNIT_ASSERT(tryReadBlock(
+            expectedBlockCount - 1,
+            '2',
+            clientInfo2.GetClientId(),
+            "c1"));
+
+        // Create new read-only client and read from checkpoint and disk.
+        auto clientInfo3 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+        volume.AddClient(clientInfo3);
+        UNIT_ASSERT(tryReadBlock(0, 'x', clientInfo3.GetClientId(), ""));
+        UNIT_ASSERT(tryReadBlock(
+            expectedBlockCount - 1,
+            '2',
+            clientInfo3.GetClientId(),
+            "c1"));
+    }
+
+    Y_UNIT_TEST(ShouldReacquireShadowDiskWhenClientChanged)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TString acquireClientId;
+        TString releaseClientId;
+        auto monitorRequests = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskRequest)
+            {
+                auto msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
+                acquireClientId = msg->Record.GetHeaders().GetClientId();
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvReleaseDiskRequest)
+            {
+                auto msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
+                releaseClientId = msg->Record.GetHeaders().GetClientId();
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(monitorRequests);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Expect that the shadow disk was acquired by "shadow-disk-client".
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
+        acquireClientId = "";
+        releaseClientId = "";
+
+        // Connect new client. Expect that the shadow disk reacquired by this
+        // new client.
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo1);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId);
+        acquireClientId = "";
+        releaseClientId = "";
+
+        // Disconnect client. Expect that the shadow disk reacquired by "shadow-disk-client".
+        volume.RemoveClient(clientInfo1.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), releaseClientId);
+        acquireClientId = "";
+        releaseClientId = "";
+
+        // Connect another client. Expect that the shadow disk reacquired by this
+        // new client.
+        auto clientInfo2 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo2);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId);
+        acquireClientId = "";
+        releaseClientId = "";
+
+        // Wait for checkpoint get ready.
+        // Expect that the shadow disk reacquired by "shadow-disk-client".
+        for (;;) {
+            auto status = volume.GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), releaseClientId);
+        acquireClientId = "";
+        releaseClientId = "";
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
