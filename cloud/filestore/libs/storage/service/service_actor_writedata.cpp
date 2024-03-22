@@ -281,7 +281,7 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
-        Die(ctx);
+        HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
     }
 };
 
