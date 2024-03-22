@@ -563,7 +563,6 @@ void TMountRequestActor::WaitForVolume(const TActorContext& ctx, TDuration timeo
 
 void TMountRequestActor::RequestVolumeStart(const TActorContext& ctx)
 {
-    std::cerr << "RequestVolumeStart" << std::endl;
     auto request = std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
         VolumeTabletId);
 
@@ -572,7 +571,6 @@ void TMountRequestActor::RequestVolumeStart(const TActorContext& ctx)
 
 void TMountRequestActor::RequestVolumeStop(const TActorContext& ctx)
 {
-    std::cerr << "RequestVolumeStop" << std::endl;
     auto request = std::make_unique<TEvServicePrivate::TEvStopVolumeRequest>();
 
     NCloud::Send(ctx, Params.SessionActorId, std::move(request));
@@ -647,18 +645,14 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
     Volume = msg->Record.GetVolume();
 
     if (SUCCEEDED(error.GetCode())) {
-        std::cerr << "SUCCEEDED" << std::endl;
         AddClientRequestCompleted = true;
-        std::cerr << "A" << std::endl;
 
         if (msg->Record.GetForceTabletRestart() && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            std::cerr << "AA" << std::endl;
             RestartVolume(ctx);
             return;
         }
 
         if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            std::cerr << "AAA" << std::endl;
             RequestVolumeStart(ctx);
             return;
         }
@@ -676,7 +670,6 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         // we should acquire lock for tablet in hive if it is not already running
         // at host and local mount cannot be satisfied because of remote binding.
         // if we don't do this, tablet will stay at previous local mount host.
-        std::cerr << "B" << std::endl;
         if (!IsTabletAcquired && !volumeStarted && newPreemptedLocalMounter) {
             LockVolume(ctx);
             return;
@@ -684,26 +677,14 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
 
         const bool mayStopVolume = Params.IsLocalMounter || VolumeStarted;
 
-        std::cerr << "C" << std::endl;
         if (mayStopVolume && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
             RequestVolumeStop(ctx);
             return;
         }
-
-        std::cerr << "D" << std::endl;
-
-        // TODO:_ should check mayStopVolume here? Is it safe to reboot here?
-        // if (ForceTabletRestart) {
-        //     RequestVolumeStop(ctx);
-        //     return;
-        // }
-        std::cerr << "E" << std::endl;
     } else if (VolumeStarted || error.GetCode() == E_BS_MOUNT_CONFLICT) {
-        std::cerr << "E_BS_MOUNT_CONFLICT" << std::endl;
         RequestVolumeStop(ctx);
         return;
     } else if (error.GetCode() == E_REJECTED) {
-        std::cerr << "E_REJECTED" << std::endl;
         NCloud::Send<TEvServicePrivate::TEvResetPipeClient>(ctx, Params.VolumeClient);
 
         if (!Params.RejectOnAddClientTimeout) {
@@ -712,7 +693,6 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         }
     }
 
-    std::cerr << "Entering NotifyAndDie" << std::endl;
     NotifyAndDie(ctx);
 }
 
@@ -780,7 +760,6 @@ void TMountRequestActor::HandleStartVolumeResponse(
     const TEvServicePrivate::TEvStartVolumeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    std::cerr << "HandleStartVolumeResponse" << std::endl;
     const auto& msg = ev->Get();
     const auto& error = msg->GetError();
     const auto& mountMode = Request.GetVolumeMountMode();
@@ -793,21 +772,13 @@ void TMountRequestActor::HandleStartVolumeResponse(
 
     Error = error;
     if (SUCCEEDED(error.GetCode())) {
-        std::cerr << "HandleStartVolumeResponse: SUCCEEDED" << std::endl;
         VolumeStarted = true;
         if (AddClientRequestCompleted && mountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            // if (ForceTabletRestart) {
-            //     RequestVolumeStop(ctx);
-            //     return;
-            // }
-
             NotifyAndDie(ctx);
             return;
         }
     } else {
-        std::cerr << "HandleStartVolumeResponse: NOT SUCCEEDED" << std::endl;
         if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            // TODO:_ here we don't need to reboot tablet, do we?
             VolumeSessionRestartRequired = true;
             NotifyAndDie(ctx);
             return;
@@ -825,7 +796,6 @@ void TMountRequestActor::HandleStopVolumeResponse(
 {
     Y_UNUSED(ev);
 
-    // TODO:_ is it ok to do this when we restarting volume?
     IsTabletAcquired = false;
 
     if (!FAILED(Error.GetCode())) {
@@ -914,7 +884,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
     if (!clientInfo) {
         LogNewClient(ctx, ev, tick);
-        std::cerr << "1" << std::endl;
         return {{}, false};
     }
 
@@ -945,7 +914,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     const auto& volume = VolumeInfo->VolumeInfo;
     if (!volume || NeedToSetEncryptionKeyHash(*volume, encryptionKeyHash)) {
         // Need to set encryption KeyHash in volume config
-        std::cerr << "2" << std::endl;
         return {{}, true};
     }
 
@@ -954,7 +922,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         VolumeInfo->BindingType != NProto::BINDING_REMOTE)
     {
         // Volume tablet is not started but needs to be
-        std::cerr << "3" << std::endl;
         return {{}, false};
     }
 
@@ -965,7 +932,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
             "Re-mounting volume with new options: " << diskId.Quote()
             << mountParamsStr);
 
-        std::cerr << "4" << std::endl;
         return {{}, true};
     }
 
@@ -975,7 +941,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     {
         // Remount for locally mounted volume and volume has gone.
         // Need to return tablet back.
-        std::cerr << "5" << std::endl;
         return {{}, false};
     }
 
@@ -985,22 +950,17 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         // If mountSeqNumber, fillSeqNumber or fillGeneration
         // has changed in MountVolumeRequest from client
         // then let volume know about this
-        std::cerr << "6" << std::endl;
         return {{}, false};
     }
-
-    // TODO:_ so we need to use different sessions in replication iterations. Very unobvious invariant!
 
     if (clientInfo->LastMountTick < LastPipeResetTick) {
         // Pipe reset happened after last execution of AddClient
         // we need to run MountActor again and send AddClient
         // to update client information at volume.
-        std::cerr << "7" << std::endl;
         return {{}, false};
     }
 
     if (clientInfo->VolumeAccessMode != accessMode) {
-        std::cerr << "8" << std::endl;
         return {{}, false};
     }
 
@@ -1016,7 +976,6 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
             ToString(remountPeriod + RemountDelayWarn).data());
     }
 
-    std::cerr << "9" << std::endl;
     return {MakeError(S_ALREADY, "Volume already mounted"), false};
 }
 

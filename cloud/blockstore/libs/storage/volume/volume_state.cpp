@@ -433,14 +433,6 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
 
     TAddClientResult res;
 
-    std::cerr << "cliend it: " << clientId
-        << ", new FillSeqNumber: " << info.GetFillSeqNumber()
-        << ", current FillSeqNumber: " << Meta.GetFillSeqNumber()
-        << ", proposed FillGeneration: " << info.GetFillGeneration()
-        << ", actual FillGeneration: " << Meta.GetVolumeConfig().GetFillGeneration()
-        << ", is disk filling finished: " << Meta.GetVolumeConfig().GetIsFillFinished()
-        << std::endl;
-
     if (!clientId) {
         res.Error = MakeError(E_ARGUMENT, "ClientId not specified");
         return res;
@@ -745,11 +737,6 @@ bool TVolumeState::CanPreemptClient(
     TInstant referenceTimestamp,
     ui64 newClientMountSeqNumber)
 {
-    std::cerr << "CanPreemptClient" << std::endl;
-    std::cerr << "IsClientStale: " << IsClientStale(oldClientId, referenceTimestamp)
-              << ", newClientMountSeqNumber: " << newClientMountSeqNumber
-              << ", MountSeqNumber: " << MountSeqNumber << std::endl;
-    // TODO:_ why || here?
     return
         IsClientStale(oldClientId, referenceTimestamp) ||
             newClientMountSeqNumber > MountSeqNumber;
@@ -777,7 +764,6 @@ bool TVolumeState::CanAcceptClient(
     return newFillSeqNumber >= Meta.GetFillSeqNumber();
 }
 
-// TODO:_ better naming or check client id here?
 bool TVolumeState::ShouldForceTabletRestart(
     const NProto::TVolumeClientInfo& info)
 {
