@@ -51,6 +51,13 @@ void TTabletBootInfoBackup::Bootstrap(const TActorContext& ctx)
                 << CurrentExceptionMessage());
         }
     } else {
+        try {
+            BackupFilePath.Parent().MkDirs();
+        } catch (...) {
+            LOG_WARN_S(ctx, LogComponent,
+                "TabletBootInfoBackup: can't make directory: "
+                << CurrentExceptionMessage());
+        }
         ScheduleBackup(ctx);
     }
 

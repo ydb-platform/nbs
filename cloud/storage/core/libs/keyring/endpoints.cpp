@@ -137,7 +137,9 @@ public:
     {
         TGuard guard(Mutex);
 
-        if (!DirPath.IsDirectory()) {
+        try {
+            DirPath.MkDirs();
+        } catch (...) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
                 << "Failed to find directory " << DirPath.GetPath().Quote());
         }
