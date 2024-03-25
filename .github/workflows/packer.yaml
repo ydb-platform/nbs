@@ -1,0 +1,52 @@
+name: Build VM Image
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Build VM image"
+        required: false
+        default: false
+        type: boolean
+
+env:
+    build: ${{ github.event_name == 'schedule' && 'true' || github.event.inputs.build }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+
+    - name: Set up Packer
+      uses: hashicorp/setup-packer@v3
+      with:
+        version: 1.10.2
+
+    - name: Set up NCP
+      uses: ./.github/actions/ncp
+      with:
+        sa_json: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+
+    - name: Get IAM token
+      id: get-iam-token
+      run: |
+        echo "YC_TOKEN=$(ncp --profile=nbs-github-user-sa iam create-token --format=json | jq .iam_token)" >> $GITHUB_ENV
+
+    - name: Run `packer init`
+      id: init
+      run: "packer init .github/packer/config.pkr.hcl"
+
+    - name: Run `packer validate`
+      id: validate
+      run: "packer validate .github/packer/github-runner.pkr.hcl"
+
+    - name: Run `packer build`
+      id: build
+      if: env.build == 'true'
+      run: |
+        packer build -var "RUNNER_VERSION=${RUNNER_VERSION}" .github/packer/github-runner.pkr.hcl
+      env:
+        RUNNER_VERSION: ${{ vars.RUNNER_VERSION || '2.308.0' }}

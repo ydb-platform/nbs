@@ -28,6 +28,11 @@ variable "OS_ARCH" {
   default = "x86_64"
 }
 
+variable "RUNNER_VERSION" {
+  type = string
+  default = "2.308.0"
+}
+
 locals {
   current_date = formatdate("YYMMDD-hhmmss", timestamp())
 }
@@ -53,12 +58,18 @@ build {
   provisioner "shell" {
     inline = [
       "set -x",
+      # Download github runner
+      "mkdir -p /actions-runner && cd /actions-runner",
+      "export FILENAME=actions-runner-linux-x64-${var.RUNNER_VERSION}.tar.gz"
+      "curl -O -L \"https://github.com/actions/runner/releases/download/v{version}/$FILENAME\"",
+      "tar xzf \"./$FILENAME\"",
       # Global Ubuntu things
       "wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -",
       "echo \"deb https://apt.kitware.com/ubuntu/ ${var.LSB_RELEASE} main\" | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null",
       "wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -",
       "echo \"deb https://apt.llvm.org/${var.LSB_RELEASE}/ llvm-toolchain-${var.LSB_RELEASE}-14 main\" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null",
       "sudo apt-get update",
+      "sudo apt-get -y upgrade",
       "echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections",
       "sudo apt-get install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils tzdata cmake python3-dev python3-pip ninja-build antlr3 m4 libidn11-dev libaio1 libaio-dev make clang-14 lld-14 llvm-14 file distcc s3cmd qemu-kvm dpkg-dev",
       "sudo pip3 install conan==1.59 pytest==7.1.3  pyinstaller==5.13.2 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2  six pyyaml packaging  cryptography grpcio grpcio-tools PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil pygithub==1.59.1",
