@@ -48,7 +48,7 @@ public:
         return {alignedPtr, sz};
     }
 
-    static void DumpMemcpy(char* dst, const char* src, ui64 sz)
+    static void DumbMemcpy(char* dst, const char* src, ui64 sz)
     {
         // we need this loop to be as simple as possible - no simd
         for (ui64 i = 0; i < sz; ++i) {
@@ -70,13 +70,13 @@ public:
         auto* alignedPtr = buffer.begin() + alignmentOffset;
         const auto offset = blockIndex * BlockSize;
         memset(alignedPtr, 0, sz);
-        DumpMemcpy(alignedPtr, datas[0].Data(), datas[0].Size());
+        DumbMemcpy(alignedPtr, datas[0].Data(), datas[0].Size());
 
         auto f = AsyncIO.Write(File, alignedPtr, sz, offset);
         ui32 i = 0;
         while (!f.HasValue()) {
             const auto& data = datas[++i % datas.size()];
-            DumpMemcpy(alignedPtr, data.Data(), data.Size());
+            DumbMemcpy(alignedPtr, data.Data(), data.Size());
         }
 
         Y_ABORT_UNLESS(f.GetValue() == sz);
