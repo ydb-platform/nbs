@@ -1318,7 +1318,11 @@ bool TPartitionDatabase::ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs)
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
-        blobs[commitId].emplace_back(uniqueId, blockRange);
+        blobs[commitId].emplace_back(
+            uniqueId,
+            blockRange,
+            TVector<ui32>() /* TODO: checksums */
+        );
 
         if (!it.Next()) {
             return false;   // not ready

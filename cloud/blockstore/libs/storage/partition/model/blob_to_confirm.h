@@ -13,16 +13,9 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 struct TBlobToConfirm
 {
-    ui64 UniqueId = 0;
+    ui64 UniqueId;
     TBlockRange32 BlockRange;
     TVector<ui32> Checksums;
-
-    TBlobToConfirm() = default;
-
-    TBlobToConfirm(ui64 uniqueId, const TBlockRange32& blockRange)
-        : UniqueId(uniqueId)
-        , BlockRange(blockRange)
-    {}
 
     TBlobToConfirm(
             ui64 uniqueId,
