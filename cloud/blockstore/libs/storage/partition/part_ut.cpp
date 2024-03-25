@@ -9556,7 +9556,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(!garbageCollectorFinished);
     }
 
-    Y_UNIT_TEST(ShouldWriteBlocksWhenAddingUnconfirmedBlobsEnabled)
+    Y_UNIT_TEST(ShouldWriteBlocksWhenAddingUnconfirmedBlobs)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
@@ -10708,6 +10708,64 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
+    }
+
+    Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobsWhenAddingUnconfirmedBlobs)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto config = DefaultConfig();
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+        partition.WriteBlocks(range, 1);
+
+        TGuardedSgList sgList;
+        int corruptValue = 0;
+        auto corruptData = [&] () {
+            auto g = sgList.Acquire();
+            UNIT_ASSERT(g);
+            UNIT_ASSERT_VALUES_UNEQUAL(0, g.Get().size());
+
+            const char* block = g.Get()[0].Data();
+            memset(const_cast<char*>(block), corruptValue, DefaultBlockSize);
+        };
+
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                        using TEv =
+                            TEvPartitionCommonPrivate::TEvReadBlobRequest;
+                        auto* msg = event->Get<TEv>();
+                        sgList = msg->Sglist;
+
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvReadBlobResponse: {
+                        corruptData();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        // direct read should fail
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(
+            blocks,
+            range.Size(),
+            TString::TUninitialized(DefaultBlockSize));
+        partition.SendReadBlocksLocalRequest(range, std::move(sglist));
+        auto response = partition.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
     }
 }
 
