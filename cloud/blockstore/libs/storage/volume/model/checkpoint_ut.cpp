@@ -161,7 +161,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             true,
             store.DoesCheckpointHaveData("checkpoint-6"));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, store.GetCheckpointsWithData().size());
+        UNIT_ASSERT_VALUES_EQUAL(2, store.GetCheckpointsWithData().size());
 
         // The checkpoint without the shadow disk has the correct state.
         UNIT_ASSERT_VALUES_EQUAL(

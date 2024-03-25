@@ -3896,13 +3896,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             isLightCases.push_back(false);  // normal checkpoint
         }
 
-        for (bool isLight : isLightCases) {
-            TString checkpointId = isLight ? "checkpoint_light" : "checkpoint_normal";
+        std::vector<std::pair<NProto::ECheckpointType, TString>> testCases{
+            {NProto::ECheckpointType::NORMAL, "checkpoint_normal"},
+            {NProto::ECheckpointType::LIGHT, "checkpoint_light"},
+            {NProto::ECheckpointType::WITHOUT_DATA, "checkpoint_without_data"}};
 
-            volume.CreateCheckpoint(checkpointId, isLight);
+        for (auto [checkpointType, checkpointId] : testCases)
+        {
+            volume.CreateCheckpoint(checkpointId, checkpointType);
             volume.DeleteCheckpoint(checkpointId);
 
-            volume.SendCreateCheckpointRequest(checkpointId, isLight);
+            volume.SendCreateCheckpointRequest(checkpointId, checkpointType);
             UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
         }
     }
@@ -3945,10 +3949,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TString checkpointId = "checkpoint";
 
-        volume.CreateCheckpoint(checkpointId, false);
+        volume.CreateCheckpoint(checkpointId);
         volume.DeleteCheckpointData(checkpointId);
 
-        volume.SendCreateCheckpointRequest(checkpointId, false);
+        volume.SendCreateCheckpointRequest(checkpointId);
         UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
     }
 
@@ -4025,10 +4029,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         {
             // Only the first request should be saved.
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
             for (int i = 0; i < 5; ++i) {
-                volume.SendCreateCheckpointRequest(checkpointId, false);
+                volume.SendCreateCheckpointRequest(checkpointId);
             }
             dispatchAndCheckNumberOfSavedRequests(1);
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
@@ -4041,17 +4045,17 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             // Only the first request of each type should be saved.
             // In this case, queue is drained completely an then filled again.
             for (int i = 0; i < 5; ++i) {
-                volume.SendCreateCheckpointRequest(checkpointId, false);
+                volume.SendCreateCheckpointRequest(checkpointId);
             }
             dispatchAndCheckNumberOfSavedRequests(1);
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
             dispatchAndCheckNumberOfSavedRequests(1);
 
             volume.SendDeleteCheckpointDataRequest(checkpointId);
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             volume.SendDeleteCheckpointDataRequest(checkpointId);
             volume.SendCreateCheckpointRequest(checkpointId);
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             volume.SendDeleteCheckpointDataRequest(checkpointId);
             volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(2);
@@ -4071,7 +4075,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         {
             // Only the first request of each type should be saved.
             // In this case, queue is drained partially (but not completely) an then filled again.
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
             dispatchAndCheckNumberOfSavedRequests(1);
@@ -4104,12 +4108,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.SendDeleteCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(0);
 
-            volume.SendCreateCheckpointRequest(checkpointId, false);
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
             dispatchAndCheckNumberOfSavedRequests(1);
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
 
             volume.SendDeleteCheckpointRequest(checkpointId);
@@ -4127,10 +4131,10 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             // Requests for different checkpoints should not influence each other.
             TString checkpointIdOther = "checkpoint_other";
             for (int i = 0; i < 5; ++i) {
-                volume.SendCreateCheckpointRequest(checkpointId, false);
+                volume.SendCreateCheckpointRequest(checkpointId);
             }
             for (int i = 0; i < 5; ++i) {
-                volume.SendCreateCheckpointRequest(checkpointIdOther, false);
+                volume.SendCreateCheckpointRequest(checkpointIdOther);
             }
             runtime->DispatchEvents({}, TDuration::Seconds(1));
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
@@ -4153,16 +4157,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         {
             // Should work correctly when volume tablet reboots.
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
             volume.RebootTablet();
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             runtime->DispatchEvents({}, TDuration::Seconds(1));
             runtime->Send(interseptedCheckpointRequests[requestIndex++].release());
             dispatchAndCheckNumberOfSavedRequests(1);
 
             volume.RebootTablet();
-            volume.SendCreateCheckpointRequest(checkpointId, false);
+            volume.SendCreateCheckpointRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(1);
             volume.SendDeleteCheckpointDataRequest(checkpointId);
             dispatchAndCheckNumberOfSavedRequests(2);
