@@ -11,6 +11,7 @@ outputs:
   runner_ipv4:
     value: ${{ steps.result.outputs.runner_ipv4 }}
     description: "runner ipv4"
+
 runs:
   using: composite
   steps:

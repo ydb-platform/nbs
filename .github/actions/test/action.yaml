@@ -40,14 +40,26 @@ inputs:
     required: false
     default: 'false'
     description: 'Sync failed tests folders to s3'
+  upload_ya_dir:
+    required: false
+    default: 'no'
+    description: 'Upload ya dir to s3'
+  clean_ya_dir:
+    required: false
+    default: 'no'
+    description: 'Clean ya dir'
+  use_network_cache:
+    required: false
+    default: 'yes'
+    description: 'Use network cache'
+
 runs:
   using: composite
   steps:
     - name: Init
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
-      shell: bash
       run: |
-        echo "SHELLOPTS=xtrace" >> $GITHUB_ENV
         export TMP_DIR=/home/github/tmp
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         echo "LOG_DIR=$TMP_DIR/logs" >> $GITHUB_ENV
@@ -60,15 +72,19 @@ runs:
         echo "SUMMARY_LINKS=$(mktemp -p /home/github)" >> $GITHUB_ENV
 
     - name: prepare
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         rm -rf $TMP_DIR $JUNIT_REPORT_XML $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         mkdir -p $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS $REPORTS_ARTIFACTS_DIR $TESTS_DATA_DIR
         chown -R github:github $TMP_DIR $OUT_DIR $ARTIFACTS_DIR $LOG_DIR $JUNIT_REPORT_PARTS \
                                $REPORTS_ARTIFACTS_DIR $SUMMARY_LINKS $GITHUB_WORKSPACE \
                                $GITHUB_STEP_SUMMARY $TESTS_DATA_DIR
+        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+          echo "Cleaning ya dir"
+          rm -rf /home/github/.ya/
+        fi
     - name: ya test
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         set -x
         extra_params=()
@@ -105,24 +121,36 @@ runs:
           done
         fi
 
-        if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
-          extra_params+=(--bazel-remote-store)
-          extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
-        fi
+        if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
+          if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
+            extra_params+=(--bazel-remote-store)
+            extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
+          fi
 
-        if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
-          extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-          extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
-        fi
+          if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
+            extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
+            extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
+          fi
 
-        if [ "${{ inputs.cache_update }}" = "true" ]; then
-          extra_params+=(--cache-tests)
-          extra_params+=(--bazel-remote-put --dist-cache-evict-bins)
+          if [ "${{ inputs.cache_update }}" = "true" ]; then
+            extra_params+=(--bazel-remote-put)
+          fi
         fi
 
         readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
         readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
 
+        echo "::group::empty-files"
+        [ -d  /home/github/.ya/tools/ ] && {
+          find /home/github/.ya/tools/ -type f -exec file {} \; | grep empty;
+          ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
+          if [ ! -s "$ya_bin_path" ]; then
+            echo "ya-bin exists but is empty, recovering by removing ya-bin"
+            rm -rf $ya_bin_path
+          fi
+        }
+        echo "::endgroup::"
+        date
         echo "::group::ya-make-test"
         sudo -E -H -u github ./ya test -k --build "${build_type}" \
           ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
@@ -137,23 +165,27 @@ runs:
               if [ -s "$JUNIT_REPORT_XML" ]; then
                 echo "$JUNIT_REPORT_XML exists"
                 ls -la "$JUNIT_REPORT_XML"
+                echo "::endgroup::"
+                date
               else
                 echo "$JUNIT_REPORT_XML doesn't exist or has zero size"
                 ls -la "$JUNIT_REPORT_XML" || true
+                echo "::endgroup::"
+                date
                 exit $RC
               fi
             fi
         )
-        echo "::endgroup::"
 
     - name: archive unitest reports (orig)
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo -E -H -u github gzip -c $JUNIT_REPORT_XML > $REPORTS_ARTIFACTS_DIR/orig_junit.xml.gz
 
     - name: postprocess junit report
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
+        echo "::group::postprocess-junit"
         sudo -E -H -u github .github/scripts/tests/transform-ya-junit.py -i \
           -m .github/config/muted_ya.txt \
           --ya-out "$OUT_DIR" \
@@ -163,17 +195,19 @@ runs:
           "$JUNIT_REPORT_XML"
 
         sudo -E -H -u github .github/scripts/tests/split-junit.py -o "$JUNIT_REPORT_PARTS" "$JUNIT_REPORT_XML"
+        echo "::endgroup::"
 
     - name: archive unitest reports (transformed)
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         sudo -E -H -u github tar -C $JUNIT_REPORT_PARTS/.. -czf $REPORTS_ARTIFACTS_DIR/junit_parts.xml.tar.gz $(basename $JUNIT_REPORT_PARTS) $JUNIT_REPORT_XML
 
     - name: write tests summary
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
+        echo "::group::write-summary"
         sudo -E -H -u github mkdir $ARTIFACTS_DIR/summary/
 
         cat $SUMMARY_LINKS | python3 -c 'import sys; print(" | ".join([v for _, v in sorted([l.strip().split(" ", 1) for l in sys.stdin], key=lambda a: (int(a[0]), a))]))' >> $GITHUB_STEP_SUMMARY
@@ -190,11 +224,11 @@ runs:
           "Tests" ya-test.html "$JUNIT_REPORT_XML"
 
         cat $SUMMARY_OUT_ENV_PATH | tee -a $GITHUB_STEP_SUMMARY
+        echo "::endgroup::"
 
     - name: check test results
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        set -x
         sudo -E -H -u github .github/scripts/tests/fail-checker.py "$JUNIT_REPORT_XML" || {
           RC=$?
 
@@ -258,6 +292,82 @@ runs:
         echo ${S3_WEBSITE_PREFIX}/summary/ya-test.html
         echo "::endgroup::"
 
+    - name: upload ya dir to s3 on success
+      id: upload_ya_dir
+      shell: bash --noprofile --norc -eo pipefail -x {0}
+      if: success() && inputs.upload_ya_dir == 'yes'
+      run: |
+        function grep_ya_tc() {
+          ps aux | grep [y]a-tc || true
+        }
+        process_name="ya-tc"
+        # by default ya-tc should terminate within 5 minutes
+        timeout=360
+        start_time=$(date +%s)
+        while true; do
+            pgrep -x "ya-tc" && {
+                echo "ya-tc is still running."
+                grep_ya_tc
+            } || {
+                echo "ya-tc is not running."
+                grep_ya_tc
+                break
+            }
+
+            current_time=$(date +%s)
+            elapsed_time=$((current_time - start_time))
+
+            if [ "$elapsed_time" -ge "$timeout" ]; then
+                echo "Timeout reached. ya-tc is still running. killing it"
+                grep_ya_tc
+                pkill -f ya-tc || true
+                grep_ya_tc
+                break
+            fi
+
+            sleep 5
+        done
+
+        ps aux | grep ya
+        # checking if files are not corrupted
+        echo "::group::ya-files-empty"
+        find /home/github/.ya/tools/ -type f -exec file {} \; | grep empty
+        echo "::endgroup::"
+        ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
+        if [ ! -s "$ya_bin_path" ]; then
+          echo "ya-bin exists but is empty"
+          echo "empty_ya_bin=yes" >> $GITHUB_OUTPUT
+        else
+          echo "empty_ya_bin=no" >> $GITHUB_OUTPUT
+          echo "::group::upload-ya-dir"
+
+          df -h
+          EXTENSION=tar.xz
+          if [ "$EXTENSION" = "tar.zst" ] || [ "$EXTENSION" = "tar.zstd" ]; then COMPRESS_ARGS='zstd -16 -T60'; fi
+          if [ "$EXTENSION" = "tar.xz" ]; then COMPRESS_ARGS='pixz -1'; fi
+          if [ "$EXTENSION" = "tar.bz2" ]; then COMPRESS_ARGS=pbzip2; fi
+          if [ "$EXTENSION" = "tar.gz" ]; then COMPRESS_ARGS=pigz; fi
+          sudo -E -H -u github time tar -S -C /home/github -I "$COMPRESS_ARGS" -c -f  /home/github/tmp/ya.${EXTENSION} /home/github/.ya
+          ls -lsha /home/github/tmp/ya.${EXTENSION}
+          sudo -E -H -u github time aws s3 cp --no-progress  /home/github/tmp/ya.${EXTENSION} "$S3_BUCKET_PATH/ya_archive/ya.${EXTENSION}"
+          echo "${S3_WEBSITE_PREFIX}/ya_archive/ya.${EXTENSION}" > /home/github/ya_web_url.txt
+          echo "${S3_BUCKET_PATH}/ya_archive/ya.${EXTENSION}" > /home/github/ya_s3_url.txt
+          df -h
+          echo "::endgroup::"
+        fi
+
+    - name: upload ya url to s3 on success
+      if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ya_web_url_file
+        path: /home/github/ya_web_url.txt
+    - name: upload ya url to s3 on success
+      if: success() && inputs.upload_ya_dir == 'yes' && steps.upload_ya_dir.outputs.empty_ya_bin != 'yes'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ya_s3_url_file
+        path: /home/github/ya_s3_url.txt
     - name: Create directory listing on s3
       if: always()
       shell: bash
@@ -265,7 +375,6 @@ runs:
         echo "::group::generate-listing"
         sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
         echo "::endgroup::"
-
     - name: show free space
       if: always()
       shell: bash

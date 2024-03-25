@@ -16,9 +16,11 @@ runs:
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils tzdata cmake \
           python3-dev python3-pip ninja-build antlr3 m4 libidn11-dev libaio1 libaio-dev make clang-14 lld-14 llvm-14 file \
-          distcc strace qemu-kvm qemu-utils dpkg-dev atop
+          distcc strace qemu-kvm qemu-utils dpkg-dev atop pigz pbzip2 xz-utils pixz
         sudo apt-get remove -y unattended-upgrades
-        sudo pip3 install conan==1.59 pytest==7.1.3 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2 grpcio grpcio-tools PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil pygithub==1.59.1 pyinstaller==5.13.2 cryptography packaging six pyyaml
+        sudo pip3 install conan==1.59 pytest==7.1.3 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2 grpcio grpcio-tools \
+             PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil yandexcloud==0.258.0 PyGithub==2.2.0 pyinstaller==5.13.2 \
+             cryptography packaging six pyyaml rapidgzip
     - name: install ccache
       shell: bash
       run: |

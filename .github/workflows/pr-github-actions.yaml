@@ -46,7 +46,6 @@ jobs:
           reporter: ${{ steps.reporter.outputs.value }}
           path: |
             .github/
-            cloud/storage/core/tools/ci/
           pattern: "*.sh"
 
       - name: shfmt
