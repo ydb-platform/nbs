@@ -12,6 +12,8 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
+	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -42,6 +44,7 @@ type nodeService struct {
 	nbsSocketsDir string
 	podSocketsDir string
 	nbsClient     nbsclient.ClientIface
+	nfsClient     nfsclient.EndpointClientIface
 }
 
 func newNodeService(
@@ -49,7 +52,8 @@ func newNodeService(
 	clientID string,
 	nbsSocketsDir string,
 	podSocketsDir string,
-	nbsClient nbsclient.ClientIface) csi.NodeServer {
+	nbsClient nbsclient.ClientIface,
+	nfsClient nfsclient.EndpointClientIface) csi.NodeServer {
 
 	return &nodeService{
 		nodeID:        nodeID,
@@ -57,6 +61,7 @@ func newNodeService(
 		nbsSocketsDir: nbsSocketsDir,
 		podSocketsDir: podSocketsDir,
 		nbsClient:     nbsClient,
+		nfsClient:     nfsClient,
 	}
 }
 
@@ -85,83 +90,6 @@ func (s *nodeService) NodeStageVolume(
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
-func (s *nodeService) startEndpoint(
-	ctx context.Context,
-	volumeId string,
-	volumeCapability *csi.VolumeCapability,
-	volumeContext map[string]string) (*nbsapi.TStartEndpointResponse, error) {
-
-	var ipcType nbsapi.EClientIpcType
-
-	switch volumeCapability.GetAccessType().(type) {
-	case *csi.VolumeCapability_Block:
-		ipcType = nbsapi.EClientIpcType_IPC_NBD
-	case *csi.VolumeCapability_Mount:
-		ipcType = nbsapi.EClientIpcType_IPC_VHOST
-	default:
-		return nil, status.Error(codes.InvalidArgument, "Unknown access type")
-	}
-
-	endpointDir := filepath.Join(s.podSocketsDir, volumeId)
-	if err := os.MkdirAll(endpointDir, 0755); err != nil {
-		return nil, err
-	}
-
-	if err := os.Chmod(endpointDir, 0777); err != nil {
-		return nil, err
-	}
-
-	if volumeContext != nil && volumeContext["backend"] == "nfs" {
-		// TODO: start nfs endpoint using nfsClient
-		return nil, status.Error(codes.Unimplemented, "nfs backend is unimplemented yet")
-	}
-
-	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
-	socketPath := filepath.Join(s.nbsSocketsDir, volumeId, socketName)
-	startEndpointRequest := &nbsapi.TStartEndpointRequest{
-		UnixSocketPath:   socketPath,
-		DiskId:           volumeId,
-		ClientId:         s.clientID,
-		DeviceName:       volumeId,
-		IpcType:          ipcType,
-		VhostQueuesCount: 8,
-		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
-		Persistent:       true,
-		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
-			ipcType == nbsapi.EClientIpcType_IPC_NBD,
-		},
-		ClientProfile: &nbsapi.TClientProfile{
-			HostType: &hostType,
-		},
-	}
-
-	resp, err := s.nbsClient.StartEndpoint(ctx, startEndpointRequest)
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"Failed to start endpoint: %+v", err)
-	}
-
-	podSocketPath := filepath.Join(endpointDir, socketName)
-	if err := os.Chmod(podSocketPath, 0666); err != nil {
-		return nil, err
-	}
-
-	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
-	// "If the disk.img image file has not been created manually before starting a VM
-	// then it will be created automatically with the PersistentVolumeClaim size."
-	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
-	diskImgPath := filepath.Join(endpointDir, "disk.img")
-	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0660)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to create disk.img: %+v", err)
-	}
-	file.Close()
-
-	return resp, nil
-}
-
 func (s *nodeService) NodeUnstageVolume(
 	ctx context.Context,
 	req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
@@ -182,30 +110,6 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) stopEndpoint(
-	ctx context.Context,
-	volumeId string) error {
-
-	socketPath := filepath.Join(s.nbsSocketsDir, volumeId, socketName)
-	stopEndpointRequest := &nbsapi.TStopEndpointRequest{
-		UnixSocketPath: socketPath,
-	}
-
-	_, err := s.nbsClient.StopEndpoint(ctx, stopEndpointRequest)
-	if err != nil {
-		return status.Errorf(
-			codes.Internal,
-			"Failed to stop endpoint: %+v", err)
-	}
-
-	endpointDir := filepath.Join(s.podSocketsDir, volumeId)
-	if err := os.RemoveAll(endpointDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *nodeService) NodePublishVolume(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -223,28 +127,25 @@ func (s *nodeService) NodePublishVolume(
 			"VolumeCapability missing im NodePublishVolumeRequest")
 	}
 
-	resp, err := s.startEndpoint(
-		ctx,
-		req.VolumeId,
-		req.VolumeCapability,
-		req.VolumeContext)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.NbdDeviceFile != "" {
-		log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
-	}
-
-	options := []string{"bind"}
+	var err error
+	nfsBackend := (req.VolumeContext != nil && req.VolumeContext["backend"] == "nfs")
 
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
-		err = s.nodePublishVolumeForFileSystem(req, options)
+		if nfsBackend {
+			err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+		} else {
+			err = s.nodePublishDiskAsVhostSocket(ctx, req)
+		}
 	case *csi.VolumeCapability_Block:
-		err = s.nodePublishVolumeForBlock(resp.NbdDeviceFile, req, options)
+		if nfsBackend {
+			err = status.Error(codes.InvalidArgument,
+				"'Block' volume mode is not supported for nfs backend")
+		} else {
+			err = s.nodePublishDiskAsBlockDevice(ctx, req)
+		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, "Unknown access type")
+		err = status.Error(codes.InvalidArgument, "Unknown access type")
 	}
 
 	if err != nil {
@@ -252,46 +153,6 @@ func (s *nodeService) NodePublishVolume(
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
-}
-
-func (s *nodeService) nodePublishVolumeForFileSystem(
-	req *csi.NodePublishVolumeRequest,
-	mountOptions []string) error {
-
-	source := filepath.Join(s.podSocketsDir, req.VolumeId)
-	target := req.TargetPath
-
-	fsType := "ext4"
-
-	mnt := req.VolumeCapability.GetMount()
-	if mnt != nil {
-		for _, flag := range mnt.MountFlags {
-			mountOptions = append(mountOptions, flag)
-		}
-
-		if mnt.FsType != "" {
-			fsType = mnt.FsType
-		}
-	}
-
-	return s.mount(source, target, fsType, mountOptions...)
-}
-
-func (s *nodeService) nodePublishVolumeForBlock(
-	nbdDeviceFile string,
-	req *csi.NodePublishVolumeRequest,
-	mountOptions []string) error {
-
-	if req.VolumeContext != nil && req.VolumeContext["backend"] == "nfs" {
-		return status.Error(
-			codes.InvalidArgument,
-			"'Block' volume mode is not supported for nfs backend")
-	}
-
-	source := nbdDeviceFile
-	target := req.TargetPath
-
-	return s.mount(source, target, "", mountOptions...)
 }
 
 func (s *nodeService) NodeUnpublishVolume(
@@ -312,18 +173,7 @@ func (s *nodeService) NodeUnpublishVolume(
 			"Target Path missing in NodeUnpublishVolumeRequest")
 	}
 
-	if err := s.stopEndpoint(ctx, req.VolumeId); err != nil {
-		return nil, err
-	}
-
-	err := s.unmount(req.TargetPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO (issues/464): remove req.TargetPath for Block
-	err = os.RemoveAll(filepath.Dir(req.TargetPath))
-	if err != nil {
+	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -350,6 +200,186 @@ func (s *nodeService) NodeGetInfo(
 			Segments: map[string]string{topologyKeyNode: s.nodeID},
 		},
 	}, nil
+}
+
+func (s *nodeService) nodePublishDiskAsVhostSocket(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	_, err := s.startNbsEndpoint(ctx, req, nbsapi.EClientIpcType_IPC_VHOST)
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"Failed to start NBS endpoint: %+v", err)
+	}
+
+	return s.mountSocketDir(req)
+}
+
+func (s *nodeService) nodePublishDiskAsBlockDevice(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	resp, err := s.startNbsEndpoint(ctx, req, nbsapi.EClientIpcType_IPC_NBD)
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"Failed to start NBS endpoint: %+v", err)
+	}
+
+	if resp.NbdDeviceFile != "" {
+		log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
+	}
+
+	return s.mountBlockDevice(resp.NbdDeviceFile, req.TargetPath)
+}
+
+func (s *nodeService) startNbsEndpoint(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest,
+	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
+
+	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
+	if err := os.MkdirAll(endpointDir, 0777); err != nil {
+		return nil, err
+	}
+
+	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
+	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
+	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
+		UnixSocketPath:   socketPath,
+		DiskId:           req.VolumeId,
+		ClientId:         s.clientID,
+		DeviceName:       req.VolumeId,
+		IpcType:          ipcType,
+		VhostQueuesCount: 8,
+		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+		Persistent:       true,
+		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
+			ipcType == nbsapi.EClientIpcType_IPC_NBD,
+		},
+		ClientProfile: &nbsapi.TClientProfile{
+			HostType: &hostType,
+		},
+	})
+}
+
+func (s *nodeService) nodePublishFileStoreAsVhostSocket(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
+	if err := os.MkdirAll(endpointDir, 0777); err != nil {
+		return err
+	}
+
+	if s.nfsClient == nil {
+		return status.Errorf(codes.Internal, "NFS client wasn't created")
+	}
+
+	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
+	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
+		Endpoint: &nfsapi.TEndpointConfig{
+			SocketPath:       socketPath,
+			FileSystemId:     req.VolumeId,
+			ClientId:         s.clientID,
+			VhostQueuesCount: 8,
+			Persistent:       true,
+		},
+	})
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"Failed to start NFS endpoint: %+v", err)
+	}
+
+	return s.mountSocketDir(req)
+}
+
+func (s *nodeService) nodeUnpublishVolume(
+	ctx context.Context,
+	req *csi.NodeUnpublishVolumeRequest) error {
+
+	// Trying to stop both NBS and NFS endpoints,
+	// because the endpoint's backend service is unknown here.
+	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+
+	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
+	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+		UnixSocketPath: socketPath,
+	})
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"Failed to stop nbs endpoint: %+v", err)
+	}
+
+	if s.nfsClient != nil {
+		_, err = s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+			SocketPath: socketPath,
+		})
+		if err != nil {
+			return status.Errorf(codes.Internal,
+				"Failed to stop nfs endpoint: %+v", err)
+		}
+	}
+
+	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
+	if err := os.RemoveAll(endpointDir); err != nil {
+		return err
+	}
+
+	if err := s.unmount(req.TargetPath); err != nil {
+		return err
+	}
+
+	if err := os.RemoveAll(req.TargetPath); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
+
+	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
+
+	podSocketPath := filepath.Join(endpointDir, socketName)
+	if err := os.Chmod(podSocketPath, 0666); err != nil {
+		return err
+	}
+
+	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
+	// "If the disk.img image file has not been created manually before starting a VM
+	// then it will be created automatically with the PersistentVolumeClaim size."
+	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
+	diskImgPath := filepath.Join(endpointDir, "disk.img")
+	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0660)
+	if err != nil {
+		return status.Errorf(codes.Internal, "Failed to create disk.img: %+v", err)
+	}
+	file.Close()
+
+	source := endpointDir
+	target := req.TargetPath
+
+	fsType := "ext4"
+	mountOptions := []string{"bind"}
+
+	mnt := req.VolumeCapability.GetMount()
+	if mnt != nil {
+		for _, flag := range mnt.MountFlags {
+			mountOptions = append(mountOptions, flag)
+		}
+
+		if mnt.FsType != "" {
+			fsType = mnt.FsType
+		}
+	}
+
+	return s.mount(source, target, fsType, mountOptions...)
+}
+
+func (s *nodeService) mountBlockDevice(source string, target string) error {
+	mountOptions := []string{"bind"}
+	return s.mount(source, target, "", mountOptions...)
 }
 
 func (s *nodeService) mount(
