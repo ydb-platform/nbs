@@ -30,7 +30,7 @@ logging.basicConfig(
 )
 
 
-def output(key, value, secret=False):
+def github_output(key, value, secret=False):
     GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
 
     if GITHUB_OUTPUT:
@@ -66,13 +66,14 @@ def fetch_github_team_public_keys(gh, github_org, team_slug):
     logging.info(
         f"Fetching SSH keys for members: {[member.login for member in members]}"
     )
+    member_keys_count = 0
     for member in members:
-        member_keys = []
+
         for key in member.get_keys():
-            member_keys.append(key.key)
+            member_keys_count += 1
             ssh_keys.append(key.key)
 
-        logging.debug(f"Fetched {len(member_keys)} SSH keys for {member.login}")
+        logging.debug(f"Fetched {member_keys_count} SSH keys for {member.login}")
 
     logging.debug(f"Fetched SSH keys: {ssh_keys}")
     return ssh_keys
@@ -107,13 +108,15 @@ def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, labe
     ]
     cloud_init["runcmd"] = ["\n".join(script)]
     logging.info(
-        f"Cloud-init: \n{yaml.dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
+        f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
             token, "****"
         )
     )
     return (
         "#cloud-config\n"
-        + yaml.dump(cloud_init, default_flow_style=False, width=math.inf),  # noqa: W503
+        + yaml.safe_dump(  # noqa: W503
+            cloud_init, default_flow_style=False, width=math.inf
+        ),  # noqa: W503
         ssh_keys,
     )
 
@@ -239,11 +242,11 @@ def create_vm(sdk, args):
             logging.info(
                 f"Created VM {name} with ID {instance_id} and label {runner_github_label}"
             )
-            output("instance-id", instance_id)
-            output("label", runner_github_label)
-            output("local-ipv4", local_ipv4)
+            github_output("instance-id", instance_id)
+            github_output("label", runner_github_label)
+            github_output("local-ipv4", local_ipv4)
             if external_ipv4:
-                output("external-ipv4", external_ipv4)
+                github_output("external-ipv4", external_ipv4)
         else:
             logging.error(f"Failed to create VM with request: {request}")
             logging.error(f"Response: {result}")
