@@ -42,6 +42,7 @@ target_link_libraries(libs-storage-tablet PUBLIC
   core-libs-common
   core-libs-diagnostics
   core-libs-tablet
+  core-libs-viewer
   libs-tablet-model
   storage-core-protos
   cpp-actors-core

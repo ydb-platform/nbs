@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <ydb/core/base/blobstorage.h>
 
 #include <util/generic/vector.h>
 #include <util/stream/output.h>

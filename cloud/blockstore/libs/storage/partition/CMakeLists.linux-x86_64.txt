@@ -25,6 +25,7 @@ target_link_libraries(libs-storage-partition PUBLIC
   core-libs-api
   core-libs-common
   core-libs-tablet
+  core-libs-viewer
   library-cpp-blockcodecs
   library-cpp-cgiparam
   cpp-containers-dense_hash
