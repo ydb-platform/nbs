@@ -21,7 +21,7 @@ void TPartitionActor::HandleCreateCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TCreateCheckpointMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -84,7 +84,7 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     State->WriteCheckpoint(meta);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
     auto tx = CreateTx<TCreateCheckpoint>(
         requestInfo,

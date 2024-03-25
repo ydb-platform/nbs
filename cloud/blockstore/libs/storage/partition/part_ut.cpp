@@ -7181,7 +7181,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             BuildRemoteHttpQuery(TestTabletId, {{"action","collectGarbage"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(httpResponse->Html.Contains("Tablet is dead"), true);
+        UNIT_ASSERT_C(httpResponse->Html.Contains("tablet is shutting down"), true);
     }
 
     Y_UNIT_TEST(ShouldForgetTooOldCompactRangeOperations)

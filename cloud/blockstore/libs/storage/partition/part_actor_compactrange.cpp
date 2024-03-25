@@ -165,7 +165,7 @@ void TForcedCompactionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAndDie(ctx, error);
 }
