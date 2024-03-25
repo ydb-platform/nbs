@@ -28,6 +28,7 @@ type listKeyringsHandlerFunc func(ctx context.Context, req *protos.TListKeyrings
 type describeEndpointHandlerFunc func(ctx context.Context, req *protos.TDescribeEndpointRequest) (*protos.TDescribeEndpointResponse, error)
 type refreshEndpointHandlerFunc func(ctx context.Context, req *protos.TRefreshEndpointRequest) (*protos.TRefreshEndpointResponse, error)
 type createCheckpointHandlerFunc func(ctx context.Context, req *protos.TCreateCheckpointRequest) (*protos.TCreateCheckpointResponse, error)
+type getCheckpointStatusHandlerFunc func(ctx context.Context, req *protos.TGetCheckpointStatusRequest) (*protos.TGetCheckpointStatusResponse, error)
 type deleteCheckpointHandlerFunc func(ctx context.Context, req *protos.TDeleteCheckpointRequest) (*protos.TDeleteCheckpointResponse, error)
 type getChangedBlocksHandlerFunc func(ctx context.Context, req *protos.TGetChangedBlocksRequest) (*protos.TGetChangedBlocksResponse, error)
 type describeVolumeHandlerFunc func(ctx context.Context, req *protos.TDescribeVolumeRequest) (*protos.TDescribeVolumeResponse, error)
@@ -69,6 +70,7 @@ type testClient struct {
 	DescribeEndpointHandler              describeEndpointHandlerFunc
 	RefreshEndpointHandler               refreshEndpointHandlerFunc
 	CreateCheckpointHandler              createCheckpointHandlerFunc
+	GetCheckpointStatusHandler           getCheckpointStatusHandlerFunc
 	DeleteCheckpointHandler              deleteCheckpointHandlerFunc
 	GetChangedBlocksHandler              getChangedBlocksHandlerFunc
 	DescribeVolumeHandler                describeVolumeHandlerFunc
@@ -370,6 +372,18 @@ func (client *testClient) CreateCheckpoint(
 	}
 
 	return &protos.TCreateCheckpointResponse{}, nil
+}
+
+func (client *testClient) GetCheckpointStatus(
+	ctx context.Context,
+	req *protos.TGetCheckpointStatusRequest,
+) (*protos.TGetCheckpointStatusResponse, error) {
+
+	if client.GetCheckpointStatusHandler != nil {
+		return client.GetCheckpointStatusHandler(ctx, req)
+	}
+
+	return &protos.TGetCheckpointStatusResponse{}, nil
 }
 
 func (client *testClient) DeleteCheckpoint(
