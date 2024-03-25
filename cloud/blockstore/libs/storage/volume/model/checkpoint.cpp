@@ -153,15 +153,6 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
     return false;
 }
 
-bool TCheckpointStore::IsCheckpointDataPreparingOrPresent(const TString& checkpointId) const
-{
-    if (const auto* data = ActiveCheckpoints.FindPtr(checkpointId)) {
-        return data->Data == ECheckpointData::DataPreparing
-            || data->Data == ECheckpointData::DataPresent;
-    }
-    return false;
-}
-
 bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
 {
     Y_DEBUG_ABORT_UNLESS(requestId);
@@ -402,8 +393,8 @@ ECheckpointRequestValidityStatus TCheckpointStore::ValidateCheckpointRequest(
     }
 
     const bool checkpointExists = actualCheckpointType.has_value();
-    const bool checkpointDataPreparingOrPresent = checkpointExists
-        && IsCheckpointDataPreparingOrPresent(checkpointId);
+    const bool checkpointDataPresent = checkpointExists
+        && DoesCheckpointHaveData(checkpointId);
     const bool checkpointDeleted = IsCheckpointDeleted(checkpointId);
 
     if (!checkpointExists && !checkpointDeleted) {
@@ -422,7 +413,7 @@ ECheckpointRequestValidityStatus TCheckpointStore::ValidateCheckpointRequest(
                 return ECheckpointRequestValidityStatus::Already;
             }
         }
-    } else if (checkpointExists && checkpointDataPreparingOrPresent) {
+    } else if (checkpointExists && checkpointDataPresent) {
         // Checkpoint exists and has data.
         switch (requestType) {
             case ECheckpointRequestType::Create: {
@@ -440,7 +431,7 @@ ECheckpointRequestValidityStatus TCheckpointStore::ValidateCheckpointRequest(
                 return ECheckpointRequestValidityStatus::Invalid;
             }
         }
-    } else if (checkpointExists && !checkpointDataPreparingOrPresent) {
+    } else if (checkpointExists && !checkpointDataPresent) {
         // Checkpoint exists and has no data.
         switch (requestType) {
             case ECheckpointRequestType::Create: {

@@ -163,19 +163,6 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         UNIT_ASSERT_VALUES_EQUAL(1, store.GetCheckpointsWithData().size());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            store.IsCheckpointDataPreparingOrPresent("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.IsCheckpointDataPreparingOrPresent("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.IsCheckpointDataPreparingOrPresent("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            store.IsCheckpointDataPreparingOrPresent("checkpoint-6"));
-
         // The checkpoint without the shadow disk has the correct state.
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-1"].ShadowDiskState,
