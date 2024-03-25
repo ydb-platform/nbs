@@ -206,3 +206,34 @@ func TestLogFatal(t *testing.T) {
 
 	Fatal(ctx, "Stuff happened")
 }
+
+func TestLogWithFields(t *testing.T) {
+	logger := createMockLogger()
+	ctx := SetLogger(newContext("idempID", "reqID", "opID"), logger)
+
+	ctx = WithComponent(ctx, "component")
+	ctx = WithTaskID(ctx, "taskID")
+
+	ctx = WithFields(
+		ctx,
+		log.String("field_1", "value_1"),
+		log.Int("field_2", 713),
+	)
+
+	logger.On(
+		"Info",
+		"Stuff happened",
+		[]log.Field{
+			log.String(idempotencyKeyKey, "idempID"),
+			log.String(requestIDKey, "reqID"),
+			log.String(operationIDKey, "opID"),
+			log.String(syslogIdentifierKey, "disk-manager"),
+			log.String("COMPONENT", "component"),
+			log.String("TASK_ID", "taskID"),
+			log.String("field_1", "value_1"),
+			log.Int("field_2", 713),
+		},
+	)
+
+	Info(ctx, "Stuff happened")
+}

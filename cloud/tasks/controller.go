@@ -102,8 +102,10 @@ func NewController(
 	host string,
 ) Controller {
 
+	runContext := logging.WithComponent(ctx, logging.ComponentTaskRunner)
+
 	return &controller{
-		runContext:            ctx,
+		runContext:            runContext,
 		running:               atomic.Bool{},
 		taskStorage:           taskStorage,
 		registry:              registry,

@@ -291,7 +291,13 @@ func (r *runnerForRun) run(
 		}
 	}()
 
-	return task.Run(ctx, execCtx)
+	return task.Run(
+		logging.WithTaskID(
+			logging.WithComponent(ctx, logging.ComponentTask),
+			execCtx.GetTaskID(),
+		),
+		execCtx,
+	)
 }
 
 func (r *runnerForRun) lockAndExecuteTask(
@@ -360,7 +366,13 @@ func (r *runnerForCancel) executeTask(
 		taskID,
 	)
 
-	err := task.Cancel(ctx, execCtx)
+	err := task.Cancel(
+		logging.WithTaskID(
+			logging.WithComponent(ctx, logging.ComponentTask),
+			execCtx.GetTaskID(),
+		),
+		execCtx,
+	)
 
 	if ctx.Err() != nil {
 		logging.Info(
