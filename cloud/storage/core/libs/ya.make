@@ -19,4 +19,5 @@ RECURSE(
     version
     version_ydb
     vhost-client
+    viewer
 )

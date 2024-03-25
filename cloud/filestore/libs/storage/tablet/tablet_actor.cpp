@@ -181,6 +181,10 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
+    Metrics.ReassignCount.fetch_add(
+        channels.size(),
+        std::memory_order_relaxed);
+
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
@@ -311,6 +315,17 @@ void TIndexTabletActor::ResetThrottlingPolicy()
     } else {
         Throttler->ResetPolicy(AccessThrottlingPolicy());
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
+{
+    if (!CompactionStateLoadStatus.Finished) {
+        return MakeError(E_REJECTED, "compaction state not loaded yet");
+    }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

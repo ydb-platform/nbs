@@ -32,6 +32,16 @@ void TIndexTabletActor::HandleUnlinkNode(
     const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvUnlinkNodeResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
     if (!session) {
         return;
@@ -90,7 +100,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     if (!args.ChildRef) {
-        args.Error = ErrorInvalidTarget(args.ParentNodeId);
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
         return true;
     }
 

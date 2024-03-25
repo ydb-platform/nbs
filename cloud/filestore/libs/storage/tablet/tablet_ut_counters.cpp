@@ -1,7 +1,5 @@
 #include "tablet.h"
 
-#include <cloud/filestore/libs/diagnostics/metrics/registry.h>
-#include <cloud/filestore/libs/diagnostics/metrics/visitor.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -16,8 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-using NCloud::NFileStore::NMetrics::TLabel;
 
 TFileSystemConfig MakeThrottlerConfig(
     bool throttlingEnabled,
@@ -54,138 +50,6 @@ TFileSystemConfig MakeThrottlerConfig(
 
     return config;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TTestRegistryVisitor
-    : public NMetrics::IRegistryVisitor
-{
-private:
-    struct TMetricsEntry
-    {
-        TInstant Time;
-        NMetrics::EAggregationType AggrType;
-        NMetrics::EMetricType MetrType;
-        THashMap<TString, TString> Labels;
-        i64 Value;
-
-        bool Matches(const TVector<TLabel>& labels) const
-        {
-            for (auto& label: labels) {
-                auto it = Labels.find(label.GetName());
-                if (it == Labels.end() || it->second != label.GetValue()) {
-                    return false;
-                }
-            }
-            return true;
-        }
-    };
-
-    TVector<TMetricsEntry> MetricsEntries;
-    TMetricsEntry CurrentEntry;
-
-public:
-    void OnStreamBegin() override
-    {
-        CurrentEntry = TMetricsEntry();
-        MetricsEntries.clear();
-    }
-
-    void OnStreamEnd() override
-    {}
-
-    void OnMetricBegin(
-        TInstant time,
-        NMetrics::EAggregationType aggrType,
-        NMetrics::EMetricType metrType) override
-    {
-        CurrentEntry.Time = time;
-        CurrentEntry.AggrType = aggrType;
-        CurrentEntry.MetrType = metrType;
-    }
-
-    void OnMetricEnd() override
-    {
-        MetricsEntries.emplace_back(std::move(CurrentEntry));
-    }
-
-    void OnLabelsBegin() override
-    {}
-
-    void OnLabelsEnd() override
-    {}
-
-    void OnLabel(TStringBuf name, TStringBuf value) override
-    {
-        CurrentEntry.Labels.emplace(TString(name), TString(value));
-    }
-
-    void OnValue(i64 value) override
-    {
-        CurrentEntry.Value = value;
-    }
-
-public:
-    const TVector<TMetricsEntry>& GetEntries() const
-    {
-        return MetricsEntries;
-    }
-
-    void ValidateExpectedCounters(
-        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters)
-    {
-        for (const auto& [labels, value]: expectedCounters) {
-            const auto labelsStr = LabelsToString(labels);
-
-            int matchingCountersCount = 0;
-            for (const auto& entry: MetricsEntries) {
-                if (entry.Matches(labels)) {
-                    ++matchingCountersCount;
-                    UNIT_ASSERT_VALUES_EQUAL_C(entry.Value, value, labelsStr);
-                }
-            }
-            UNIT_ASSERT_VALUES_EQUAL_C(matchingCountersCount, 1, labelsStr);
-        }
-    }
-
-    void ValidateExpectedHistogram(
-        const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
-        bool checkEqual)
-    {
-        for (const auto& [labels, value]: expectedCounters) {
-            const auto labelsStr = LabelsToString(labels);
-            i64 total = 0;
-
-            int matchingCountersCount = 0;
-            for (const auto& entry: MetricsEntries) {
-                if (entry.Matches(labels)) {
-                    ++matchingCountersCount;
-                    total += entry.Value;
-                }
-            }
-            if (checkEqual) {
-                UNIT_ASSERT_VALUES_EQUAL_C(total, value, labelsStr);
-            } else {
-                UNIT_ASSERT_VALUES_UNEQUAL_C(total, value, labelsStr);
-            }
-            UNIT_ASSERT_VALUES_UNEQUAL_C(matchingCountersCount, 0, labelsStr);
-        }
-    }
-
-private:
-    static TString LabelsToString(const TVector<TLabel>& labels)
-    {
-        TStringBuilder labelsStr;
-        for (const auto& label: labels) {
-            if (labelsStr) {
-                labelsStr << ", ";
-            }
-            labelsStr << label.GetName() << "=" << label.GetValue();
-        }
-
-        return labelsStr;
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 

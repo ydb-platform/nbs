@@ -711,6 +711,107 @@ void TTestEnv::WaitForSchemeShardTx(ui64 txId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TTestRegistryVisitor::OnStreamBegin()
+{
+    CurrentEntry = TMetricsEntry();
+    MetricsEntries.clear();
+}
+
+void TTestRegistryVisitor::OnStreamEnd()
+{}
+
+void TTestRegistryVisitor::OnMetricBegin(
+    TInstant time,
+    NMetrics::EAggregationType aggrType,
+    NMetrics::EMetricType metrType)
+{
+    CurrentEntry.Time = time;
+    CurrentEntry.AggrType = aggrType;
+    CurrentEntry.MetrType = metrType;
+}
+
+void TTestRegistryVisitor::OnMetricEnd()
+{
+    MetricsEntries.emplace_back(std::move(CurrentEntry));
+}
+
+void TTestRegistryVisitor::OnLabelsBegin()
+{}
+
+void TTestRegistryVisitor::OnLabelsEnd()
+{}
+
+void TTestRegistryVisitor::OnLabel(TStringBuf name, TStringBuf value)
+{
+    CurrentEntry.Labels.emplace(TString(name), TString(value));
+}
+
+void TTestRegistryVisitor::OnValue(i64 value)
+{
+    CurrentEntry.Value = value;
+}
+
+const TVector<TTestRegistryVisitor::TMetricsEntry>& TTestRegistryVisitor::GetEntries() const
+{
+    return MetricsEntries;
+}
+
+void TTestRegistryVisitor::ValidateExpectedCounters(
+    const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters)
+{
+    for (const auto& [labels, value]: expectedCounters) {
+        const auto labelsStr = LabelsToString(labels);
+
+        int matchingCountersCount = 0;
+        for (const auto& entry: MetricsEntries) {
+            if (entry.Matches(labels)) {
+                ++matchingCountersCount;
+                UNIT_ASSERT_VALUES_EQUAL_C(entry.Value, value, labelsStr);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(matchingCountersCount, 1, labelsStr);
+    }
+}
+
+void TTestRegistryVisitor::ValidateExpectedHistogram(
+    const TVector<std::pair<TVector<TLabel>, i64>>& expectedCounters,
+    bool checkEqual)
+{
+    for (const auto& [labels, value]: expectedCounters) {
+        const auto labelsStr = LabelsToString(labels);
+        i64 total = 0;
+
+        int matchingCountersCount = 0;
+        for (const auto& entry: MetricsEntries) {
+            if (entry.Matches(labels)) {
+                ++matchingCountersCount;
+                total += entry.Value;
+            }
+        }
+        if (checkEqual) {
+            UNIT_ASSERT_VALUES_EQUAL_C(total, value, labelsStr);
+        } else {
+            UNIT_ASSERT_VALUES_UNEQUAL_C(total, value, labelsStr);
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL_C(matchingCountersCount, 0, labelsStr);
+    }
+}
+
+TString TTestRegistryVisitor::LabelsToString(const TVector<TLabel>& labels)
+{
+    TStringBuilder labelsStr;
+    for (const auto& label: labels) {
+        if (labelsStr) {
+            labelsStr << ", ";
+        }
+        labelsStr << label.GetName() << "=" << label.GetValue();
+    }
+
+    return labelsStr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void CheckForkJoin(const NLWTrace::TShuttleTrace& trace, bool forkRequired)
 {
     UNIT_ASSERT(trace.GetEvents().size() > 0);

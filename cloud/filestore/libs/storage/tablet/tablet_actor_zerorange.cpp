@@ -15,6 +15,16 @@ void TIndexTabletActor::HandleZeroRange(
     const TEvIndexTabletPrivate::TEvZeroRangeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,

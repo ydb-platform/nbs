@@ -48,6 +48,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "describesessions",
             &TStorageServiceActor::CreateDescribeSessionsActionActor
         },
+        {
+            "reassigntablet",
+            &TStorageServiceActor::CreateReassignTabletActionActor
+        },
     };
 
     auto it = actions.find(action);
