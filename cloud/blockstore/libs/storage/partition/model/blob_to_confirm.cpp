@@ -1,11 +1,11 @@
-#include "blob_unique_id_with_range.h"
+#include "blob_to_confirm.h"
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 bool Overlaps(
-    const TCommitIdToBlobUniqueIdWithRange& blobs,
+    const TCommitIdToBlobsToConfirm& blobs,
     ui64 lowCommitId,
     ui64 highCommitId,
     const TBlockRange32& blockRange)
