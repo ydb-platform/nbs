@@ -703,12 +703,6 @@ void TMountRequestActor::HandleWaitReadyResponse(
     const TActorContext& ctx)
 {
     Error = ev->Get()->Record.GetError();
-
-    if (IsVolumeRestaring && SUCCEEDED(Error.GetCode())) {
-        RequestVolumeStart(ctx);
-        return;
-    }
-
     NotifyAndDie(ctx);
 }
 
@@ -799,6 +793,10 @@ void TMountRequestActor::HandleStopVolumeResponse(
     IsTabletAcquired = false;
 
     if (!FAILED(Error.GetCode())) {
+        if (IsVolumeRestaring) {
+            RequestVolumeStart(ctx);
+            return;
+        }
         WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
         return;
     }
