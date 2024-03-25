@@ -213,9 +213,6 @@ func TestLogWithFields(t *testing.T) {
 
 	ctx = WithComponent(ctx, "component")
 	ctx = WithTaskID(ctx, "taskID")
-	ctx = WithDiskID(ctx, "diskID")
-	ctx = WithSnapshotID(ctx, "snapshotID")
-	ctx = WithImageID(ctx, "imageID")
 
 	ctx = WithFields(
 		ctx,
@@ -233,9 +230,6 @@ func TestLogWithFields(t *testing.T) {
 			log.String(syslogIdentifierKey, "disk-manager"),
 			log.String("COMPONENT", "component"),
 			log.String("TASK_ID", "taskID"),
-			log.String("DISK_ID", "diskID"),
-			log.String("SNAPSHOT_ID", "snapshotID"),
-			log.String("IMAGE_ID", "imageID"),
 			log.String("field_1", "value_1"),
 			log.Int("field_2", 713),
 		},

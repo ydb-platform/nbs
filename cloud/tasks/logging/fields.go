@@ -65,18 +65,6 @@ func NewTaskIDField(value string) Field {
 	return String("TASK_ID", value)
 }
 
-func NewDiskIDField(value string) Field {
-	return String("DISK_ID", value)
-}
-
-func NewSnapshotIDField(value string) Field {
-	return String("SNAPSHOT_ID", value)
-}
-
-func NewImageIDField(value string) Field {
-	return String("IMAGE_ID", value)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func WithComponent(ctx context.Context, value string) context.Context {
@@ -85,18 +73,6 @@ func WithComponent(ctx context.Context, value string) context.Context {
 
 func WithTaskID(ctx context.Context, value string) context.Context {
 	return WithFields(ctx, NewTaskIDField(value))
-}
-
-func WithDiskID(ctx context.Context, value string) context.Context {
-	return WithFields(ctx, NewDiskIDField(value))
-}
-
-func WithSnapshotID(ctx context.Context, value string) context.Context {
-	return WithFields(ctx, NewSnapshotIDField(value))
-}
-
-func WithImageID(ctx context.Context, value string) context.Context {
-	return WithFields(ctx, NewImageIDField(value))
 }
 
 func WithCommonFields(ctx context.Context) context.Context {
