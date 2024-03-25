@@ -284,7 +284,7 @@ func TestRunnerForRun(t *testing.T) {
 		State:   []byte{2, 3, 4},
 	}
 	task.On("Save").Return(state.State, nil)
-	task.On("Run", ctx, execCtx).Return(nil)
+	task.On("Run", mock.Anything, execCtx).Return(nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
 	runnerMetrics := &mockRunnerMetrics{}
@@ -304,7 +304,7 @@ func TestRunnerForRunCtxCancelled(t *testing.T) {
 		Status: storage.TaskStatusReadyToRun,
 	})
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
 		cancel()
 	}).Return(assert.AnError)
 
@@ -329,7 +329,7 @@ func TestRunnerForRunGotAbortedError(t *testing.T) {
 
 	err := errors.NewAbortedError(assert.AnError)
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {}).Return(err)
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
 		ID:      "taskId",
@@ -358,7 +358,7 @@ func TestRunnerForRunGotPanic(t *testing.T) {
 		Status: storage.TaskStatusRunning,
 	})
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
 		panic("test panic")
 	}).Return(nil)
 
@@ -389,7 +389,7 @@ func TestRunnerForRunPanicCountExceeded(t *testing.T) {
 		PanicCount: 1,
 	})
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
 		panic("test panic")
 	}).Return(nil)
 
@@ -425,7 +425,7 @@ func TestRunnerForRunGotRetriableError(t *testing.T) {
 
 	err := errors.NewRetriableError(assert.AnError)
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {}).Return(err)
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
 		ID:                  "taskId",
@@ -459,7 +459,7 @@ func TestRunnerForRunRetriableErrorCountExceeded(t *testing.T) {
 
 	err := errors.NewRetriableError(assert.AnError)
 
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {}).Return(err)
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {}).Return(err)
 
 	state := storage.TaskState{
 		ID:                  "taskId",
@@ -495,7 +495,7 @@ func TestRunnerForRunIgnoreRetryLimit(t *testing.T) {
 	})
 
 	err := errors.NewRetriableErrorWithIgnoreRetryLimit(assert.AnError)
-	task.On("Run", ctx, execCtx).Run(func(args mock.Arguments) {
+	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
 	}).Return(err)
 
 	state := storage.TaskState{
@@ -529,7 +529,7 @@ func TestRunnerForRunGotNonRetriableError1(t *testing.T) {
 
 	// Non retriable error beats retriable error.
 	failure := errors.NewNonRetriableError(errors.NewRetriableError(assert.AnError))
-	task.On("Run", ctx, execCtx).Return(failure)
+	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
 		ID:           "taskId",
@@ -560,7 +560,7 @@ func TestRunnerForRunGotNonRetriableError2(t *testing.T) {
 
 	// Non retriable error beats retriable error.
 	failure := errors.NewRetriableError(errors.NewNonRetriableError(assert.AnError))
-	task.On("Run", ctx, execCtx).Return(failure)
+	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
 		ID:           "taskId",
@@ -590,7 +590,7 @@ func TestRunnerForRunGotNonCancellableError(t *testing.T) {
 	})
 
 	failure := errors.NewRetriableError(errors.NewNonCancellableError(assert.AnError))
-	task.On("Run", ctx, execCtx).Return(failure)
+	task.On("Run", mock.Anything, execCtx).Return(failure)
 
 	state := storage.TaskState{
 		ID:           "taskId",
@@ -621,7 +621,7 @@ func TestRunnerForRunWrongGeneration(t *testing.T) {
 
 	err := errors.NewWrongGenerationError()
 
-	task.On("Run", ctx, execCtx).Return(err)
+	task.On("Run", mock.Anything, execCtx).Return(err)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
@@ -644,7 +644,7 @@ func TestRunnerForRunWrongGenerationWrappedIntoRetriableError(t *testing.T) {
 
 	err := errors.NewRetriableError(errors.NewWrongGenerationError())
 
-	task.On("Run", ctx, execCtx).Return(err)
+	task.On("Run", mock.Anything, execCtx).Return(err)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
@@ -669,7 +669,7 @@ func TestRunnerForRunInterruptExecution(t *testing.T) {
 
 	err := errors.NewInterruptExecutionError()
 
-	task.On("Run", ctx, execCtx).Return(err)
+	task.On("Run", mock.Anything, execCtx).Return(err)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
@@ -692,7 +692,7 @@ func TestRunnerForRunInterruptExecutionWrappedIntoRetriableError(t *testing.T) {
 
 	err := errors.NewRetriableError(errors.NewInterruptExecutionError())
 
-	task.On("Run", ctx, execCtx).Return(err)
+	task.On("Run", mock.Anything, execCtx).Return(err)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
@@ -715,7 +715,7 @@ func TestRunnerForRunFailWithError(t *testing.T) {
 		Status: storage.TaskStatusReadyToRun,
 	})
 
-	task.On("Run", ctx, execCtx).Return(assert.AnError)
+	task.On("Run", mock.Anything, execCtx).Return(assert.AnError)
 	state := storage.TaskState{
 		ID:           "taskId",
 		Status:       storage.TaskStatusReadyToCancel,
@@ -751,7 +751,7 @@ func TestRunnerForCancel(t *testing.T) {
 		State:   []byte{2, 3, 4},
 	}
 	task.On("Save").Return(state.State, nil)
-	task.On("Cancel", ctx, execCtx).Return(nil)
+	task.On("Cancel", mock.Anything, execCtx).Return(nil)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
 	runnerMetrics := &mockRunnerMetrics{}
@@ -771,7 +771,7 @@ func TestRunnerForCancelCtxCancelled(t *testing.T) {
 		Status: storage.TaskStatusReadyToCancel,
 	})
 
-	task.On("Cancel", ctx, execCtx).Run(func(args mock.Arguments) {
+	task.On("Cancel", mock.Anything, execCtx).Run(func(args mock.Arguments) {
 		cancel()
 	}).Return(assert.AnError)
 
@@ -794,7 +794,7 @@ func TestRunnerForCancelWrongGeneration(t *testing.T) {
 
 	err := errors.NewWrongGenerationError()
 
-	task.On("Cancel", ctx, execCtx).Return(err)
+	task.On("Cancel", mock.Anything, execCtx).Return(err)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", err).Return().Once()
@@ -814,7 +814,7 @@ func TestRunnerForCancelFailWithError(t *testing.T) {
 		Status: storage.TaskStatusReadyToCancel,
 	})
 
-	task.On("Cancel", ctx, execCtx).Return(assert.AnError)
+	task.On("Cancel", mock.Anything, execCtx).Return(assert.AnError)
 
 	runnerMetrics := &mockRunnerMetrics{}
 	runnerMetrics.On("OnExecutionError", assert.AnError).Return().Once()
@@ -844,7 +844,7 @@ func TestRunnerForCancelGotNonRetriableError(t *testing.T) {
 		State:   []byte{2, 3, 4},
 	}
 	task.On("Save").Return(state.State, nil)
-	task.On("Cancel", ctx, execCtx).Return(err)
+	task.On("Cancel", mock.Anything, execCtx).Return(err)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
 	runnerMetrics := &mockRunnerMetrics{}
@@ -875,7 +875,7 @@ func TestRunnerForCancelGotNonCancellableError(t *testing.T) {
 		State:   []byte{2, 3, 4},
 	}
 	task.On("Save").Return(state.State, nil)
-	task.On("Cancel", ctx, execCtx).Return(err)
+	task.On("Cancel", mock.Anything, execCtx).Return(err)
 	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
 	runnerMetrics := &mockRunnerMetrics{}

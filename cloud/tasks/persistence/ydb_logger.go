@@ -54,10 +54,7 @@ func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
 		ctx = logging.SetLogger(ctx, l.logger)
 	}
 
-	ctx = logging.WithFields(
-		ctx,
-		logging.NewComponentField(logging.ComponentYDB),
-	)
+	ctx = logging.WithComponent(ctx, logging.ComponentYDB)
 	if names := ydb_log.NamesFromContext(ctx); len(names) != 0 {
 		ctx = logging.WithFields(
 			ctx,
