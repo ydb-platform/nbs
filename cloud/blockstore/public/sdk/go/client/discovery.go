@@ -755,6 +755,24 @@ func (client *discoveryClient) CreateCheckpoint(
 	return resp.(*protos.TCreateCheckpointResponse), err
 }
 
+func (client *discoveryClient) GetCheckpointStatus(
+	ctx context.Context,
+	req *protos.TGetCheckpointStatusRequest,
+) (*protos.TGetCheckpointStatusResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		func(ctx context.Context, impl ClientIface) (response, error) {
+			return impl.GetCheckpointStatus(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TGetCheckpointStatusResponse), err
+}
+
 func (client *discoveryClient) DeleteCheckpoint(
 	ctx context.Context,
 	req *protos.TDeleteCheckpointRequest,
