@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
-#include <cloud/blockstore/libs/storage/partition/model/blob_unique_id_with_range.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -656,13 +656,13 @@ struct TEvPartitionPrivate
     struct TAddUnconfirmedBlobsRequest
     {
         ui64 CommitId = 0;
-        TVector<TBlobUniqueIdWithRange> Blobs;
+        TVector<TBlobToConfirm> Blobs;
 
         TAddUnconfirmedBlobsRequest() = default;
 
         TAddUnconfirmedBlobsRequest(
                 ui64 commitId,
-                TVector<TBlobUniqueIdWithRange> blobs)
+                TVector<TBlobToConfirm> blobs)
             : CommitId(commitId)
             , Blobs(std::move(blobs))
         {}

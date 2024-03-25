@@ -5,7 +5,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/partition/model/blob_index.h>
-#include <cloud/blockstore/libs/storage/partition/model/blob_unique_id_with_range.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
@@ -211,10 +211,10 @@ public:
 
     void WriteUnconfirmedBlob(
         const TPartialBlobId& blobId,
-        const TBlobUniqueIdWithRange& blob);
+        const TBlobToConfirm& blob);
     void DeleteUnconfirmedBlob(const TPartialBlobId& blobId);
 
-    bool ReadUnconfirmedBlobs(TCommitIdToBlobUniqueIdWithRange& blobs);
+    bool ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

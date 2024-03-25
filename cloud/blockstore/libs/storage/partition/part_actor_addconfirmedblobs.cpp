@@ -286,7 +286,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
                 MakePartialBlobId(commitId, blob.UniqueId),
                 blob.BlockRange,
                 TBlockMask(), // skipMask
-                TVector<ui32>() /* TODO: checksums */);
+                blob.Checksums);
         }
 
         auto request = std::make_unique<TRequest>(
