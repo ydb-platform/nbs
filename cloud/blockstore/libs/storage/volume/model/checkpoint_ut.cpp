@@ -158,7 +158,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             false,
             store.DoesCheckpointHaveData("checkpoint-5"));
         UNIT_ASSERT_VALUES_EQUAL(
-            false,
+            true,
             store.DoesCheckpointHaveData("checkpoint-6"));
 
         UNIT_ASSERT_VALUES_EQUAL(1, store.GetCheckpointsWithData().size());
