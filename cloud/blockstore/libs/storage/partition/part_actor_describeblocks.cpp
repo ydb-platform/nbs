@@ -107,7 +107,7 @@ void TPartitionActor::DescribeBlocks(
         commitId,
         DescribeRange(describeRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
     ExecuteTx<TDescribeBlocks>(
         ctx,
@@ -122,7 +122,7 @@ void TPartitionActor::HandleDescribeBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvVolume::TDescribeBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);

@@ -888,7 +888,7 @@ void TCompactionActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -1199,7 +1199,7 @@ void TPartitionActor::HandleCompaction(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCompactionMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -1318,7 +1318,7 @@ void TPartitionActor::HandleCompaction(
     State->GetCleanupQueue().AcquireBarrier(commitId);
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
     auto tx = CreateTx<TCompaction>(
         requestInfo,

@@ -401,7 +401,7 @@ void TWriteFreshBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAllAndDie(ctx, error);
 }

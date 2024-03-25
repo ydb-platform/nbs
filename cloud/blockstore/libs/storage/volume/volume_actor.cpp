@@ -296,7 +296,7 @@ void TVolumeActor::BeforeDie(const TActorContext& ctx)
 
     for (auto& [part, handler]: WaitForPartitions) {
         if (handler) {
-            std::invoke(handler, ctx, MakeError(E_REJECTED, "Tablet is dead"));
+            std::invoke(handler, ctx, MakeError(E_REJECTED, "tablet is shutting down"));
         }
     }
     StoppedPartitions.clear();

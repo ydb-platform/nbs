@@ -226,7 +226,7 @@ void TDescribeBaseDiskBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 STFUNC(TDescribeBaseDiskBlocksActor::StateWork)

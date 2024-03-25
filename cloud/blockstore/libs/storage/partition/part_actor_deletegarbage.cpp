@@ -19,7 +19,7 @@ void TPartitionActor::HandleDeleteGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TDeleteGarbageMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -32,7 +32,7 @@ void TPartitionActor::HandleDeleteGarbage(
         "DeleteGarbage",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TDeleteGarbageMethod>(*requestInfo);
 
     ExecuteTx<TDeleteGarbage>(
         ctx,
