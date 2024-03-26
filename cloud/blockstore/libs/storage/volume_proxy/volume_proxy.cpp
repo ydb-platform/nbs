@@ -565,6 +565,12 @@ void TVolumeProxyActor::HandleDescribeResponse(
         *conn,
         volumeDescr.GetVolumeTabletId(),
         msg->Path);
+
+    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+        it != BaseDiskIdToTabletId.end())
+    {
+        it->second.ConnectFailures = 0;
+    }
 }
 
 template <typename TMethod>
