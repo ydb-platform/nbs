@@ -278,6 +278,9 @@ void TWriteMergedBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
+    if (!BlockSizeForChecksums) {
+        BlobsToConfirm.clear();
+    }
     auto ev = std::make_unique<TEvent>(
         error,
         true,   // collectGarbageBarrierAcquired
