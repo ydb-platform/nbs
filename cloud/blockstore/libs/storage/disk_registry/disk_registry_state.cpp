@@ -4495,21 +4495,15 @@ void TDiskRegistryState::DeleteDiskStateChanges(
 }
 
 NProto::TError TDiskRegistryState::CheckAgentStateTransition(
-    const TString& agentId,
+    const NProto::TAgentConfig& agent,
     NProto::EAgentState newState,
     TInstant timestamp) const
 {
-    const auto* agent = AgentList.FindAgent(agentId);
-
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, "agent not found");
-    }
-
-    if (agent->GetState() == newState) {
+    if (agent.GetState() == newState) {
         return MakeError(S_ALREADY);
     }
 
-    if (agent->GetStateTs() > timestamp.MicroSeconds()) {
+    if (agent.GetStateTs() > timestamp.MicroSeconds()) {
         return MakeError(E_INVALID_STATE, "out of order");
     }
 
@@ -4518,23 +4512,21 @@ NProto::TError TDiskRegistryState::CheckAgentStateTransition(
 
 NProto::TError TDiskRegistryState::UpdateAgentState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant timestamp,
     TString reason,
     TVector<TDiskId>& affectedDisks)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, timestamp);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateAgentState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, timestamp);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     const auto cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -4797,24 +4789,22 @@ ui32 TDiskRegistryState::CountBrokenHddPlacementGroupPartitionsAfterDeviceRemova
 
 NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks,
     TDuration& timeout)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, now);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateCmsHostState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, now);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     TInstant cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
