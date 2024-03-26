@@ -269,6 +269,7 @@ struct TBootstrap
     NBD::IDeviceConnectionFactoryPtr NbdDeviceFactory;
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
+    IEndpointManagerPtr EndpointManager;
 
     TBootstrap()
     {
@@ -295,10 +296,18 @@ struct TBootstrap
         if (Executor) {
             Executor->Start();
         }
+
+        if (EndpointManager) {
+            EndpointManager->Start();
+        }
     }
 
     void Stop()
     {
+        if (EndpointManager) {
+            EndpointManager->Stop();
+        }
+
         if (Executor) {
             Executor->Stop();
         }
@@ -440,7 +449,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
             std::move(sessionManagerOptions));
     }
 
-    return NServer::CreateEndpointManager(
+    bootstrap.EndpointManager = NServer::CreateEndpointManager(
         bootstrap.Timer,
         bootstrap.Scheduler,
         bootstrap.Logging,
@@ -454,6 +463,8 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
         bootstrap.EndpointListeners,
         bootstrap.NbdDeviceFactory,
         bootstrap.Options);
+
+    return bootstrap.EndpointManager;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,6 +519,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         {
             NProto::TStartEndpointRequest request;
@@ -550,6 +564,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         UNIT_ASSERT_VALUES_EQUAL(0, listener->AlterEndpointCounter);
 
@@ -631,6 +648,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         NProto::TStartEndpointRequest request1;
         SetDefaultHeaders(request1);
@@ -693,6 +713,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto socketPath = "testSocketPath";
         auto diskId = "testDiskId";
@@ -750,6 +773,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto socketPath = "testSocketPath";
 
@@ -797,6 +823,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
@@ -821,6 +850,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto unixSocket = "testSocket";
 
@@ -934,6 +966,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto unixSocket = "testSocket";
 
@@ -971,6 +1006,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         TString maxSocketPath(UnixSocketPathLengthLimit, 'x');
 
@@ -1026,6 +1064,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         {
             NProto::TStartEndpointRequest request;
@@ -1081,6 +1122,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         size_t requestId = 42;
 
@@ -1198,6 +1242,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto socketPath = "testSocketPath";
         auto diskId = "testDiskId";
@@ -1242,6 +1289,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto socketPath = "testSocketPath";
         auto diskId = "testDiskId";
@@ -1316,6 +1366,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         auto& storage = *bootstrap.EndpointStorage;
         google::protobuf::util::MessageDifferencer comparator;
@@ -1566,6 +1619,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         TString unixSocket = "testSocket";
         TString diskId = "testDiskId";
@@ -1652,6 +1708,9 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
         auto manager = CreateEndpointManager(bootstrap);
         bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
 
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
