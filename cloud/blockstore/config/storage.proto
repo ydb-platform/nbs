@@ -949,5 +949,7 @@ message TStorageServiceConfig
     // disk are not blocked (in ms).
     optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
 
+    // Number of attempts to connect to tablet for cached tablets before
+    // falling back to describe volume.
     optional uint32 VolumeProxyCacheRetryLimit = 359;
 }
