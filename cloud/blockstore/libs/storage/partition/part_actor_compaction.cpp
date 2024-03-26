@@ -513,7 +513,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TvWriteBlobRequest",
+                    "TEvPartitionPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
 

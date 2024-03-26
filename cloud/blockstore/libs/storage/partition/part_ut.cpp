@@ -9689,6 +9689,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     if (spoofWriteBlobs) {
                         auto response =
                             std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        response->BlockChecksums.resize(1);
                         runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
