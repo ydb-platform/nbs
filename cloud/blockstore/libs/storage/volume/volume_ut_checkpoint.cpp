@@ -4048,13 +4048,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskRequest)
             {
-                auto msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
+                auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
                 acquireClientId = msg->Record.GetHeaders().GetClientId();
             }
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvReleaseDiskRequest)
             {
-                auto msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
+                auto* msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
                 releaseClientId = msg->Record.GetHeaders().GetClientId();
             }
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -4134,6 +4134,96 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
+
+        // Connecting a new client should not lead to reacquiring.
+        auto clientInfo3 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.RemoveClient(clientInfo2.GetClientId());
+        volume.AddClient(clientInfo3);
+        UNIT_ASSERT_VALUES_EQUAL("", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
+    }
+
+    Y_UNIT_TEST(ShouldAcquireShadowDiskEvenIfReleaseFailed)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TString acquireClientId;
+        TVector<TString> releaseClientId;
+        auto monitorRequests = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskRequest)
+            {
+                auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskRequest>();
+                acquireClientId = msg->Record.GetHeaders().GetClientId();
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvReleaseDiskRequest)
+            {
+                auto* msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
+                releaseClientId.push_back(
+                    msg->Record.GetHeaders().GetClientId());
+                auto response =
+                    std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
+                        MakeError(E_INVALID_STATE));
+                runtime->Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(monitorRequests);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Expect that the shadow disk was acquired by "shadow-disk-client".
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        acquireClientId = "";
+
+        // Connect new client. Expect that the shadow disk reacquired by this
+        // new client.
+        // The release will occur twice, by the shadow-disk-client and
+        // any-writer client.
+        auto clientInfo1 = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo1);
+        UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(2, releaseClientId.size());
+        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId[0]);
+        UNIT_ASSERT_VALUES_EQUAL("any-writer", releaseClientId[1]);
     }
 }
 
