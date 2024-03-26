@@ -1345,7 +1345,7 @@ public:
 
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 
-    void BlobsConfirmed(ui64 commitId);
+    void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
     //
     // AddConfirmedBlobs

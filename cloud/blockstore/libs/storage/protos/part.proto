@@ -177,7 +177,8 @@ message TBlobMeta
     // corresponding flag in TStorageServiceConfig is set.
     // May contain zeroes. Zeroes are treated as "no checksum" and thus
     // verification doesn't work for actual zero checksums.
-    repeated uint32 BlockChecksums = 3;
+    reserved 3;
+    repeated uint32 BlockChecksums = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
