@@ -4851,15 +4851,16 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
             TStringBuilder() << "time remaining: " << timeout);
     }
 
-    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
-        // Agent can return from 'unavailable' state only when it is reconnected
-        // to the cluster.
-        if (newState == NProto::AGENT_STATE_ONLINE) {
-            // Should retry while agent is in 'unavailable' state.
-            result = MakeError(E_TRY_AGAIN, "agent currently unavailable");
-            if (timeout == TDuration::Zero()) {
-                timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-            }
+    // Agent can return from 'unavailable' state only when it is reconnected to
+    // the cluster.
+    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+        newState == NProto::AGENT_STATE_ONLINE)
+    {
+        result = MakeError(E_TRY_AGAIN, "agent currently unavailable");
+        timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
+
+        if (!timeout) {
+            result.SetCode(E_INVALID_STATE);
         }
     }
 
@@ -5197,11 +5198,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
         // CMS can't return device from 'error' state.
-        // Should retry while device is in 'error' state.
-        error = MakeError(E_TRY_AGAIN, "device is in error state");
-        if (!timeout) {
-            timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-        }
+        error = MakeError(E_INVALID_STATE, "device is in error state");
     }
 
     if (dryRun) {
