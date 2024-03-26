@@ -279,6 +279,10 @@ void TWriteMergedBlocksActor::NotifyCompleted(
 {
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
     if (!BlockSizeForChecksums) {
+        // this structure is needed only to transfer block checksums to
+        // PartState - passing it without checksums will trigger a couple
+        // of debug asserts and is actually pointless even if we didn't have
+        // those asserts
         BlobsToConfirm.clear();
     }
     auto ev = std::make_unique<TEvent>(
