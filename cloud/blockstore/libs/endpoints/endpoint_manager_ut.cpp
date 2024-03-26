@@ -18,6 +18,7 @@
 #include <cloud/blockstore/libs/endpoints_grpc/socket_endpoint_listener.h>
 #include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/server/client_storage_factory.h>
+#include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
@@ -38,6 +39,7 @@
 
 #include <util/generic/guid.h>
 #include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -188,8 +190,7 @@ public:
     {
         UNIT_ASSERT(!Endpoints.contains(request.GetUnixSocketPath()));
 
-        TTestEndpoint endpoint;
-        endpoint.Request = request;
+        TFsPath(request.GetUnixSocketPath()).Touch();
 
         Endpoints.emplace(
             request.GetUnixSocketPath(),
@@ -216,7 +217,7 @@ public:
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
         Endpoints.erase(socketPath);
-
+        TFsPath(socketPath).DeleteIfExists();
         return Result;
     }
 
@@ -506,7 +507,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 {
     Y_UNIT_TEST(ShouldHandleStartStopEndpoint)
     {
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         auto ipcType = NProto::IPC_GRPC;
 
@@ -551,7 +553,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldChangeMountModesUsingStartEndpoint)
     {
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         auto ipcType = NProto::IPC_GRPC;
         TString diskId = "testDiskId";
 
@@ -652,16 +655,18 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
+        TTempDir dir;
+
         NProto::TStartEndpointRequest request1;
         SetDefaultHeaders(request1);
-        request1.SetUnixSocketPath("testSocket1");
+        request1.SetUnixSocketPath((dir.Path() / "testSocket1").GetPath());
         request1.SetDiskId("testDiskId1");
         request1.SetClientId(TestClientId);
         request1.SetIpcType(NProto::IPC_GRPC);
 
         NProto::TStartEndpointRequest request2;
         SetDefaultHeaders(request2);
-        request2.SetUnixSocketPath("testSocket2");
+        request2.SetUnixSocketPath((dir.Path() / "testSocket2").GetPath());
         request2.SetDiskId("testDiskId2");
         request2.SetClientId(TestClientId);
         request2.SetIpcType(NProto::IPC_NBD);
@@ -717,7 +722,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto socketPath = "testSocketPath";
+        TTempDir dir;
+        auto socketPath = (dir.Path() / "testSocket").GetPath();
         auto diskId = "testDiskId";
 
         NProto::TStartEndpointRequest startRequest;
@@ -736,7 +742,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         {
             auto future = StartEndpoint(*manager, startRequest);
             auto response = future.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT(response.GetError().GetCode() == S_ALREADY);
+            UNIT_ASSERT_C(response.GetError().GetCode() == S_ALREADY, response.GetError());
         }
 
         UNIT_ASSERT(mountedVolumes.contains(diskId));
@@ -777,7 +783,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto socketPath = "testSocketPath";
+        TTempDir dir;
+        auto socketPath = (dir.Path() / "testSocket").GetPath();
 
         {
             NProto::TStartEndpointRequest request;
@@ -827,9 +834,11 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
+        TTempDir dir;
+
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
-        request.SetUnixSocketPath("testSocket");
+        request.SetUnixSocketPath((dir.Path() / "testSocket").GetPath());
         request.SetDiskId("testDiskId");
         request.SetClientId(TestClientId);
         request.SetIpcType(NProto::IPC_GRPC);
@@ -854,7 +863,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         {
             NProto::TStartEndpointRequest request;
@@ -970,7 +980,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         {
             NProto::TStartEndpointRequest request;
@@ -1046,7 +1057,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldStartStopNbdEndpointWithGrpcEndpoint)
     {
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         TString nbdSocketSuffix = "_nbd";
 
@@ -1126,12 +1138,13 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
+        TTempDir dir;
         size_t requestId = 42;
 
         NProto::TStartEndpointRequest request;
         SetDefaultHeaders(request);
         request.MutableHeaders()->SetRequestId(++requestId);
-        request.SetUnixSocketPath("testSocket");
+        request.SetUnixSocketPath((dir.Path() / "testSocket").GetPath());
         request.SetDiskId("testDiskId");
         request.SetClientId(TestClientId);
         request.SetInstanceId("testInstanceId");
@@ -1209,8 +1222,11 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
 
     Y_UNIT_TEST(ShouldCompareStartEndpointRequestsWithoutHeaders)
     {
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
+
         NProto::TStartEndpointRequest request1;
-        request1.SetUnixSocketPath("testUnixSocketPath");
+        request1.SetUnixSocketPath(unixSocket);
         request1.SetDiskId("testDiskId");
         request1.SetInstanceId("testInstanceId");
         request1.SetClientId("testClientId");
@@ -1246,7 +1262,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto socketPath = "testSocketPath";
+        TTempDir dir;
+        auto socketPath = (dir.Path() / "testSocket").GetPath();
         auto diskId = "testDiskId";
 
         NProto::TStartEndpointRequest startRequest;
@@ -1293,7 +1310,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        auto socketPath = "testSocketPath";
+        TTempDir dir;
+        auto socketPath = (dir.Path() / "testSocket").GetPath();
         auto diskId = "testDiskId";
 
         {
@@ -1373,7 +1391,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         auto& storage = *bootstrap.EndpointStorage;
         google::protobuf::util::MessageDifferencer comparator;
 
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         TString nbdDevFile = nbdDevPrefix + "0";
 
@@ -1623,7 +1642,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             bootstrap.Stop();
         };
 
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
 
         NProto::TStartEndpointRequest request;
@@ -1677,7 +1697,8 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             }
         };
 
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         TString nbdDevFile = nbdDevPrefix + "0";
 
@@ -1755,6 +1776,59 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
             UNIT_ASSERT(response.GetNbdDeviceFile() != nbdDevFile);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRecreateSocketWhenRestartEndpoint)
+    {
+        TTempDir dir;
+        auto socketPath = dir.Path() / "testSocket";
+        TString diskId = "testDiskId";
+        auto ipcType = NProto::IPC_GRPC;
+
+        TBootstrap bootstrap;
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+
+        auto grpcListener = CreateSocketEndpointListener(bootstrap.Logging, 16);
+        grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
+        bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, grpcListener }};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath.GetPath());
+        request.SetDiskId(diskId);
+        request.SetClientId(TestClientId);
+        request.SetIpcType(ipcType);
+
+        socketPath.DeleteIfExists();
+        UNIT_ASSERT(!socketPath.Exists());
+
+        {
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+        }
+
+        UNIT_ASSERT(socketPath.Exists());
+        socketPath.DeleteIfExists();
+        UNIT_ASSERT(!socketPath.Exists());
+
+        {
+            auto future = StartEndpoint(*manager, request);
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+        }
+
+        UNIT_ASSERT(socketPath.Exists());
+
+        {
+            auto future = StopEndpoint(*manager, socketPath.GetPath());
+            auto response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
         }
     }
 }
