@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/storage/disk_agent/model
+    cloud/blockstore/libs/storage/protos
 
     cloud/storage/core/libs/actors
     cloud/storage/core/protos
@@ -17,4 +18,5 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
+    ut
 )

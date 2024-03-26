@@ -8,7 +8,11 @@
 
 #include <util/thread/pool.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -130,13 +134,15 @@ struct TDeviceClientParams
 struct TFixture
     : public NUnitTest::TBaseFixture
 {
+    const TDuration ReleaseInactiveSessionsTimeout = 10s;
+
     ILoggingServicePtr Logging = CreateLoggingService("console");
 
     TDeviceClient CreateClient(TDeviceClientParams params = {})
     {
         return TDeviceClient(
-            TDuration::Seconds(10),
-            params.Devices,
+            ReleaseInactiveSessionsTimeout,
+            std::move(params.Devices),
             Logging->CreateLog("BLOCKSTORE_DISK_AGENT"));
     }
 };
@@ -601,13 +607,15 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
 
+        const auto acquireWriterTs = TInstant::Seconds(42);
+
         AcquireDevices(
             client,
             TAcquireParamsBuilder()
                 .SetUuids({"uuid2", "uuid1"})
                 .SetClientId("writer")
                 .SetDiskId("vol1")
-                .SetNow(TInstant::Seconds(42))
+                .SetNow(acquireWriterTs)
                 .SetVolumeGeneration(1));
 
         {
@@ -618,11 +626,15 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
             UNIT_ASSERT_VALUES_EQUAL(1, session.GetVolumeGeneration());
             UNIT_ASSERT(!session.GetReadOnly());
-            UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                acquireWriterTs.MicroSeconds(),
+                session.GetLastActivityTs());
             UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
             UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
             UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
         }
+
+        const auto acquireReaderTs = TInstant::Seconds(42);
 
         AcquireDevices(
             client,
@@ -631,7 +643,7 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 .SetClientId("reader")
                 .SetDiskId("vol1")
                 .SetAccessMode(NProto::VOLUME_ACCESS_READ_ONLY)
-                .SetNow(TInstant::Seconds(100))
+                .SetNow(acquireReaderTs)
                 .SetVolumeGeneration(2));
 
         {
@@ -642,7 +654,9 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 UNIT_ASSERT_VALUES_EQUAL("reader", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
                 UNIT_ASSERT(session.GetReadOnly());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireReaderTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
                 UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
                 UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
@@ -653,7 +667,9 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
                 UNIT_ASSERT_VALUES_EQUAL("writer", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.GetVolumeGeneration());
                 UNIT_ASSERT(!session.GetReadOnly());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireWriterTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
                 UNIT_ASSERT_VALUES_EQUAL("uuid1", session.GetDeviceIds(0));
                 UNIT_ASSERT_VALUES_EQUAL("uuid2", session.GetDeviceIds(1));
@@ -669,11 +685,13 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, client.GetSessions().size());
 
+        TInstant now = Now();
+
         {
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},     // uuids
                 "writer",               // ClientId
-                TInstant::Seconds(10),  // now
+                now,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 1,                      // MountSeqNumber
                 "vol0",                 // DiskId
@@ -684,11 +702,14 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT(updated);   // new write session
         }
 
+        // make the writer session stale
+        now += ReleaseInactiveSessionsTimeout;
+
         {
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},      // uuids
                 "writer",                // ClientId
-                TInstant::Seconds(100),  // now
+                now,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 1,                       // MountSeqNumber
                 "vol0",                  // DiskId
@@ -696,14 +717,36 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             );
 
             UNIT_ASSERT_C(!HasError(error), error);
-            UNIT_ASSERT(!updated);
+            // writer session was activated
+            UNIT_ASSERT(updated);
         }
+
+        // writer session still active
+        now += 5s;
 
         {
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},      // uuids
                 "writer",                // ClientId
-                TInstant::Seconds(200),   // now
+                now,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                1,                       // MountSeqNumber
+                "vol0",                  // DiskId
+                1                        // VolumeGeneration
+            );
+
+            UNIT_ASSERT_C(!HasError(error), error);
+            // nothing was changed
+            UNIT_ASSERT(!updated);
+        }
+
+        now += 5s;
+
+        {
+            auto [updated, error] = client.AcquireDevices(
+                {"uuid2", "uuid1"},      // uuids
+                "writer",                // ClientId
+                now,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 1,                       // MountSeqNumber
                 "vol0",                  // DiskId
@@ -714,11 +757,13 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT(updated);   // new volumeGeneration
         }
 
+        now += 5s;
+
         {
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},      // uuids
                 "reader",                // ClientId
-                TInstant::Seconds(300),  // now
+                now,
                 NProto::VOLUME_ACCESS_READ_ONLY,
                 1,                       // MountSeqNumber
                 "vol0",                  // DiskId
@@ -729,11 +774,13 @@ Y_UNIT_TEST_SUITE(TDeviceClientTest)
             UNIT_ASSERT(updated);   // new read session
         }
 
+        now += 5s;
+
         {
             auto [updated, error] = client.AcquireDevices(
                 {"uuid2", "uuid1"},      // uuids
                 "reader2",               // ClientId
-                TInstant::Seconds(300),  // now
+                now,
                 NProto::VOLUME_ACCESS_READ_ONLY,
                 1,                       // MountSeqNumber
                 "vol0",                  // DiskId
