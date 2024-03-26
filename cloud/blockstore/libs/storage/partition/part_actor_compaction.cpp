@@ -506,13 +506,14 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
             auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
                 rc.DataBlobId,
                 rc.BlobContent.GetGuardedSgList(),
+                0,      // blockSizeForChecksums
                 true);  // async
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
-                    "TEvPartitionPrivate::TEvWriteBlobRequest",
+                    "TEvPartitionPrivate::TvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
 
