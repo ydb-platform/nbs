@@ -26,6 +26,8 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 
@@ -48,13 +50,13 @@ struct TTestEndpointListener final
     TStartEndpointHandler StartEndpointHandler = [] (
         const NProto::TStartEndpointRequest& request)
     {
-        Y_UNUSED(request);
+        TFsPath(request.GetUnixSocketPath()).Touch();
         return MakeFuture(NProto::TError{});
     };
 
     TStopEndpointHandler StopEndpointHandler = [] (const TString& socketPath)
     {
-        Y_UNUSED(socketPath);
+        TFsPath(socketPath).DeleteIfExists();
         return MakeFuture(NProto::TError{});
     };
 
@@ -241,7 +243,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         auto ipcType = NProto::IPC_GRPC;
 
@@ -251,6 +254,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             const NProto::TStartEndpointRequest& request)
         {
             endpoints.emplace(request.GetUnixSocketPath(), request);
+            TFsPath(request.GetUnixSocketPath()).Touch();
             return MakeFuture(NProto::TError{});
         };
 
@@ -371,8 +375,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             scheduler,
             endpointManager);
 
+        TTempDir dir;
+        const TString socketPath = (dir.Path() / "testSocket").GetPath();
         const TString diskId = "testDiskId";
-        const TString socketPath = "testSocket";
 
         {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
@@ -491,6 +496,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             }
 
             ++startedEndpointCount;
+            TFsPath(request.GetUnixSocketPath()).Touch();
             return MakeFuture(NProto::TError{});
         };
 
@@ -538,9 +544,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         }
 
+        TTempDir dir;
+
         for (size_t i = 0; i < correctCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("testSocket" + ToString(i + 1));
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
 
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -663,7 +672,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         listener->StartEndpointHandler = [&] (
             const NProto::TStartEndpointRequest& request)
         {
-            Y_UNUSED(request);
+            TFsPath(request.GetUnixSocketPath()).Touch();
             return trigger;
         };
 
@@ -679,11 +688,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
+        TTempDir dir;
         size_t endpointCount = 5;
 
         for (size_t i = 0; i < endpointCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("testSocket" + ToString(i + 1));
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
 
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -752,12 +763,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
+        TTempDir dir;
         ui32 endpointCount = 42;
         THashMap<TString, NProto::TStartEndpointRequest> requests;
 
         for (size_t i = 0; i < endpointCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("testSocket" + ToString(i + 1));
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
             request.SetDiskId("testDiskId" + ToString(i + 1));
             request.SetIpcType(NProto::IPC_GRPC);
 
@@ -811,7 +824,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 5; ++i) {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
-            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            const TString socket = "testPersistentSocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             request->SetDiskId("testPersistentDiskId" + ToString(i + 1));
             request->SetIpcType(NProto::IPC_GRPC);
             request->SetPersistent(true);
@@ -836,7 +850,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 5; ++i) {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
-            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+            const TString socket = "testTemporarySocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             request->SetDiskId("testTemporaryDiskId" + ToString(i + 1));
             request->SetIpcType(NProto::IPC_GRPC);
             request->SetPersistent(false);
@@ -860,7 +875,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 3; ++i) {
             auto request = std::make_shared<NProto::TStopEndpointRequest>();
-            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            const TString socket = "testPersistentSocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             --endpointCount;
 
             auto future = endpointManager->StopEndpoint(
@@ -882,7 +898,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 3; ++i) {
             auto request = std::make_shared<NProto::TStopEndpointRequest>();
-            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+            const TString socket = "testTemporarySocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
 
             auto future = endpointManager->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
@@ -946,7 +963,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             {}          // options
         );
 
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
         startRequest->SetUnixSocketPath(unixSocket);
@@ -1068,7 +1086,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             endpointManager->Stop();
         };
 
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
         startRequest->SetUnixSocketPath(unixSocket);
