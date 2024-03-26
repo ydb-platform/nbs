@@ -318,7 +318,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     if (msg->UnconfirmedBlobsAdded) {
         // blobs are confirmed, but AddBlobs request will be executed
         // (for this commit) later
-        State->BlobsConfirmed(commitId);
+        State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
         Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added

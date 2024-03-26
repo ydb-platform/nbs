@@ -231,22 +231,24 @@ struct TEvPartitionPrivate
     {
         NActors::TActorId Proxy;
 
-        TPartialBlobId BlobId;
+        const TPartialBlobId BlobId;
         std::variant<TGuardedSgList, TString> Data;
-
-        bool Async = false;
-        TInstant Deadline;
-
-        TWriteBlobRequest() = default;
+        // BlockSize is used to calculate checksums. If it's 0, checksums won't
+        // be calculated.
+        const ui32 BlockSizeForChecksums;
+        const bool Async;
+        const TInstant Deadline;
 
         template <typename TData>
         TWriteBlobRequest(
                 TPartialBlobId blobId,
                 TData data,
-                bool async = false,
+                ui32 blockSizeForChecksums,
+                bool async,
                 TInstant deadline = TInstant::Max())
             : BlobId(blobId)
             , Data(std::move(data))
+            , BlockSizeForChecksums(blockSizeForChecksums)
             , Async(async)
             , Deadline(deadline)
         {}
@@ -254,6 +256,7 @@ struct TEvPartitionPrivate
 
     struct TWriteBlobResponse
     {
+        TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
     };
 
@@ -726,12 +729,16 @@ struct TEvPartitionPrivate
     {
         bool CollectGarbageBarrierAcquired = false;
         bool UnconfirmedBlobsAdded = false;
+        // needed to pass block checksums to PartState
+        TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
-                bool unconfirmedBlobsAdded)
+                bool unconfirmedBlobsAdded,
+                TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
             , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , BlobsToConfirm(std::move(blobsToConfirm))
         {
         }
     };
