@@ -17,6 +17,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Which clientId is trying to release the shadow disk.
+enum class EReleaseAttempt : ui64
+{
+    WithExpectedClientId,
+    ForceWithAnyClientId,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TString
 MakeShadowDiskClientId(const TString& sourceDiskClientId, bool readOnlyMount)
 {
@@ -103,7 +112,7 @@ private:
 
 public:
     TAcquireShadowDiskActor(
-        const TStorageConfigPtr config,
+        const TStorageConfigPtr& config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -118,7 +127,9 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReleaseShadowDisk(const NActors::TActorContext& ctx);
+    void ReleaseShadowDisk(
+        const NActors::TActorContext& ctx,
+        EReleaseAttempt releaseAttempt);
     void DescribeShadowDisk(const NActors::TActorContext& ctx);
     void AcquireShadowDisk(const NActors::TActorContext& ctx);
 
@@ -129,7 +140,7 @@ private:
     MakeAcquireDiskRequest() const;
 
     std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-    MakeReleaseDiskRequest() const;
+    MakeReleaseDiskRequest(bool force) const;
 
     void HandleDiskRegistryError(
         const NActors::TActorContext& ctx,
@@ -175,7 +186,7 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
-        const TStorageConfigPtr config,
+        const TStorageConfigPtr& config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -216,7 +227,7 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::Work);
 
-    ReleaseShadowDisk(ctx);
+    ReleaseShadowDisk(ctx, EReleaseAttempt::WithExpectedClientId);
     DescribeShadowDisk(ctx);
     AcquireShadowDisk(ctx);
 
@@ -225,7 +236,7 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 }
 
 void TAcquireShadowDiskActor::ReleaseShadowDisk(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx, EReleaseAttempt releaseAttempt)
 {
     if (!OldRwClientId || OldRwClientId == RwClientId) {
         WaitingForDiskToBeReleased = false;
@@ -234,15 +245,20 @@ void TAcquireShadowDiskActor::ReleaseShadowDisk(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Releasing shadow disk " << ShadowDiskId.Quote()
-                                 << " from old clientId "
-                                 << OldRwClientId.Quote());
+        "Releasing shadow disk "
+            << ShadowDiskId.Quote() << " from old clientId "
+            << OldRwClientId.Quote() << " use client id "
+            << (releaseAttempt == EReleaseAttempt::WithExpectedClientId
+                    ? "Expected"
+                    : "Any"));
 
     WaitingForDiskToBeReleased = true;
     NCloud::SendWithUndeliveryTracking(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        MakeReleaseDiskRequest());
+        MakeReleaseDiskRequest(
+            releaseAttempt == EReleaseAttempt::ForceWithAnyClientId),
+        static_cast<ui64>(releaseAttempt));
 }
 
 void TAcquireShadowDiskActor::DescribeShadowDisk(
@@ -310,12 +326,13 @@ TAcquireShadowDiskActor::MakeAcquireDiskRequest() const
 }
 
 std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-TAcquireShadowDiskActor::MakeReleaseDiskRequest() const
+TAcquireShadowDiskActor::MakeReleaseDiskRequest(bool force) const
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
     request->Record.SetDiskId(ShadowDiskId);
-    request->Record.MutableHeaders()->SetClientId(OldRwClientId);
+    request->Record.MutableHeaders()->SetClientId(
+        force ? TString(AnyWriterClientId) : OldRwClientId);
     request->Record.SetVolumeGeneration(Generation);
     return request;
 }
@@ -462,13 +479,22 @@ void TAcquireShadowDiskActor::HandleReleaseDiskResponse(
 {
     auto* msg = ev->Get();
     auto& record = msg->Record;
+    auto releaseAttempt = static_cast<EReleaseAttempt>(ev->Cookie);
 
     if (HasError(record.GetError())) {
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::VOLUME,
             "Shadow disk " << ShadowDiskId.Quote() << " release error: "
-                           << FormatError(record.GetError()));
+                           << FormatError(record.GetError())
+                           << (releaseAttempt ==
+                                       EReleaseAttempt::WithExpectedClientId
+                                   ? ", will retry soon"
+                                   : ", will not retry"));
+        if (releaseAttempt == EReleaseAttempt::WithExpectedClientId) {
+            ReleaseShadowDisk(ctx, EReleaseAttempt::ForceWithAnyClientId);
+            return;
+        }
     }
 
     WaitingForDiskToBeReleased = false;
@@ -496,7 +522,7 @@ void TAcquireShadowDiskActor::HandleReleaseDiskRequestUndelivery(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReleaseShadowDisk(ctx);
+    ReleaseShadowDisk(ctx, static_cast<EReleaseAttempt>(ev->Cookie));
 }
 
 void TAcquireShadowDiskActor::HandleWakeup(
