@@ -257,6 +257,7 @@
         <body>
             <div style="margin-bottom: 20px">
                 <h3>github CI</h3>
+                <p><a href="https://github.com/ydb-platform/nbs/actions/workflows/nightly.yaml"><img src="https://github.com/ydb-platform/nbs/actions/workflows/nightly.yaml/badge.svg?branch=main" alt="Nightly build"></img></a></p>
                 <xsl:apply-templates select="tests"/>
             </div>
             <div style="border-top: 1px dashed black; margin-bottom: 20px">
