@@ -674,7 +674,7 @@ void TPartitionState::BlobsConfirmed(
 
     auto& dstBlobs = it->second;
     const auto blobCount = dstBlobs.size();
-    Y_DEBUG_ABORT_UNLESS(blobCount == blobs.size());
+    Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
     for (ui32 i = 0; i < Min(blobCount, blobs.size()); ++i) {
         const auto blockRange = dstBlobs[i].BlockRange;
         Y_DEBUG_ABORT_UNLESS(dstBlobs[i].UniqueId == blobs[i].UniqueId);
