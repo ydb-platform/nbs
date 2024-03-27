@@ -2,6 +2,8 @@
 
 Network Block Device implementation over YDB BlobStorage or over our own storage nodes. Offers reliable thin-provisioned block devices which support snapshots.
 
+Block storage [overview diagram](https://github.com/ydb-platform/nbs/blob/main/doc/blockstore/overview/overview.png?raw=true)
+
 ### Quickstart
 
 Follow the instructions [here](VSCODE.md) to generate workspace and install the necessary plugins.
