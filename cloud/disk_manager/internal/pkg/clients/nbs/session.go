@@ -245,26 +245,21 @@ func (s *Session) Write(
 		return errors.NewRetriableErrorf("last rediscover was failed")
 	}
 
-	defer s.metrics.StatRequest("Write")(&err)
-
 	blockSize := s.volume.BlockSize
 	blocksCount := (uint32(len(data)) + blockSize - 1) / blockSize
+	logging.Info(
+		ctx,
+		"WriteBlocks offset %v, count %v",
+		startIndex,
+		blocksCount,
+	)
 
-	blocks := make([][]byte, blocksCount)
-	for blockInd := uint32(0); blockInd < blocksCount; blockInd++ {
-		startOffset := blockInd * blockSize
-		endOffset := (blockInd + 1) * blockSize
-		if endOffset > uint32(len(data)) {
-			endOffset = uint32(len(data))
-		}
-
-		blocks[blockInd] = data[startOffset:endOffset]
-	}
+	defer s.metrics.StatRequest("Write")(&err)
 
 	err = s.session.WriteBlocks(
 		s.withClientID(ctx),
 		startIndex,
-		blocks,
+		[][]byte{data},
 	)
 	return wrapError(err)
 }

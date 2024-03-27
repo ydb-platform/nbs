@@ -74,7 +74,7 @@ func requestDetails(req request) string {
 
 	if writeReq, ok := req.(*protos.TWriteBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, buffers count: %d)",
 			writeReq.StartIndex,
 			len(writeReq.Blocks.Buffers))
 	}
