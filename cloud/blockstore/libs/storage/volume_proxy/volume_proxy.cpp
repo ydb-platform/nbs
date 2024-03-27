@@ -122,7 +122,7 @@ private:
             , RefCount(refCount)
         {}
 
-        ui32 ConnectFailures = 0;
+        TInstant DisconnectTs;
         ui64 TabletId = 0;
         int RefCount = 0;
     };
@@ -490,9 +490,9 @@ void TVolumeProxyActor::HandleConnect(
             FormatError(error).data());
 
         if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
-            it != BaseDiskIdToTabletId.end())
+            it != BaseDiskIdToTabletId.end() && !it->second.DisconnectTs)
         {
-            it->second.ConnectFailures++;
+            it->second.DisconnectTs = ctx.Now();
         }
 
         CancelActiveRequests(ctx, *conn);
@@ -503,7 +503,7 @@ void TVolumeProxyActor::HandleConnect(
     if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
         it != BaseDiskIdToTabletId.end())
     {
-        it->second.ConnectFailures = 0;
+        it->second.DisconnectTs = {};
     }
 
     if (conn->State == FAILED) {
@@ -569,7 +569,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
     if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
         it != BaseDiskIdToTabletId.end())
     {
-        it->second.ConnectFailures = 0;
+        it->second.DisconnectTs = {};
     }
 }
 
@@ -604,7 +604,8 @@ void TVolumeProxyActor::HandleRequest(
         {
             auto itr = BaseDiskIdToTabletId.find(diskId);
             if (itr != BaseDiskIdToTabletId.end()) {
-                if (itr->second.ConnectFailures < Config->GetVolumeProxyCacheRetryLimit())
+                if (!itr->second.DisconnectTs ||
+                    itr->second.DisconnectTs + Config->GetVolumeProxyCacheRetryDuration() > ctx.Now())
                 {
                     PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
                     StartConnection(

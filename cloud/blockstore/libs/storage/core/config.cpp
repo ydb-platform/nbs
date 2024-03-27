@@ -469,6 +469,8 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
+    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
+                                                                               \
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      500           )\
     xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
     xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
@@ -476,7 +478,6 @@ TDuration MSeconds(ui32 value)
     xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(10)   )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
-    xxx(VolumeProxyCacheRetryLimit,                ui32,      8               )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

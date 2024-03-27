@@ -481,8 +481,10 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
     Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfNumberOfConnFailExceedsThreshold)
     {
+        constexpr ui32 timeout = 3'000;
+
         NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryLimit(3);
+        config.SetVolumeProxyCacheRetryDuration(timeout);
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
@@ -528,17 +530,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 
-        {
-            service.SendStatVolumeRequest();
-            auto response = service.RecvStatVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        {
-            service.SendStatVolumeRequest();
-            auto response = service.RecvStatVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(timeout));
 
         {
             service.SendStatVolumeRequest();
@@ -556,7 +548,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
     Y_UNIT_TEST(ShouldResetFailCounterIfDisconnectedCachedVolumeIsOnlineAgain)
     {
         NProto::TStorageServiceConfig config;
-        config.SetVolumeProxyCacheRetryLimit(3);
+        config.SetVolumeProxyCacheRetryDuration(3'000);
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
@@ -621,12 +613,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 return false;
             }
         );
-
-        {
-            service.SendStatVolumeRequest();
-            auto response = service.RecvStatVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
 
         {
             service.SendStatVolumeRequest();
