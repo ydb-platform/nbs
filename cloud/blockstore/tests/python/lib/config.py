@@ -301,3 +301,32 @@ def generate_disk_agent_txt(
             ParseDict(storage_discovery_config, TStorageDiscoveryConfig()))
 
     return config
+
+
+def storage_config_with_default_limits():
+    bw = 1 << 5     # 32 MiB/s
+    iops = 1 << 16
+
+    storage = TStorageServiceConfig()
+    storage.ThrottlingEnabledSSD = True
+    storage.ThrottlingEnabled = True
+
+    storage.SSDUnitReadBandwidth = bw
+    storage.SSDUnitWriteBandwidth = bw
+    storage.SSDMaxReadBandwidth = bw
+    storage.SSDMaxWriteBandwidth = bw
+    storage.SSDUnitReadIops = iops
+    storage.SSDUnitWriteIops = iops
+    storage.SSDMaxReadIops = iops
+    storage.SSDMaxWriteIops = iops
+
+    storage.HDDUnitReadBandwidth = bw
+    storage.HDDUnitWriteBandwidth = bw
+    storage.HDDMaxReadBandwidth = bw
+    storage.HDDMaxWriteBandwidth = bw
+    storage.HDDUnitReadIops = iops
+    storage.HDDUnitWriteIops = iops
+    storage.HDDMaxReadIops = iops
+    storage.HDDMaxWriteIops = iops
+
+    return storage
