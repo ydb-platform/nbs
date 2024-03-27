@@ -246,7 +246,7 @@ func (s *Session) Write(
 	}
 
 	blockSize := s.volume.BlockSize
-	blocksCount := (uint32(len(data)) + blockSize - 1) / blockSize
+	blocksCount := uint32(len(data)) / blockSize
 	logging.Debug(
 		ctx,
 		"WriteBlocks offset %v, count %v",
