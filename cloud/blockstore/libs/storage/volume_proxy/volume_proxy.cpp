@@ -604,9 +604,9 @@ void TVolumeProxyActor::HandleRequest(
         {
             auto itr = BaseDiskIdToTabletId.find(diskId);
             if (itr != BaseDiskIdToTabletId.end()) {
-                if (!itr->second.DisconnectTs ||
-                    itr->second.DisconnectTs + Config->GetVolumeProxyCacheRetryDuration() > ctx.Now())
-                {
+                auto deadline =
+                    itr->second.DisconnectTs + Config->GetVolumeProxyCacheRetryDuration();
+                if (!itr->second.DisconnectTs || deadline > ctx.Now()) {
                     PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
                     StartConnection(
                         ctx,
