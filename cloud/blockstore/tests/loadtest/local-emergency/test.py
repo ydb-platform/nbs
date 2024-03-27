@@ -3,8 +3,8 @@ import pytest
 
 import yatest.common as common
 
-from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.public.sdk.python.client import CreateClient, Session
+from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import run_test
 
@@ -12,8 +12,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
 
 
 def default_storage_config(cache_folder):
-    storage = TStorageServiceConfig()
-    storage.ThrottlingEnabled = True
+    storage = storage_config_with_default_limits()
     storage.HDDSystemChannelPoolKind = "rot"
     storage.SSDSystemChannelPoolKind = "rot"
     storage.HybridSystemChannelPoolKind = "rot"

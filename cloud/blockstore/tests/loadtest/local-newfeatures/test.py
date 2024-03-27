@@ -5,7 +5,8 @@ import yatest.common as common
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig, CT_LOAD
+from cloud.blockstore.config.storage_pb2 import CT_LOAD
+from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test, \
     get_restart_interval
@@ -14,36 +15,11 @@ from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 
 def default_storage_config():
-    bw = 1 << 7     # 128 MB/s
-    iops = 1 << 16
-
-    storage = TStorageServiceConfig()
+    storage = storage_config_with_default_limits()
 
     storage.SSDCompactionType = CT_LOAD
     storage.HDDCompactionType = CT_LOAD
     storage.V1GarbageCompactionEnabled = True
-
-    storage.ThrottlingEnabled = True
-    storage.ThrottlingEnabledSSD = True
-
-    storage.SSDUnitReadBandwidth = bw
-    storage.SSDUnitWriteBandwidth = bw
-    storage.SSDMaxReadBandwidth = bw
-    storage.SSDMaxWriteBandwidth = bw
-    storage.SSDUnitReadIops = iops
-    storage.SSDUnitWriteIops = iops
-    storage.SSDMaxReadIops = iops
-    storage.SSDMaxWriteIops = iops
-
-    storage.HDDUnitReadBandwidth = bw
-    storage.HDDUnitWriteBandwidth = bw
-    storage.HDDMaxReadBandwidth = bw
-    storage.HDDMaxWriteBandwidth = bw
-    storage.HDDUnitReadIops = iops
-    storage.HDDUnitWriteIops = iops
-    storage.HDDMaxReadIops = iops
-    storage.HDDMaxWriteIops = iops
-
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
     storage.CheckBlockChecksumsInBlobsUponRead = True
 
