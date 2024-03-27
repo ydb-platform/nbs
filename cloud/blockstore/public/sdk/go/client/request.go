@@ -67,23 +67,26 @@ func requestLogLevel(req request) LogLevel {
 func requestDetails(req request) string {
 	if readReq, ok := req.(*protos.TReadBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, count: %d, session id %s)",
 			readReq.StartIndex,
-			readReq.BlocksCount)
+			readReq.BlocksCount,
+			readReq.SessionId)
 	}
 
 	if writeReq, ok := req.(*protos.TWriteBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, count: %d, session id %s)",
 			writeReq.StartIndex,
-			len(writeReq.Blocks.Buffers))
+			len(writeReq.Blocks.Buffers),
+			writeReq.SessionId)
 	}
 
 	if zeroReq, ok := req.(*protos.TZeroBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, count: %d, session id %s)",
 			zeroReq.StartIndex,
-			zeroReq.BlocksCount)
+			zeroReq.BlocksCount,
+			zeroReq.SessionId)
 	}
 
 	if createVolumeReq, ok := req.(*protos.TCreateVolumeRequest); ok {
