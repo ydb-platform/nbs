@@ -203,8 +203,6 @@ private:
 
     void RequestVolumeStop(const TActorContext& ctx);
 
-    void RestartVolume(const TActorContext& ctx);
-
     void NotifyAndDie(const TActorContext& ctx);
 
     void LockVolume(const TActorContext& ctx);
@@ -576,12 +574,6 @@ void TMountRequestActor::RequestVolumeStop(const TActorContext& ctx)
     NCloud::Send(ctx, Params.SessionActorId, std::move(request));
 }
 
-void TMountRequestActor::RestartVolume(const TActorContext& ctx)
-{
-    IsVolumeRestaring = true;
-    RequestVolumeStop(ctx);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMountRequestActor::LockVolume(const TActorContext& ctx)
@@ -648,7 +640,8 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         AddClientRequestCompleted = true;
 
         if (msg->Record.GetForceTabletRestart() && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
-            RestartVolume(ctx);
+            IsVolumeRestaring = true;
+            RequestVolumeStop(ctx);
             return;
         }
 
