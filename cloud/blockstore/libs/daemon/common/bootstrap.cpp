@@ -500,6 +500,7 @@ void TBootstrapBase::Init()
     TEndpointManagerOptions endpointManagerOptions = {
         .ClientConfig = Configs->EndpointConfig->GetClientConfig(),
         .NbdSocketSuffix = Configs->ServerConfig->GetNbdSocketSuffix(),
+        .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
     };
 
     EndpointManager = CreateEndpointManager(
