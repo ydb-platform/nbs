@@ -1320,7 +1320,7 @@ struct TTxDiskRegistry
         const NProto::TCheckpointReplica CheckpointReplica;
 
         NProto::TError Error;
-        TString CheckpointDiskId;
+        TString ShadowDiskId;
 
         TAllocateCheckpoint(
                 TRequestInfoPtr requestInfo,
@@ -1332,7 +1332,7 @@ struct TTxDiskRegistry
         void Clear()
         {
             Error.Clear();
-            CheckpointDiskId.clear();
+            ShadowDiskId.clear();
         }
     };
 

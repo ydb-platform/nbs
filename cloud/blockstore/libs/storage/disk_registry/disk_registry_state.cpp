@@ -258,11 +258,11 @@ TString TCheckpointInfo::MakeUniqueId(
 }
 
 // static
-TString TCheckpointInfo::MakeCheckpointDiskId(
+TString TCheckpointInfo::MakeShadowDiskId(
     const TString& sourceDiskId,
     const TString& checkpointId)
 {
-    return sourceDiskId + "/" + checkpointId;
+    return sourceDiskId + "-" + checkpointId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2034,12 +2034,12 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         return MakeError(E_ARGUMENT, "Can't create checkpoint for checkpoint");
     }
 
-    auto checkpointDiskId =
-        TCheckpointInfo::MakeCheckpointDiskId(sourceDiskId, checkpointId);
+    auto shadowDiskId =
+        TCheckpointInfo::MakeShadowDiskId(sourceDiskId, checkpointId);
     auto checkpointMediaKind = GetCheckpointShadowDiskType(diskInfo.MediaKind);
 
     TAllocateDiskParams diskParams{
-        checkpointDiskId,
+        shadowDiskId,
         diskInfo.CloudId,
         diskInfo.FolderId,
         {},   // PlacementGroupId
@@ -2084,12 +2084,12 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         return error;
     }
 
-    result->CheckpointDiskId = checkpointDiskId;
+    result->ShadowDiskId = shadowDiskId;
 
     TCheckpointInfo checkpointInfo{
         sourceDiskId,
         checkpointId,
-        checkpointDiskId};
+        shadowDiskId};
     Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
     return error;
 }
@@ -2109,12 +2109,12 @@ NProto::TError TDiskRegistryState::DeallocateCheckpoint(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    const auto checkpointDiskId = checkpointInfo->CheckpointDiskId;
+    const auto shadowDiskId = checkpointInfo->ShadowDiskId;
 
     Checkpoints.erase(id);
 
-    MarkDiskForCleanup(db, checkpointDiskId);
-    return DeallocateDisk(db, checkpointDiskId);
+    MarkDiskForCleanup(db, shadowDiskId);
+    return DeallocateDisk(db, shadowDiskId);
 }
 
 NProto::TError TDiskRegistryState::GetCheckpointDataState(
@@ -2133,12 +2133,12 @@ NProto::TError TDiskRegistryState::GetCheckpointDataState(
     }
 
     const auto* checkpointDisk =
-        Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+        Disks.FindPtr(checkpointInfo->ShadowDiskId);
     if (!checkpointDisk) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
-                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << "Disk " << checkpointInfo->ShadowDiskId.Quote()
                 << " not found");
     }
 
@@ -2164,12 +2164,12 @@ NProto::TError TDiskRegistryState::SetCheckpointDataState(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    auto* checkpointDisk = Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+    auto* checkpointDisk = Disks.FindPtr(checkpointInfo->ShadowDiskId);
     if (!checkpointDisk) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
-                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << "Disk " << checkpointInfo->ShadowDiskId.Quote()
                 << " not found");
     }
 
@@ -2183,7 +2183,7 @@ NProto::TError TDiskRegistryState::SetCheckpointDataState(
     checkpointDisk->CheckpointReplica.SetState(checkpointState);
     checkpointDisk->CheckpointReplica.SetStateTs(now.MicroSeconds());
     db.UpdateDisk(
-        BuildDiskConfig(checkpointInfo->CheckpointDiskId, *checkpointDisk));
+        BuildDiskConfig(checkpointInfo->ShadowDiskId, *checkpointDisk));
     return MakeError(S_OK);
 }
 
@@ -2786,10 +2786,10 @@ void TDiskRegistryState::DeleteCheckpointByDisk(
     for (const auto& [id, checkpointInfo]: Checkpoints) {
         if (checkpointInfo.SourceDiskId == diskId)
         {
-            disksToDelete.push_back(checkpointInfo.CheckpointDiskId);
+            disksToDelete.push_back(checkpointInfo.ShadowDiskId);
             checkpointsToDelete.push_back(id);
         }
-        if (checkpointInfo.CheckpointDiskId == diskId)
+        if (checkpointInfo.ShadowDiskId == diskId)
         {
             checkpointsToDelete.push_back(id);
         }
@@ -3094,10 +3094,10 @@ NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
     return disk->State;
 }
 
-NProto::TError TDiskRegistryState::GetCheckpointDiskId(
+NProto::TError TDiskRegistryState::GetShadowDiskId(
     const TDiskId& sourceDiskId,
     const TCheckpointId& checkpointId,
-    TDiskId* checkpointDiskId) const
+    TDiskId* shadowDiskId) const
 {
     auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
@@ -3109,7 +3109,7 @@ NProto::TError TDiskRegistryState::GetCheckpointDiskId(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    *checkpointDiskId = checkpointInfo->CheckpointDiskId;
+    *shadowDiskId = checkpointInfo->ShadowDiskId;
     return MakeError(S_OK);
 }
 

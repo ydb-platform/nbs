@@ -98,14 +98,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             auto& msg = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(
-                "disk-1/checkpoint-1",
-                msg.GetCheckpointDiskId());
+                "disk-1-checkpoint-1",
+                msg.GetShadowDiskId());
 
             // Check size.
-            auto describeresponse =
-                diskRegistry.DescribeDisk(msg.GetCheckpointDiskId());
+            auto describeResponse =
+                diskRegistry.DescribeDisk(msg.GetShadowDiskId());
 
-            auto& describeMsg = describeresponse->Record;
+            auto& describeMsg = describeResponse->Record;
 
             UNIT_ASSERT_VALUES_EQUAL(
                 LogicalBlockSize,
@@ -127,14 +127,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             auto& msg = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(
-                "disk-1/checkpoint-1",
-                msg.GetCheckpointDiskId());
+                "disk-1-checkpoint-1",
+                msg.GetShadowDiskId());
         }
 
         // Failed to create checkpoint from checkpoint.
         {
             diskRegistry.SendAllocateCheckpointRequest(
-                "disk-1/checkpoint-1",
+                "disk-1-checkpoint-1",
                 "checkpoint-3");
             auto response = diskRegistry.RecvAllocateCheckpointResponse();
 
@@ -156,8 +156,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             auto& msg = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(
-                "disk-1/checkpoint-2",
-                msg.GetCheckpointDiskId());
+                "disk-1-checkpoint-2",
+                msg.GetShadowDiskId());
         }
 
         // Failed to create checkpoint #3. There is not enough free space.
@@ -237,11 +237,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             response->GetError());
 
         auto& msg = response->Record;
-        UNIT_ASSERT_VALUES_EQUAL("disk-1/checkpoint-1", msg.GetCheckpointDiskId());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1-checkpoint-1", msg.GetShadowDiskId());
 
         // Check size.
         {
-            auto response = diskRegistry.DescribeDisk(msg.GetCheckpointDiskId());
+            auto response = diskRegistry.DescribeDisk(msg.GetShadowDiskId());
 
             auto& describeMsg = response->Record;
 
@@ -315,7 +315,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             deallocateResponse->GetError());
 
         // Check that the checkpoint disk is destroyed
-        diskRegistry.SendDescribeDiskRequest(allocateMsg.GetCheckpointDiskId());
+        diskRegistry.SendDescribeDiskRequest(allocateMsg.GetShadowDiskId());
         auto describeResponse = diskRegistry.RecvDescribeDiskResponse();
 
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -362,7 +362,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetError());
         }
 
-        TString checkpointDiskId;
+        TString shadowDiskId;
         // Create checkpoint
         {
             auto response =
@@ -373,12 +373,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetStatus(),
                 response->GetError());
 
-            checkpointDiskId = response->Record.GetCheckpointDiskId();
+            shadowDiskId = response->Record.GetShadowDiskId();
         }
 
         // Check that the checkpoint disk is exists
         {
-            auto response = diskRegistry.DescribeDisk(checkpointDiskId);
+            auto response = diskRegistry.DescribeDisk(shadowDiskId);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -400,7 +400,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         // Check that the checkpoint disk is destroyed along with the source
         // disk
         {
-            diskRegistry.SendDescribeDiskRequest(checkpointDiskId);
+            diskRegistry.SendDescribeDiskRequest(shadowDiskId);
             auto response = diskRegistry.RecvDescribeDiskResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
