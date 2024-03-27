@@ -1,5 +1,6 @@
 #include "part_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
@@ -42,6 +43,7 @@ private:
     TInstant ResponseReceived;
     TStorageStatusFlags StorageStatusFlags;
     double ApproximateFreeSpaceShare = 0;
+    TVector<ui32> BlockChecksums;
 
 public:
     TWriteBlobActor(
@@ -141,7 +143,26 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         blobContent = std::move(std::get<TString>(Request->Data));
     }
 
-    Y_ABORT_UNLESS(!blobContent.Empty());
+    STORAGE_VERIFY(
+        !blobContent.Empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletId);
+
+    if (Request->BlockSizeForChecksums) {
+        STORAGE_VERIFY(
+            blobContent.Size() % Request->BlockSizeForChecksums == 0,
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
+
+        ui32 offset = 0;
+        while (offset < blobContent.Size()) {
+            BlockChecksums.push_back(ComputeDefaultDigest({
+                blobContent.Data() + offset,
+                Request->BlockSizeForChecksums}));
+
+            offset += Request->BlockSizeForChecksums;
+        }
+    }
 
     auto request = std::make_unique<TEvBlobStorage::TEvPut>(
         MakeBlobId(TabletId, Request->BlobId),
@@ -242,6 +263,7 @@ void TWriteBlobActor::HandlePutResult(
 
     auto response = std::make_unique<TResponse>();
     response->ExecCycles = RequestInfo->GetExecCycles();
+    response->BlockChecksums = std::move(BlockChecksums);
 
     ReplyAndDie(ctx, std::move(response));
 }

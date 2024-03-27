@@ -218,7 +218,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false);  // async
+        0,      // blockSizeForChecksums
+        false); // async
 
     NCloud::Send(
         ctx,
@@ -251,8 +252,10 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        false,  // collectGarbageBarrierAcquired
-        false); // unconfirmedBlobsAdded
+        false,                      // collectGarbageBarrierAcquired
+        false,                      // unconfirmedBlobsAdded
+        TVector<TBlobToConfirm>{}   // blobsToConfirm
+    );
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();

@@ -99,6 +99,14 @@ const (
 	CheckpointTypeWithoutData
 )
 
+type CheckpointStatus uint32
+
+const (
+	CheckpointStatusNotReady CheckpointStatus = iota
+	CheckpointStatusReady
+	CheckpointStatusError
+)
+
 type CheckpointParams struct {
 	DiskID         string
 	CheckpointID   string
@@ -126,6 +134,12 @@ type Client interface {
 	DeleteWithFillGeneration(ctx context.Context, diskID string, fillGeneration uint64) error
 
 	CreateCheckpoint(ctx context.Context, params CheckpointParams) error
+
+	GetCheckpointStatus(
+		ctx context.Context,
+		diskID string,
+		checkpointID string,
+	) (CheckpointStatus, error)
 
 	DeleteCheckpoint(
 		ctx context.Context,

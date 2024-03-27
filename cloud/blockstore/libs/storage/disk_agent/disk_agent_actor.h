@@ -75,6 +75,8 @@ private:
     THashMap<TString, TRecentBlocksTracker> RecentBlocksTrackers;
     TList<TPostponedRequest> PostponedRequests;
 
+    NActors::TActorId SessionCacheActor;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -137,10 +139,8 @@ private:
 
     TString GetCachedSessionsPath() const;
 
-    void UpdateSessionCacheAndRespond(
-        const NActors::TActorContext& ctx,
-        TRequestInfoPtr requestInfo,
-        NActors::IEventBasePtr response);
+    void UpdateSessionCache(const NActors::TActorContext& ctx);
+    void RunSessionCacheActor(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateInit);

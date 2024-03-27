@@ -5,9 +5,11 @@ import (
 	"log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	nbsblockstorepublicapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
+	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
-	nbsstoragecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
+	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
+	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -39,10 +41,12 @@ type nbsServerControllerService struct {
 	csi.ControllerServer
 
 	nbsClient nbsclient.ClientIface
+	nfsClient nfsclient.ClientIface
 }
 
 func newNBSServerControllerService(
-	nbsClient nbsclient.ClientIface) csi.ControllerServer {
+	nbsClient nbsclient.ClientIface,
+	nfsClient nfsclient.ClientIface) csi.ControllerServer {
 
 	return &nbsServerControllerService{nbsClient: nbsClient}
 }
@@ -85,33 +89,24 @@ func (c *nbsServerControllerService) CreateVolume(
 	}
 
 	volumeContext := make(map[string]string)
-	var baseDiskID string
-	var baseDiskCheckpointID string
+	parameters := make(map[string]string)
 	if req.Parameters != nil {
 		for key, value := range req.Parameters {
-			if key == "base-disk-id" {
-				baseDiskID = value
-			}
-			if key == "base-disk-checkpoint-id" {
-				baseDiskCheckpointID = value
-			}
 			if key == "backend" {
 				volumeContext[key] = value
+			} else {
+				parameters[key] = value
 			}
 		}
 	}
 
-	diskId := req.Name
-	createVolumeRequest := &nbsblockstorepublicapi.TCreateVolumeRequest{
-		DiskId:               diskId,
-		BlockSize:            diskBlockSize,
-		BlocksCount:          uint64(requiredBytes) / uint64(diskBlockSize),
-		StorageMediaKind:     nbsstoragecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
-		BaseDiskId:           baseDiskID,
-		BaseDiskCheckpointId: baseDiskCheckpointID,
+	var err error
+	if volumeContext["backend"] == "nfs" {
+		err = c.createFileStore(ctx, req.Name, requiredBytes)
+	} else {
+		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
 	}
 
-	_, err := c.nbsClient.CreateVolume(ctx, createVolumeRequest)
 	if err != nil {
 		// TODO (issues/464): return codes.AlreadyExists if volume exists
 		return nil, status.Errorf(
@@ -120,9 +115,44 @@ func (c *nbsServerControllerService) CreateVolume(
 
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
 		CapacityBytes: requiredBytes,
-		VolumeId:      diskId,
+		VolumeId:      req.Name,
 		VolumeContext: volumeContext,
 	}}, nil
+}
+
+func (c *nbsServerControllerService) createDisk(
+	ctx context.Context,
+	diskId string,
+	requiredBytes int64,
+	parameters map[string]string) error {
+
+	_, err := c.nbsClient.CreateVolume(ctx, &nbsapi.TCreateVolumeRequest{
+		DiskId:               diskId,
+		BlockSize:            diskBlockSize,
+		BlocksCount:          uint64(requiredBytes) / uint64(diskBlockSize),
+		StorageMediaKind:     storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+		BaseDiskId:           parameters["base-disk-id"],
+		BaseDiskCheckpointId: parameters["base-disk-checkpoint-id"],
+	})
+	return err
+}
+
+func (c *nbsServerControllerService) createFileStore(
+	ctx context.Context,
+	fileSystemId string,
+	requiredBytes int64) error {
+
+	if c.nfsClient == nil {
+		return status.Errorf(codes.Internal, "NFS client wasn't created")
+	}
+
+	_, err := c.nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
+		FileSystemId:     fileSystemId,
+		BlockSize:        diskBlockSize,
+		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
+		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
+	})
+	return err
 }
 
 func (c *nbsServerControllerService) DeleteVolume(
@@ -137,15 +167,28 @@ func (c *nbsServerControllerService) DeleteVolume(
 			"VolumeId missing in DeleteVolumeRequest")
 	}
 
-	destroyVolumeRequest := &nbsblockstorepublicapi.TDestroyVolumeRequest{
-		DiskId: req.VolumeId,
-	}
+	// Trying to destroy both disk and filestore,
+	// because the resource's type is unknown here.
+	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
 
-	_, err := c.nbsClient.DestroyVolume(ctx, destroyVolumeRequest)
+	_, err := c.nbsClient.DestroyVolume(ctx, &nbsapi.TDestroyVolumeRequest{
+		DiskId: req.VolumeId,
+	})
 	if err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
-			"Failed to destroy volume: %+v", err)
+			"Failed to destroy disk: %+v", err)
+	}
+
+	if c.nfsClient != nil {
+		_, err = c.nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
+			FileSystemId: req.VolumeId,
+		})
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"Failed to destroy filestore: %+v", err)
+		}
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
@@ -231,8 +274,6 @@ func (c *nbsServerControllerService) ControllerGetCapabilities(
 	req *csi.ControllerGetCapabilitiesRequest,
 ) (*csi.ControllerGetCapabilitiesResponse, error) {
 
-	log.Printf("csi.ControllerGetCapabilitiesRequest: %+v", req)
-
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: nbsServerControllerServiceCapabilities,
 	}, nil
@@ -242,7 +283,7 @@ func (c *nbsServerControllerService) doesVolumeExist(
 	ctx context.Context,
 	volumeId string) bool {
 
-	describeVolumeRequest := &nbsblockstorepublicapi.TDescribeVolumeRequest{
+	describeVolumeRequest := &nbsapi.TDescribeVolumeRequest{
 		DiskId: volumeId,
 	}
 

@@ -194,6 +194,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
         auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             req.BlobContent.GetGuardedSgList(),
+            0,      // blockSizeForChecksums
             true);  // async
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
