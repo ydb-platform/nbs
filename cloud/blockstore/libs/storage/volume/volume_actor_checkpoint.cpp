@@ -545,7 +545,7 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 
     Error = MakeError(
         E_REJECTED,
-        "tablet is dead"
+        "tablet is shutting down"
     );
 
     ReplyAndDie(ctx);

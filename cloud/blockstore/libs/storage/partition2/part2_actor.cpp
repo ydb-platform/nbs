@@ -1,8 +1,10 @@
 #include "part2_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/blockstore/libs/storage/core/unimplemented.h>
+
+#include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/verify.h>
 
 #include <ydb/core/base/tablet_pipe.h>
 #include <ydb/core/node_whiteboard/node_whiteboard.h>
@@ -340,20 +342,35 @@ void TPartitionActor::KillActors(const TActorContext& ctx)
     }
 }
 
-void TPartitionActor::AddTransaction(TRequestInfo& requestInfo)
+void TPartitionActor::AddTransaction(
+    TRequestInfo& transaction,
+    TRequestInfo::TCancelRoutine cancelRoutine)
 {
-    requestInfo.Ref();
+    transaction.CancelRoutine = cancelRoutine;
 
-    Y_ABORT_UNLESS(requestInfo.Empty());
-    ActiveTransactions.PushBack(&requestInfo);
+    transaction.Ref();
+
+    STORAGE_VERIFY(
+        transaction.Empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
+    ActiveTransactions.PushBack(&transaction);
 }
 
 void TPartitionActor::RemoveTransaction(TRequestInfo& requestInfo)
 {
-    Y_ABORT_UNLESS(!requestInfo.Empty());
+    STORAGE_VERIFY(
+        !requestInfo.Empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
+
     requestInfo.Unlink();
 
-    Y_ABORT_UNLESS(requestInfo.RefCount() > 1);
+    STORAGE_VERIFY(
+        requestInfo.RefCount() > 1,
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
+
     requestInfo.UnRef();
 }
 
@@ -361,9 +378,12 @@ void TPartitionActor::TerminateTransactions(const TActorContext& ctx)
 {
     while (ActiveTransactions) {
         auto* requestInfo = ActiveTransactions.PopFront();
-        requestInfo->CancelRequest(ctx);
+        STORAGE_VERIFY(
+            requestInfo->RefCount() >= 1,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
 
-        Y_ABORT_UNLESS(requestInfo->RefCount() >= 1);
+        requestInfo->CancelRequest(ctx);
         requestInfo->UnRef();
     }
 }

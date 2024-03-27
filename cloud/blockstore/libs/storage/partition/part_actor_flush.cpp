@@ -341,7 +341,7 @@ void TFlushActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto respose = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
 }

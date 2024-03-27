@@ -306,7 +306,25 @@ private:
         bool deleteOnlyData);
 
     void KillActors(const NActors::TActorContext& ctx);
-    void AddTransaction(TRequestInfo& transaction);
+    void AddTransaction(
+        TRequestInfo& transaction,
+        TRequestInfo::TCancelRoutine cancelRoutine);
+
+    template <typename TMethod>
+    void AddTransaction(TRequestInfo& transaction)
+    {
+        auto cancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "tablet is shutting down"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        AddTransaction(transaction, cancelRoutine);
+    }
     void RemoveTransaction(TRequestInfo& transaction);
     void TerminateTransactions(const NActors::TActorContext& ctx);
     void ReleaseTransactions();
