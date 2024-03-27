@@ -1059,8 +1059,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = AddDevice(diskRegistry, "agent-1", "dev-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
         diskRegistry.ChangeDeviceState(
