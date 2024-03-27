@@ -247,10 +247,24 @@ func (s *Session) Write(
 
 	defer s.metrics.StatRequest("Write")(&err)
 
+	blockSize := s.volume.BlockSize
+	blocksCount := (uint32(len(data)) + blockSize - 1) / blockSize
+
+	blocks := make([][]byte, blocksCount)
+	for blockInd := uint32(0); blockInd < blocksCount; blockInd++ {
+		startOffset := blockInd * blockSize
+		endOffset := (blockInd + 1) * blockSize
+		if endOffset > uint32(len(data)) {
+			endOffset = uint32(len(data))
+		}
+
+		blocks[blockInd] = data[startOffset:endOffset]
+	}
+
 	err = s.session.WriteBlocks(
 		s.withClientID(ctx),
 		startIndex,
-		[][]byte{data},
+		blocks,
 	)
 	return wrapError(err)
 }
