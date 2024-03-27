@@ -168,6 +168,9 @@ message TServerConfig
 
     // Path to vhost server executable.
     optional string VhostServerPath = 108;
+
+    // Prefix for nbd device paths, e.g. "/dev/nbd"
+    optional string NbdDevicePrefix = 109;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

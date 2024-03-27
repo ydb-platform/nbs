@@ -125,6 +125,7 @@ public:
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
+    TString GetNbdDevicePrefix() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

@@ -189,7 +189,7 @@ public:
 
         if (!NFs::Exists(device)) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Nbd device file No file for nbd device: " << device);
+                << "No file for nbd device: " << device);
         }
 
         if (num < BusyDevices.size() && BusyDevices[num]) {
