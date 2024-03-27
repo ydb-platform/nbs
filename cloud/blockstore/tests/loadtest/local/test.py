@@ -9,8 +9,6 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
-import google.protobuf.json_format as protojson
-
 
 def default_storage_config(tablet_version, cache_folder):
     storage = storage_config_with_default_limits()

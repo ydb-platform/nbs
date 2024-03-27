@@ -7,8 +7,6 @@ from cloud.blockstore.tests.python.lib.config import storage_config_with_default
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 
-import google.protobuf.json_format as protojson
-
 
 def default_storage_config_patch(tablet_version):
     storage = storage_config_with_default_limits()
