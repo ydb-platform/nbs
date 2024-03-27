@@ -49,6 +49,16 @@ ui64 RelativeToGlobalIndex(
     return stripe * blocksPerStripe + offsetInStripe;
 }
 
+TBlockRange64 CalculateStripeRange(
+    const ui32 blocksPerStripe,
+    const ui64 globalIndex)
+{
+    const auto stripeInd = globalIndex / blocksPerStripe;
+    return TBlockRange64::WithLength(
+        stripeInd * blocksPerStripe,
+        blocksPerStripe);
+}
+
 ui32 CalculateRequestCount(
     const ui32 blocksPerStripe,
     const TBlockRange64& original,

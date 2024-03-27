@@ -228,7 +228,13 @@ void TPartitionActor::CompleteLoadState(
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddNewBlobs(args.NewBlobs));
     Y_ABORT_UNLESS(State->GetGarbageQueue().AddGarbageBlobs(args.GarbageBlobs));
 
-    if (State->GetBaseDiskId()) {
+    // Logical used blocks calculation is not implemented for proxy overlay
+    // disks with multi-partition base disks, so we disable it.
+    // Proxy overlay disks are system disks that are used for snapshot creation
+    // or disk relocation.
+    // Also, logical used blocks calculation is not needed for such disks
+    // because they are temporary and do not belong to a user.
+    if (State->GetBaseDiskId() && !partitionConfig.GetIsSystem()) {
         if (args.ReadLogicalUsedBlocks) {
             State->GetLogicalUsedBlocks() = std::move(args.LogicalUsedBlocks);
             State->AccessStats().SetLogicalUsedBlocksCount(
@@ -287,11 +293,11 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
 
         Suicide(ctx);
         return;
-    } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%lu] LoadState completed",
-            TabletID());
     }
+
+    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        "[%lu] LoadState completed",
+        TabletID());
 
     for (const auto& block: msg->Record.GetUsedBlocks()) {
         State->GetLogicalUsedBlocks().Merge(

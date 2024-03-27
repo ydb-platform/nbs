@@ -14,6 +14,8 @@
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
 #include <cloud/blockstore/libs/storage/volume/model/merge.h>
 #include <cloud/blockstore/libs/storage/volume/model/stripe.h>
+
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
@@ -50,14 +52,20 @@ bool ToPartitionRequests(
     TVector<TPartitionRequest<TMethod>>* requests,
     TBlockRange64* blockRange)
 {
-    Y_UNUSED(partitions);
     Y_UNUSED(blockSize);
     Y_UNUSED(blocksPerStripe);
     Y_UNUSED(ev);
     Y_UNUSED(requests);
     Y_UNUSED(blockRange);
 
-    Y_ABORT_UNLESS(0);
+    Y_ABORT_UNLESS(!partitions.empty());
+    STORAGE_VERIFY_C(
+        false,
+        NCloud::TWellKnownEntityTypes::DISK,
+        partitions[0].PartitionConfig.GetDiskId(),
+        TStringBuilder() << "ToPartitionRequests not implemented for "
+            << TMethod::Name);
+
     return false;
 }
 
@@ -678,6 +686,7 @@ private:
     const ui64 VolumeRequestId;
     const TBlockRange64 OriginalRange;
     const ui32 BlocksPerStripe;
+    const ui32 BlockSize;
     const ui32 PartitionsCount;
     TVector<TPartitionRequest<TMethod>> PartitionRequests;
     const TRequestTraceInfo TraceInfo;
@@ -695,6 +704,7 @@ public:
         ui64 volumeRequestId,
         TBlockRange64 originalRange,
         ui32 blocksPerStripe,
+        ui32 blockSize,
         ui32 partitionsCount,
         TVector<TPartitionRequest<TMethod>> partitionRequests,
         TRequestTraceInfo traceInfo);
@@ -865,6 +875,25 @@ private:
         }
     }
 
+    void Merge(
+        NProto::TDescribeBlocksResponse& src,
+        ui32 requestNo,
+        NProto::TDescribeBlocksResponse& dst)
+    {   
+        if (FAILED(src.GetError().GetCode())) {
+            *dst.MutableError() = std::move(*src.MutableError());
+            return;
+        }
+
+        MergeDescribeBlocksResponse(
+            src,
+            dst,
+            BlocksPerStripe,
+            BlockSize,
+            PartitionsCount,
+            PartitionRequests[requestNo].PartitionId);
+    }
+
     template <typename T>
     void Merge(
         T& src,
@@ -908,6 +937,7 @@ TPartitionRequestActor<TMethod>::TPartitionRequestActor(
         ui64 volumeRequestId,
         TBlockRange64 originalRange,
         ui32 blocksPerStripe,
+        ui32 blockSize,
         ui32 partitionsCount,
         TVector<TPartitionRequest<TMethod>> partitionRequests,
         TRequestTraceInfo traceInfo)
@@ -916,6 +946,7 @@ TPartitionRequestActor<TMethod>::TPartitionRequestActor(
     , VolumeRequestId(volumeRequestId)
     , OriginalRange(originalRange)
     , BlocksPerStripe(blocksPerStripe)
+    , BlockSize(blockSize)
     , PartitionsCount(partitionsCount)
     , PartitionRequests(std::move(partitionRequests))
     , TraceInfo(std::move(traceInfo))
