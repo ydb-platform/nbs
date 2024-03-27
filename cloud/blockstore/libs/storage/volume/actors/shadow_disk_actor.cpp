@@ -17,15 +17,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Which clientId is trying to release the shadow disk.
-enum class EReleaseAttempt : ui64
-{
-    WithExpectedClientId,
-    ForceWithAnyClientId,
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 TString
 MakeShadowDiskClientId(const TString& sourceDiskClientId, bool readOnlyMount)
 {
@@ -112,7 +103,7 @@ private:
 
 public:
     TAcquireShadowDiskActor(
-        const TStorageConfigPtr& config,
+        TStorageConfigPtr config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -127,9 +118,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReleaseShadowDisk(
-        const NActors::TActorContext& ctx,
-        EReleaseAttempt releaseAttempt);
+    void ReleaseShadowDisk(const NActors::TActorContext& ctx);
     void DescribeShadowDisk(const NActors::TActorContext& ctx);
     void AcquireShadowDisk(const NActors::TActorContext& ctx);
 
@@ -140,7 +129,7 @@ private:
     MakeAcquireDiskRequest() const;
 
     std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-    MakeReleaseDiskRequest(bool force) const;
+    MakeReleaseDiskRequest() const;
 
     void HandleDiskRegistryError(
         const NActors::TActorContext& ctx,
@@ -186,7 +175,7 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
-        const TStorageConfigPtr& config,
+        TStorageConfigPtr config,
         TString shadowDiskId,
         const TDevices& shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -227,7 +216,7 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::Work);
 
-    ReleaseShadowDisk(ctx, EReleaseAttempt::WithExpectedClientId);
+    ReleaseShadowDisk(ctx);
     DescribeShadowDisk(ctx);
     AcquireShadowDisk(ctx);
 
@@ -236,7 +225,7 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 }
 
 void TAcquireShadowDiskActor::ReleaseShadowDisk(
-    const NActors::TActorContext& ctx, EReleaseAttempt releaseAttempt)
+    const NActors::TActorContext& ctx)
 {
     if (!OldRwClientId || OldRwClientId == RwClientId) {
         WaitingForDiskToBeReleased = false;
@@ -247,18 +236,13 @@ void TAcquireShadowDiskActor::ReleaseShadowDisk(
         TBlockStoreComponents::VOLUME,
         "Releasing shadow disk "
             << ShadowDiskId.Quote() << " from old clientId "
-            << OldRwClientId.Quote() << " use client id "
-            << (releaseAttempt == EReleaseAttempt::WithExpectedClientId
-                    ? "Expected"
-                    : "Any"));
+            << OldRwClientId.Quote());
 
     WaitingForDiskToBeReleased = true;
     NCloud::SendWithUndeliveryTracking(
         ctx,
         MakeDiskRegistryProxyServiceId(),
-        MakeReleaseDiskRequest(
-            releaseAttempt == EReleaseAttempt::ForceWithAnyClientId),
-        static_cast<ui64>(releaseAttempt));
+        MakeReleaseDiskRequest());
 }
 
 void TAcquireShadowDiskActor::DescribeShadowDisk(
@@ -326,13 +310,12 @@ TAcquireShadowDiskActor::MakeAcquireDiskRequest() const
 }
 
 std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
-TAcquireShadowDiskActor::MakeReleaseDiskRequest(bool force) const
+TAcquireShadowDiskActor::MakeReleaseDiskRequest() const
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvReleaseDiskRequest>();
 
     request->Record.SetDiskId(ShadowDiskId);
-    request->Record.MutableHeaders()->SetClientId(
-        force ? TString(AnyWriterClientId) : OldRwClientId);
+    request->Record.MutableHeaders()->SetClientId(TString(AnyWriterClientId));
     request->Record.SetVolumeGeneration(Generation);
     return request;
 }
@@ -351,6 +334,9 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
 
     const TInstant timeoutElapsedAt = AcquireStartedAt + TotalTimeout;
 
+    // An ErrorSession can be received in response to a disk acquiring request.
+    // In this case, we can try to acquire again, hoping that the old session
+    // has ended.
     const bool canRetry = (GetErrorKind(error) == EErrorKind::ErrorRetriable ||
                            GetErrorKind(error) == EErrorKind::ErrorSession) &&
                           timeoutElapsedAt > ctx.Now();
@@ -479,22 +465,13 @@ void TAcquireShadowDiskActor::HandleReleaseDiskResponse(
 {
     auto* msg = ev->Get();
     auto& record = msg->Record;
-    auto releaseAttempt = static_cast<EReleaseAttempt>(ev->Cookie);
 
     if (HasError(record.GetError())) {
         LOG_WARN_S(
             ctx,
             TBlockStoreComponents::VOLUME,
             "Shadow disk " << ShadowDiskId.Quote() << " release error: "
-                           << FormatError(record.GetError())
-                           << (releaseAttempt ==
-                                       EReleaseAttempt::WithExpectedClientId
-                                   ? ", will retry soon"
-                                   : ", will not retry"));
-        if (releaseAttempt == EReleaseAttempt::WithExpectedClientId) {
-            ReleaseShadowDisk(ctx, EReleaseAttempt::ForceWithAnyClientId);
-            return;
-        }
+                           << FormatError(record.GetError()));
     }
 
     WaitingForDiskToBeReleased = false;
@@ -522,7 +499,7 @@ void TAcquireShadowDiskActor::HandleReleaseDiskRequestUndelivery(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReleaseShadowDisk(ctx, static_cast<EReleaseAttempt>(ev->Cookie));
+    ReleaseShadowDisk(ctx);
 }
 
 void TAcquireShadowDiskActor::HandleWakeup(
@@ -1265,11 +1242,16 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
         SrcActorId,
         std::make_unique<TEvVolume::TEvRWClientIdChanged>(SourceDiskClientId));
 
+    // Somehow we got into an error state. There is no need to reacquire the disk.
+    if (State == EActorState::Error) {
+        return true;
+    }
+
     auto newShadowDiskClientid =
         MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
     if (CurrentShadowDiskClientId == newShadowDiskClientid) {
-        // The ClientID that should be used to acquire the shadow disk has not
-        // changed. There is no need to reacquire.
+        // The ClientID that should be used to acquire the shadow disk has
+        // not changed. There is no need to reacquire.
         return true;
     }
 

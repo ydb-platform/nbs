@@ -4082,7 +4082,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         // Expect that the shadow disk was acquired by "shadow-disk-client".
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
         UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
@@ -4095,14 +4095,14 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo1);
         UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 
         // Disconnect client. Expect that the shadow disk reacquired by "shadow-disk-client".
         volume.RemoveClient(clientInfo1.GetClientId());
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 
@@ -4114,7 +4114,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo2);
         UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 
@@ -4130,8 +4130,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL(clientInfo2.GetClientId(), releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 
@@ -4155,7 +4155,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         const ui64 expectedBlockCount = 32768;
 
         TString acquireClientId;
-        TVector<TString> releaseClientId;
+        TString releaseClientId;
         auto monitorRequests = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
@@ -4168,8 +4168,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TEvDiskRegistry::EvReleaseDiskRequest)
             {
                 auto* msg = event->Get<TEvDiskRegistry::TEvReleaseDiskRequest>();
-                releaseClientId.push_back(
-                    msg->Record.GetHeaders().GetClientId());
+                releaseClientId = msg->Record.GetHeaders().GetClientId();
                 auto response =
                     std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
                         MakeError(E_INVALID_STATE));
@@ -4208,7 +4207,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         // Expect that the shadow disk was acquired by "shadow-disk-client".
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
         acquireClientId = "";
 
         // Connect new client. Expect that the shadow disk reacquired by this
@@ -4221,9 +4220,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             0);
         volume.AddClient(clientInfo1);
         UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL(2, releaseClientId.size());
-        UNIT_ASSERT_VALUES_EQUAL("shadow-disk-client", releaseClientId[0]);
-        UNIT_ASSERT_VALUES_EQUAL("any-writer", releaseClientId[1]);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
 }
 
