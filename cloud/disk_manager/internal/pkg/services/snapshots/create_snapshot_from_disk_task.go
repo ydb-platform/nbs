@@ -98,6 +98,11 @@ func (t *createSnapshotFromDiskTask) run(
 		return nil, err
 	}
 
+	err = t.ensureCheckpointReady(ctx, nbsClient, disk.DiskId, checkpointID)
+	if err != nil {
+		return nil, err
+	}
+
 	baseSnapshotID := snapshotMeta.BaseSnapshotID
 	baseCheckpointID := snapshotMeta.BaseCheckpointID
 
@@ -371,4 +376,39 @@ func (t *createSnapshotFromDiskTask) GetResponse() proto.Message {
 		Size:        t.state.SnapshotSize,
 		StorageSize: t.state.SnapshotStorageSize,
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *createSnapshotFromDiskTask) ensureCheckpointReady(
+	ctx context.Context,
+	nbsClient nbs.Client,
+	diskID string,
+	checkpointID string,
+) error {
+
+	status, err := nbsClient.GetCheckpointStatus(ctx, diskID, checkpointID)
+	if err != nil {
+		return err
+	}
+
+	logging.Debug(
+		ctx,
+		"Current CheckpointStatus: %v",
+		status,
+	)
+
+	switch status {
+	case nbs.CheckpointStatusNotReady:
+		return errors.NewInterruptExecutionError()
+
+	case nbs.CheckpointStatusError:
+		_ = nbsClient.DeleteCheckpoint(ctx, diskID, checkpointID)
+		return errors.NewRetriableErrorf("Filling the NRD disk replica ended with an error.")
+
+	case nbs.CheckpointStatusReady:
+		// Nothing to do.
+	}
+
+	return nil
 }
