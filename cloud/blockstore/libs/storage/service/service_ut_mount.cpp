@@ -4777,7 +4777,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TServiceClient service(runtime, nodeIdx);
 
-        uint64_t fillGeneration = 1;
+        ui64 fillGeneration = 1;
         {
             auto request = service.CreateCreateVolumeRequest();
             request->Record.SetFillGeneration(fillGeneration);
@@ -5233,7 +5233,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service1(runtime, nodeIdx);
         TServiceClient service2(runtime, nodeIdx);
 
-        uint64_t fillGeneration = 1;
+        ui64 fillGeneration = 1;
 
         {
             auto request = service1.CreateCreateVolumeRequest();
@@ -5250,7 +5250,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             const ui64 fillSeqNumber,
             const ui64 fillGeneration,
             const NProto::EVolumeAccessMode accessMode = NProto::VOLUME_ACCESS_READ_WRITE
-        ) -> std::pair<uint64_t, uint64_t>
+        ) -> std::pair<ui64, ui64>
         {
             auto statResponseBefore = service1.StatVolume(DefaultDiskId);
 
@@ -5279,8 +5279,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 statResponseAfter->Record.GetVolumeGeneration()};
         };
 
-        uint64_t mountSeqNumber = 0;
-        uint64_t fillSeqNumber = 0;
+        ui64 mountSeqNumber = 0;
+        ui64 fillSeqNumber = 0;
 
         {
             auto [generationBefore, generationAfter] = mountVolume(
@@ -5420,7 +5420,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TServiceClient service(runtime, nodeIdx);
 
-        uint64_t fillGeneration = 10;
+        ui64 fillGeneration = 10;
 
         {
             auto request = service.CreateCreateVolumeRequest();
@@ -5462,8 +5462,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             auto statResponseAfter = service.StatVolume(DefaultDiskId);
         };
 
-        uint64_t mountSeqNumber = 10;
-        uint64_t fillSeqNumber = 10;
+        ui64 mountSeqNumber = 10;
+        ui64 fillSeqNumber = 10;
 
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
