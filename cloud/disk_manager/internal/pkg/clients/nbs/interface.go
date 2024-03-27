@@ -294,25 +294,33 @@ type Client interface {
 	) error
 
 	// Used in tests.
-	ValidateCrc32(diskID string, contentSize uint64, expectedCrc32 uint32) error
+	ValidateCrc32(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+		expectedCrc32 uint32,
+		expectedBlocksCrc32 []uint32,
+	) error
 
 	// Used in tests.
 	ValidateCrc32WithEncryption(
+		ctx context.Context,
 		diskID string,
 		contentSize uint64,
 		encryption *types.EncryptionDesc,
 		expectedCrc32 uint32,
+		expectedBlocksCrc32 []uint32,
 	) error
 
 	// Used in tests.
-	CalculateCrc32(diskID string, contentSize uint64) (uint32, error)
+	CalculateCrc32(diskID string, contentSize uint64) (uint32, []uint32, error)
 
 	// Used in tests.
 	CalculateCrc32WithEncryption(
 		diskID string,
 		contentSize uint64,
 		encryption *types.EncryptionDesc,
-	) (uint32, error)
+	) (uint32, []uint32, error)
 
 	// Used in tests.
 	MountForReadWrite(diskID string) (func(), error)

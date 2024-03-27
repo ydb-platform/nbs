@@ -359,7 +359,7 @@ func FillDisk(
 	nbsClient nbs.Client,
 	diskID string,
 	diskSize uint64,
-) (uint32, uint64, error) {
+) (uint32, []uint32, uint64, error) {
 
 	return FillEncryptedDisk(nbsClient, diskID, diskSize, nil)
 }
@@ -369,7 +369,7 @@ func FillEncryptedDisk(
 	diskID string,
 	diskSize uint64,
 	encryption *types.EncryptionDesc,
-) (uint32, uint64, error) {
+) (uint32, []uint32, uint64, error) {
 
 	ctx := NewContext()
 
@@ -381,21 +381,22 @@ func FillEncryptedDisk(
 		encryption,
 	)
 	if err != nil {
-		return 0, 0, err
+		return 0, []uint32{}, 0, err
 	}
 	defer session.Close(ctx)
 
 	chunkSize := uint64(1024 * 4096) // 4 MiB
 	blockSize := uint64(session.BlockSize())
 	blocksInChunk := uint32(chunkSize / blockSize)
-	acc := crc32.NewIEEE()
 	storageSize := uint64(0)
 	zeroes := make([]byte, chunkSize)
 
 	rand.Seed(time.Now().UnixNano())
 
+	acc := crc32.NewIEEE()
+	blocksCrc32 := []uint32{}
 	for offset := uint64(0); offset < diskSize; offset += chunkSize {
-		blockIndex := offset / blockSize
+		startIndex := offset / blockSize
 		data := make([]byte, chunkSize)
 		dice := rand.Intn(3)
 
@@ -407,22 +408,36 @@ func FillEncryptedDisk(
 				logging.Debug(ctx, "rand generated all zeroes")
 			}
 
-			err = session.Write(ctx, blockIndex, data)
+			err = session.Write(ctx, startIndex, data)
 			storageSize += chunkSize
 		case 1:
-			err = session.Zero(ctx, blockIndex, blocksInChunk)
+			err = session.Zero(ctx, startIndex, blocksInChunk)
 		}
 		if err != nil {
-			return 0, 0, err
+			return 0, []uint32{}, 0, err
 		}
 
 		_, err = acc.Write(data)
 		if err != nil {
-			return 0, 0, err
+			return 0, []uint32{}, 0, err
+		}
+
+		for blockIndex := uint32(0); blockIndex < blocksInChunk; blockIndex++ {
+			blockAcc := crc32.NewIEEE()
+
+			startOffset := uint64(blockIndex) * blockSize
+			endOffset := uint64(blockIndex+1) * blockSize
+			blockData := data[startOffset:endOffset]
+
+			_, err = blockAcc.Write(blockData)
+			if err != nil {
+				return 0, []uint32{}, 0, err
+			}
+			blocksCrc32 = append(blocksCrc32, blockAcc.Sum32())
 		}
 	}
 
-	return acc.Sum32(), storageSize, nil
+	return acc.Sum32(), blocksCrc32, storageSize, nil
 }
 
 func GoWriteRandomBlocksToNbsDisk(
@@ -495,7 +510,7 @@ func CreateImage(
 	imageSize uint64,
 	folderID string,
 	pooled bool,
-) (crc32 uint32, storageSize uint64) {
+) (uint32, []uint32, uint64) {
 
 	client, err := NewClient(ctx)
 	require.NoError(t, err)
@@ -521,7 +536,7 @@ func CreateImage(
 	require.NoError(t, err)
 
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
-	crc32, storageSize, err = FillDisk(nbsClient, diskID, imageSize)
+	crc32, blocksCrc32, storageSize, err := FillDisk(nbsClient, diskID, imageSize)
 	require.NoError(t, err)
 
 	reqCtx = GetRequestContext(t, ctx)
@@ -545,7 +560,7 @@ func CreateImage(
 	require.Equal(t, int64(imageSize), response.Size)
 	require.Equal(t, int64(storageSize), response.StorageSize)
 
-	return crc32, storageSize
+	return crc32, blocksCrc32, storageSize
 }
 
 ////////////////////////////////////////////////////////////////////////////////

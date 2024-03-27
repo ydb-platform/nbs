@@ -134,6 +134,7 @@ func TestDiskServiceCreateDiskFromImageWithForceNotLayered(t *testing.T) {
 		diskID,
 		testcommon.GetRawImageSize(t),
 		testcommon.GetRawImageCrc32(t),
+		[]uint32{}, // We do not known expectedBlocksCrc32 for image.
 	)
 	require.NoError(t, err)
 
@@ -150,7 +151,7 @@ func TestDiskServiceCancelCreateDiskFromImage(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_, _, _ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -191,7 +192,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_, _, _ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -249,7 +250,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	imageCrc32, _ := testcommon.CreateImage(
+	imageCrc32, blocksCrc32, _ := testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -305,7 +306,12 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		require.NoError(t, err)
 
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
-		err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
+		err = nbsClient.ValidateCrc32(
+			diskID,
+			imageSize,
+			imageCrc32,
+			blocksCrc32,
+		)
 		require.NoError(t, err)
 
 		diskParams, err := nbsClient.Describe(ctx, diskID)
@@ -376,7 +382,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	_, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	_, _, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -395,7 +401,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	_, _, _, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID2 := t.Name() + "2"
@@ -433,10 +439,10 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	crc32, err := nbsClient.CalculateCrc32(diskID1, diskSize)
+	crc32, blocksCrc32, err := nbsClient.CalculateCrc32(diskID1, diskSize)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -486,7 +492,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	crc32, blocksCrc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -534,10 +540,10 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(1), diskMeta.Progress)
 
-	err = nbsClient.ValidateCrc32(diskID1, diskSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID1, diskSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -571,7 +577,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	crc32, blocksCrc32, _, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -616,10 +622,10 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID1, diskSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID1, diskSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID2, diskSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -655,7 +661,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
-	crc32, _, err := testcommon.FillDisk(nbsClient, diskID1, imageSize)
+	crc32, blocksCrc32, _, err := testcommon.FillDisk(nbsClient, diskID1, imageSize)
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -748,13 +754,13 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID1, imageSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID1, imageSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, imageSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID2, imageSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID3, imageSize, crc32)
+	err = nbsClient.ValidateCrc32(diskID3, imageSize, crc32, blocksCrc32)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -1048,7 +1054,12 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	encryptionDesc, err := disks.PrepareEncryptionDesc(encryption)
 	require.NoError(t, err)
 
-	crc32, _, err := testcommon.FillEncryptedDisk(nbsClient, diskID1, diskSize, encryptionDesc)
+	crc32, blocksCrc32, _, err := testcommon.FillEncryptedDisk(
+		nbsClient,
+		diskID1,
+		diskSize,
+		encryptionDesc,
+	)
 	require.NoError(t, err)
 
 	diskParams1, err = nbsClient.Describe(ctx, diskID1)
@@ -1135,9 +1146,21 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "encryption mode should be the same")
 
-	err = nbsClient.ValidateCrc32WithEncryption(diskID1, diskSize, encryptionDesc, crc32)
+	err = nbsClient.ValidateCrc32WithEncryption(
+		diskID1,
+		diskSize,
+		encryptionDesc,
+		crc32,
+		blocksCrc32,
+	)
 	require.NoError(t, err)
-	err = nbsClient.ValidateCrc32WithEncryption(diskID2, diskSize, encryptionDesc, crc32)
+	err = nbsClient.ValidateCrc32WithEncryption(
+		diskID2,
+		diskSize,
+		encryptionDesc,
+		crc32,
+		blocksCrc32,
+	)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
