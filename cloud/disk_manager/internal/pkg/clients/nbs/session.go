@@ -245,7 +245,7 @@ func (s *Session) Write(
 		return errors.NewRetriableErrorf("last rediscover was failed")
 	}
 
-	blockSize := s.volume.BlockSize
+	blockSize := s.BlockSize()
 	blocksCount := uint32(len(data)) / blockSize
 	logging.Debug(
 		ctx,
