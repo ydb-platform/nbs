@@ -59,7 +59,7 @@ func setupMigrationTest(
 
 	if params.FillDisk {
 		nbsClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-		_, _, err = testcommon.FillDisk(
+		_, _, _, err = testcommon.FillDisk(
 			nbsClient,
 			params.DiskID,
 			uint64(params.DiskSize),
@@ -113,7 +113,7 @@ func successfullyMigrateDisk(
 
 	diskSize := uint64(params.DiskSize)
 
-	srcCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
@@ -145,9 +145,15 @@ func successfullyMigrateDisk(
 	require.ErrorContains(t, err, "Path not found")
 
 	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
-	dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+
+	err = dstZoneNBSClient.ValidateCrc32(
+		ctx,
+		params.DiskID,
+		diskSize,
+		srcCrc32,
+		srcBlocksCrc32,
+	)
 	require.NoError(t, err)
-	require.Equal(t, srcCrc32, dstCrc32)
 }
 
 func startAndCancelMigration(
@@ -325,7 +331,7 @@ func migrateDiskInParallel(
 
 	diskSize := uint64(params.DiskSize)
 
-	srcCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	for _, operation := range operations {
@@ -378,14 +384,22 @@ func migrateDiskInParallel(
 		require.ErrorContains(t, err, "Path not found")
 
 		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
-		dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+		err := dstZoneNBSClient.ValidateCrc32(
+			params.DiskID,
+			diskSize,
+			srcCrc32,
+			srcBlocksCrc32,
+		)
 		require.NoError(t, err)
-		require.Equal(t, srcCrc32, dstCrc32)
 	} else {
 		// All migrations are cancelled. Check that src disk is not affected.
-		crc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+		err := srcZoneNBSClient.ValidateCrc32(
+			params.DiskID,
+			diskSize,
+			srcCrc32,
+			srcBlocksCrc32,
+		)
 		require.NoError(t, err)
-		require.Equal(t, srcCrc32, crc32)
 	}
 }
 
@@ -421,7 +435,7 @@ func successfullyMigrateEmptyDisk(
 
 	diskSize := uint64(migrationTestsDiskSize)
 
-	srcCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	srcCrc32, blocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	metadata := &disk_manager.MigrateDiskMetadata{}
@@ -443,9 +457,13 @@ func successfullyMigrateEmptyDisk(
 	require.ErrorContains(t, err, "Path not found")
 
 	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
-	dstCrc32, err := dstZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	err = dstZoneNBSClient.ValidateCrc32(
+		params.DiskID,
+		diskSize,
+		srcCrc32,
+		blocksCrc32,
+	)
 	require.NoError(t, err)
-	require.Equal(t, srcCrc32, dstCrc32)
 }
 
 func waitForMigrationStatus(
@@ -703,7 +721,7 @@ func TestDiskServiceMigrateOverlayDisk(t *testing.T) {
 	imageID := t.Name()
 	diskSize := migrationTestsDiskSize
 	imageSize := diskSize / 2
-	_, _ = testcommon.CreateImage(
+	_, _, _ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,

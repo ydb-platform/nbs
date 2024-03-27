@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -15,7 +16,7 @@ import (
 func (c *client) CalculateCrc32(
 	diskID string,
 	contentSize uint64,
-) (uint32, error) {
+) (uint32, []uint32, error) {
 
 	return c.CalculateCrc32WithEncryption(diskID, contentSize, nil)
 }
@@ -24,13 +25,13 @@ func (c *client) CalculateCrc32WithEncryption(
 	diskID string,
 	contentSize uint64,
 	encryption *types.EncryptionDesc,
-) (uint32, error) {
+) (uint32, []uint32, error) {
 
 	ctx := setupStderrLogger(context.Background())
 
 	nbsClient, _, err := c.nbs.DiscoverInstance(ctx)
 	if err != nil {
-		return 0, err
+		return 0, []uint32{}, err
 	}
 	defer nbsClient.Close()
 
@@ -42,7 +43,7 @@ func (c *client) CalculateCrc32WithEncryption(
 
 	encryptionSpec, err := getEncryptionSpec(encryption)
 	if err != nil {
-		return 0, err
+		return 0, []uint32{}, err
 	}
 
 	opts := nbs_client.MountVolumeOpts{
@@ -54,7 +55,7 @@ func (c *client) CalculateCrc32WithEncryption(
 	}
 	err = session.MountVolume(ctx, diskID, &opts)
 	if err != nil {
-		return 0, err
+		return 0, []uint32{}, err
 	}
 	defer session.UnmountVolume(ctx)
 
@@ -62,14 +63,14 @@ func (c *client) CalculateCrc32WithEncryption(
 
 	volumeBlockSize := uint64(volume.BlockSize)
 	if volumeBlockSize == 0 {
-		return 0, fmt.Errorf(
+		return 0, []uint32{}, fmt.Errorf(
 			"%v volume block size should not be zero",
 			diskID,
 		)
 	}
 
 	if contentSize%volumeBlockSize != 0 {
-		return 0, fmt.Errorf(
+		return 0, []uint32{}, fmt.Errorf(
 			"%v contentSize %v should be multiple of volumeBlockSize %v",
 			diskID,
 			contentSize,
@@ -81,7 +82,7 @@ func (c *client) CalculateCrc32WithEncryption(
 	volumeSize := volume.BlocksCount * volumeBlockSize
 
 	if contentSize > volumeSize {
-		return 0, fmt.Errorf(
+		return 0, []uint32{}, fmt.Errorf(
 			"%v contentSize %v should not be greater than volumeSize %v",
 			diskID,
 			contentSize,
@@ -92,12 +93,13 @@ func (c *client) CalculateCrc32WithEncryption(
 	chunkSize := uint64(4 * 1024 * 1024)
 	blocksInChunk := chunkSize / volumeBlockSize
 	acc := crc32.NewIEEE()
+	blocksCrc32 := []uint32{}
 
 	for offset := uint64(0); offset < contentBlocksCount; offset += blocksInChunk {
 		blocksToRead := min(contentBlocksCount-offset, blocksInChunk)
 		buffers, err := session.ReadBlocks(ctx, offset, uint32(blocksToRead), "")
 		if err != nil {
-			return 0, fmt.Errorf(
+			return 0, []uint32{}, fmt.Errorf(
 				"%v read blocks at (%v, %v) failed: %w",
 				diskID,
 				offset,
@@ -107,14 +109,22 @@ func (c *client) CalculateCrc32WithEncryption(
 		}
 
 		for _, buffer := range buffers {
+			blockAcc := crc32.NewIEEE()
 			if len(buffer) == 0 {
 				buffer = make([]byte, volumeBlockSize)
 			}
 
 			_, err := acc.Write(buffer)
 			if err != nil {
-				return 0, err
+				return 0, []uint32{}, err
 			}
+
+			_, err = blockAcc.Write(buffer)
+			if err != nil {
+				return 0, []uint32{}, err
+			}
+
+			blocksCrc32 = append(blocksCrc32, blockAcc.Sum32())
 		}
 	}
 
@@ -123,7 +133,7 @@ func (c *client) CalculateCrc32WithEncryption(
 		blocksToRead := min(volume.BlocksCount-offset, blocksInChunk)
 		buffers, err := session.ReadBlocks(ctx, offset, uint32(blocksToRead), "")
 		if err != nil {
-			return 0, fmt.Errorf(
+			return 0, []uint32{}, fmt.Errorf(
 				"%v read blocks at (%v, %v) failed: %w",
 				diskID,
 				offset,
@@ -136,7 +146,7 @@ func (c *client) CalculateCrc32WithEncryption(
 			if len(buffer) != 0 {
 				for j, b := range buffer {
 					if b != 0 {
-						return 0, fmt.Errorf(
+						return 0, []uint32{}, fmt.Errorf(
 							"%v non zero byte %v detected at (%v, %v)",
 							diskID,
 							b,
@@ -149,33 +159,71 @@ func (c *client) CalculateCrc32WithEncryption(
 		}
 	}
 
-	return acc.Sum32(), nil
+	return acc.Sum32(), blocksCrc32, nil
 }
 
 func (c *client) ValidateCrc32(
+	ctx context.Context,
 	diskID string,
 	contentSize uint64,
 	expectedCrc32 uint32,
+	expectedBlocksCrc32 []uint32,
 ) error {
 
-	return c.ValidateCrc32WithEncryption(diskID, contentSize, nil, expectedCrc32)
+	return c.ValidateCrc32WithEncryption(
+		ctx,
+		diskID,
+		contentSize,
+		nil,
+		expectedCrc32,
+		expectedBlocksCrc32,
+	)
 }
 
 func (c *client) ValidateCrc32WithEncryption(
+	ctx context.Context,
 	diskID string,
 	contentSize uint64,
 	encryption *types.EncryptionDesc,
 	expectedCrc32 uint32,
+	expectedBlocksCrc32 []uint32,
 ) error {
 
-	actualCrc32, err := c.CalculateCrc32WithEncryption(diskID, contentSize, encryption)
+	actualCrc32, actualBlocksCrc32, err := c.CalculateCrc32WithEncryption(
+		diskID,
+		contentSize,
+		encryption,
+	)
 	if err != nil {
 		return err
 	}
 
+	if len(actualBlocksCrc32) != len(expectedBlocksCrc32) {
+		logging.Debug(
+			ctx,
+			"%v blocksCrc32 length doesn't match, expected %v, actual %v",
+			diskID,
+			len(expectedBlocksCrc32),
+			len(actualBlocksCrc32),
+		)
+	} else {
+		for i := range expectedBlocksCrc32 {
+			if actualBlocksCrc32[i] != expectedBlocksCrc32[i] {
+				logging.Debug(
+					ctx,
+					"%v block with index %v crc32 doesn't match, expected %v, actual %v",
+					diskID,
+					i,
+					expectedBlocksCrc32[i],
+					actualBlocksCrc32[i],
+				)
+			}
+		}
+	}
+
 	if expectedCrc32 != actualCrc32 {
 		return fmt.Errorf(
-			"%v crc32 doesn't match, expected=%v, actual=%v",
+			"%v crc32 doesn't match, expected %v, actual %v",
 			diskID,
 			expectedCrc32,
 			actualCrc32,
