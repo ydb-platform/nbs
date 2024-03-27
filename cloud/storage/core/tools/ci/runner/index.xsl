@@ -125,6 +125,28 @@
     </div>
 </xsl:template>
 
+<!-- templates for nb-nbs-stable-lab teamcity badges -->
+<xsl:template name="teamcity-badge">
+    <xsl:param name="teamcity-domain"/>
+    <xsl:param name="teamcity-build-configuration-name"/>
+    <xsl:param name="test-case-name"/>
+    <xsl:variable name="badge-url" select="concat('https://', $teamcity-domain, '/guestAuth/app/rest/builds/buildType:(id:', $teamcity-build-configuration-name, ')/statusIcon')"/>
+    <xsl:variable name="run-url" select="concat('https://', $teamcity-domain, '/buildConfiguration/', $teamcity-build-configuration-name)"/>
+    <xsl:value-of select="$test-case-name"/>
+    <a>
+        <xsl:attribute name="href">
+            <xsl:value-of select="$run-url"/>
+        </xsl:attribute>
+        <img>
+            <xsl:attribute name="src">
+                <xsl:value-of select="$badge-url"/>
+            </xsl:attribute>
+            <xsl:attribute name="alt">
+                <xsl:value-of select="$test-case-name"/>
+            </xsl:attribute>
+        </img>
+    </a>
+</xsl:template>
 <!-- boilerplate wrappers for detailed suite reports -->
 
 <xsl:template match="fio" mode="detailed">
@@ -276,6 +298,25 @@
                 </div>
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>
+                    <xsl:variable name="teamcity-domain" select="nb-nbs-stable-lab-teamcity-tests/@teamcity-domain"/>
+                    <xsl:for-each select="nb-nbs-stable-lab-teamcity-tests/child::*">
+                        <div style="border-top: 1px dashed black; margin-bottom: 10px; padding-top: 10px">
+                            <b>nb-nbs-stable-lab/<xsl:value-of select="name(.)"/>:</b>
+                            <xsl:for-each select="./child::testcase">
+                                <xsl:call-template name="teamcity-badge">
+                                    <xsl:with-param name="teamcity-domain">
+                                        <xsl:value-of select="$teamcity-domain"/>
+                                    </xsl:with-param>
+                                    <xsl:with-param name="teamcity-build-configuration-name">
+                                        <xsl:value-of select="@build-configuration-name"/>
+                                    </xsl:with-param>
+                                    <xsl:with-param name="test-case-name">
+                                        <xsl:value-of select="@test-case-name"/>
+                                    </xsl:with-param>
+                                </xsl:call-template>
+                            </xsl:for-each>
+                        </div>
+                    </xsl:for-each>
                     <xsl:apply-templates select="disk_manager_acceptance" mode="brief"/>
                     <xsl:apply-templates select="disk_manager_eternal" mode="brief"/>
                     <xsl:apply-templates select="disk_manager_sync" mode="brief"/>
