@@ -48,7 +48,7 @@ def generate_teamcity_nbs_internal_tests(index: etree.Element, teamcity_domain_f
     for test_kind, value in test_cases.items():
         sub_element = etree.SubElement(tree, test_kind)
         for test_case_name, build_configuration_name in value.items():
-            test_case_element = etree.SubElement(sub_element, "testcase")
+            test_case_element = etree.SubElement(sub_element, "teamcity_testcase")
             test_case_element.set("test-case-name", test_case_name)
             test_case_element.set("build-configuration-name", build_configuration_name)
 
