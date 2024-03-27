@@ -286,6 +286,7 @@ NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
             checkpointInfo);
 
         State->GetCheckpointStore().ShadowActorCreated(checkpointId);
+        DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
     }
     return nonreplicatedActorId;
 }

@@ -1021,11 +1021,8 @@ void TShadowDiskActor::HandleShadowDiskCounters(
     const TEvVolume::TEvDiskRegistryBasedPartitionCounters::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-    Y_UNUSED(ctx);
-
-    // TODO. Do we need to count the statistics of the shadow disk in the source
-    // disk?
+    // Forward stat from shadow disk to volume.
+    ForwardMessageToActor(ev, ctx, VolumeActorId);
 }
 
 void TShadowDiskActor::HandleWakeup(

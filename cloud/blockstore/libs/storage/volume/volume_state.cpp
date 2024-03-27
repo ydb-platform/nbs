@@ -838,13 +838,13 @@ EPublishingPolicy TVolumeState::CountersPolicy() const
                                      : EPublishingPolicy::Repl;
 }
 
-
-void TVolumeState::CreatePartitionStatInfo(
+TPartitionStatInfo& TVolumeState::CreatePartitionStatInfo(
     const TString& diskId,
     ui64 tabletId)
 {
     PartitionStatInfos.push_back(
         TPartitionStatInfo(diskId, tabletId, CountersPolicy()));
+    return PartitionStatInfos.back();
 }
 
 TPartitionStatInfo* TVolumeState::GetPartitionStatInfoByTabletId(ui64 tabletId)
@@ -870,6 +870,15 @@ TVolumeState::GetPartitionStatByDiskId(const TString& diskId)
             return &statInfo;
         }
     }
+
+    for (const auto& [checkpointId, checkpointInfo]:
+         GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.ShadowDiskId == diskId) {
+            return &CreatePartitionStatInfo(diskId, 0);
+        }
+    }
+
     return nullptr;
 }
 
