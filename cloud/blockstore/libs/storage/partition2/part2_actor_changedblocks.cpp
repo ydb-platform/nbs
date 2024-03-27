@@ -232,7 +232,7 @@ void TGetChangedBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
 
@@ -313,7 +313,7 @@ void TPartitionActor::HandleGetChangedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TGetChangedBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -434,7 +434,7 @@ void TPartitionActor::HandleGetChangedBlocks(
         highCommitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
 
     ExecuteTx<TGetChangedBlocks>(
         ctx,

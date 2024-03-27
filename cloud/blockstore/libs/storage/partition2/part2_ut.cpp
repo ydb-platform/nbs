@@ -4852,7 +4852,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             BuildRemoteHttpQuery(TestTabletId, {{"action","collectGarbage"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(httpResponse->Html.Contains("Tablet is dead"), true);
+        UNIT_ASSERT_C(httpResponse->Html.Contains("tablet is shutting down"), true);
     }
 
     Y_UNIT_TEST(ShouldNotDeleteBlobsMarkedAsGarbageByUncommittedTransactions)
@@ -6977,6 +6977,50 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldCancelRequestsOnTabletRestart)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime({}, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+        partition.SendWriteBlocksRequest(range, 1);
+
+        bool putSeen = false;
+        runtime->SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    putSeen = true;
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return putSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        partition.RebootTablet();
+
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down",
             response->GetErrorReason());
     }
 }

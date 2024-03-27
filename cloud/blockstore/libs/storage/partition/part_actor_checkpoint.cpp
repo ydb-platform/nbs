@@ -48,7 +48,7 @@ void TPartitionActor::HandleCreateCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TCreateCheckpointMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -74,7 +74,7 @@ void TPartitionActor::HandleCreateCheckpoint(
         return;
     }
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
     TString idempotenceId = GetIdempotenceId(*msg);
 
@@ -188,7 +188,7 @@ void TPartitionActor::DeleteCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -221,7 +221,7 @@ void TPartitionActor::DeleteCheckpoint(
         return;
     }
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TMethod>(*requestInfo);
 
     auto tx = CreateTx<TDeleteCheckpoint>(
         std::move(requestInfo),

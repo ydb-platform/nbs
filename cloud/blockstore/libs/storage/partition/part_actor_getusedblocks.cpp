@@ -21,7 +21,7 @@ void TPartitionActor::HandleGetUsedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvVolume::TGetUsedBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -34,7 +34,7 @@ void TPartitionActor::HandleGetUsedBlocks(
         "GetUsedBlocks",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvVolume::TGetUsedBlocksMethod>(*requestInfo);
 
     ExecuteTx<TGetUsedBlocks>(
         ctx,

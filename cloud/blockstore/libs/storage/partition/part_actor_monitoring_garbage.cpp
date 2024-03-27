@@ -172,7 +172,7 @@ void THttpGarbageActor::HandleAddGarbageRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void THttpGarbageActor::HandleCollectGarbageRequest(
@@ -181,7 +181,7 @@ void THttpGarbageActor::HandleCollectGarbageRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 STFUNC(THttpGarbageActor::StateWork)
