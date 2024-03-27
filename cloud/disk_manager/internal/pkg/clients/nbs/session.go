@@ -170,12 +170,14 @@ func (s *Session) init(ctx context.Context) error {
 		}
 	}()
 
-	err := s.discoverAndMount(ctx)
+	volume, err := s.discoverAndMount(ctx)
 	if err != nil {
 		s.closeImpl(ctx)
+		return err
 	}
 
-	return err
+	s.volume = volume
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,10 +299,10 @@ func (s *Session) closeImpl(ctx context.Context) {
 }
 
 // Not thread-safe.
-func (s *Session) discoverAndMount(ctx context.Context) error {
+func (s *Session) discoverAndMount(ctx context.Context) (*protos.TVolume, error) {
 	client, host, err := s.nbs.DiscoverInstance(ctx)
 	if err != nil {
-		return wrapError(err)
+		return nil, wrapError(err)
 	}
 
 	s.client = client
@@ -315,11 +317,11 @@ func (s *Session) discoverAndMount(ctx context.Context) error {
 		s.diskID,
 		&s.mountOpts,
 	)
-	if err == nil {
-		s.volume = s.session.Volume()
+	if err != nil {
+		return nil, wrapError(err)
 	}
 
-	return wrapError(err)
+	return s.session.Volume(), nil
 }
 
 func (s *Session) rediscover(ctx context.Context) {
@@ -332,7 +334,7 @@ func (s *Session) rediscover(ctx context.Context) {
 
 	s.closeSession(ctx)
 
-	err := s.discoverAndMount(ctx)
+	_, err := s.discoverAndMount(ctx)
 	if err != nil {
 		logging.Warn(ctx, "rediscover failed: %v", err)
 		// Stop subsequent rediscovers.
