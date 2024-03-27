@@ -655,12 +655,12 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                         TABLEH() { out << "Delete"; }
                     }
                 }
-                for (const auto& [r, checkpointType]:
+                for (const auto& [r, checkpointInfo]:
                     State->GetCheckpointStore().GetActiveCheckpoints())
                 {
                     TABLER() {
                         TABLED() { out << r; }
-                        TABLED() { out << checkpointType; }
+                        TABLED() { out << checkpointInfo; }
                         TABLED() {
                             BuildDeleteCheckpointButton(
                                 out,

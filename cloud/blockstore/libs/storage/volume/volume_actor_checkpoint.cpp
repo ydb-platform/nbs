@@ -1351,6 +1351,14 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
          request.ReqType == ECheckpointRequestType::DeleteData) &&
          State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
+    if (needToDestroyShadowActor) {
+        auto checkpointInfo =
+            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
+        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+        }
+    }
+
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,

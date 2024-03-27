@@ -328,7 +328,8 @@ public:
 
     EPublishingPolicy CountersPolicy() const;
 
-    void CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
+    TPartitionStatInfo&
+    CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
 
     TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
 
