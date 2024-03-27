@@ -249,7 +249,7 @@ func (s *Session) Write(
 	blocksCount := uint32(len(data)) / blockSize
 	logging.Debug(
 		ctx,
-		"WriteBlocks offset %v, count %v",
+		"WriteBlocks offset %v, blocks count %v",
 		startIndex,
 		blocksCount,
 	)
