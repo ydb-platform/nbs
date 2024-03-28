@@ -15,6 +15,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 TString ReportCriticalEvent(
