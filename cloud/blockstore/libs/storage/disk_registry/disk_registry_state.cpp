@@ -5125,9 +5125,7 @@ auto TDiskRegistryState::AddNewDevices(
     }
 
     if (dryRun) {
-        return {
-            .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
-        };
+        return {};
     }
 
     TVector<TString> ids;
@@ -5173,7 +5171,6 @@ auto TDiskRegistryState::AddNewDevices(
 
     return {
         .Error = std::move(error),
-        .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
     };
 }
 
@@ -5336,13 +5333,6 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 now,
                 dryRun,
                 result.Timeout);
-
-            if (!HasError(result.Error)
-                    && IsDirtyDevice(device->GetDeviceUUID())
-                    && device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
-            {
-                result.DevicesThatNeedToBeCleaned.push_back(device->GetDeviceUUID());
-            }
         } else {
             TString affectedDisk;
             result.Error = CmsRemoveDevice(
