@@ -59,7 +59,7 @@ func setupMigrationTest(
 
 	if params.FillDisk {
 		nbsClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-		_, _, _, err = testcommon.FillDisk(
+		_, err = testcommon.FillDisk(
 			nbsClient,
 			params.DiskID,
 			uint64(params.DiskSize),
@@ -113,7 +113,7 @@ func successfullyMigrateDisk(
 
 	diskSize := uint64(params.DiskSize)
 
-	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	diskContentInfo, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	err = client.SendMigrationSignal(ctx, &disk_manager.SendMigrationSignalRequest{
@@ -149,9 +149,7 @@ func successfullyMigrateDisk(
 	err = dstZoneNBSClient.ValidateCrc32(
 		ctx,
 		params.DiskID,
-		diskSize,
-		srcCrc32,
-		srcBlocksCrc32,
+		diskContentInfo,
 	)
 	require.NoError(t, err)
 }
@@ -331,7 +329,7 @@ func migrateDiskInParallel(
 
 	diskSize := uint64(params.DiskSize)
 
-	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	diskContentInfo, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	for _, operation := range operations {
@@ -387,9 +385,7 @@ func migrateDiskInParallel(
 		err := dstZoneNBSClient.ValidateCrc32(
 			ctx,
 			params.DiskID,
-			diskSize,
-			srcCrc32,
-			srcBlocksCrc32,
+			diskContentInfo,
 		)
 		require.NoError(t, err)
 	} else {
@@ -397,9 +393,7 @@ func migrateDiskInParallel(
 		err := srcZoneNBSClient.ValidateCrc32(
 			ctx,
 			params.DiskID,
-			diskSize,
-			srcCrc32,
-			srcBlocksCrc32,
+			diskContentInfo,
 		)
 		require.NoError(t, err)
 	}
@@ -437,7 +431,7 @@ func successfullyMigrateEmptyDisk(
 
 	diskSize := uint64(migrationTestsDiskSize)
 
-	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	diskContentInfo, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	metadata := &disk_manager.MigrateDiskMetadata{}
@@ -462,9 +456,7 @@ func successfullyMigrateEmptyDisk(
 	err = dstZoneNBSClient.ValidateCrc32(
 		ctx,
 		params.DiskID,
-		diskSize,
-		srcCrc32,
-		srcBlocksCrc32,
+		diskContentInfo,
 	)
 	require.NoError(t, err)
 }
@@ -724,7 +716,7 @@ func TestDiskServiceMigrateOverlayDisk(t *testing.T) {
 	imageID := t.Name()
 	diskSize := migrationTestsDiskSize
 	imageSize := diskSize / 2
-	_, _, _ = testcommon.CreateImage(
+	_ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
