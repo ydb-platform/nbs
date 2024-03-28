@@ -181,6 +181,7 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    bool GetThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
@@ -190,6 +191,8 @@ public:
     bool GetConfigsDispatcherServiceEnabled() const;
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+
+    TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

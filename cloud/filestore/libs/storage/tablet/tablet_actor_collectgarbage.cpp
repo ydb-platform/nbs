@@ -473,4 +473,19 @@ void TIndexTabletActor::HandleCollectGarbageCompleted(
     EnqueueCollectGarbageIfNeeded(ctx);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleReleaseCollectBarrier(
+    const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    auto commitId = ev->Get()->CommitId;
+    for (ui32 i = 0; i < ev->Get()->Count; ++i) {
+        // We do not check if the barrier was acquired, because the barrier may
+        // have already been released by a completed three-stage write operation
+        TryReleaseCollectBarrier(commitId);
+    }
+}
+
 }   // namespace NCloud::NFileStore::NStorage

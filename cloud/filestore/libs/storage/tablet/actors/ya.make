@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     tablet_writedata.cpp
+    tablet_adddata.cpp
 )
 
 PEERDIR(
