@@ -114,25 +114,26 @@ private:
     void WriteBlobIfNeeded(const TActorContext& ctx)
     {
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
-        if (RemainingBlobsToWrite == 0) {
-            LOG_WARN(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "there were no blobs in GenerateBlobIds response");
-            return ReplyAndDie(ctx);
-        }
         ui64 offset = 0;
 
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
-            auto request = std::make_unique<TEvBlobStorage::TEvPut>(
-                blobId,
-                TString(
-                    WriteRequest.GetBuffer().Data() + offset,
-                    blob.GetLength()),
-                TInstant::Max());
-            Y_ABORT_UNLESS(blobId.BlobSize() == blob.GetLength());
+            std::unique_ptr<TEvBlobStorage::TEvPut> request;
+            if (GenerateBlobIdsResponse.BlobsSize() == 1) {
+                // do not copy the buffer if there is only one blob
+                request = std::make_unique<TEvBlobStorage::TEvPut>(
+                    blobId,
+                    WriteRequest.GetBuffer(),
+                    TInstant::Max());
+            } else {
+                request = std::make_unique<TEvBlobStorage::TEvPut>(
+                    blobId,
+                    TString(
+                        WriteRequest.GetBuffer().Data() + offset,
+                        blobId.BlobSize()),
+                    TInstant::Max());
+            }
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
             LOG_DEBUG(
@@ -141,10 +142,10 @@ private:
                 "Sending TEvPut request to blob storage, blobId: %s, size: "
                 "%lu, proxy: %s",
                 blobId.ToString().c_str(),
-                blob.GetLength(),
+                blobId.BlobSize(),
                 proxy.ToString().c_str());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
-            offset += blob.GetLength();
+            offset += blobId.BlobSize();
         }
     }
 
@@ -308,8 +309,8 @@ void TStorageServiceActor::HandleWriteData(
     const NProto::TFileStore& filestore = session->FileStore;
 
     if (!filestore.GetFeatures().GetThreeStageWriteEnabled()) {
-        // If two-stage write is disabled, forward the request to the tablet in
-        // the same way as all other requests.
+        // If three-stage write is disabled, forward the request to the tablet
+        // in the same way as all other requests.
         ForwardRequest<TEvService::TWriteDataMethod>(ctx, ev);
         return;
     }
@@ -324,7 +325,7 @@ void TStorageServiceActor::HandleWriteData(
 
     ui32 blockSize = filestore.GetBlockSize();
 
-    // TODO(debnatkh): Consider supporting non-aligned writes
+    // TODO(debnatkh): Consider supporting unaligned writes
     if (msg->Record.GetOffset() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() >
@@ -333,16 +334,14 @@ void TStorageServiceActor::HandleWriteData(
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Using two-stage write for request, size: %lu",
+            "Using three-stage write for request, size: %lu",
             msg->Record.GetBuffer().Size());
-        NProto::TWriteDataRequest request;
-        request.CopyFrom(msg->Record);
 
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
         auto actor = std::make_unique<TWriteDataActor>(
-            std::move(request),
+            std::move(msg->Record),
             std::move(requestInfo));
         NCloud::Register(ctx, std::move(actor));
     } else {
