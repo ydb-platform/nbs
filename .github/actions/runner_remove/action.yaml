@@ -1,5 +1,5 @@
 name: Delete runner VM
-description: Delete runner VM using create-vm.py
+description: Delete runner VM using manage-vm.py
 inputs:
   repo_owner:
     required: true
@@ -37,7 +37,7 @@ runs:
       id: remove-vm
       shell: bash
       run: |
-        python .github/scripts/create-vm.py remove \
+        python .github/scripts/manage-vm.py remove \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \

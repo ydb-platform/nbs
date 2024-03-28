@@ -29,6 +29,8 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s: %(levelname)s: %(message)s"
 )
 
+logger = logging.getLogger(__name__)
+
 
 def github_output(key, value, secret=False):
     GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
@@ -37,14 +39,14 @@ def github_output(key, value, secret=False):
         with open(GITHUB_OUTPUT, "a") as fp:
             fp.write(f"{key}={value}\n")
 
-    logging.info(f"echo \"{key}={'******' if secret else value}\" >> $GITHUB_OUTPUT")
+    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if secret else value)
 
 
 def generate_github_label():
     generated_string = "".join(
         random.choices(string.ascii_lowercase + string.digits, k=8)
     )
-    logging.info(f"Generated label: {generated_string}")
+    logger.info("Generated label: %s", generated_string)
     return generated_string
 
 
@@ -63,8 +65,9 @@ def fetch_github_team_public_keys(gh, github_org, team_slug):
     members = [member for member in team.get_members()]
 
     ssh_keys = []
-    logging.info(
-        f"Fetching SSH keys for members: {[member.login for member in members]}"
+    logger.info(
+        "Fetching SSH keys for members: %s",
+        ", ".join([member.login for member in members]),
     )
     member_keys_count = 0
     for member in members:
@@ -73,9 +76,9 @@ def fetch_github_team_public_keys(gh, github_org, team_slug):
             member_keys_count += 1
             ssh_keys.append(key.key)
 
-        logging.debug(f"Fetched {member_keys_count} SSH keys for {member.login}")
+        logger.debug("Fetched %d SSH keys for %s", member_keys_count, member.login)
 
-    logging.debug(f"Fetched SSH keys: {ssh_keys}")
+    logger.debug(f"Fetched SSH keys: {ssh_keys}")
     return ssh_keys
 
 
@@ -107,7 +110,7 @@ def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, labe
         }
     ]
     cloud_init["runcmd"] = ["\n".join(script)]
-    logging.info(
+    logger.info(
         f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
             token, "****"
         )
@@ -135,7 +138,7 @@ def get_runner_token(github_repo_owner, github_repo, github_token):
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
-        logging.debug(f"Got runner registration token: {token}")
+        logger.debug("Got runner registration token: %s", token)
         return token
     else:
         raise ValueError(f"Failed to get runner registration token: {result}")
@@ -231,7 +234,7 @@ def create_vm(sdk, args):
             response_type=Instance,
             meta_type=CreateInstanceMetadata,
             timeout=args.timeout,
-            logger=logging.getLogger(),
+            logger=logger,
         )
         instance_id = result.response.id
         name = result.response.name
@@ -239,8 +242,11 @@ def create_vm(sdk, args):
         external_ipv4 = primary_ipv4.one_to_one_nat.address
         local_ipv4 = primary_ipv4.address
         if instance_id:
-            logging.info(
-                f"Created VM {name} with ID {instance_id} and label {runner_github_label}"
+            logger.info(
+                "Created VM %s with ID %s and label %s",
+                name,
+                instance_id,
+                runner_github_label,
             )
             github_output("instance-id", instance_id)
             github_output("label", runner_github_label)
@@ -248,10 +254,10 @@ def create_vm(sdk, args):
             if external_ipv4:
                 github_output("external-ipv4", external_ipv4)
         else:
-            logging.error(f"Failed to create VM with request: {request}")
-            logging.error(f"Response: {result}")
+            logger.error("Failed to create VM with request: %s", request)
+            logger.error("Response: %s", result)
     else:
-        logging.info(f"Would create VM with request: {request}")
+        logger.info("Would create VM with request: %s", request)
 
 
 def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
@@ -269,8 +275,8 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
             break
 
     if runner_id is None:
-        logging.info(f"Runner with name {vm_id} not found")
-        raise ValueError(f"Runner with name {vm_id} not found")
+        logger.info("Runner with name %s not found", vm_id)
+        raise ValueError("Runner with name %s not found", vm_id)
 
     if apply:
         delete_status_code = requests.delete(
@@ -282,12 +288,10 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
             },
         ).status_code
 
-        if delete_status_code == 204:
-            return True
-        else:
-            raise ValueError(f"Failed to remove runner with name {vm_id}")
+        if delete_status_code != 204:
+            raise ValueError("Failed to remove runner with name %s", vm_id)
     else:
-        logging.info(f"Would remove runner with name {vm_id} and id {runner_id}")
+        logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
 
 def remove_vm(sdk, args):
@@ -305,16 +309,16 @@ def remove_vm(sdk, args):
                 response_type=Instance,
                 meta_type=DeleteInstanceMetadata,
                 timeout=args.timeout,
-                logger=logging.getLogger(),
+                logger=logger,
             )
 
-            logging.info(f"Deleted VM with ID {args.id}")
+            logger.info("Deleted VM with ID %s", args.id)
         except Exception as e:
-            logging.error(f"Failed to delete VM with ID {args.id}")
-            logging.error(f"Response: {result}")
+            logger.exception("Failed to delete VM with ID %s", args.id, exc_info=True)
+            logger.error("Response: %s", result)
             raise e
     else:
-        logging.info(f"Would delete VM with ID {args.id}")
+        logger.info("Would delete VM with ID %s", args.id)
 
 
 if __name__ == "__main__":
@@ -323,7 +327,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api-endpoint",
         default="api.ai.nebius.cloud",
-        help="API Endpoint",
+        help="Cloud API Endpoint",
     )
 
     create = subparsers.add_parser("create", help="Create a new VM")
@@ -331,7 +335,7 @@ if __name__ == "__main__":
         "--github-org",
         required=True,
         default="ydb-platform",
-        help="GitHub organization name (we will fetch SSH keys from this org)",
+        help="GitHub organization name (we will fetch SSH keys from this org to allow access to the VM)",
     )
 
     create.add_argument(

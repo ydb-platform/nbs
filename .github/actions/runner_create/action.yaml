@@ -1,5 +1,5 @@
 name: Create runner VM
-description: Create runner VM using create-vm.py
+description: Create runner VM using manage-vm.py
 inputs:
   org:
     required: true
@@ -96,7 +96,7 @@ runs:
       id: create-vm
       shell: bash
       run: |
-        python .github/scripts/create-vm.py create \
+        python .github/scripts/manage-vm.py create \
           --github-org "${ORG}" \
           --github-team-slug "${TEAM}" \
           --github-repo-owner "${REPO_OWNER}" \
