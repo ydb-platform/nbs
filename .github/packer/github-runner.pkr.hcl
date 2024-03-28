@@ -60,9 +60,9 @@ build {
       "set -x",
       # Download github runner
       "mkdir -p /actions-runner && cd /actions-runner",
-      "export FILENAME=actions-runner-linux-x64-${var.RUNNER_VERSION}.tar.gz"
-      "curl -O -L \"https://github.com/actions/runner/releases/download/v{version}/$FILENAME\"",
-      "tar xzf \"./$FILENAME\"",
+      "export FILENAME="
+      "curl -o runner.tar.gz -L \"https://github.com/actions/runner/releases/download/v${var.RUNNER_VERSION}/actions-runner-linux-x64-${var.RUNNER_VERSION}.tar.gz\"",
+      "tar xzf ./runner.tar.gz",
       # Global Ubuntu things
       "wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -",
       "echo \"deb https://apt.kitware.com/ubuntu/ ${var.LSB_RELEASE} main\" | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null",

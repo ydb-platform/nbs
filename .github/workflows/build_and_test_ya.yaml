@@ -66,6 +66,10 @@ on:
         type: boolean
         default: false
         description: "Update remote build cache"
+      upload_ya_dir:
+        type: boolean
+        default: false
+        description: "Upload ya dir to s3"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -129,6 +133,7 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
         sync_to_s3: ${{ vars.SYNC_TO_S3 }}
+        upload_ya_dir: ${{ inputs.upload_ya_dir }}
 
     - id: failure
       name: set sleep_after_tests in case of failure

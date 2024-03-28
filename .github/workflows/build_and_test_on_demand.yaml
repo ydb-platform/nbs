@@ -98,7 +98,10 @@ on:
         type: string
         default: "12"
         description: "--test-threads in ya test"
-
+      upload_ya_dir:
+        type: boolean
+        default: false
+        description: "Upload ya dir to s3"
 
 jobs:
   provide-runner:
@@ -196,6 +199,7 @@ jobs:
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
+      upload_ya_dir: ${{ inputs.upload_ya_dir || 'false' }}
     secrets: inherit
 
   sleep-if-needed:

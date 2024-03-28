@@ -1,7 +1,5 @@
 name: Nightly build
 on:
-  schedule:
-    - cron: "0 1 * * *"
   workflow_dispatch:
 
 jobs:
@@ -10,7 +8,10 @@ jobs:
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
+      build_target: "cloud/disk_manager/"
+      test_target: "cloud/disk_manager/internal/pkg/dataplane/url/vmdk/tests/"
       build_preset: relwithdebinfo
       cache_update_build: true
       cache_update_tests: false
       test_threads: 6
+      upload_ya_dir: true

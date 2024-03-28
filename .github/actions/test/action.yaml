@@ -40,6 +40,10 @@ inputs:
     required: false
     default: 'false'
     description: 'Sync failed tests folders to s3'
+  upload_ya_dir:
+    required: false
+    default: 'false'
+    description: 'Upload ya dir to s3'
 runs:
   using: composite
   steps:
@@ -265,6 +269,31 @@ runs:
         echo "::group::generate-listing"
         sudo -E -H -u github python3 .github/scripts/index.py "$S3_BUCKET_PATH" --generate-indexes --apply
         echo "::endgroup::"
+    - name: upload ya dir to s3 on success
+      if: always() && inputs.upload_ya_dir == 'true'
+      shell: bash
+      run: |
+        echo "::group::upload-ya-dir"
+        pkill -f ya-tc || true
+        ps aux | grep ya
+        sudo -E -H -u github tar -C /home/github -czf /home/github/tmp/ya.tar.gz /home/github/.ya
+        sudo -E -H -u github s3cmd put --follow-symlinks --acl-private --no-progress --stats --no-check-md5 /home/github/tmp/ya.tar.gz "$S3_BUCKET_PATH/ya.tar.gz"
+        echo "${S3_WEBSITE_PREFIX}/ya.tar.gz" > /home/github/ya_web_url.txt
+        echo "${S3_BUCKET_PATH}/ya.tar.gz" > /home/github/ya_s3_url.txt
+        echo "::endgroup::"
+
+    - name: upload ya url to s3 on success
+      if: always() && inputs.upload_ya_dir == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ya_web_url_file
+        path: /home/github/ya_web_url.txt
+    - name: upload ya url to s3 on success
+      if: always() && inputs.upload_ya_dir == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ya_s3_url_file
+        path: /home/github/ya_s3_url.txt
 
     - name: show free space
       if: always()
