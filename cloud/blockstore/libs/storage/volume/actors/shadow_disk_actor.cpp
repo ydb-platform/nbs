@@ -229,12 +229,15 @@ void TAcquireShadowDiskActor::ReleaseShadowDisk(
     const NActors::TActorContext& ctx,
     bool retry)
 {
-    LOG_INFO_S(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "Releasing shadow disk " << ShadowDiskId.Quote()
-                                 << (retry ? " (retry after undelivery)" : ""));
-
+    if (AcquireReason != TShadowDiskActor::EAcquireReason::PeriodicalReAcquire)
+    {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Releasing shadow disk "
+                << ShadowDiskId.Quote()
+                << (retry ? " (retry after undelivery)" : ""));
+    }
     SendRequestToDiskRegistry(ctx, MakeReleaseDiskRequest(), retry);
 }
 
