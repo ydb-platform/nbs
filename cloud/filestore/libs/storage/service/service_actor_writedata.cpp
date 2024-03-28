@@ -163,6 +163,9 @@ private:
                 TFileStoreComponents::SERVICE,
                 "WriteData error: %s",
                 errorReason.c_str());
+            // We still may receive some responses, but we do not want to
+            // process them
+            RemainingBlobsToWrite = std::numeric_limits<ui32>::max();
             return WriteData(ctx, errorReason);
         }
 

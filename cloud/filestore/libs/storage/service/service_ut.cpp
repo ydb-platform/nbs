@@ -2323,7 +2323,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 Y_UNUSED(runtime);
 
                 switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvGenerateBlobIdsResponse: {
+                    case TEvIndexTablet::EvGenerateBlobIdsRequest: {
                         if (!worker) {
                             worker = event->Sender;
                         }
@@ -2352,10 +2352,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
         // clang-format off
-        UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
+        UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
         UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
-        UNIT_ASSERT_VALUES_EQUAL(8, evPuts);
+        UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
     }
 }
