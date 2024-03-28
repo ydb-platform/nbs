@@ -358,18 +358,18 @@ func WaitForCheckpointsAreEmpty(
 func FillDisk(
 	nbsClient nbs.Client,
 	diskID string,
-	diskSize uint64,
-) (uint32, uint64, error) {
+	contentSize uint64,
+) (nbs.DiskContentInfo, error) {
 
-	return FillEncryptedDisk(nbsClient, diskID, diskSize, nil)
+	return FillEncryptedDisk(nbsClient, diskID, contentSize, nil)
 }
 
 func FillEncryptedDisk(
 	nbsClient nbs.Client,
 	diskID string,
-	diskSize uint64,
+	contentSize uint64,
 	encryption *types.EncryptionDesc,
-) (uint32, uint64, error) {
+) (nbs.DiskContentInfo, error) {
 
 	ctx := NewContext()
 
@@ -381,21 +381,22 @@ func FillEncryptedDisk(
 		encryption,
 	)
 	if err != nil {
-		return 0, 0, err
+		return nbs.DiskContentInfo{}, err
 	}
 	defer session.Close(ctx)
 
 	chunkSize := uint64(1024 * 4096) // 4 MiB
 	blockSize := uint64(session.BlockSize())
 	blocksInChunk := uint32(chunkSize / blockSize)
-	acc := crc32.NewIEEE()
 	storageSize := uint64(0)
 	zeroes := make([]byte, chunkSize)
 
 	rand.Seed(time.Now().UnixNano())
 
-	for offset := uint64(0); offset < diskSize; offset += chunkSize {
-		blockIndex := offset / blockSize
+	acc := crc32.NewIEEE()
+	blockCrc32s := []uint32{}
+	for offset := uint64(0); offset < contentSize; offset += chunkSize {
+		startIndex := offset / blockSize
 		data := make([]byte, chunkSize)
 		dice := rand.Intn(3)
 
@@ -407,22 +408,49 @@ func FillEncryptedDisk(
 				logging.Debug(ctx, "rand generated all zeroes")
 			}
 
-			err = session.Write(ctx, blockIndex, data)
+			err = session.Write(ctx, startIndex, data)
 			storageSize += chunkSize
 		case 1:
-			err = session.Zero(ctx, blockIndex, blocksInChunk)
+			err = session.Zero(ctx, startIndex, blocksInChunk)
 		}
 		if err != nil {
-			return 0, 0, err
+			return nbs.DiskContentInfo{}, err
 		}
 
 		_, err = acc.Write(data)
 		if err != nil {
-			return 0, 0, err
+			return nbs.DiskContentInfo{}, err
+		}
+
+		for blockIndex := uint32(0); blockIndex < blocksInChunk; blockIndex++ {
+			blockAcc := crc32.NewIEEE()
+
+			startOffset := uint64(blockIndex) * blockSize
+			endOffset := uint64(blockIndex+1) * blockSize
+			blockData := data[startOffset:endOffset]
+
+			_, err = blockAcc.Write(blockData)
+			if err != nil {
+				return nbs.DiskContentInfo{}, err
+			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				startIndex+uint64(blockIndex),
+				blockAcc.Sum32(),
+			)
+			blockCrc32s = append(blockCrc32s, blockAcc.Sum32())
 		}
 	}
 
-	return acc.Sum32(), storageSize, nil
+	return nbs.DiskContentInfo{
+		ContentSize: contentSize,
+		StorageSize: storageSize,
+		Crc32:       acc.Sum32(),
+		BlockCrc32s: blockCrc32s,
+	}, nil
 }
 
 func GoWriteRandomBlocksToNbsDisk(
@@ -461,10 +489,11 @@ func GoWriteRandomBlocksToNbsDisk(
 			dice := rand.Intn(2)
 
 			var err error
+			blockAcc := crc32.NewIEEE()
+			data := make([]byte, blockSize)
 
 			switch dice {
 			case 0:
-				data := make([]byte, blockSize)
 				rand.Read(data)
 				if bytes.Equal(data, zeroes) {
 					logging.Debug(ctx, "rand generated all zeroes")
@@ -478,6 +507,19 @@ func GoWriteRandomBlocksToNbsDisk(
 			if err != nil {
 				return err
 			}
+
+			_, err = blockAcc.Write(data)
+			if err != nil {
+				return err
+			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				blockIndex,
+				blockAcc.Sum32(),
+			)
 		}
 
 		return nil
@@ -495,7 +537,7 @@ func CreateImage(
 	imageSize uint64,
 	folderID string,
 	pooled bool,
-) (crc32 uint32, storageSize uint64) {
+) nbs.DiskContentInfo {
 
 	client, err := NewClient(ctx)
 	require.NoError(t, err)
@@ -521,7 +563,7 @@ func CreateImage(
 	require.NoError(t, err)
 
 	nbsClient := NewNbsClient(t, ctx, "zone-a")
-	crc32, storageSize, err = FillDisk(nbsClient, diskID, imageSize)
+	diskContentInfo, err := FillDisk(nbsClient, diskID, imageSize)
 	require.NoError(t, err)
 
 	reqCtx = GetRequestContext(t, ctx)
@@ -543,9 +585,9 @@ func CreateImage(
 	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
 	require.NoError(t, err)
 	require.Equal(t, int64(imageSize), response.Size)
-	require.Equal(t, int64(storageSize), response.StorageSize)
+	require.Equal(t, int64(diskContentInfo.StorageSize), response.StorageSize)
 
-	return crc32, storageSize
+	return diskContentInfo
 }
 
 ////////////////////////////////////////////////////////////////////////////////
