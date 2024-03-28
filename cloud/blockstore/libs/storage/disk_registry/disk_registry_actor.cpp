@@ -754,6 +754,9 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
+        HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
+            HandleCleanupDisksResponse);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
