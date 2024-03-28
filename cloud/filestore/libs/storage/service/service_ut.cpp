@@ -2050,6 +2050,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldPerformThreeStageWrites)
     {
         TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";

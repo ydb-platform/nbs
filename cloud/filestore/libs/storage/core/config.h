@@ -182,6 +182,7 @@ public:
 
     bool GetTwoStageReadEnabled() const;
     bool GetThreeStageWriteEnabled() const;
+    ui32 GetThreeStageWriteThreshold() const;
     TDuration GetEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;

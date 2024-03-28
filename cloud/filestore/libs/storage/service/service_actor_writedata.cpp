@@ -37,8 +37,8 @@ private:
 
 public:
     TWriteDataActor(
-        NProto::TWriteDataRequest request,
-        TRequestInfoPtr requestInfo)
+            NProto::TWriteDataRequest request,
+            TRequestInfoPtr requestInfo)
         : WriteRequest(std::move(request))
         , RequestInfo(std::move(requestInfo))
     {}
@@ -326,10 +326,11 @@ void TStorageServiceActor::HandleWriteData(
     ui32 blockSize = filestore.GetBlockSize();
 
     // TODO(debnatkh): Consider supporting unaligned writes
-    if (msg->Record.GetOffset() % blockSize == 0 &&
+    if (filestore.GetFeatures().GetThreeStageWriteEnabled() &&
+        msg->Record.GetOffset() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() >
-            filestore.GetFeatures().GetThreeStageWriteEnabled())
+            filestore.GetFeatures().GetThreeStageWriteThreshold())
     {
         LOG_DEBUG(
             ctx,
