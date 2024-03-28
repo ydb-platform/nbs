@@ -122,6 +122,7 @@ private:
             , RefCount(refCount)
         {}
 
+        TInstant DisconnectTs;
         ui64 TabletId = 0;
         int RefCount = 0;
     };
@@ -488,9 +489,21 @@ void TVolumeProxyActor::HandleConnect(
             msg->TabletId,
             FormatError(error).data());
 
+        if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+            it != BaseDiskIdToTabletId.end() && !it->second.DisconnectTs)
+        {
+            it->second.DisconnectTs = ctx.Now();
+        }
+
         CancelActiveRequests(ctx, *conn);
         DestroyConnection(ctx, *conn, error);
         return;
+    }
+
+    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+        it != BaseDiskIdToTabletId.end())
+    {
+        it->second.DisconnectTs = {};
     }
 
     if (conn->State == FAILED) {
@@ -552,6 +565,12 @@ void TVolumeProxyActor::HandleDescribeResponse(
         *conn,
         volumeDescr.GetVolumeTabletId(),
         msg->Path);
+
+    if (auto it = BaseDiskIdToTabletId.find(conn->DiskId);
+        it != BaseDiskIdToTabletId.end())
+    {
+        it->second.DisconnectTs = {};
+    }
 }
 
 template <typename TMethod>
@@ -585,13 +604,17 @@ void TVolumeProxyActor::HandleRequest(
         {
             auto itr = BaseDiskIdToTabletId.find(diskId);
             if (itr != BaseDiskIdToTabletId.end()) {
-                PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
-                StartConnection(
-                    ctx,
-                    conn,
-                    itr->second.TabletId,
-                    "PartitionConfig");
-                break;
+                auto deadline =
+                    itr->second.DisconnectTs + Config->GetVolumeProxyCacheRetryDuration();
+                if (!itr->second.DisconnectTs || deadline > ctx.Now()) {
+                    PostponeRequest(ctx, conn, IEventHandlePtr(ev.Release()));
+                    StartConnection(
+                        ctx,
+                        conn,
+                        itr->second.TabletId,
+                        "PartitionConfig");
+                    break;
+                }
             }
 
             conn.State = RESOLVING;

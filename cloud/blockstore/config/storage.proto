@@ -948,4 +948,8 @@ message TStorageServiceConfig
     // Timeout for attempts to acquire the shadow disk when writes to the source
     // disk are not blocked (in ms).
     optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
+
+    // Duration of attempts to connect to tablet for cached tablets before
+    // switching to describe volume.
+    optional uint32 VolumeProxyCacheRetryDuration = 359;
 }
