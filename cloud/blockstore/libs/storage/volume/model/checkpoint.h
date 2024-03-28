@@ -2,6 +2,8 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/map.h>
+#include <util/generic/queue.h>
+#include <util/generic/set.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -25,6 +27,14 @@ enum class ECheckpointRequestType
     Delete = 1,
     DeleteData = 2,
     CreateWithoutData = 3,
+};
+
+// Request status that determines either the request should be executed or return immediately
+enum class ECheckpointRequestValidityStatus
+{
+    Ok = 0, // Request should be executed
+    Already = 1, // Nothing to do, request should finish successfully without execution
+    Invalid = 2, // Request is invalid, request should finish with error without execution
 };
 
 // The type of checkpoint. See documentation in doc/checkpoint.md.
@@ -122,6 +132,8 @@ class TCheckpointStore
 private:
     TMap<ui64, TCheckpointRequest> CheckpointRequests;
     TActiveCheckpointsMap ActiveCheckpoints;
+    TSet<TString> DeletedCheckpoints;
+    TSet<TString> CheckpointsWithSavedRequest;
     ui64 LastCheckpointRequestId = 0;
     ui64 CheckpointRequestInProgress = 0;
     bool CheckpointBeingCreated = false;
@@ -139,6 +151,12 @@ public:
         TInstant timestamp,
         ECheckpointRequestType reqType,
         ECheckpointType type);
+
+    [[nodiscard]] ECheckpointRequestValidityStatus ValidateCheckpointRequest(
+        const TString& checkpointId,
+        ECheckpointRequestType requestType,
+        ECheckpointType checkpointType,
+        TString* message);
 
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
@@ -169,6 +187,8 @@ public:
     [[nodiscard]] std::optional<TActiveCheckpointInfo> GetCheckpoint(
         const TString& checkpointId) const;
 
+    [[nodiscard]] bool IsCheckpointDeleted(const TString& checkpointId) const;
+    [[nodiscard]] bool IsCheckpointInSavedStatusExist(const TString& checkpointId) const;
     [[nodiscard]] TVector<TString> GetLightCheckpoints() const;
     [[nodiscard]] TVector<TString> GetCheckpointsWithData() const;
     [[nodiscard]] const TActiveCheckpointsMap& GetActiveCheckpoints() const;
@@ -179,6 +199,10 @@ public:
         ui64 requestId) const;
 
     [[nodiscard]] TVector<TCheckpointRequest> GetCheckpointRequests() const;
+
+    bool HasSavedRequest(const TString& checkpointId) const;
+    void MarkHasSavedRequest(TString checkpointId);
+    void MarkHasNoSavedRequest(TString checkpointId);
 
 private:
     [[nodiscard]] TCheckpointRequest& GetRequest(ui64 requestId);
@@ -191,6 +215,61 @@ private:
     void DeleteCheckpointData(const TString& checkpointId);
     void CalcCheckpointsState();
     void Apply(const TCheckpointRequest& checkpointRequest);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+template<typename TCheckpointRequestInfo>
+struct TPostponedCheckpointRequest {
+    ui64 RequestId;
+    TCheckpointRequestInfo Info;
+
+    TPostponedCheckpointRequest(
+            ui64 requestId,
+            TCheckpointRequestInfo info)
+        : RequestId(requestId)
+        , Info(std::move(info))
+    {}
+};
+
+template<typename TCheckpointRequestInfo>
+class TPostponedCheckpointRequestsQueue
+{
+private:
+    using TRequest = TPostponedCheckpointRequest<TCheckpointRequestInfo>;
+    TMap<TString, TQueue<TRequest>> Requests;
+
+public:
+    bool HasPostponedRequest(const TString& checkpointId) const
+    {
+        return Requests.contains(checkpointId);
+    }
+
+    void AddPostponedRequest(TString checkpointId, TRequest request)
+    {
+        Requests[checkpointId].push(std::move(request));
+    }
+
+    std::optional<TRequest> GetPostponedRequest(const TString& checkpointId) const
+    {
+        auto queue = Requests.FindPtr(checkpointId);
+        if (!queue) {
+            return std::nullopt;
+        }
+
+        return queue->front();
+    }
+
+    void RemovePostponedRequest(const TString& checkpointId)
+    {
+        auto queue = Requests.FindPtr(checkpointId);
+        Y_DEBUG_ABORT_UNLESS(queue);
+
+        queue->pop();
+        if (queue->empty()) {
+            Requests.erase(checkpointId);
+        }
+    }
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

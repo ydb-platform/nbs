@@ -320,6 +320,7 @@ private:
         {}
     };
     TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
+    TPostponedCheckpointRequestsQueue<TCheckpointRequestInfo> PostponedCheckpointRequests;
 
     ui32 MultipartitionWriteAndZeroRequestsInProgress = 0;
 
@@ -650,6 +651,29 @@ private:
     void HandleRemoveExpiredVolumeParams(
         const TEvVolumePrivate::TEvRemoveExpiredVolumeParams::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void AddCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TCheckpointRequest& request,
+        const TCheckpointRequestInfo& info);
+
+    bool TryReplyToCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TCheckpointRequest& request,
+        const TCheckpointRequestInfo& info);
+
+    void SaveCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TCheckpointRequest& request,
+        const TCheckpointRequestInfo& info);
+
+    void ProcessPostponedCheckpointRequests(
+        const NActors::TActorContext& ctx,
+        const TString& checkpointId);
+
+    std::optional<NProto::TError> ValidateCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        const TCheckpointRequest& request) const;
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
