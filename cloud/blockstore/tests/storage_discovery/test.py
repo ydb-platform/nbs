@@ -404,6 +404,13 @@ def test_add_devices(
     assert len(r.ActionResults) == 10
     assert all(x.Result.Code == 0 for x in r.ActionResults)
 
+    # wait until the local devices are cleared
+    while True:
+        bkp = client.backup_disk_registry_state()["Backup"]
+        if bkp.get("DirtyDevices", 0) == 0:
+            break
+        time.sleep(1)
+
     storage = grpc_client.query_available_storage([agent_id])
     assert len(storage) == 1
     assert storage[0].AgentId == agent_id

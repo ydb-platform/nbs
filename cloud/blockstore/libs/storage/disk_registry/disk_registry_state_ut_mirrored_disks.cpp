@@ -1178,7 +1178,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), result.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         TDiskInfo diskInfo;
@@ -2171,7 +2170,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 timeout = result.Timeout;
 
                 ASSERT_VECTORS_EQUAL(TVector{"disk-1/0"}, result.AffectedDisks);
-                ASSERT_VECTORS_EQUAL(TVector<TString>{}, result.DevicesThatNeedToBeCleaned);
             }
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
@@ -2287,7 +2285,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 timeout = result.Timeout;
 
                 ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
-                ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
             }
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());

@@ -5985,7 +5985,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 storageConfig->GetNonReplicatedInfraTimeout(),
                 result.Timeout);
             ASSERT_VECTORS_EQUAL(TVector{"disk-3"}, result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
 
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDiskStateUpdates().size());
             const auto& update = state.GetDiskStateUpdates().back();
@@ -6043,7 +6042,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 TDuration(),
                 result.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         // mark agent is unavailable
@@ -7289,7 +7287,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration(), result.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -7304,7 +7301,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration(), result.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), result.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), result.DevicesThatNeedToBeCleaned);
         });
     }
 
@@ -7361,7 +7357,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.Error.GetCode());
             UNIT_ASSERT_VALUES_UNEQUAL(TDuration{}, r.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>{"disk-1"}, r.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
@@ -7377,7 +7372,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, r.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
 
@@ -7387,7 +7381,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, r.Error.GetCode(), r.Error);
             UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
 
@@ -7397,7 +7390,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, r.Error.GetCode(), r.Error);
             UNIT_ASSERT_VALUES_EQUAL(TDuration{}, r.Timeout);
             ASSERT_VECTORS_EQUAL(TVector<TString>(), r.AffectedDisks);
-            ASSERT_VECTORS_EQUAL(TVector<TString>(), r.DevicesThatNeedToBeCleaned);
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
         });
     }

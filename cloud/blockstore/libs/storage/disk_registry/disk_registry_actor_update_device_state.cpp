@@ -83,15 +83,6 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
         SendEnableDevice(ctx, args.DeviceId);
     }
 
-    if (args.State != NProto::DEVICE_STATE_ONLINE && !HasError(args.Error)) {
-        CancelPendingWaitForDeviceCleanupRequests(
-            ctx,
-            args.DeviceId,
-            MakeError(E_TRY_AGAIN, TStringBuilder()
-                << "device " << args.DeviceId << " has an incompatible state: "
-                << NProto::EDeviceState_Name(args.State)));
-    }
-
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);

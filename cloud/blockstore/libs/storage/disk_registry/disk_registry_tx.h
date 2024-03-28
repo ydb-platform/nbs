@@ -623,7 +623,6 @@ struct TTxDiskRegistry
 
         NProto::TError Error;
         TVector<TString> AffectedDisks;
-        TVector<TString> DevicesThatNeedToBeCleaned;
         TInstant TxTs;
         TDuration Timeout;
 
@@ -643,7 +642,6 @@ struct TTxDiskRegistry
         void Clear()
         {
             AffectedDisks.clear();
-            DevicesThatNeedToBeCleaned.clear();
             Error.Clear();
         }
     };
