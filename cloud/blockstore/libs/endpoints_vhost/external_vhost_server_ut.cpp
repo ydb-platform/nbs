@@ -217,6 +217,12 @@ struct TFixture
         volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
         volume.SetIsFastPathEnabled(true);
 
+        auto* profile = volume.MutablePerformanceProfile();
+        profile->SetMaxReadBandwidth(1111);
+        profile->SetMaxReadIops(2222);
+        profile->SetMaxWriteBandwidth(3333);
+        profile->SetMaxWriteIops(4444);
+
         {
             auto* device = volume.AddDevices();
             device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
@@ -477,10 +483,11 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
-                                                   19
+                --perf-profile                      2
+                                                   21
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(21, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -496,6 +503,10 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL("rdma", GetArg(create->CmdArgs, "--device-backend"));
 
             UNIT_ASSERT_VALUES_EQUAL("4096", GetArg(create->CmdArgs, "--block-size"));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "1111:2222:3333:4444",
+                GetArg(create->CmdArgs, "--perf-profile"));
 
             UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
 

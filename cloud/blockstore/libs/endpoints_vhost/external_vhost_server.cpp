@@ -880,6 +880,17 @@ private:
             args.emplace_back("--read-only");
         }
 
+        if (epType == EEndpointType::Rdma) {
+            const auto& profile = volume.GetPerformanceProfile();
+            args.insert(args.end(), {
+                "--perf-profile", TStringBuilder()
+                    << profile.GetMaxReadBandwidth() << ":"
+                    << profile.GetMaxReadIops() << ":"
+                    << profile.GetMaxWriteBandwidth() << ":"
+                    << profile.GetMaxWriteIops()
+                });
+        }
+
         TVector<TString> cgroups(
             request.GetClientCGroups().begin(),
             request.GetClientCGroups().end()

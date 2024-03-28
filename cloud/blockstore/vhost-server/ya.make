@@ -12,6 +12,7 @@ SRCS(
     request_aio.cpp
     server.cpp
     stats.cpp
+    throttler.cpp
 )
 
 SPLIT_DWARF()
