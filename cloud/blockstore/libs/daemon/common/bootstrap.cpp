@@ -199,6 +199,7 @@ void TBootstrapBase::Init()
 
     BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
     Configs->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
