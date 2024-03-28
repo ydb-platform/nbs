@@ -55,11 +55,11 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
                                                                                \
-    xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS_NO_HANDLE(xxx, ...)                         \
+    xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(ReadData,                           __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_NO_HANDLE
 

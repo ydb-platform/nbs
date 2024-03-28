@@ -20,6 +20,8 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+    features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
+    features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
