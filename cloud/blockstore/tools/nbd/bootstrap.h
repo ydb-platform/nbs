@@ -10,6 +10,8 @@
 
 #include <library/cpp/logger/log.h>
 
+#include <util/network/socket.h>
+
 namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +54,16 @@ private:
     void InitLWTrace();
 
     void InitClientConfig();
+
+    void InitNullClient();
+    void InitControlClient();
+    void InitClientSession();
+
+    void StartNbdServer(TNetworkAddress listenAddress);
+    void StopNbdServer();
+
+    void StartNbdEndpoint();
+    void StopNbdEndpoint();
 };
 
 }   // namespace NCloud::NBlockStore::NBD
