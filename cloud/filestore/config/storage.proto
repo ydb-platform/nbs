@@ -232,7 +232,6 @@ message TStorageConfig
     // Enables the aforementioned threshold.
     optional bool NewCleanupEnabled = 343;
 
-
     // Enables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
     // for writing.
     optional bool ThreeStageWriteEnabled = 344;

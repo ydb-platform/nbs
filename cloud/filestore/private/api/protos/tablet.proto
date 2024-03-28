@@ -402,11 +402,8 @@ message TGeneratedBlob
     // Offset
     uint64 Offset = 2;
 
-    // Length
-    uint64 Length = 3;
-
     // Group id.
-    uint32 BSGroupId = 4;
+    uint32 BSGroupId = 3;
 }
 
 message TGenerateBlobIdsResponse
@@ -420,7 +417,6 @@ message TGenerateBlobIdsResponse
     // AcquireCollectBarrier has been executed for this commit id.
     uint64 CommitId = 4;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -446,7 +442,7 @@ message TAddDataRequest
     // Data size.
     uint64 Length = 6;
 
-    // Blob ids in the same order as in the request.
+    // Blob ids to be added. Ordered by the offset in the original data.
     repeated NKikimrProto.TLogoBlobID BlobIds = 7;
 
     // Commit id.

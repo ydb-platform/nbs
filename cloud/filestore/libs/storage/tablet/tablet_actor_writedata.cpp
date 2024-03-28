@@ -407,8 +407,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()},
-        false);
+        TWriteRange{args.NodeId, args.ByteRange.End()});
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

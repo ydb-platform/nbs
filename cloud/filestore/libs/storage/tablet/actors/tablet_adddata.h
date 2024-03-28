@@ -15,7 +15,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
+class TAddDataActor final: public TActorBootstrapped<TAddDataActor>
 {
 private:
     const ITraceSerializerPtr TraceSerializer;
@@ -27,10 +27,9 @@ private:
     const ui64 CommitId;
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
-    ui32 BlobsSize = 0;
 
 public:
-    TWriteDataActor(
+    TAddDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TActorId tablet,
@@ -43,11 +42,6 @@ public:
 
 private:
     STFUNC(StateWork);
-
-    void WriteBlob(const TActorContext& ctx);
-    void HandleWriteBlobResponse(
-        const TEvIndexTabletPrivate::TEvWriteBlobResponse::TPtr& ev,
-        const TActorContext& ctx);
 
     void AddBlob(const TActorContext& ctx);
     void HandleAddBlobResponse(

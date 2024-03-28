@@ -1,17 +1,15 @@
 #include "tablet_actor.h"
 
-#include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
+#include <cloud/filestore/libs/storage/tablet/actors/tablet_adddata.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <library/cpp/iterator/enumerate.h>
-#include <library/cpp/iterator/zip.h>
 
 #include <util/generic/cast.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -19,6 +17,32 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @param range Aligned byte range
+ * @returns The vector of sizes of the blobs that the data should be split into.
+ */
+TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
+{
+    TVector<ui64> blobSizes;
+    blobSizes.reserve(range.AlignedBlockCount() / BlockGroupSize + 1);
+
+    SplitRange(
+        range.FirstAlignedBlock(),
+        range.AlignedBlockCount(),
+        BlockGroupSize,
+        [&](ui32 /*blockOffset*/, ui64 blocksCount)
+        { blobSizes.push_back(blocksCount * blockSize); });
+
+    return blobSizes;
+}
+
+}   // namespace
 
 class TWriteDataActor;
 
@@ -130,19 +154,21 @@ void TIndexTabletActor::CompleteTx_AddData(
                 TPartialBlobId(),   // need to generate BlobId later
                 block,
                 blocksCount,
-                "");
+                /* data buffer */ "");
         });
 
     if (blobs.empty() || blobs.size() != args.BlobIds.size()) {
         args.Error = MakeError(
-            MAKE_FILESTORE_ERROR(NProto::E_FS_INVAL),
+            E_ARGUMENT,
             TStringBuilder() << "blobs count mismatch: expected" << blobs.size()
                              << " got " << args.BlobIds.size());
         reply(ctx, args);
         return;
     }
 
-    for (auto [targetBlob, srcBlob]: Zip(blobs, args.BlobIds)) {
+    for (size_t i = 0; i < blobs.size(); ++i) {
+        auto& targetBlob = blobs[i];
+        auto& srcBlob = args.BlobIds[i];
         targetBlob.BlobId = TPartialBlobId(
             srcBlob.Generation(),
             srcBlob.Step(),
@@ -151,44 +177,18 @@ void TIndexTabletActor::CompleteTx_AddData(
             srcBlob.Cookie(),
             srcBlob.PartId());
     }
-    auto actor = std::make_unique<TWriteDataActor>(
+    auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,
         LogTag,
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()},
-        true);
+        TWriteRange{args.NodeId, args.ByteRange.End()});
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
 }
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * @param range Aligned byte range
- * @returns A vector of sizes of the blobs that the data should be split into.
- */
-TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
-{
-    TVector<ui64> blobs;
-    blobs.reserve(range.AlignedBlockCount() / BlockGroupSize + 1);
-
-    SplitRange(
-        range.FirstAlignedBlock(),
-        range.AlignedBlockCount(),
-        BlockGroupSize,
-        [&](ui32 /*blockOffset*/, ui64 blocksCount)
-        { blobs.push_back(blocksCount * blockSize); });
-
-    return blobs;
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -206,7 +206,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         "GenerateBlobIds",
         DumpMessage(msg->Record).c_str());
 
-    // It is up to the client to provide the aligned range, but we still verify
+    // It is up to the client to provide an aligned range, but we still verify
     // it and reject the request if it is not aligned.
     const ui32 blockSize = GetBlockSize();
     if (msg->Record.GetLength() % blockSize != 0 ||
@@ -260,7 +260,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
             MakeBlobId(TabletID(), partialBlobId),
             generatedBlob->MutableBlobId());
         generatedBlob->SetOffset(offset);
-        generatedBlob->SetLength(length);
         generatedBlob->SetBSGroupId(Info()->GroupFor(
             partialBlobId.Channel(),
             partialBlobId.Generation()));
@@ -365,8 +364,8 @@ void TIndexTabletActor::HandleAddData(
         std::move(requestInfo),
         msg->Record,
         range,
-        msg->Record.GetCommitId(),
-        std::move(blobIds));
+        std::move(blobIds),
+        msg->Record.GetCommitId());
     txStarted = true;
 }
 

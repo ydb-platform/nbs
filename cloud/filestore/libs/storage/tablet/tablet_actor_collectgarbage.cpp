@@ -483,7 +483,7 @@ void TIndexTabletActor::HandleReleaseCollectBarrier(
     auto commitId = ev->Get()->CommitId;
     for (ui32 i = 0; i < ev->Get()->Count; ++i) {
         // We do not check if the barrier was acquired, because the barrier may
-        // already have been released by a completed two-stage write operation
+        // have already been released by a completed three-stage write operation
         TryReleaseCollectBarrier(commitId);
     }
 }

@@ -1223,7 +1223,7 @@ struct TTxIndexTablet
         const ui64 Handle;
         const TByteRange ByteRange;
         TVector<NKikimr::TLogoBlobID> BlobIds;
-        ui64 CommitId = InvalidCommitId;
+        ui64 CommitId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> Node;
@@ -1232,8 +1232,8 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 const NProtoPrivate::TAddDataRequest& request,
                 TByteRange byteRange,
-                ui64 commitId,
-                TVector<NKikimr::TLogoBlobID> blobIds)
+                TVector<NKikimr::TLogoBlobID> blobIds,
+                ui64 commitId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
@@ -1244,7 +1244,6 @@ struct TTxIndexTablet
 
         void Clear()
         {
-            CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
         }
