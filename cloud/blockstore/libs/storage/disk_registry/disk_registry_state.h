@@ -575,7 +575,7 @@ public:
 
     NProto::TError UpdateAgentState(
         TDiskRegistryDatabase& db,
-        TString agentId,
+        const TString& agentId,
         NProto::EAgentState state,
         TInstant now,
         TString reason,
@@ -588,7 +588,7 @@ public:
 
     NProto::TError UpdateCmsHostState(
         TDiskRegistryDatabase& db,
-        TString agentId,
+        const TString& agentId,
         NProto::EAgentState state,
         TInstant now,
         bool dryRun,
@@ -963,7 +963,7 @@ private:
         const THashSet<TString>& deviceIds) const;
 
     NProto::TError CheckAgentStateTransition(
-        const TString& agentId,
+        const NProto::TAgentConfig& agent,
         NProto::EAgentState newState,
         TInstant timestamp) const;
 
