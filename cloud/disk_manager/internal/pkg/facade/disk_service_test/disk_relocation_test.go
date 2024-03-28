@@ -385,6 +385,7 @@ func migrateDiskInParallel(
 
 		dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, dstZoneID)
 		err := dstZoneNBSClient.ValidateCrc32(
+			ctx,
 			params.DiskID,
 			diskSize,
 			srcCrc32,
@@ -394,6 +395,7 @@ func migrateDiskInParallel(
 	} else {
 		// All migrations are cancelled. Check that src disk is not affected.
 		err := srcZoneNBSClient.ValidateCrc32(
+			ctx,
 			params.DiskID,
 			diskSize,
 			srcCrc32,
@@ -435,7 +437,7 @@ func successfullyMigrateEmptyDisk(
 
 	diskSize := uint64(migrationTestsDiskSize)
 
-	srcCrc32, blocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
+	srcCrc32, srcBlocksCrc32, err := srcZoneNBSClient.CalculateCrc32(params.DiskID, diskSize)
 	require.NoError(t, err)
 
 	metadata := &disk_manager.MigrateDiskMetadata{}
@@ -458,10 +460,11 @@ func successfullyMigrateEmptyDisk(
 
 	dstZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.DstZoneID)
 	err = dstZoneNBSClient.ValidateCrc32(
+		ctx,
 		params.DiskID,
 		diskSize,
 		srcCrc32,
-		blocksCrc32,
+		srcBlocksCrc32,
 	)
 	require.NoError(t, err)
 }
