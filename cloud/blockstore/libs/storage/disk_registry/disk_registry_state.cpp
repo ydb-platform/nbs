@@ -4495,21 +4495,15 @@ void TDiskRegistryState::DeleteDiskStateChanges(
 }
 
 NProto::TError TDiskRegistryState::CheckAgentStateTransition(
-    const TString& agentId,
+    const NProto::TAgentConfig& agent,
     NProto::EAgentState newState,
     TInstant timestamp) const
 {
-    const auto* agent = AgentList.FindAgent(agentId);
-
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, "agent not found");
-    }
-
-    if (agent->GetState() == newState) {
+    if (agent.GetState() == newState) {
         return MakeError(S_ALREADY);
     }
 
-    if (agent->GetStateTs() > timestamp.MicroSeconds()) {
+    if (agent.GetStateTs() > timestamp.MicroSeconds()) {
         return MakeError(E_INVALID_STATE, "out of order");
     }
 
@@ -4518,23 +4512,21 @@ NProto::TError TDiskRegistryState::CheckAgentStateTransition(
 
 NProto::TError TDiskRegistryState::UpdateAgentState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant timestamp,
     TString reason,
     TVector<TDiskId>& affectedDisks)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, timestamp);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateAgentState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, timestamp);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     const auto cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -4797,24 +4789,22 @@ ui32 TDiskRegistryState::CountBrokenHddPlacementGroupPartitionsAfterDeviceRemova
 
 NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks,
     TDuration& timeout)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, now);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateCmsHostState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, now);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     TInstant cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -4852,25 +4842,24 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     NProto::TError result;
-    if (timeout == TDuration::Zero()) {
-        result = MakeError(S_OK);
-        cmsTs = TInstant::Zero();
-    } else {
+
+    // Agent can return from 'unavailable' state only when it is reconnected to
+    // the cluster.
+    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+        newState == NProto::AGENT_STATE_ONLINE)
+    {
+        timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
+        if (!timeout) {
+            result.SetCode(E_INVALID_STATE);
+        }
+    }
+
+    if (timeout) {
         result = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "time remaining: " << timeout);
-    }
-
-    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
-        // Agent can return from 'unavailable' state only when it is reconnected
-        // to the cluster.
-        if (newState == NProto::AGENT_STATE_ONLINE) {
-            // Should retry while agent is in 'unavailable' state.
-            result = MakeError(E_TRY_AGAIN, "agent currently unavailable");
-            if (timeout == TDuration::Zero()) {
-                timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-            }
-        }
+    } else {
+        cmsTs = TInstant::Zero();
     }
 
     if (dryRun) {
@@ -5207,11 +5196,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
         // CMS can't return device from 'error' state.
-        // Should retry while device is in 'error' state.
-        error = MakeError(E_TRY_AGAIN, "device is in error state");
-        if (!timeout) {
-            timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-        }
+        error = MakeError(E_INVALID_STATE, "device is in error state");
     }
 
     if (dryRun) {
