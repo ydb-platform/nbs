@@ -116,6 +116,9 @@ message TAddClientResponse
 
     // Expected pipe generation. Deprecated.
     uint32 ExpectedPipeGeneration = 6;
+
+    // Signal that volume table should be restarted.
+    bool ForceTabletRestart = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

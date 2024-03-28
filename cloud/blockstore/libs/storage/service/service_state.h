@@ -34,6 +34,8 @@ struct TClientInfo
     TInstant LastActivityTime;
     ui64 LastMountTick = 0;
     TString ClientVersionInfo;
+    ui64 FillSeqNumber = 0;
+    ui64 FillGeneration = 0;
 
     // IPC info
     NProto::EClientIpcType IpcType = NProto::IPC_GRPC;
