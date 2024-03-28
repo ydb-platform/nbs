@@ -4083,7 +4083,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Expect that the shadow disk was acquired by "shadow-disk-client".
         UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
         acquireClientId = "";
         releaseClientId = "";
 

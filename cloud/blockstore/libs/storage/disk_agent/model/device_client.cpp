@@ -118,7 +118,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                     > now)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Error acquire device " << uuid.Quote()
+                << "Error acquiring device " << uuid.Quote()
                 << " with client " << clientId.Quote()
                 << " already acquired by another client: "
                 << deviceState->WriterSession.Id.Quote());
