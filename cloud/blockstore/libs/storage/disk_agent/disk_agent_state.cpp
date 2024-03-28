@@ -869,9 +869,8 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
                 uuids,
                 session.GetClientId(),
                 TInstant::MicroSeconds(session.GetLastActivityTs()),
-                session.GetReadOnly()
-                    ? NProto::VOLUME_ACCESS_READ_ONLY
-                    : NProto::VOLUME_ACCESS_READ_WRITE,
+                session.GetReadOnly() ? NProto::VOLUME_ACCESS_READ_ONLY
+                                      : NProto::VOLUME_ACCESS_READ_WRITE,
                 session.GetMountSeqNumber(),
                 session.GetDiskId(),
                 session.GetVolumeGeneration());

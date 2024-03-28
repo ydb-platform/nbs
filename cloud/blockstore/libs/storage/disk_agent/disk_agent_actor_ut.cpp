@@ -19,6 +19,8 @@
 
 #include <util/folder/tempdir.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -27,6 +29,8 @@ using namespace NServer;
 using namespace NThreading;
 
 using namespace NDiskAgentTest;
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -107,7 +111,9 @@ struct TFixture
     : public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
-    const TString CachedSessionsPath = TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TString CachedSessionsPath =
+        TempDir.Path() / "nbs-disk-agent-sessions.txt";
+    const TDuration ReleaseInactiveSessionsTimeout = 10s;
 
     TTestBasicRuntime Runtime;
     NMonitoring::TDynamicCountersPtr Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
@@ -137,6 +143,8 @@ struct TFixture
         config.SetCachedSessionsPath(CachedSessionsPath);
         config.SetBackend(NProto::DISK_AGENT_BACKEND_AIO);
         config.SetAcquireRequired(true);
+        config.SetReleaseInactiveSessionsTimeout(
+            ReleaseInactiveSessionsTimeout.MilliSeconds());
 
         return config;
     }
@@ -174,6 +182,27 @@ struct TFixture
             Runtime, diskAgent, deviceId, 1, 10, clientId);
 
         return response->Record.GetError();
+    }
+
+    auto LoadSessionCache()
+    {
+        NProto::TDiskAgentDeviceSessionCache cache;
+        ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
+
+        TVector<NProto::TDiskAgentDeviceSession> sessions(
+            std::make_move_iterator(cache.MutableSessions()->begin()),
+            std::make_move_iterator(cache.MutableSessions()->end())
+        );
+
+        SortBy(sessions, [] (auto& session) {
+            return session.GetClientId();
+        });
+
+        for (auto& session: sessions) {
+            Sort(*session.MutableDeviceIds());
+        }
+
+        return sessions;
     }
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -3764,19 +3793,25 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         NProto::TAgentConfig agentConfig;
 
-        Runtime.SetEventFilter([&] (auto&, TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvDiskRegistry::EvRegisterAgentRequest) {
-                auto& msg = *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
+        Runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvRegisterAgentRequest)
+                {
+                    auto& msg =
+                        *event->Get<TEvDiskRegistry::TEvRegisterAgentRequest>();
 
-                agentConfig = msg.Record.GetAgentConfig();
-            }
+                    agentConfig = msg.Record.GetAgentConfig();
+                }
 
-            return false;
-        });
+                return false;
+            });
 
-        auto env = TTestEnvBuilder(Runtime)
-            .With(CreateDiskAgentConfig())
-            .Build();
+        auto env =
+            TTestEnvBuilder(Runtime).With(CreateDiskAgentConfig()).Build();
+
+        Runtime.AdvanceCurrentTime(1h);
 
         TDiskAgentClient diskAgent(Runtime);
         diskAgent.WaitReady();
@@ -3786,52 +3821,48 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(4, agentConfig.DevicesSize());
 
         TVector<TString> devices;
-        for (auto& d: agentConfig.GetDevices()) {
+        for (const auto& d: agentConfig.GetDevices()) {
             devices.push_back(d.GetDeviceUUID());
         }
         Sort(devices);
 
         // acquire a bunch of devices
 
+        const auto acquireTs = Runtime.GetCurrentTime();
+
         diskAgent.AcquireDevices(
-            TVector { devices[0], devices[1] },
+            TVector{devices[0], devices[1]},
             "writer-1",
             NProto::VOLUME_ACCESS_READ_WRITE,
-            42,     // MountSeqNumber
+            42,   // MountSeqNumber
             "vol0",
-            1000);  // VolumeGeneration
+            1000);   // VolumeGeneration
 
         diskAgent.AcquireDevices(
-            TVector { devices[0], devices[1] },
+            TVector{devices[0], devices[1]},
             "reader-1",
             NProto::VOLUME_ACCESS_READ_ONLY,
-            -1,     // MountSeqNumber
+            -1,   // MountSeqNumber
             "vol0",
-            1001);  // VolumeGeneration
+            1001);   // VolumeGeneration
 
         diskAgent.AcquireDevices(
-            TVector { devices[2], devices[3] },
+            TVector{devices[2], devices[3]},
             "reader-2",
             NProto::VOLUME_ACCESS_READ_ONLY,
-            -1,     // MountSeqNumber
+            -1,   // MountSeqNumber
             "vol1",
-            2000);  // VolumeGeneration
+            2000);   // VolumeGeneration
 
         // validate the cache file
 
         {
-            NProto::TDiskAgentDeviceSessionCache cache;
-            ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
+            auto sessions = LoadSessionCache();
 
-            UNIT_ASSERT_VALUES_EQUAL(3, cache.SessionsSize());
-
-            SortBy(*cache.MutableSessions(), [] (auto& session) {
-                return session.GetClientId();
-            });
+            UNIT_ASSERT_VALUES_EQUAL(3, sessions.size());
 
             {
-                auto& session = *cache.MutableSessions(0);
-                Sort(*session.MutableDeviceIds());
+                auto& session = sessions[0];
 
                 UNIT_ASSERT_VALUES_EQUAL("reader-1", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
@@ -3843,12 +3874,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
             {
-                auto& session = *cache.MutableSessions(1);
+                auto& session = sessions[1];
 
                 UNIT_ASSERT_VALUES_EQUAL("reader-2", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
@@ -3860,13 +3893,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                 UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
                 UNIT_ASSERT_VALUES_EQUAL("vol1", session.GetDiskId());
                 UNIT_ASSERT_VALUES_EQUAL(2000, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(session.GetReadOnly());
             }
 
             {
-                auto& session = *cache.MutableSessions(2);
-                Sort(*session.MutableDeviceIds());
+                auto& session = sessions[2];
 
                 UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
                 UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
@@ -3879,33 +3913,35 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
                 // VolumeGeneration was updated by reader-1
                 UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-                UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    acquireTs.MicroSeconds(),
+                    session.GetLastActivityTs());
                 UNIT_ASSERT(!session.GetReadOnly());
             }
         }
 
+        Runtime.AdvanceCurrentTime(5s);
+
         diskAgent.ReleaseDevices(
-            TVector { devices[0], devices[1] },
+            TVector{devices[0], devices[1]},
             "writer-1",
             "vol0",
             1001);
 
         diskAgent.ReleaseDevices(
-            TVector { devices[2], devices[3] },
+            TVector{devices[2], devices[3]},
             "reader-2",
             "vol1",
             2000);
 
         // check the session cache again
         {
-            NProto::TDiskAgentDeviceSessionCache cache;
-            ParseProtoTextFromFileRobust(CachedSessionsPath, cache);
+            auto sessions = LoadSessionCache();
 
             // now we have only one session
-            UNIT_ASSERT_VALUES_EQUAL(1, cache.SessionsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
 
-            auto& session = *cache.MutableSessions(0);
-            Sort(*session.MutableDeviceIds());
+            auto& session = sessions[0];
 
             UNIT_ASSERT_VALUES_EQUAL("reader-1", session.GetClientId());
             UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
@@ -3917,7 +3953,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             UNIT_ASSERT_VALUES_EQUAL(0, session.GetMountSeqNumber());
             UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
             UNIT_ASSERT_VALUES_EQUAL(1001, session.GetVolumeGeneration());
-            UNIT_ASSERT_VALUES_EQUAL(0, session.GetLastActivityTs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                acquireTs.MicroSeconds(),
+                session.GetLastActivityTs());
             UNIT_ASSERT(session.GetReadOnly());
         }
     }
@@ -3931,6 +3969,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             "e85cd1d217c3239507fc0cd180a075fd"
         };
 
+        const auto initialTs = Now();
+
         {
             NProto::TDiskAgentDeviceSessionCache cache;
             auto& writeSession = *cache.AddSessions();
@@ -3941,6 +3981,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             writeSession.SetMountSeqNumber(42);
             writeSession.SetDiskId("vol0");
             writeSession.SetVolumeGeneration(1000);
+            writeSession.SetLastActivityTs(initialTs.MicroSeconds());
 
             auto& reader1 = *cache.AddSessions();
             reader1.SetClientId("reader-1");
@@ -3949,6 +3990,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             reader1.SetReadOnly(true);
             reader1.SetDiskId("vol0");
             reader1.SetVolumeGeneration(1000);
+            reader1.SetLastActivityTs(initialTs.MicroSeconds());
 
             auto& reader2 = *cache.AddSessions();
             reader2.SetClientId("reader-2");
@@ -3957,6 +3999,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             reader2.SetReadOnly(true);
             reader2.SetDiskId("vol1");
             reader2.SetVolumeGeneration(2000);
+            reader2.SetLastActivityTs(initialTs.MicroSeconds());
 
             SerializeToTextFormat(cache, CachedSessionsPath);
         }
@@ -3970,6 +4013,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto env = TTestEnvBuilder(Runtime)
             .With(CreateDiskAgentConfig())
             .Build();
+
+        Runtime.UpdateCurrentTime(initialTs + 3s);
 
         TDiskAgentClient diskAgent(Runtime);
         diskAgent.WaitReady();
@@ -4029,6 +4074,41 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         {
             auto error = Read(diskAgent, "reader-2", devices[3]);
             UNIT_ASSERT_EQUAL_C(S_OK, error.GetCode(), error);
+        }
+
+        // make all sessions stale
+        Runtime.AdvanceCurrentTime(ReleaseInactiveSessionsTimeout);
+
+        const auto acquireTs = Runtime.GetCurrentTime();
+
+        diskAgent.AcquireDevices(
+            TVector{devices[0], devices[1]},
+            "writer-1",
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            42,   // MountSeqNumber
+            "vol0",
+            1000);   // VolumeGeneration
+
+        {
+            auto sessions = LoadSessionCache();
+
+            // now we have only one session
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            auto& session = sessions[0];
+
+            UNIT_ASSERT_VALUES_EQUAL("writer-1", session.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(2, session.DeviceIdsSize());
+            ASSERT_VECTORS_EQUAL(
+                TVector({devices[0], devices[1]}),
+                session.GetDeviceIds());
+
+            UNIT_ASSERT_VALUES_EQUAL(42, session.GetMountSeqNumber());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", session.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(1000, session.GetVolumeGeneration());
+            UNIT_ASSERT_VALUES_EQUAL(
+                acquireTs.MicroSeconds(),
+                session.GetLastActivityTs());
         }
     }
 

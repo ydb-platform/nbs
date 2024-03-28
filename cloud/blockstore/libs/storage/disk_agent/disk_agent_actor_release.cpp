@@ -28,19 +28,8 @@ void TDiskAgentActor::HandleReleaseDevices(
             record.GetDiskId(),
             record.GetVolumeGeneration());
 
-        // We should update the session cache (if it was configured) with every
-        // release request.
-        if (GetCachedSessionsPath()) {
-            UpdateSessionCacheAndRespond(
-                ctx,
-                CreateRequestInfo(
-                    ev->Sender,
-                    ev->Cookie,
-                    ev->Get()->CallContext),
-                std::move(response));
+        UpdateSessionCache(ctx);
 
-            return;
-        }
     } catch (const TServiceError& e) {
         *response->Record.MutableError() = MakeError(e.GetCode(), e.what());
     }

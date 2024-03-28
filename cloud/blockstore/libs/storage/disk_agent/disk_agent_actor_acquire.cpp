@@ -67,18 +67,11 @@ void TDiskAgentActor::HandleAcquireDevices(
             record.GetDiskId(),
             record.GetVolumeGeneration());
 
-        if (!Spdk || !record.HasRateLimits()) {
-            // If something has changed in sessions we should update the session
-            // cache (if it was configured). To do this, we spawn a special actor
-            // that updates the session cache and responds to the acquire request.
-            if (updated && GetCachedSessionsPath()) {
-                UpdateSessionCacheAndRespond(
-                    ctx,
-                    std::move(requestInfo),
-                    std::make_unique<TEvDiskAgent::TEvAcquireDevicesResponse>());
-                return;
-            }
+        if (updated) {
+            UpdateSessionCache(ctx);
+        }
 
+        if (!Spdk || !record.HasRateLimits()) {
             reply(NProto::TError());
             return;
         }
