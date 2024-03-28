@@ -6,8 +6,27 @@ namespace NCloud::NBlockStore::NStorage {
 
 using TRequest = TRequestInBuffer<TWriteBufferRequestData>;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculateRequestCount(
+    const TRequestGrouping& g,
+    const TVector<TRequest>& requests)
+{
+    ui32 groupedRequestCount = 0;
+    for (const auto& group: g.Groups) {
+        groupedRequestCount += group.Requests.size();
+    }
+
+    ui32 ungroupedRequestCount = requests.end() - g.FirstUngrouped;
+    return groupedRequestCount + ungroupedRequestCount;
+}
+
+}   // namespace
+
 TRequestGrouping GroupRequests(
-    TVector<TRequestInBuffer<TWriteBufferRequestData>>& requests,
+    TVector<TRequest>& requests,
     ui32 totalWeight,
     ui32 minWeight,
     ui32 maxWeight,
@@ -146,16 +165,7 @@ TRequestGrouping GroupRequests(
         }
     }
 
-#ifndef N_DEBUG
-    ui32 groupedRequestCount = 0;
-    for (const auto& group: g.Groups) {
-        groupedRequestCount += group.Requests.size();
-    }
-
-    ui32 ungroupedRequestCount = requests.end() - g.FirstUngrouped;
-
-    Y_ABORT_UNLESS(requests.size() == groupedRequestCount + ungroupedRequestCount);
-#endif
+    Y_DEBUG_ABORT_UNLESS(requests.size() == CalculateRequestCount(g, requests));
 
     return g;
 }
