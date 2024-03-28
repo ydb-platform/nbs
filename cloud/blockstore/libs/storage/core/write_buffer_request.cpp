@@ -146,6 +146,17 @@ TRequestGrouping GroupRequests(
         }
     }
 
+#ifndef N_DEBUG
+    ui32 groupedRequestCount = 0;
+    for (const auto& group: g.Groups) {
+        groupedRequestCount += group.Requests.size();
+    }
+
+    ui32 ungroupedRequestCount = requests.end() - g.FirstUngrouped;
+
+    Y_ABORT_UNLESS(requests.size() == groupedRequestCount + ungroupedRequestCount);
+#endif
+
     return g;
 }
 
