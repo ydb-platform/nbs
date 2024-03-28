@@ -4842,26 +4842,24 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     NProto::TError result;
-    if (timeout == TDuration::Zero()) {
-        result = MakeError(S_OK);
-        cmsTs = TInstant::Zero();
-    } else {
-        result = MakeError(
-            E_TRY_AGAIN,
-            TStringBuilder() << "time remaining: " << timeout);
-    }
 
     // Agent can return from 'unavailable' state only when it is reconnected to
     // the cluster.
     if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
         newState == NProto::AGENT_STATE_ONLINE)
     {
-        result = MakeError(E_TRY_AGAIN, "agent currently unavailable");
         timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
-
         if (!timeout) {
             result.SetCode(E_INVALID_STATE);
         }
+    }
+
+    if (timeout) {
+        result = MakeError(
+            E_TRY_AGAIN,
+            TStringBuilder() << "time remaining: " << timeout);
+    } else {
+        cmsTs = TInstant::Zero();
     }
 
     if (dryRun) {
