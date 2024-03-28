@@ -178,7 +178,7 @@ NProto::TError AllocateCheckpoint(
     TDiskRegistryState& state,
     const TString& sourceDiskId,
     const TString& checkpointId,
-    TString* checkpointDiskId,
+    TString* shadowDiskId,
     TVector<TDeviceConfig>* devices);
 
 NProto::TStorageServiceConfig CreateDefaultStorageConfigProto();

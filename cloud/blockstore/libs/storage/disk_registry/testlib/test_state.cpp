@@ -298,7 +298,7 @@ NProto::TError AllocateCheckpoint(
     TDiskRegistryState& state,
     const TString& sourceDiskId,
     const TString& checkpointId,
-    TString* checkpointDiskId,
+    TString* shadowDiskId,
     TVector<TDeviceConfig>* devices)
 {
     TDiskRegistryState::TAllocateCheckpointResult result{};
@@ -310,7 +310,7 @@ NProto::TError AllocateCheckpoint(
     UNIT_ASSERT_VALUES_EQUAL(0, result.DeviceReplacementIds.size());
 
     *devices = std::move(result.Devices);
-    *checkpointDiskId = std::move(result.CheckpointDiskId);
+    *shadowDiskId = std::move(result.ShadowDiskId);
 
     return error;
 }

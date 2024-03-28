@@ -471,9 +471,8 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
 
     UpdateCheckpointRequest(
         ctx,
-        true,                               // Completed
-        msg->Record.GetCheckpointDiskId()   // ShadowDiskId
-    );
+        true,   // Completed
+        msg->Record.GetShadowDiskId());
 }
 
 template <typename TMethod>
