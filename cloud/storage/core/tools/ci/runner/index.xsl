@@ -155,7 +155,7 @@
     </a>
 </xsl:template>
 
-<xsl:template name="teamcity-badge-row" match="nb-nbs-stable-lab-teamcity-tests/child::*">
+<xsl:template match="nb-nbs-stable-lab-teamcity-tests/child::*">
     <xsl:param name="teamcity-domain"/>
     <div style="border-top: 1px dashed black; margin-bottom: 10px; padding-top: 10px">
         <b>nb-nbs-stable-lab/<xsl:value-of select="name(.)"/>:</b>
