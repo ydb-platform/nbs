@@ -81,6 +81,7 @@ class TestResult:
             status = TestStatus.PASS
 
         log_urls = {
+            "DIR": get_property_value(testcase, "url:logs_directory"),
             "Log": get_property_value(testcase, "url:Log"),
             "log": get_property_value(testcase, "url:log"),
             "stdout": get_property_value(testcase, "url:stdout"),
@@ -164,7 +165,7 @@ class TestSummary:
 
     def render(self, add_footnote=False):
         github_srv = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-        repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/ydb")
+        repo = os.environ.get("GITHUB_REPOSITORY", "ydb-platform/nbs")
 
         footnote_url = f"{github_srv}/{repo}/tree/main/.github/config"
 

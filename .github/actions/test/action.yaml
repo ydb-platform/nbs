@@ -27,6 +27,12 @@ inputs:
   bazel_remote_uri:
     required: false
     description: "bazel-remote endpoint"
+  bazel_remote_username:
+    required: false
+    description: "bazel-remote username"
+  bazel_remote_password:
+    required: false
+    description: "bazel-remote password"
   cache_update:
     required: false
     description: "Use cache for tests"
@@ -104,15 +110,21 @@ runs:
           extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
         fi
 
+        if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
+          extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
+          extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
+        fi
+
         if [ "${{ inputs.cache_update }}" = "true" ]; then
           extra_params+=(--cache-tests)
+          extra_params+=(--bazel-remote-put --dist-cache-evict-bins)
         fi
 
         readarray -d ',' -t test_size < <(printf "%s" "${{ inputs.test_size }}")
         readarray -d ',' -t test_type < <(printf "%s" "${{ inputs.test_type }}")
 
         echo "::group::ya-make-test"
-        sudo -E -H -u github ./ya test -k --build "${build_type}" -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' \
+        sudo -E -H -u github ./ya test -k --build "${build_type}" \
           ${test_size[@]/#/--test-size=} ${test_type[@]/#/--test-type=} \
           --test-threads "${{ inputs.test_threads }}" --link-threads "${{ inputs.link_threads }}" \
           --cache-size 512G --do-not-output-stderrs -T \
@@ -146,6 +158,7 @@ runs:
           -m .github/config/muted_ya.txt \
           --ya-out "$OUT_DIR" \
           --log-url-prefix "$S3_WEBSITE_PREFIX/logs/" \
+          --data-url-prefix "$S3_WEBSITE_PREFIX/test_data$GITHUB_WORKSPACE" \
           --log-out-dir "$ARTIFACTS_DIR/logs/" \
           "$JUNIT_REPORT_XML"
 

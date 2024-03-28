@@ -1,4 +1,4 @@
-name: Nightly build
+name: Nightly build (asan)
 on:
   schedule:
     - cron: "0 1 * * *"
@@ -6,11 +6,12 @@ on:
 
 jobs:
   build:
-    name: Build/test x86_64 using YA (relwithdebinfo)
+    name: Build/test x86_64 using YA (asan)
     uses: ./.github/workflows/build_and_test_on_demand.yaml
     secrets: inherit
     with:
-      build_preset: relwithdebinfo
+      build_preset: release-asan
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
       cache_update_build: true
       cache_update_tests: false
       test_threads: 6
