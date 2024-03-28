@@ -215,6 +215,12 @@ bool TGarbageQueue::TryReleaseCollectBarrier(ui64 commitId)
     return true;
 }
 
+bool TGarbageQueue::IsCollectBarrierAcquired(ui64 commitId) const
+{
+    auto it = Impl->Barriers.find(commitId);
+    return it != Impl->Barriers.end() && it->RefCount > 0;
+}
+
 ui64 TGarbageQueue::GetCollectCommitId() const
 {
     if (Impl->Barriers) {

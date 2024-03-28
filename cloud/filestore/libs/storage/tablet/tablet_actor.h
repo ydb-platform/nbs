@@ -405,6 +405,10 @@ private:
         const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseCollectBarrier(
+        const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleReadDataCompleted(
         const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);

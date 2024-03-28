@@ -581,6 +581,23 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // Release collect barrier
+    //
+
+    struct TReleaseCollectBarrier
+    {
+        // Commit id to release
+        ui64 CommitId;
+        // Number of times to perform the release
+        ui32 Count;
+
+        TReleaseCollectBarrier(ui64 commitId, ui32 count)
+            : CommitId(commitId)
+            , Count(count)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -597,6 +614,8 @@ struct TEvIndexTabletPrivate
         EvReadDataCompleted,
         EvWriteDataCompleted,
 
+        EvReleaseCollectBarrier,
+
         EvEnd
     };
 
@@ -608,6 +627,9 @@ struct TEvIndexTabletPrivate
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
     using TEvUpdateLeakyBucketCounters = TRequestEvent<TEmpty, EvUpdateLeakyBucketCounters>;
+
+    using TEvReleaseCollectBarrier =
+        TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
 
     using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
     using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;

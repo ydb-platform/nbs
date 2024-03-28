@@ -231,4 +231,13 @@ message TStorageConfig
     optional uint32 CleanupThresholdAverage = 342;
     // Enables the aforementioned threshold.
     optional bool NewCleanupEnabled = 343;
+
+    // Enables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
+    // for writing.
+    optional bool ThreeStageWriteEnabled = 344;
+
+    // When issuing blob ids, the tablet acquires a collect barrier. In order
+    // to release it in case of a client disconnect, this timeout is used.
+    optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 345;
+
 }

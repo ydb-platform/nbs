@@ -557,6 +557,44 @@ public:
         return request;
     }
 
+    auto CreateGenerateBlobIdsRequest(
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui64 length)
+    {
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+        return request;
+    }
+
+    auto CreateAddDataRequest(
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui32 length,
+        const TVector<NKikimr::TLogoBlobID>& blobIds,
+        ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvAddDataRequest>();
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+        for (const auto& blobId: blobIds) {
+            NKikimr::LogoBlobIDFromLogoBlobID(
+                blobId,
+                request->Record.MutableBlobIds()->Add());
+        }
+        request->Record.SetCommitId(commitId);
+        return request;
+    }
+
     auto CreateAcquireLockRequest(
         ui64 handle,
         ui64 owner,
