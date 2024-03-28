@@ -117,7 +117,7 @@ jobs:
         with:
           submodules: true
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ contains(github.event.pull_request.labels.*.name, 'rebase') && 0 || 1 }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
@@ -165,7 +165,7 @@ jobs:
         with:
           submodules: true
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ contains(github.event.pull_request.labels.*.name, 'rebase') && 0 || 1 }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: Rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
@@ -233,7 +233,7 @@ jobs:
         with:
           submodules: true
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ contains(github.event.pull_request.labels.*.name, 'rebase') && 0 || 1 }}
+          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
       - name: rebase PR
         if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
         shell: bash
