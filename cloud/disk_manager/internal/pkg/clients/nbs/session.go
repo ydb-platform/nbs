@@ -247,6 +247,15 @@ func (s *Session) Write(
 		return errors.NewRetriableErrorf("last rediscover was failed")
 	}
 
+	blocksCount := uint32(len(data)) / s.BlockSize()
+	logging.Debug(
+		ctx,
+		"WriteBlocks on disk %v, offset %v, blocks count %v",
+		s.diskID,
+		startIndex,
+		blocksCount,
+	)
+
 	defer s.metrics.StatRequest("Write")(&err)
 
 	err = s.session.WriteBlocks(
