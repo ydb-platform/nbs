@@ -433,6 +433,14 @@ func FillEncryptedDisk(
 			if err != nil {
 				return 0, []uint32{}, 0, err
 			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				startIndex+uint64(blockIndex),
+				blockAcc.Sum32(),
+			)
 			blocksCrc32 = append(blocksCrc32, blockAcc.Sum32())
 		}
 	}
@@ -476,10 +484,11 @@ func GoWriteRandomBlocksToNbsDisk(
 			dice := rand.Intn(2)
 
 			var err error
+			blockAcc := crc32.NewIEEE()
+			data := make([]byte, blockSize)
 
 			switch dice {
 			case 0:
-				data := make([]byte, blockSize)
 				rand.Read(data)
 				if bytes.Equal(data, zeroes) {
 					logging.Debug(ctx, "rand generated all zeroes")
@@ -493,6 +502,19 @@ func GoWriteRandomBlocksToNbsDisk(
 			if err != nil {
 				return err
 			}
+
+			_, err = blockAcc.Write(data)
+			if err != nil {
+				return err
+			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				blockIndex,
+				blockAcc.Sum32(),
+			)
 		}
 
 		return nil
