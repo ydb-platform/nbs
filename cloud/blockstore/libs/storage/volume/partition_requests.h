@@ -879,7 +879,7 @@ private:
         NProto::TDescribeBlocksResponse& src,
         ui32 requestNo,
         NProto::TDescribeBlocksResponse& dst)
-    {   
+    {
         if (FAILED(src.GetError().GetCode())) {
             *dst.MutableError() = std::move(*src.MutableError());
             return;
