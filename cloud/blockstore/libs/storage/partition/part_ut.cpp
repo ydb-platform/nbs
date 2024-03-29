@@ -9689,12 +9689,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     if (spoofWriteBlobs) {
                         auto response =
                             std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
-<<<<<<< HEAD
-                        runtime.Send(new IEventHandle(
-=======
+
                         response->BlockChecksums.resize(1);
                         runtime->Send(new IEventHandle(
->>>>>>> d1de395af2 (issue-196: block checksums should be calculated after we copy the data from the client's buffer to our buffer, otherwise our client may modify the data between the checksum calculation stage and the writeblob stage (#825))
                             event->Sender,
                             event->Recipient,
                             response.release(),
