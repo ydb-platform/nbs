@@ -384,6 +384,9 @@ private:
     }
 
     void SendPartStatsToService(const NActors::TActorContext& ctx);
+    void DoSendPartStatsToService(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void SendSelfStatsToService(const NActors::TActorContext& ctx);
 
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
@@ -472,7 +475,13 @@ private:
     void ResetServicePipes(const NActors::TActorContext& ctx);
 
     void RegisterVolume(const NActors::TActorContext& ctx);
+    void DoRegisterVolume(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void UnregisterVolume(const NActors::TActorContext& ctx);
+    void DoUnregisterVolume(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void SendVolumeConfigUpdated(const NActors::TActorContext& ctx);
     void SendVolumeSelfCounters(const NActors::TActorContext& ctx);
 

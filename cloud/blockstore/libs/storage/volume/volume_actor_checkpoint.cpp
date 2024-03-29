@@ -471,9 +471,8 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
 
     UpdateCheckpointRequest(
         ctx,
-        true,                               // Completed
-        msg->Record.GetCheckpointDiskId()   // ShadowDiskId
-    );
+        true,   // Completed
+        msg->Record.GetShadowDiskId());
 }
 
 template <typename TMethod>
@@ -1350,6 +1349,14 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         (request.ReqType == ECheckpointRequestType::Delete ||
          request.ReqType == ECheckpointRequestType::DeleteData) &&
          State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor) {
+        auto checkpointInfo =
+            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
+        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+        }
+    }
 
     State->SetCheckpointRequestFinished(
         request,

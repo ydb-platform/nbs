@@ -400,12 +400,26 @@ void TVolumeActor::OnServicePipeDisconnect(
 
 void TVolumeActor::RegisterVolume(const TActorContext& ctx)
 {
+    DoRegisterVolume(ctx, State->GetDiskId());
+}
+
+void TVolumeActor::DoRegisterVolume(
+    const TActorContext& ctx,
+    const TString& diskId)
+{
+    Y_DEBUG_ABORT_UNLESS(diskId);
+
     NProto::TVolume volume;
     VolumeConfigToVolume(State->GetMeta().GetVolumeConfig(), volume);
 
+    if (State->GetDiskId() != diskId) {
+        // Handle shadow disk.
+        volume.SetDiskId(diskId);
+    }
+
     {
         auto request = std::make_unique<TEvService::TEvRegisterVolume>(
-            State->GetDiskId(),
+            volume.GetDiskId(),
             TabletID(),
             volume);
         NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
@@ -413,7 +427,7 @@ void TVolumeActor::RegisterVolume(const TActorContext& ctx)
 
     {
         auto request = std::make_unique<TEvStatsService::TEvRegisterVolume>(
-            State->GetDiskId(),
+            volume.GetDiskId(),
             TabletID(),
             std::move(volume));
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
@@ -422,19 +436,37 @@ void TVolumeActor::RegisterVolume(const TActorContext& ctx)
 
 void TVolumeActor::UnregisterVolume(const TActorContext& ctx)
 {
-    if (State) {
-        {
-            auto request = std::make_unique<TEvService::TEvUnregisterVolume>(
-                State->GetDiskId());
-            NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
-        }
+    if (!State) {
+        return;
+    }
 
-        {
-            auto request = std::make_unique<TEvStatsService::TEvUnregisterVolume>(
-                State->GetDiskId());
-            NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
+    DoUnregisterVolume(ctx, State->GetDiskId());
+
+    // Unregister shadow disks volumes.
+    for (const auto& [checkpointId, checkpointInfo]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo.ShadowDiskId);
         }
     }
+}
+
+void TVolumeActor::DoUnregisterVolume(
+    const TActorContext& ctx,
+    const TString& diskId)
+{
+    Y_DEBUG_ABORT_UNLESS(diskId);
+
+    NCloud::Send(
+        ctx,
+        MakeStorageServiceId(),
+        std::make_unique<TEvService::TEvUnregisterVolume>(diskId));
+
+    NCloud::Send(
+        ctx,
+        MakeStorageStatsServiceId(),
+        std::make_unique<TEvStatsService::TEvUnregisterVolume>(diskId));
 }
 
 void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)

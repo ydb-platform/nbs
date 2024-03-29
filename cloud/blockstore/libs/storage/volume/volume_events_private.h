@@ -215,6 +215,24 @@ struct TEvVolumePrivate
     };
 
     //
+    // ShadowDiskAcquired
+    //
+
+    struct TShadowDiskAcquired
+    {
+        using TDevices =
+            google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>;
+
+        NProto::TError Error;
+        TString ClientId;
+        TDevices Devices;
+
+        explicit TShadowDiskAcquired(NProto::TError error)
+            : Error(std::move(error))
+        {}
+    };
+
+    //
     //  UpdateShadowDiskStateRequest
     //
 
@@ -280,6 +298,7 @@ struct TEvVolumePrivate
         EvWriteOrZeroCompleted,
         EvUpdateReadWriteClientInfo,
         EvRemoveExpiredVolumeParams,
+        EvShadowDiskAcquired,
 
         EvEnd
     };
@@ -336,6 +355,11 @@ struct TEvVolumePrivate
     using TEvRemoveExpiredVolumeParams = TRequestEvent<
         TRemoveExpiredVolumeParams,
         EvRemoveExpiredVolumeParams
+    >;
+
+    using TEvShadowDiskAcquired = TRequestEvent<
+        TShadowDiskAcquired,
+        EvShadowDiskAcquired
     >;
 };
 
