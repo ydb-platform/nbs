@@ -9691,7 +9691,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
 
                         response->BlockChecksums.resize(1);
-                        runtime->Send(new IEventHandle(
+                        runtime.Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
