@@ -58,6 +58,19 @@ bool TProcessingBlocks::AdvanceProcessingIndex()
 
 bool TProcessingBlocks::SkipProcessedRanges()
 {
+    // skipping long contiguous ranges of set bits
+    while (CurrentProcessingIndex < BlockCount) {
+        ui64 chunkEnd = AlignDown<ui64>(
+            CurrentProcessingIndex + TCompressedBitmap::CHUNK_SIZE,
+            TCompressedBitmap::CHUNK_SIZE);
+        const auto bits = BlockMap->Count(CurrentProcessingIndex, chunkEnd);
+        if (bits != chunkEnd - CurrentProcessingIndex) {
+            break;
+        }
+
+        CurrentProcessingIndex = chunkEnd;
+    }
+
     while (CurrentProcessingIndex < BlockCount
             && BlockMap->Test(CurrentProcessingIndex))
     {
