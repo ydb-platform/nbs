@@ -15,21 +15,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/testcommon"
+	facade_testcommon "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
-
-////////////////////////////////////////////////////////////////////////////////
-
-func newContext() context.Context {
-	return logging.SetLogger(
-		context.Background(),
-		logging.NewStderrLogger(logging.DebugLevel),
-	)
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -160,7 +151,7 @@ func writeRandomBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCreate(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -184,7 +175,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestDeleteDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -210,7 +201,7 @@ func TestDeleteDisk(t *testing.T) {
 }
 
 func TestDeleteDiskSync(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -236,7 +227,7 @@ func TestDeleteDiskSync(t *testing.T) {
 }
 
 func TestCreateDeleteCheckpoint(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -263,7 +254,7 @@ func TestCreateDeleteCheckpoint(t *testing.T) {
 }
 
 func TestDeleteCheckpointOnUnexistingDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -273,7 +264,7 @@ func TestDeleteCheckpointOnUnexistingDisk(t *testing.T) {
 }
 
 func TestDeleteCheckpointData(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -303,7 +294,7 @@ func TestDeleteCheckpointData(t *testing.T) {
 }
 
 func TestResizeDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -326,7 +317,7 @@ func TestResizeDisk(t *testing.T) {
 }
 
 func TestResizeDiskConcurrently(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -364,7 +355,7 @@ func TestResizeDiskConcurrently(t *testing.T) {
 }
 
 func TestResizeDiskFailureBecauseSizeIsNotDivisibleByBlockSize(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -387,7 +378,7 @@ func TestResizeDiskFailureBecauseSizeIsNotDivisibleByBlockSize(t *testing.T) {
 }
 
 func TestResizeDiskFailureBecauseSizeDecreaseIsForbidden(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -410,7 +401,7 @@ func TestResizeDiskFailureBecauseSizeDecreaseIsForbidden(t *testing.T) {
 }
 
 func TestResizeDiskFailureWhileChekpointing(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -433,7 +424,7 @@ func TestResizeDiskFailureWhileChekpointing(t *testing.T) {
 }
 
 func TestAlterDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -459,7 +450,7 @@ func TestAlterDisk(t *testing.T) {
 }
 
 func TestAlterDiskConcurrently(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -500,7 +491,7 @@ func TestAlterDiskConcurrently(t *testing.T) {
 }
 
 func TestAlterDiskFailureWhileCheckpointing(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -526,7 +517,7 @@ func TestAlterDiskFailureWhileCheckpointing(t *testing.T) {
 }
 
 func TestRebaseDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -591,7 +582,7 @@ func TestRebaseDisk(t *testing.T) {
 }
 
 func TestAssignDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -614,7 +605,7 @@ func TestAssignDisk(t *testing.T) {
 }
 
 func TestUnassignDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -632,7 +623,7 @@ func TestUnassignDisk(t *testing.T) {
 }
 
 func TestUnassignDeletedDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -653,7 +644,7 @@ func TestUnassignDeletedDisk(t *testing.T) {
 }
 
 func TestTokenErrorsShouldBeRetriable(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	mockTokenProvider := &mockTokenProvider{}
 	client := newClientFull(t, ctx, "zone", mockTokenProvider, "10s", "20s")
 
@@ -665,7 +656,7 @@ func TestTokenErrorsShouldBeRetriable(t *testing.T) {
 }
 
 func TestGetCheckpointSize(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -745,7 +736,7 @@ func TestGetCheckpointSize(t *testing.T) {
 }
 
 func TestIsNotFoundError(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	_, err := client.Describe(ctx, "unexisting")
@@ -758,7 +749,7 @@ func TestIsNotFoundError(t *testing.T) {
 }
 
 func TestMountRW(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -796,7 +787,7 @@ func TestMountRW(t *testing.T) {
 }
 
 func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	sessionRediscoverPeriodMaxSeconds := 1
 
 	client := newClientFull(
@@ -852,7 +843,7 @@ func TestMountRWDoesNotConflictWithBackgroundRediscover(t *testing.T) {
 }
 
 func TestFreeze(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -915,7 +906,7 @@ func TestFreeze(t *testing.T) {
 }
 
 func TestScanDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -946,7 +937,7 @@ func TestGetChangedBytes(t *testing.T) {
 		nbs.CheckpointTypeNormal,
 		nbs.CheckpointTypeWithoutData,
 	} {
-		ctx := newContext()
+		ctx := testcommon.NewContext()
 		client := newClient(t, ctx)
 
 		diskID := t.Name() + strconv.Itoa(int(checkpointType))
@@ -1031,7 +1022,7 @@ func TestGetChangedBytes(t *testing.T) {
 }
 
 func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 	otherZoneClient := newOtherZoneClient(t, ctx)
 	multiZoneClient := newMultiZoneClient(t, ctx)
@@ -1169,7 +1160,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 }
 
 func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 	otherZoneClient := newOtherZoneClient(t, ctx)
 	multiZoneClient := newMultiZoneClient(t, ctx)
@@ -1198,7 +1189,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 
 	go func() {
 		// Need to add some variance for better testing.
-		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+		facade_testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
 
 		errs <- multiZoneClient.Clone(
 			ctx,
@@ -1212,7 +1203,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 
 	go func() {
 		// Need to add some variance for better testing.
-		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+		facade_testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
 
 		errs <- otherZoneClient.DeleteWithFillGeneration(
 			ctx,
@@ -1230,7 +1221,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 }
 
 func TestFinishFillDisk(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 	multiZoneClient := newMultiZoneClient(t, ctx)
 	otherZoneClient := newOtherZoneClient(t, ctx)
@@ -1278,7 +1269,7 @@ func TestFinishFillDisk(t *testing.T) {
 }
 
 func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
-	ctx := newContext()
+	ctx := testcommon.NewContext()
 	client := newClient(t, ctx)
 
 	diskID := t.Name()
@@ -1427,5 +1418,116 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_2")
 	require.NoError(t, err)
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
+	require.NoError(t, err)
+}
+
+func TestReadFromProxyOverlayDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 1,
+	})
+	require.NoError(t, err)
+
+	crc32, _, err := testcommon.FillDisk(
+		client,
+		diskID,
+		uint64(diskSize),
+	)
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	require.True(t, created)
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(
+		proxyOverlayDiskID,
+		uint64(diskSize),
+		crc32,
+	)
+	require.NoError(t, err)
+}
+
+func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 2,
+	})
+	require.NoError(t, err)
+
+	crc32, _, err := testcommon.FillDisk(
+		client,
+		diskID,
+		uint64(diskSize),
+	)
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	// Now it is not allowed to create proxy overlay disks for multipartition
+	// disks.
+	require.False(t, created)
+	require.NoError(t, err)
+
+	// We need to create proxy overlay disk manually.
+	err = client.Create(ctx, nbs.CreateDiskParams{
+		ID:                   proxyOverlayDiskID,
+		BaseDiskID:           diskID,
+		BaseDiskCheckpointID: "cp",
+		BlocksCount:          1024,
+		BlockSize:            4096,
+		Kind:                 types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount:      1,
+		IsSystem:             true,
+	})
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(
+		proxyOverlayDiskID,
+		uint64(diskSize),
+		crc32,
+	)
 	require.NoError(t, err)
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	nbs_testcommon "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -385,7 +385,11 @@ func testCreateDiskFromIncrementalSnapshot(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+<<<<<<< HEAD
 	_, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+=======
+	_, _, err = nbs_testcommon.FillDisk(nbsClient, diskID1, diskSize)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -404,7 +408,11 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
+<<<<<<< HEAD
 	_, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+=======
+	_, _, err = nbs_testcommon.FillDisk(nbsClient, diskID1, diskSize)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	snapshotID2 := t.Name() + "2"
@@ -495,7 +503,11 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+<<<<<<< HEAD
 	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+=======
+	crc32, _, err := nbs_testcommon.FillDisk(nbsClient, diskID1, diskSize)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -580,7 +592,11 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
+<<<<<<< HEAD
 	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+=======
+	crc32, _, err := nbs_testcommon.FillDisk(nbsClient, diskID1, diskSize)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -664,7 +680,11 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
+<<<<<<< HEAD
 	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, imageSize)
+=======
+	crc32, _, err := nbs_testcommon.FillDisk(nbsClient, diskID1, imageSize)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -1057,12 +1077,16 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	encryptionDesc, err := disks.PrepareEncryptionDesc(encryption)
 	require.NoError(t, err)
 
+<<<<<<< HEAD
 	diskContentInfo, err := testcommon.FillEncryptedDisk(
 		nbsClient,
 		diskID1,
 		diskSize,
 		encryptionDesc,
 	)
+=======
+	crc32, _, err := nbs_testcommon.FillEncryptedDisk(nbsClient, diskID1, diskSize, encryptionDesc)
+>>>>>>> mv to nbs client tests
 	require.NoError(t, err)
 
 	diskParams1, err = nbsClient.Describe(ctx, diskID1)
@@ -1221,136 +1245,6 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceReadFromProxyOverlayDisk(t *testing.T) {
-	ctx := testcommon.NewContext()
-
-	diskID := t.Name()
-	diskSize := int64(1024 * 4096)
-	diskZone := "zone-a"
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, diskZone)
-
-	err := nbsClient.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     1024,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD,
-		PartitionsCount: 1,
-	})
-	require.NoError(t, err)
-
-	crc32, _, err := testcommon.FillDisk(
-		nbsClient,
-		diskID,
-		uint64(diskSize),
-	)
-	require.NoError(t, err)
-
-	err = nbsClient.CreateCheckpoint(ctx, nbs.CheckpointParams{
-		DiskID:         diskID,
-		CheckpointID:   "cp",
-		CheckpointType: nbs.CheckpointTypeNormal,
-	})
-	require.NoError(t, err)
-
-	proxyOverlayDiskID := "proxy_" + diskID
-	created, err := nbsClient.CreateProxyOverlayDisk(
-		ctx,
-		proxyOverlayDiskID,
-		diskID,
-		"cp",
-	)
-	require.True(t, created)
-	require.NoError(t, err)
-
-	err = nbsClient.ValidateCrc32(
-		proxyOverlayDiskID,
-		uint64(diskSize),
-		crc32,
-	)
-	require.NoError(t, err)
-
-	// Delete proxy overlay disk to pass сonsistency check.
-	err = nbsClient.Delete(ctx, proxyOverlayDiskID)
-	require.NoError(t, err)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceReadFromProxyOverlayDiskWithMultipartitionBaseDisk(
-	t *testing.T,
-) {
-
-	ctx := testcommon.NewContext()
-
-	diskID := t.Name()
-	diskSize := int64(1024 * 4096)
-	diskZone := "zone-a"
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, diskZone)
-
-	err := nbsClient.Create(ctx, nbs.CreateDiskParams{
-		ID:              diskID,
-		BlocksCount:     1024,
-		BlockSize:       4096,
-		Kind:            types.DiskKind_DISK_KIND_SSD,
-		PartitionsCount: 2,
-	})
-	require.NoError(t, err)
-
-	crc32, _, err := testcommon.FillDisk(
-		nbsClient,
-		diskID,
-		uint64(diskSize),
-	)
-	require.NoError(t, err)
-
-	err = nbsClient.CreateCheckpoint(ctx, nbs.CheckpointParams{
-		DiskID:         diskID,
-		CheckpointID:   "cp",
-		CheckpointType: nbs.CheckpointTypeNormal,
-	})
-	require.NoError(t, err)
-
-	proxyOverlayDiskID := "proxy_" + diskID
-	created, err := nbsClient.CreateProxyOverlayDisk(
-		ctx,
-		proxyOverlayDiskID,
-		diskID,
-		"cp",
-	)
-	// Now it is not allowed to create proxy overlay disks for multipartition
-	// disks.
-	require.False(t, created)
-	require.NoError(t, err)
-
-	// We need to create proxy overlay disk manually.
-	err = nbsClient.Create(ctx, nbs.CreateDiskParams{
-		ID:                   proxyOverlayDiskID,
-		BaseDiskID:           diskID,
-		BaseDiskCheckpointID: "cp",
-		BlocksCount:          1024,
-		BlockSize:            4096,
-		Kind:                 types.DiskKind_DISK_KIND_SSD,
-		PartitionsCount:      1,
-		IsSystem:             true,
-	})
-	require.NoError(t, err)
-
-	err = nbsClient.ValidateCrc32(
-		proxyOverlayDiskID,
-		uint64(diskSize),
-		crc32,
-	)
-	require.NoError(t, err)
-
-	// Delete proxy overlay disk to pass сonsistency check.
-	err = nbsClient.Delete(ctx, proxyOverlayDiskID)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
