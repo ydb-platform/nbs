@@ -2040,9 +2040,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     TString GenerateValidateData(ui32 size)
     {
-        TString data(size, '\0');
+        TString data(size, 0);
         for (ui32 i = 0; i < size; ++i) {
-            data[i] = 'A' + (i % 25);
+            data[i] = 'A' + (i % ('Z' - 'A' + 1));
         }
         return data;
     }
@@ -2053,7 +2053,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
-
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
@@ -2076,26 +2075,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-        ui64 handle =
-            service
-                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
 
         ui32 putRequestCount = 0;
         TActorId worker;
-        env.GetRuntime().SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
             {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTablet::EvGenerateBlobIdsRequest: {
                         if (!worker) {
                             worker = event->Sender;
                         }
+                        break;
                     }
                     case TEvBlobStorage::EvPut: {
                         if (event->Sender == worker &&
@@ -2104,12 +2103,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         {
                             ++putRequestCount;
                         }
+                        break;
                     }
-
-                    break;
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         auto& runtime = env.GetRuntime();
@@ -2130,7 +2127,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvIndexTabletPrivate::EvAddBlobRequest));
             UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTabletPrivate::EvWriteBlobRequest));
             UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvService::EvWriteDataResponse));
-            UNIT_ASSERT_VALUES_EQUAL(putRequestCount, expectedPutCount);
+            UNIT_ASSERT_VALUES_EQUAL(expectedPutCount, putRequestCount);
             // clang-format on
             runtime.ClearCounters();
             putRequestCount = 0;
@@ -2146,19 +2143,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             DefaultBlockSize * BlockGroupSize * 10,
             11);
         validateWriteData(0, DefaultBlockSize * BlockGroupSize * 3, 3);
-        // Currently there are 1 + 1 + 64 + 64 + 64 * 10 + 64 * 3 = 962 blocks
-        // out of 1000. Therefore, the next write should fail
+        // Currently the data is written from 0th to (1 + BlockGroupSize * 10) = 641th block
+        // Therefore, the next write should fail
 
         auto data =
-            GenerateValidateData(DefaultBlockSize * BlockGroupSize * 30);
+            GenerateValidateData(DefaultBlockSize * 360);
 
         auto response =
-            service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
+            service.AssertWriteDataFailed(headers, fs, nodeId, handle, DefaultBlockSize * 641, data);
         auto error = STATUS_FROM_CODE(response->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(error, (ui32)NProto::E_FS_NOSPC);
+        UNIT_ASSERT_VALUES_EQUAL((ui32)NProto::E_FS_NOSPC, error);
     }
 
-    Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnaligned)
+    Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2182,15 +2179,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-        ui64 nodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-        ui64 handle =
-            service
-                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
 
         auto& runtime = env.GetRuntime();
 
@@ -2216,7 +2211,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(1, 128_KB);
     }
 
-    Y_UNIT_TEST(ShouldFallbackThreeStageWrite)
+    Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
         TTestEnv env;
         env.CreateSubDomain("nfs");
@@ -2259,17 +2254,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
 
         auto headers = service.InitSession(fs, "client");
-
-        ui64 nodeId =
-            service
-                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
-                ->Record.GetNode()
-                .GetId();
-
-        ui64 handle =
-            service
-                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
-                ->Record.GetHandle();
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
 
         // GenerateBlobIdsResponse fails
         TString data = GenerateValidateData(256_KB);
@@ -2338,7 +2329,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             }
                             ++evPuts;
                         }
-                        return false;
+                        break;
                     }
                 }
 

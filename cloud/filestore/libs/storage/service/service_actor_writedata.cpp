@@ -95,8 +95,8 @@ private:
     {
         const auto* msg = ev->Get();
 
-        if (FAILED(msg->GetStatus())) {
-            WriteData(ctx, FormatError(msg->GetError()));
+        if (HasError(msg->GetError())) {
+            WriteData(ctx, msg->GetError());
             return;
         }
 
@@ -106,12 +106,12 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "GenerateBlobIds response received: %s",
-            GenerateBlobIdsResponse.DebugString().c_str());
+            GenerateBlobIdsResponse.DebugString().Quote().c_str());
 
-        WriteBlobIfNeeded(ctx);
+        WriteBlobs(ctx);
     }
 
-    void WriteBlobIfNeeded(const TActorContext& ctx)
+    void WriteBlobs(const TActorContext& ctx)
     {
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = 0;
@@ -139,10 +139,8 @@ private:
             LOG_DEBUG(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "Sending TEvPut request to blob storage, blobId: %s, size: "
-                "%lu, proxy: %s",
+                "Sending TEvPut request to blob storage, blobId: %s, proxy: %s",
                 blobId.ToString().c_str(),
-                blobId.BlobSize(),
                 proxy.ToString().c_str());
             SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
             offset += blobId.BlobSize();
@@ -156,17 +154,17 @@ private:
         const auto* msg = ev->Get();
 
         if (msg->Status != NKikimrProto::OK) {
-            const auto errorReason = FormatError(
-                MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason));
+            const auto error =
+                MakeError(MAKE_KIKIMR_ERROR(msg->Status), msg->ErrorReason);
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
                 "WriteData error: %s",
-                errorReason.c_str());
+                msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
             RemainingBlobsToWrite = std::numeric_limits<ui32>::max();
-            return WriteData(ctx, errorReason);
+            return WriteData(ctx, error);
         }
 
         LOG_DEBUG(
@@ -191,8 +189,8 @@ private:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(WriteRequest.GetBuffer().size());
-        for (const auto& blobId: GenerateBlobIdsResponse.GetBlobs()) {
-            request->Record.AddBlobIds()->CopyFrom(blobId.GetBlobId());
+        for (auto& blob: *GenerateBlobIdsResponse.MutableBlobs()) {
+            request->Record.AddBlobIds()->Swap(blob.MutableBlobId());
         }
         request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
 
@@ -200,7 +198,7 @@ private:
             ctx,
             TFileStoreComponents::SERVICE,
             "Sending AddData request to tablet: %s",
-            request->Record.DebugString().c_str());
+            request->Record.DebugString().Quote().c_str());
 
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
     }
@@ -211,8 +209,8 @@ private:
     {
         auto* msg = ev->Get();
 
-        if (FAILED(msg->GetStatus())) {
-            return WriteData(ctx, FormatError(msg->GetError()));
+        if (HasError(msg->GetError())) {
+            return WriteData(ctx, msg->GetError());
         }
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
@@ -224,7 +222,7 @@ private:
     /**
      * @brief Fallback to regular write if two-stage write fails for any reason
      */
-    void WriteData(const TActorContext& ctx, const TString& fallbackReason)
+    void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
         LOG_WARN(
             ctx,
@@ -235,7 +233,7 @@ private:
             WriteRequest.GetHandle(),
             WriteRequest.GetOffset(),
             WriteRequest.GetBuffer().size(),
-            fallbackReason.Quote().c_str());
+            FormatError(error).Quote().c_str());
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
@@ -250,7 +248,7 @@ private:
     {
         auto* msg = ev->Get();
 
-        if (FAILED(msg->GetStatus())) {
+        if (HasError(msg->GetError())) {
             HandleError(ctx, msg->GetError());
             return;
         }
@@ -332,7 +330,7 @@ void TStorageServiceActor::HandleWriteData(
     if (filestore.GetFeatures().GetThreeStageWriteEnabled() &&
         msg->Record.GetOffset() % blockSize == 0 &&
         msg->Record.GetBuffer().Size() % blockSize == 0 &&
-        msg->Record.GetBuffer().Size() >
+        msg->Record.GetBuffer().Size() >=
             filestore.GetFeatures().GetThreeStageWriteThreshold())
     {
         LOG_DEBUG(
