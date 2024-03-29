@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 
 #include <ydb/core/mind/local.h>
@@ -388,7 +389,9 @@ private:
             response->Record.MutableError()->CopyFrom(
                 MakeError(E_NOT_FOUND, "disk not found")
             );
-        } else if (clientId == disk->WriterClientId) {
+        } else if (
+            clientId == disk->WriterClientId || clientId == AnyWriterClientId)
+        {
             disk->WriterClientId = "";
         } else {
             auto it = Find(
