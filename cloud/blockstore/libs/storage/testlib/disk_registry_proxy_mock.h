@@ -917,7 +917,7 @@ private:
                 TEvDiskRegistry::TEvAllocateCheckpointResponse>(error);
 
             if (!HasError(response->GetError())) {
-                response->Record.SetCheckpointDiskId(shadowDiskId);
+                response->Record.SetShadowDiskId(shadowDiskId);
             }
 
             NCloud::Reply(ctx, *ev, std::move(response));
@@ -930,7 +930,8 @@ private:
             return;
         }
 
-        auto shadowDiskId = record.GetSourceDiskId() + record.GetCheckpointId();
+        auto shadowDiskId =
+            record.GetSourceDiskId() + "-" + record.GetCheckpointId();
 
         auto allocateDiskRequest =
             std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();

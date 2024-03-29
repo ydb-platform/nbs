@@ -3665,7 +3665,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             if (response->GetStatus() != S_OK) {
                 UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    "Can't write to source disk while shadow disk \"vol0c1\" "
+                    "Can't write to source disk while shadow disk \"vol0-c1\" "
                     "not ready yet.",
                     response->GetError().GetMessage());
                 return false;
@@ -3791,7 +3791,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             if (response->GetStatus() != S_OK) {
                 UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    "Can't write to source disk while shadow disk \"vol0c1\" "
+                    "Can't write to source disk while shadow disk \"vol0-c1\" "
                     "not ready yet.",
                     response->GetError().GetMessage());
                 return false;

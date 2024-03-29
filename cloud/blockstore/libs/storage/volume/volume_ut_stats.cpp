@@ -542,10 +542,10 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             ReadFromCheckpointBlockCount * DiskBlockSize,
-            statsForDisks["vol0c1"].ReadByteCount);
+            statsForDisks["vol0-c1"].ReadByteCount);
         UNIT_ASSERT_VALUES_EQUAL(
             DiskByteCount + WriteBlockCount * DiskBlockSize,
-            statsForDisks["vol0c1"].WriteByteCount);
+            statsForDisks["vol0-c1"].WriteByteCount);
     }
 }
 
