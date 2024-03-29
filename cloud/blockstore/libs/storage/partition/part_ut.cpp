@@ -936,6 +936,11 @@ public:
         return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     }
 
+    std::unique_ptr<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest> CreateAddConfirmedBlobsRequest()
+    {
+        return std::make_unique<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest>();
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -9666,6 +9671,48 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCompactAfterAddingConfirmedBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        bool dropAddConfirmedBlobs = false;
+
+        runtime->SetObserverFunc([&] (auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                    if (dropAddConfirmedBlobs) {
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+
+        dropAddConfirmedBlobs = true;
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+
+        partition.SendCompactionRequest();
+
+        dropAddConfirmedBlobs = false;
+        partition.AddConfirmedBlobs();
+
+        {
+            auto compactResponse = partition.RecvCompactionResponse();
+            // should fail on S_ALREADY and S_FALSE to ensure that compaction
+            // was really taken place here
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, compactResponse->GetStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldConfirmBlobs)
     {
         auto config = DefaultConfig();
@@ -10774,7 +10821,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetStatus(),
             response->GetErrorReason());
     }
-  
+
     Y_UNIT_TEST(ShouldProperlyCalculateBlockChecksumsForBatchedWrites)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -10895,7 +10942,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetErrorReason());
         }
     }
-  
+
     Y_UNIT_TEST(ShouldCancelRequestsOnTabletRestart)
     {
         constexpr ui32 blockCount = 1024 * 1024;

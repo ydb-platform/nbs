@@ -340,6 +340,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     PartCounters->RequestCounters.AddConfirmedBlobs.AddRequest(time);
 
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
+    ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
