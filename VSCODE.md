@@ -26,3 +26,10 @@ The most important one is https://marketplace.visualstudio.com/items?itemName=ll
 Enable feature "Trim trailing whitespace" for user or workspace.
 Enable feature "Trim final newlines" for user or workspace.
 Enable feature "Insert final newline" for user or workspace.
+
+### Git hooks
+
+Enable git hooks for pre-commit checks
+```
+git config core.hooksPath .githooks
+```
