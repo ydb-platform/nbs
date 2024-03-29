@@ -4161,7 +4161,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 auto response =
                     std::make_unique<TEvDiskRegistry::TEvReleaseDiskResponse>(
                         MakeError(E_INVALID_STATE));
-                runtime->Send(
+                runtime.Send(
                     new IEventHandle(
                         event->Sender,
                         event->Recipient,
