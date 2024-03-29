@@ -450,7 +450,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             ui64 WriteByteCount = 0;
         };
         TMap<TString, TReadAndWriteByteCount> statsForDisks;
-        auto statEventInterceptor = [&](TAutoPtr<IEventHandle>& event)
+        auto statEventInterceptor =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->Recipient == MakeStorageStatsServiceId() &&
                 event->GetTypeRewrite() ==
@@ -463,7 +464,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 statsForDisks[msg->DiskId].WriteByteCount +=
                     msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime->SetObserverFunc(statEventInterceptor);
 
