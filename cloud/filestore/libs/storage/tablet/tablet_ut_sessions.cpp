@@ -824,6 +824,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
     {
         NProto::TStorageConfig config;
         NProto::TFileStoreFeatures features;
+        features.SetThreeStageWriteThreshold(64_KB);
+
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
         config.SetTwoStageReadEnabled(true);
