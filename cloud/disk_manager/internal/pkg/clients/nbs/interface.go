@@ -115,7 +115,7 @@ type CheckpointParams struct {
 
 // Used in tests.
 type DiskContentInfo struct {
-	ContentSize uint64
+	ContentSize uint64 // The coordinate of the last non-zero byte.
 	StorageSize uint64
 	Crc32       uint32
 	BlockCrc32s []uint32
