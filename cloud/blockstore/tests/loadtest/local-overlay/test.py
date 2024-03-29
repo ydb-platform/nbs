@@ -3,44 +3,13 @@ import pytest
 import yatest.common as common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 
-import google.protobuf.json_format as protojson
-
-
-def parse_storage_config(param):
-    if param is None:
-        return None
-
-    return protojson.Parse(param, TStorageServiceConfig())
-
 
 def default_storage_config_patch(tablet_version):
-    bw = 1 << 7     # 128 MB/s
-    iops = 1 << 16
-
-    storage = TStorageServiceConfig()
-    storage.ThrottlingEnabled = True
-
-    storage.SSDUnitReadBandwidth = bw
-    storage.SSDUnitWriteBandwidth = bw
-    storage.SSDMaxReadBandwidth = bw
-    storage.SSDMaxWriteBandwidth = bw
-    storage.SSDUnitReadIops = iops
-    storage.SSDUnitWriteIops = iops
-    storage.SSDMaxReadIops = iops
-    storage.SSDMaxWriteIops = iops
-
-    storage.HDDUnitReadBandwidth = bw
-    storage.HDDUnitWriteBandwidth = bw
-    storage.HDDMaxReadBandwidth = bw
-    storage.HDDMaxWriteBandwidth = bw
-    storage.HDDUnitReadIops = iops
-    storage.HDDUnitWriteIops = iops
-    storage.HDDMaxReadIops = iops
-    storage.HDDMaxWriteIops = iops
+    storage = storage_config_with_default_limits()
 
     storage.InactiveClientsTimeout = 10000
 

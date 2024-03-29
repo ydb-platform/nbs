@@ -665,15 +665,28 @@ void TPartitionState::ConfirmedBlobsAdded(
     CommitQueue.ReleaseBarrier(commitId);
 }
 
-void TPartitionState::BlobsConfirmed(ui64 commitId)
+void TPartitionState::BlobsConfirmed(
+    ui64 commitId,
+    TVector<TBlobToConfirm> blobs)
 {
     auto it = UnconfirmedBlobs.find(commitId);
     Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
 
-    auto& blobs = it->second;
-    const auto blobCount = blobs.size();
+    auto& dstBlobs = it->second;
+    const auto blobCount = dstBlobs.size();
+    Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
+    for (ui32 i = 0; i < Min(blobCount, blobs.size()); ++i) {
+        const auto blockRange = dstBlobs[i].BlockRange;
+        Y_DEBUG_ABORT_UNLESS(dstBlobs[i].UniqueId == blobs[i].UniqueId);
+        Y_DEBUG_ABORT_UNLESS(blockRange.Start == blobs[i].BlockRange.Start);
+        Y_DEBUG_ABORT_UNLESS(blockRange.End == blobs[i].BlockRange.End);
+        Y_DEBUG_ABORT_UNLESS(blockRange.Size() == blobs[i].Checksums.size());
+        if (dstBlobs[i].UniqueId == blobs[i].UniqueId) {
+            dstBlobs[i].Checksums = std::move(blobs[i]).Checksums;
+        }
+    }
 
-    ConfirmedBlobs[commitId] = std::move(blobs);
+    ConfirmedBlobs[commitId] = std::move(dstBlobs);
     ConfirmedBlobCount += blobCount;
 
     UnconfirmedBlobs.erase(it);

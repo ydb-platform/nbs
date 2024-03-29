@@ -948,4 +948,7 @@ message TStorageServiceConfig
     // Timeout for attempts to acquire the shadow disk when writes to the source
     // disk are not blocked (in ms).
     optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
+
+    // Max number of volume MetaHistory records displayed on volume monpage.
+    optional uint32 VolumeMetaHistoryDisplayedRecordLimit = 359;
 }
