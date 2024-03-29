@@ -614,7 +614,10 @@ void TVolumeActor::RenderHistory(
                     }
                 }
                 auto it = metaHistory.rbegin();
-                while (it != metaHistory.rend()) {
+                ui32 displayedCount = 0;
+                const ui32 limit =
+                    Config->GetVolumeMetaHistoryDisplayedRecordLimit();
+                while (it != metaHistory.rend() && displayedCount < limit) {
                     const auto& item = *it;
 
                     TABLER() {
@@ -627,6 +630,7 @@ void TVolumeActor::RenderHistory(
                     }
 
                     ++it;
+                    ++displayedCount;
                 }
             }
         }
