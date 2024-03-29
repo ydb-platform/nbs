@@ -3445,33 +3445,15 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
     }
 
-    void ShouldRetryWhenAcquiringShadowDisk(ui32 requestMessage, ui32 responseMessage)
+    void ShouldRetryWhenAcquiringShadowDisk(ui32 responseMessage)
     {
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
         auto runtime = PrepareTestActorRuntime(config);
 
-        bool simulateNondelivery = true;
         bool simulateErrorResponse = true;
         auto describeDiskRequestsFilter = [&](TAutoPtr<IEventHandle>& event)
         {
-            if (event->GetTypeRewrite() == requestMessage &&
-                simulateNondelivery)
-            {   // Simulate non-delivery describe message to DiskRegistry.
-                auto sendTo = event->Sender;
-                runtime->Send(
-                    new IEventHandle(
-                        sendTo,
-                        sendTo,
-                        event->ReleaseBase().Release(),
-                        0,
-                        event->Cookie,
-                        nullptr),
-                    0);
-                simulateNondelivery = false;
-                return TTestActorRuntime::EEventAction::DROP;
-            }
-
             if (event->GetTypeRewrite() == responseMessage &&
                 simulateErrorResponse)
             {   // Simulate response with error from DiskRegistry.
@@ -3540,21 +3522,18 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         }
 
         // Check that interceptions of messages have occurred.
-        UNIT_ASSERT(!simulateNondelivery);
         UNIT_ASSERT(!simulateErrorResponse);
     }
 
     Y_UNIT_TEST(ShouldRetryDescribeShadowDisk)
     {
         ShouldRetryWhenAcquiringShadowDisk(
-            TEvDiskRegistry::EvDescribeDiskRequest,
             TEvDiskRegistry::EvDescribeDiskResponse);
     }
 
     Y_UNIT_TEST(ShouldRetryAcquireShadowDisk)
     {
         ShouldRetryWhenAcquiringShadowDisk(
-            TEvDiskRegistry::EvAcquireDiskRequest,
             TEvDiskRegistry::EvAcquireDiskResponse);
     }
 

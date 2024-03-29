@@ -116,9 +116,9 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReleaseShadowDisk(const NActors::TActorContext& ctx, bool retry);
-    void DescribeShadowDisk(const NActors::TActorContext& ctx, bool retry);
-    void AcquireShadowDisk(const NActors::TActorContext& ctx, bool retry);
+    void ReleaseShadowDisk(const NActors::TActorContext& ctx);
+    void DescribeShadowDisk(const NActors::TActorContext& ctx);
+    void AcquireShadowDisk(const NActors::TActorContext& ctx);
 
     std::unique_ptr<TEvDiskRegistry::TEvDescribeDiskRequest>
     MakeDescribeDiskRequest() const;
@@ -128,12 +128,6 @@ private:
 
     std::unique_ptr<TEvDiskRegistry::TEvReleaseDiskRequest>
     MakeReleaseDiskRequest() const;
-
-    template <typename TRequest>
-    void SendRequestToDiskRegistry(
-        const NActors::TActorContext& ctx,
-        std::unique_ptr<TRequest> request,
-        bool withDelay);
 
     void HandleDiskRegistryError(
         const NActors::TActorContext& ctx,
@@ -157,18 +151,6 @@ private:
 
     void HandleReleaseDiskResponse(
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleDescribeDiskRequestUndelivery(
-        const TEvDiskRegistry::TEvDescribeDiskRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleAcquireDiskRequestUndelivery(
-        const TEvDiskRegistry::TEvAcquireDiskRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleReleaseDiskRequestUndelivery(
-        const TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWakeup(
@@ -218,32 +200,32 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::Work);
 
-    ReleaseShadowDisk(ctx, false);
-    DescribeShadowDisk(ctx, false);
+    ReleaseShadowDisk(ctx);
+    DescribeShadowDisk(ctx);
 
     AcquireStartedAt = ctx.Now();
     ctx.Schedule(TotalTimeout, new TEvents::TEvWakeup());
 }
 
 void TAcquireShadowDiskActor::ReleaseShadowDisk(
-    const NActors::TActorContext& ctx,
-    bool retry)
+    const NActors::TActorContext& ctx)
 {
     if (AcquireReason != TShadowDiskActor::EAcquireReason::PeriodicalReAcquire)
     {
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Releasing shadow disk "
-                << ShadowDiskId.Quote()
-                << (retry ? " (retry after undelivery)" : ""));
+            "Releasing shadow disk " << ShadowDiskId.Quote());
     }
-    SendRequestToDiskRegistry(ctx, MakeReleaseDiskRequest(), retry);
+
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        MakeReleaseDiskRequest());
 }
 
 void TAcquireShadowDiskActor::DescribeShadowDisk(
-    const NActors::TActorContext& ctx,
-    bool retry)
+    const NActors::TActorContext& ctx)
 {
     if (!ShadowDiskDevices.empty()) {
         // We will not describe devices if this is not the first acquire and we
@@ -253,16 +235,16 @@ void TAcquireShadowDiskActor::DescribeShadowDisk(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::VOLUME,
-        "Describing shadow disk "
-            << ShadowDiskId.Quote()
-            << (retry ? " (retry after undelivery)" : ""));
+        "Describing shadow disk " << ShadowDiskId.Quote());
 
-    SendRequestToDiskRegistry(ctx, MakeDescribeDiskRequest(), retry);
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        MakeDescribeDiskRequest());
 }
 
 void TAcquireShadowDiskActor::AcquireShadowDisk(
-    const NActors::TActorContext& ctx,
-    bool retry)
+    const NActors::TActorContext& ctx)
 {
     if (WaitingForDiskToBeReleased) {
         return;
@@ -275,11 +257,13 @@ void TAcquireShadowDiskActor::AcquireShadowDisk(
             TBlockStoreComponents::VOLUME,
             "Acquiring shadow disk "
                 << ShadowDiskId.Quote() << " by clientId " << RwClientId.Quote()
-                << " with timeout " << TotalTimeout.ToString()
-                << (retry ? " (retry after undelivery)" : ""));
+                << " with timeout " << TotalTimeout.ToString());
     }
 
-    SendRequestToDiskRegistry(ctx, MakeAcquireDiskRequest(), retry);
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        MakeAcquireDiskRequest());
 }
 
 std::unique_ptr<TEvDiskRegistry::TEvDescribeDiskRequest>
@@ -313,28 +297,6 @@ TAcquireShadowDiskActor::MakeReleaseDiskRequest() const
     request->Record.MutableHeaders()->SetClientId(TString(AnyWriterClientId));
     request->Record.SetVolumeGeneration(Generation);
     return request;
-}
-
-template <typename TRequest>
-void TAcquireShadowDiskActor::SendRequestToDiskRegistry(
-    const NActors::TActorContext& ctx,
-    std::unique_ptr<TRequest> request,
-    bool withDelay)
-{
-    if (withDelay) {
-        TActivationContext::Schedule(
-            RetryDelayProvider.GetDelayAndIncrease(),
-            std::make_unique<IEventHandle>(
-                MakeDiskRegistryProxyServiceId(),
-                ctx.SelfID,
-                request.release()),
-            nullptr);
-    } else {
-        NCloud::SendWithUndeliveryTracking(
-            ctx,
-            MakeDiskRegistryProxyServiceId(),
-            std::move(request));
-    }
 }
 
 void TAcquireShadowDiskActor::HandleDiskRegistryError(
@@ -414,15 +376,6 @@ STFUNC(TAcquireShadowDiskActor::Work)
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
             HandleReleaseDiskResponse);
-        HFunc(
-            TEvDiskRegistry::TEvDescribeDiskRequest,
-            HandleDescribeDiskRequestUndelivery);
-        HFunc(
-            TEvDiskRegistry::TEvAcquireDiskRequest,
-            HandleAcquireDiskRequestUndelivery);
-        HFunc(
-            TEvDiskRegistry::TEvReleaseDiskRequest,
-            HandleReleaseDiskRequestUndelivery);
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
@@ -492,31 +445,7 @@ void TAcquireShadowDiskActor::HandleReleaseDiskResponse(
     }
 
     WaitingForDiskToBeReleased = false;
-    AcquireShadowDisk(ctx, false);
-}
-
-void TAcquireShadowDiskActor::HandleDescribeDiskRequestUndelivery(
-    const TEvDiskRegistry::TEvDescribeDiskRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    DescribeShadowDisk(ctx, true);
-}
-
-void TAcquireShadowDiskActor::HandleAcquireDiskRequestUndelivery(
-    const TEvDiskRegistry::TEvAcquireDiskRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    AcquireShadowDisk(ctx, true);
-}
-
-void TAcquireShadowDiskActor::HandleReleaseDiskRequestUndelivery(
-    const TEvDiskRegistry::TEvReleaseDiskRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReleaseShadowDisk(ctx, true);
+    AcquireShadowDisk(ctx);
 }
 
 void TAcquireShadowDiskActor::HandleWakeup(
