@@ -174,7 +174,7 @@ Y_UNIT_TEST_SUITE(TMergeTest)
         rangeInBlob.SetBlobOffset(10);
         rangeInBlob.SetBlockIndex(13);
         rangeInBlob.SetBlocksCount(1024);
-        
+
         NProto::TBlobPiece dst;
         SplitBlobPieceRangeFromRelativeToGlobalIndices(
             rangeInBlob,

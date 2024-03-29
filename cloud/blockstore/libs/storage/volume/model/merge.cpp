@@ -91,7 +91,7 @@ void SplitFreshBlockRangeFromRelativeToGlobalIndices(
 {
     const ui32 startIndex = srcRange.GetStartIndex();
     ui32 blocksCount = 0;
-    
+
     const char* srcRangePtr = srcRange.GetBlocksContent().Data();
     while (blocksCount < srcRange.GetBlocksCount()) {
         const auto index = RelativeToGlobalIndex(
@@ -153,7 +153,7 @@ void SplitBlobPieceRangeFromRelativeToGlobalIndices(
         dstRange.SetBlobOffset(blobOffset + blocksCount);
         dstRange.SetBlockIndex(index);
         dstRange.SetBlocksCount(rangeBlocksCount);
-        
+
         blocksCount += rangeBlocksCount;
 
         dstBlobPiece->MutableRanges()->Add(std::move(dstRange));
