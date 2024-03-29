@@ -64,7 +64,7 @@ void TDiskRegistryActor::ExecuteAllocateCheckpoint(
         args.CheckpointReplica.GetSourceDiskId(),
         args.CheckpointReplica.GetCheckpointId(),
         &result);
-    args.CheckpointDiskId = result.CheckpointDiskId;
+    args.ShadowDiskId = result.ShadowDiskId;
 }
 
 void TDiskRegistryActor::CompleteAllocateCheckpoint(
@@ -85,7 +85,7 @@ void TDiskRegistryActor::CompleteAllocateCheckpoint(
     auto response =
         std::make_unique<TEvDiskRegistry::TEvAllocateCheckpointResponse>(
             std::move(args.Error));
-    response->Record.SetCheckpointDiskId(args.CheckpointDiskId);
+    response->Record.SetShadowDiskId(args.ShadowDiskId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
