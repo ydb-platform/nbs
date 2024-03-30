@@ -936,11 +936,6 @@ public:
         return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
     }
 
-    std::unique_ptr<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest> CreateAddConfirmedBlobsRequest()
-    {
-        return std::make_unique<TEvPartitionPrivate::TEvAddConfirmedBlobsRequest>();
-    }
-
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
@@ -9677,33 +9672,41 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetAddingUnconfirmedBlobsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
-        bool dropAddConfirmedBlobs = false;
-
-        runtime->SetObserverFunc([&] (auto& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
-                    if (dropAddConfirmedBlobs) {
-                        return TTestActorRuntime::EEventAction::DROP;
-                    }
-                    break;
-                }
-            }
-
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
-
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
 
-        dropAddConfirmedBlobs = true;
+        TAutoPtr<IEventHandle> addConfirmedBlobs;
+        bool interceptAddConfirmedBlobs = true;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        if (interceptAddConfirmedBlobs) {
+                            UNIT_ASSERT(!addConfirmedBlobs);
+                            addConfirmedBlobs = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            }
+        );
+
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+        UNIT_ASSERT(addConfirmedBlobs);
 
         partition.SendCompactionRequest();
+        // wait for compaction to be queued
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        dropAddConfirmedBlobs = false;
-        partition.AddConfirmedBlobs();
+        interceptAddConfirmedBlobs = false;
+        runtime->Send(addConfirmedBlobs.Release());
 
         {
             auto compactResponse = partition.RecvCompactionResponse();
