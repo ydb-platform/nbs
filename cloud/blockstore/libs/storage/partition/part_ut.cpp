@@ -9666,6 +9666,56 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCompactAfterAddingConfirmedBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+
+        TAutoPtr<IEventHandle> addConfirmedBlobs;
+        bool interceptAddConfirmedBlobs = true;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        if (interceptAddConfirmedBlobs) {
+                            UNIT_ASSERT(!addConfirmedBlobs);
+                            addConfirmedBlobs = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            }
+        );
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+        UNIT_ASSERT(addConfirmedBlobs);
+
+        partition.SendCompactionRequest();
+        // wait for compaction to be queued
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        interceptAddConfirmedBlobs = false;
+        runtime->Send(addConfirmedBlobs.Release());
+
+        {
+            auto compactResponse = partition.RecvCompactionResponse();
+            // should fail on S_ALREADY and S_FALSE to ensure that compaction
+            // was really taken place here
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, compactResponse->GetStatus());
+        }
+    }
+
     Y_UNIT_TEST(ShouldConfirmBlobs)
     {
         auto config = DefaultConfig();
