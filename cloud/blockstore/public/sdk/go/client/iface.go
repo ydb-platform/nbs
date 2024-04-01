@@ -158,6 +158,11 @@ type ClientIface interface {
 		req *protos.TCreateCheckpointRequest,
 	) (*protos.TCreateCheckpointResponse, error)
 
+	GetCheckpointStatus(
+		ctx context.Context,
+		req *protos.TGetCheckpointStatusRequest,
+	) (*protos.TGetCheckpointStatusResponse, error)
+
 	DeleteCheckpoint(
 		ctx context.Context,
 		req *protos.TDeleteCheckpointRequest,

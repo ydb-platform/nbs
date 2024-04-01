@@ -465,6 +465,22 @@ func (client *durableClient) CreateCheckpoint(
 	return resp.(*protos.TCreateCheckpointResponse), err
 }
 
+func (client *durableClient) GetCheckpointStatus(
+	ctx context.Context,
+	req *protos.TGetCheckpointStatusRequest,
+) (*protos.TGetCheckpointStatusResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.GetCheckpointStatus(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TGetCheckpointStatusResponse), err
+}
+
 func (client *durableClient) DeleteCheckpoint(
 	ctx context.Context,
 	req *protos.TDeleteCheckpointRequest,
