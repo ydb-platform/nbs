@@ -44,6 +44,8 @@ void TVolumeActor::HandleUpdateMigrationState(
         ctx,
         std::move(requestInfo),
         msg->MigrationIndex);
+
+    State->SetBlockCountNeedToBeMigrated(msg->BlockCountNeedToBeMigrated);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

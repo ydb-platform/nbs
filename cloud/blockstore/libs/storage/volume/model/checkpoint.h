@@ -111,7 +111,6 @@ struct TActiveCheckpointInfo
     TString ShadowDiskId;
     EShadowDiskState ShadowDiskState = EShadowDiskState::None;
     ui64 ProcessedBlockCount = 0;
-    ui64 TotalBlockCount = 0;
     bool HasShadowActor = false;
 };
 
@@ -151,8 +150,7 @@ public:
     void SetShadowDiskState(
         const TString& checkpointId,
         EShadowDiskState shadowDiskState,
-        ui64 processedBlockCount,
-        ui64 totalBlockCount);
+        ui64 processedBlockCount);
     void ShadowActorCreated(const TString& checkpointId);
     void ShadowActorDestroyed(const TString& checkpointId);
     [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;

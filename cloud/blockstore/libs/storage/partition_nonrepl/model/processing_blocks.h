@@ -31,6 +31,7 @@ public:
     bool SkipProcessedRanges();
     bool AdvanceProcessingIndex();
     TBlockRange64 BuildProcessingRange() const;
+    ui64 GetBlockCountNeedToBeProcessed() const;
     ui64 GetProcessedBlockCount() const;
 
     ui64 GetLastReportedProcessingIndex() const

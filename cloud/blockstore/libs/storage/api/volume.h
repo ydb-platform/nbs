@@ -97,11 +97,14 @@ struct TEvVolume
     struct TUpdateMigrationState
     {
         ui64 MigrationIndex;
+        ui64 BlockCountNeedToBeMigrated;
 
-        TUpdateMigrationState(ui64 migrationIndex)
+        TUpdateMigrationState(
+                ui64 migrationIndex,
+                ui64 blockCountNeedToBeMigrated)
             : MigrationIndex(migrationIndex)
-        {
-        }
+            , BlockCountNeedToBeMigrated(blockCountNeedToBeMigrated)
+        {}
     };
 
     //
