@@ -136,9 +136,9 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
 
     if (SelfPingMaxUsCounter) {
         auto val =
-            CyclesToDuration(SelfPingMaxUs) - Config->GetServiceSelfPingInterval();
+            CyclesToDuration(SelfPingMaxCycles) - Config->GetServiceSelfPingInterval();
         *SelfPingMaxUsCounter = val.MicroSeconds();
-        SelfPingMaxUs = 0;
+        SelfPingMaxCycles = 0;
     }
 }
 
@@ -216,7 +216,7 @@ void TServiceActor::HandleSelfPing(
     const TEvServicePrivate::TEvSelfPing::TPtr& ev,
     const TActorContext& ctx)
 {
-    SelfPingMaxUs = std::max(SelfPingMaxUs, GetCycleCount() - ev->Get()->StartCycles);
+    SelfPingMaxCycles = std::max(SelfPingMaxCycles, GetCycleCount() - ev->Get()->StartCycles);
     ScheduleSelfPing(ctx);
 }
 

@@ -60,7 +60,7 @@ private:
     bool IsVolumeLivenessCheckRunning = false;
 
     NMonitoring::TDynamicCounters::TCounterPtr SelfPingMaxUsCounter;
-    ui64 SelfPingMaxUs = 0;
+    ui64 SelfPingMaxCycles = 0;
 
 public:
     TServiceActor(

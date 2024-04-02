@@ -12,7 +12,7 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TServiceStatsTest)
 {
-    Y_UNIT_TEST(ShouldReportSelfPingStats)
+    Y_UNIT_TEST(ShouldReportSelfPingMaxUsSensor)
     {
         TTestEnv env;
         auto nodeIdx = SetupTestEnv(env);
