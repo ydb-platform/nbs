@@ -564,6 +564,8 @@ public:
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
 
     TDuration GetVolumeProxyCacheRetryDuration() const;
+
+    TDuration GetServiceSelfPingInterval() const;
 };
 
 ui64 GetAllocationUnit(

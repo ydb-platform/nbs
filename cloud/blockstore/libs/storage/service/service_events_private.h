@@ -261,6 +261,15 @@ struct TEvServicePrivate
     };
 
     //
+    // Ping notification
+    //
+
+    struct TSelfPing
+    {
+        ui64 StartCycles = 0;
+    };
+
+    //
     // Events declaration
     //
 
@@ -284,6 +293,7 @@ struct TEvServicePrivate
         EvInternalMountVolumeResponse,
         EvUpdateManuallyPreemptedVolume,
         EvSyncManuallyPreemptedVolumesComplete,
+        EvSelfPing,
 
         EvEnd
     };
@@ -371,6 +381,8 @@ struct TEvServicePrivate
         TSyncManuallyPreemptedVolumesComplete,
         EvSyncManuallyPreemptedVolumesComplete
     >;
+
+    using TEvSelfPing = TRequestEvent<TSelfPing, EvSelfPing>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
