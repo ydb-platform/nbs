@@ -157,16 +157,19 @@ struct TEvVolumePrivate
         TRequestInfoPtr RequestInfo;
         ui64 RequestId;
         bool Completed;
+        bool Success;
         TString ShadowDiskId;
 
         TUpdateCheckpointRequestRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
+                bool success,
                 TString shadowDiskId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
+            , Success(success)
             , ShadowDiskId(std::move(shadowDiskId))
         {
         }

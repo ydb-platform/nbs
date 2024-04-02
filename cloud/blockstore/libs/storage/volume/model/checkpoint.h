@@ -143,7 +143,7 @@ public:
     void SetCheckpointRequestInProgress(ui64 requestId);
     void SetCheckpointRequestFinished(
         ui64 requestId,
-        bool success,
+        bool completed,
         TString shadowDiskId,
         EShadowDiskState shadowDiskState);
 

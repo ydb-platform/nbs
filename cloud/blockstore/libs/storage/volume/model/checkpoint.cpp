@@ -65,7 +65,7 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 
 void TCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
-    bool success,
+    bool completed,
     TString shadowDiskId,
     EShadowDiskState shadowDiskState)
 {
@@ -74,8 +74,8 @@ void TCheckpointStore::SetCheckpointRequestFinished(
         auto& checkpointRequest = GetRequest(requestId);
         Y_DEBUG_ABORT_UNLESS(
             checkpointRequest.State == ECheckpointRequestState::Saved);
-        checkpointRequest.State = success ? ECheckpointRequestState::Completed
-                                          : ECheckpointRequestState::Rejected;
+        checkpointRequest.State = completed ? ECheckpointRequestState::Completed
+                                            : ECheckpointRequestState::Rejected;
         checkpointRequest.ShadowDiskId = std::move(shadowDiskId);
         checkpointRequest.ShadowDiskState = shadowDiskState;
         Apply(checkpointRequest);
