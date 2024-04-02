@@ -6,6 +6,7 @@
 # original buildsystem will not be accepted.
 
 
+add_subdirectory(actors)
 add_subdirectory(model)
 add_subdirectory(protos)
 add_subdirectory(ut)
@@ -36,6 +37,7 @@ target_link_libraries(libs-storage-tablet PUBLIC
   filestore-libs-storage-api
   filestore-libs-storage-core
   filestore-libs-storage-model
+  storage-tablet-actors
   storage-tablet-model
   storage-tablet-protos
   core-libs-api
@@ -67,6 +69,7 @@ target_sources(libs-storage-tablet PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_accessnode.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_acquirelock.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_addblob.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_adddata.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_allocatedata.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_change_storage_config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/tablet_actor_cleanup.cpp

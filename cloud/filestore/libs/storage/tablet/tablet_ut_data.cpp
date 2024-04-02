@@ -4569,7 +4569,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // We can't make direct writes to BlobStorage, so we store the blob ids
         // from an ordinary write and then use them in AddData
         env.GetRuntime().SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPutResult: {
@@ -4589,7 +4589,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TString data(block * BlockGroupSize * 2, '\0');
@@ -4682,7 +4682,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TVector<NKikimr::TLogoBlobID> blobIds;
 
         env.GetRuntime().SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvPutResult: {
@@ -4696,7 +4696,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         TString data(block * BlockGroupSize * 2, 'x');

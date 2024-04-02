@@ -55,5 +55,6 @@ target_sources(filestore-libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_pingsession.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_statfs.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_update_stats.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_actor_writedata.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/service/service_state.cpp
 )
