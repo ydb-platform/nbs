@@ -163,7 +163,7 @@ private:
     bool StartPartitionsNeeded = false;
 
     // The number of blocks that need to be migrated to complete the migration.
-    std::optional<ui64> BlockCountNeedToBeMigrated;
+    std::optional<ui64> BlockCountToMigrate;
 
 public:
     TVolumeState(
@@ -206,15 +206,15 @@ public:
         Meta.SetMigrationIndex(migrationIndex);
     }
 
-    void SetBlockCountNeedToBeMigrated(
-        std::optional<ui64> blockCountNeedToBeMigrated)
+    void SetBlockCountToMigrate(
+        std::optional<ui64> blockCountToMigrate)
     {
-        BlockCountNeedToBeMigrated = blockCountNeedToBeMigrated;
+        BlockCountToMigrate = blockCountToMigrate;
     }
 
-    std::optional<ui64> GetBlockCountNeedToBeMigrated() const
+    std::optional<ui64> GetBlockCountToMigrate() const
     {
-        return BlockCountNeedToBeMigrated;
+        return BlockCountToMigrate;
     }
 
     void UpdateResyncIndexInMeta(ui64 resyncIndex)

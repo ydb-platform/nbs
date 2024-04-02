@@ -101,8 +101,9 @@ void OutputProgress(
              << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);
     }
 
-    out << blocks << " (" << processedSize << "/" << sizeToProcess << "/"
-        << totalSize << ") = " << readyPercent << "%";
+    out << blocks << " (<font color=green>" << processedSize
+        << "</font> + <font color=red>" << sizeToProcess
+        << "</font> = " << totalSize << ", " << readyPercent << "%)";
 }
 
 
@@ -128,26 +129,36 @@ void RenderCheckpointInfo(
     const TActiveCheckpointInfo& checkpointInfo,
     IOutputStream& out)
 {
-    switch (checkpointInfo.Type) {
-        case ECheckpointType::Light: {
-            out << "no data (is light)";
-        } break;
-        case ECheckpointType::Normal: {
-            out << "normal (" << checkpointInfo.Data << ")";
-        } break;
-    }
-    if (checkpointInfo.ShadowDiskId) {
-        out << "<br/>";
-        out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
-        out << " state: " << ToString(checkpointInfo.ShadowDiskState);
-        if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
-            out << "<br/>";
-            OutputProgress(
-                checkpointInfo.ProcessedBlockCount,
-                blocksCount,
-                blockSize,
-                blocksCount - checkpointInfo.ProcessedBlockCount,
-                out);
+    HTML(out)
+    {
+        DIV()
+        {
+            switch (checkpointInfo.Type) {
+                case ECheckpointType::Light: {
+                    out << "no data (light)";
+                } break;
+                case ECheckpointType::Normal: {
+                    out << "normal (" << checkpointInfo.Data << ")";
+                } break;
+            }
+        }
+        if (checkpointInfo.ShadowDiskId) {
+            DIV()
+            {
+                out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote()
+                    << " state: " << ToString(checkpointInfo.ShadowDiskState);
+            }
+            if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
+                DIV()
+                {
+                    OutputProgress(
+                        checkpointInfo.ProcessedBlockCount,
+                        blocksCount,
+                        blockSize,
+                        blocksCount - checkpointInfo.ProcessedBlockCount,
+                        out);
+                }
+            }
         }
     }
 }
@@ -1417,7 +1428,7 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
                             migrationIndex,
                             totalBlocks,
                             blockSize,
-                            State->GetBlockCountNeedToBeMigrated(),
+                            State->GetBlockCountToMigrate(),
                             out);
                     }
                 }
