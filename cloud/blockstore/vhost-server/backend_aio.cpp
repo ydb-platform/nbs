@@ -8,6 +8,8 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/system/sanitizers.h>
+
 #include <libaio.h>
 
 #include <thread>
@@ -362,7 +364,9 @@ void TAioBackend::CompletionThreadFunc()
         for (int i = 0; i != ret; ++i) {
             if (events[i].data) {
                 auto* req = static_cast<TAioCompoundRequest*>(events[i].data);
+                NSan::Acquire(req);
                 iocb* sub = events[i].obj;
+                NSan::Acquire(sub);
 
                 vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
 
@@ -386,6 +390,7 @@ void TAioBackend::CompletionThreadFunc()
             }
 
             auto* req = static_cast<TAioRequest*>(events[i].obj);
+            NSan::Acquire(req);
 
             vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
             auto* bio = vhd_get_bdev_io(req->Io);
