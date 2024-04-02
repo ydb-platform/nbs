@@ -1,3 +1,4 @@
 TwoStageReadEnabled: true
 NewCompactionEnabled: true
 NewCleanupEnabled: true
+ThreeStageWriteEnabled: true

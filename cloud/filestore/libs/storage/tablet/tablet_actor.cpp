@@ -605,6 +605,7 @@ STFUNC(TIndexTabletActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
+        HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
@@ -652,6 +653,7 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         // tablet related requests
         IgnoreFunc(TEvents::TEvPoisonPill);
@@ -688,6 +690,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

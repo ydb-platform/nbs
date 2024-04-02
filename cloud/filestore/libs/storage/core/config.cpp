@@ -140,6 +140,7 @@ namespace {
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
+    xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\

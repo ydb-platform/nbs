@@ -253,6 +253,15 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // AddData completion
+    //
+
+    struct TAddDataCompleted
+    {
+        ui64 CommitId = 0;
+    };
+
+    //
     // AddBlob
     //
 
@@ -613,6 +622,7 @@ struct TEvIndexTabletPrivate
 
         EvReadDataCompleted,
         EvWriteDataCompleted,
+        EvAddDataCompleted,
 
         EvReleaseCollectBarrier,
 
@@ -633,6 +643,7 @@ struct TEvIndexTabletPrivate
 
     using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
     using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
+    using TEvAddDataCompleted = TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
