@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 )
 
@@ -48,7 +49,7 @@ func testCreateSnapshotFromDisk(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	_, _, err = testcommon.FillDisk(nbsClient, diskID, 64*4096)
+	_, err = testcommon.FillDisk(nbsClient, diskID, 64*4096)
 	require.NoError(t, err)
 
 	snapshotID := t.Name()
@@ -280,7 +281,10 @@ func testCreateIncrementalSnapshotFromDisk(
 	_, err = acc.Write(bytes)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, uint64(contentSize), acc.Sum32())
+	err = nbsClient.ValidateCrc32(ctx, diskID2, nbs.DiskContentInfo{
+		ContentSize: uint64(contentSize),
+		Crc32:       acc.Sum32(),
+	})
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -407,7 +411,10 @@ func TestSnapshotServiceCreateIncrementalSnapshotAfterDeletionOfBaseSnapshot(t *
 	_, err = acc.Write(bytes)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, uint64(diskSize), acc.Sum32())
+	err = nbsClient.ValidateCrc32(ctx, diskID2, nbs.DiskContentInfo{
+		ContentSize: uint64(diskSize),
+		Crc32:       acc.Sum32(),
+	})
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -516,7 +523,10 @@ func TestSnapshotServiceCreateIncrementalSnapshotWhileDeletingBaseSnapshot(t *te
 	_, err = acc.Write(bytes)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32(diskID2, uint64(diskSize), acc.Sum32())
+	err = nbsClient.ValidateCrc32(ctx, diskID2, nbs.DiskContentInfo{
+		ContentSize: uint64(diskSize),
+		Crc32:       acc.Sum32(),
+	})
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)

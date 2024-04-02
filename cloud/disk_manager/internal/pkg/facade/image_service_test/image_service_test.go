@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -74,7 +75,10 @@ func checkEncryptedSource(
 	encryption, err := disks.PrepareEncryptionDesc(defaultEncryptionDescWithKey)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32WithEncryption(diskID1, uint64(diskSize), encryption, crc32)
+	err = nbsClient.ValidateCrc32WithEncryption(ctx, diskID1, nbs.DiskContentInfo{
+		ContentSize: uint64(diskSize),
+		Crc32:       crc32,
+	}, encryption)
 	require.NoError(t, err)
 
 	diskID2 := t.Name() + "-bad-disk-from-encrypted-" + tag
@@ -139,7 +143,10 @@ func checkUnencryptedImage(
 	encryption, err := disks.PrepareEncryptionDesc(defaultEncryptionDescWithKey)
 	require.NoError(t, err)
 
-	err = nbsClient.ValidateCrc32WithEncryption(diskID1, uint64(diskSize), encryption, crc32)
+	err = nbsClient.ValidateCrc32WithEncryption(ctx, diskID1, nbs.DiskContentInfo{
+		ContentSize: uint64(diskSize),
+		Crc32:       crc32,
+	}, encryption)
 	require.NoError(t, err)
 
 	diskID2 := t.Name() + "-bad-enrypted-disk-from-image"
@@ -179,7 +186,7 @@ func TestImageServiceCreateImageFromImage(t *testing.T) {
 	imageID1 := t.Name() + "_image1"
 	imageSize := uint64(40 * 1024 * 1024)
 
-	imageCrc32, _ := testcommon.CreateImage(
+	diskContentInfo := testcommon.CreateImage(
 		t,
 		ctx,
 		imageID1,
@@ -233,7 +240,7 @@ func TestImageServiceCreateImageFromImage(t *testing.T) {
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
-	err = nbsClient.ValidateCrc32(diskID2, imageSize, imageCrc32)
+	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -300,7 +307,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 	encryption, err := disks.PrepareEncryptionDesc(defaultEncryptionDescWithKey)
 	require.NoError(t, err)
 
-	crc32, _, err := testcommon.FillEncryptedDisk(nbsClient, diskID, diskSize, encryption)
+	diskContentInfo, err := testcommon.FillEncryptedDisk(nbsClient, diskID, diskSize, encryption)
 	require.NoError(t, err)
 
 	diskParams, err = nbsClient.Describe(ctx, diskID)
@@ -335,7 +342,15 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 			SrcSnapshotId: snapshotID,
 		},
 	}
-	checkEncryptedSource(t, client, ctx, snapshotSrc, int64(diskSize), crc32, "snapshot")
+	checkEncryptedSource(
+		t,
+		client,
+		ctx,
+		snapshotSrc,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+		"snapshot",
+	)
 
 	imageID := t.Name() + "_image"
 
@@ -366,7 +381,15 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 			SrcImageId: imageID,
 		},
 	}
-	checkEncryptedSource(t, client, ctx, imageSrc, int64(diskSize), crc32, "image")
+	checkEncryptedSource(
+		t,
+		client,
+		ctx,
+		imageSrc,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+		"image",
+	)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation1, err := client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
@@ -453,9 +476,12 @@ func testCreateImageFromURL(
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 	err = nbsClient.ValidateCrc32(
+		ctx,
 		diskID,
-		imageSize,
-		diskCRC32,
+		nbs.DiskContentInfo{
+			ContentSize: imageSize,
+			Crc32:       diskCRC32,
+		},
 	)
 	require.NoError(t, err)
 
@@ -601,7 +627,14 @@ func TestImageServiceCreateQCOW2ImageFromURLWhichIsOverwrittenInProcess(
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
-	err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
+	err = nbsClient.ValidateCrc32(
+		ctx,
+		diskID,
+		nbs.DiskContentInfo{
+			ContentSize: imageSize,
+			Crc32:       imageCrc32,
+		},
+	)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
@@ -703,7 +736,7 @@ func TestImageServiceCancelCreateImageFromImage(t *testing.T) {
 	imageID1 := t.Name() + "1"
 	imageSize := uint64(64 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID1,
@@ -816,7 +849,7 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	crc32, _, err := testcommon.FillDisk(nbsClient, diskID, diskSize)
+	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID, diskSize)
 	require.NoError(t, err)
 
 	imageID := t.Name()
@@ -848,7 +881,14 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 
 	testcommon.RequireCheckpointsAreEmpty(t, ctx, diskID)
 
-	checkUnencryptedImage(t, client, ctx, imageID, int64(diskSize), crc32)
+	checkUnencryptedImage(
+		t,
+		client,
+		ctx,
+		imageID,
+		int64(diskSize),
+		diskContentInfo.Crc32,
+	)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
@@ -918,7 +958,7 @@ func TestImageServiceDeleteImage(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(40 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
