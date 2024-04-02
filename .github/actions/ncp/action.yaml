@@ -41,5 +41,5 @@ runs:
         export GITHUB_RUNNER_IPV4=$(ncp compute instance get ${{ inputs.instance_id }} --format json | jq -r .network_interfaces[].primary_v4_address.one_to_one_nat.address)
         echo "GITHUB_RUNNER_IPV4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_ENV
         echo "runner_ipv4=${GITHUB_RUNNER_IPV4}" >> $GITHUB_OUTPUT
-        echo "ssh -i ~/.ssh/gh-runner github@${GITHUB_RUNNER_IPV4}" | tee -a $GITHUB_SUMMARY
+        echo "ssh github@${GITHUB_RUNNER_IPV4}" | tee -a $GITHUB_SUMMARY
 

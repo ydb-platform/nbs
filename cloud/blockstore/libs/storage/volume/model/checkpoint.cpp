@@ -87,8 +87,7 @@ void TCheckpointStore::SetCheckpointRequestFinished(
 void TCheckpointStore::SetShadowDiskState(
     const TString& checkpointId,
     EShadowDiskState shadowDiskState,
-    ui64 processedBlockCount,
-    ui64 totalBlockCount)
+    ui64 processedBlockCount)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
         if (shadowDiskState == EShadowDiskState::Ready) {
@@ -96,7 +95,6 @@ void TCheckpointStore::SetShadowDiskState(
         }
         checkpointData->ShadowDiskState = shadowDiskState;
         checkpointData->ProcessedBlockCount = processedBlockCount;
-        checkpointData->TotalBlockCount = totalBlockCount;
 
         if (auto* checkpointRequest =
                 CheckpointRequests.FindPtr(checkpointData->RequestId))

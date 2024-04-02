@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -25,6 +26,7 @@
 #include <util/generic/overloaded.h>
 #include <util/generic/set.h>
 #include <util/string/builder.h>
+#include <util/string/join.h>
 #include <util/system/fs.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -187,7 +189,7 @@ public:
 
         if (!NFs::Exists(device)) {
             return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Nbd device file No file for nbd device: " << device);
+                << "No file for nbd device: " << device);
         }
 
         if (num < BusyDevices.size() && BusyDevices[num]) {
@@ -491,6 +493,10 @@ public:
     void Stop() override
     {
         RestoringClient->Stop();
+
+        for (auto& [socket, endpoint]: Endpoints) {
+            endpoint.Device->Stop();
+        }
     }
 
     size_t CollectRequests(
@@ -576,6 +582,10 @@ private:
         NProto::TStartEndpointRequest newReq,
         NProto::TStartEndpointRequest oldReq);
 
+    NProto::TError RestartListenerEndpoint(
+        TCallContextPtr ctx,
+        const NProto::TStartEndpointRequest& request);
+
     NProto::TError OpenAllEndpointSockets(
         const NProto::TStartEndpointRequest& request,
         const TSessionInfo& sessionInfo);
@@ -595,6 +605,8 @@ private:
         bool restoring);
 
     void ReleaseNbdDevice(const TString& device, bool restoring);
+
+    void DetachFileDevice(const TString& device);
 
     template <typename T>
     void RemoveSession(TCallContextPtr ctx, const T& request)
@@ -740,6 +752,20 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     auto it = Endpoints.find(socketPath);
     if (it != Endpoints.end()) {
         auto endpoint = it->second;
+
+        if (!NFs::Exists(socketPath)) {
+            // restart listener endpoint to recreate the socket
+            auto error = RestartListenerEndpoint(ctx, *endpoint.Request);
+            if (HasError(error)) {
+                return TErrorResponse(error);
+            }
+
+            if (!NFs::Exists(socketPath)) {
+                return TErrorResponse(E_INVALID_STATE, TStringBuilder()
+                    << "failed to recreate socket: " << socketPath.Quote());
+            }
+        }
+
         auto error = AlterEndpoint(std::move(ctx), *request, *endpoint.Request);
         if (HasError(error)) {
             return TErrorResponse(error);
@@ -880,6 +906,50 @@ NProto::TError TEndpointManager::AlterEndpoint(
         sessionInfo.Session);
 
     return Executor->WaitFor(alterFuture);
+}
+
+NProto::TError TEndpointManager::RestartListenerEndpoint(
+    TCallContextPtr ctx,
+    const NProto::TStartEndpointRequest& request)
+{
+    STORAGE_INFO("Restart listener endpoint: " << request);
+
+    auto sessionFuture = SessionManager->GetSession(
+        ctx,
+        request.GetUnixSocketPath(),
+        request.GetHeaders());
+
+    auto [sessionInfo, error] = Executor->WaitFor(sessionFuture);
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto listenerIt = EndpointListeners.find(request.GetIpcType());
+    STORAGE_VERIFY(
+        listenerIt != EndpointListeners.end(),
+        TWellKnownEntityTypes::ENDPOINT,
+        request.GetUnixSocketPath());
+
+    auto& listener = listenerIt->second;
+
+    auto future = listener->StopEndpoint(request.GetUnixSocketPath());
+    error = Executor->WaitFor(future);
+    if (HasError(error)) {
+        STORAGE_ERROR("Failed to stop endpoint while restarting it: "
+            << FormatError(error));
+    }
+
+    future = listener->StartEndpoint(
+        request,
+        sessionInfo.Volume,
+        sessionInfo.Session);
+    error = Executor->WaitFor(future);
+    if (HasError(error)) {
+        STORAGE_ERROR("Failed to start endpoint while recreating it: "
+            << FormatError(error));
+    }
+
+    return error;
 }
 
 NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
@@ -1326,6 +1396,9 @@ TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
 
     NBD::IDeviceConnectionPtr device;
     try {
+        // Release file descriptor lock by removing loopback device
+        DetachFileDevice(request->GetNbdDeviceFile());
+
         TNetworkAddress address(TUnixSocketPath(request->GetUnixSocketPath()));
         device = NbdDeviceFactory->Create(address, request->GetNbdDeviceFile());
         device->Start();
@@ -1454,6 +1527,25 @@ void TEndpointManager::ReleaseNbdDevice(const TString& device, bool restoring)
     NbdDeviceManager.ReleaseDevice(device);
 }
 
+void TEndpointManager::DetachFileDevice(const TString& device)
+{
+    STORAGE_DEBUG("Detach file device " << device);
+
+    auto mountedFiles = NBD::FindMountedFiles(device);
+    STORAGE_DEBUG("find mounted files: " << JoinSeq(",", mountedFiles));
+
+    auto loopbackDevices = NBD::FindLoopbackDevices(mountedFiles);
+    for (const auto& loopbackDevice: loopbackDevices) {
+        STORAGE_INFO("Remove loopback device " << loopbackDevice.Quote()
+            << " to unlock block device " << device.Quote());
+
+        int result = NBD::RemoveLoopbackDevice(loopbackDevice);
+        if (result != 0) {
+            throw TServiceError(E_FAIL) << "failed to remove loopback device "
+                << loopbackDevice.Quote() << " with error: " << result;
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

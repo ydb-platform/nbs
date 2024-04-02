@@ -1,6 +1,6 @@
 # Prerequisites
 
-### 1. qemu-kvm installed: 
+### 1. qemu-kvm installed:
 ```
 apt-get install qemu-kvm
 ```
@@ -66,7 +66,7 @@ Thanks for flying NFS
 
 - Initial instruction is [here](https://virtio-fs.gitlab.io/howto-windows.html)
 
-Please note that upon installing virtio drivers you should select _only_ virtiofs 
+Please note that upon installing virtio drivers you should select _only_ virtiofs
 or you will render vm unusable after restart
 
 ### 2. Preparing environment
@@ -96,18 +96,18 @@ sudo socat TCP6-LISTEN:80,fork TCP4:127.0.0.1:3389
 ### 4. Accessing filestore
 - By design there should be service mounting filestore starting from drive Z:
 
-- Or you can manually run 
+- Or you can manually run
 ```promt
 C:\Program Files\Virtio-Win\VioFS>virtiofs.exe -D - -d -1
 ```
 
 ### 5. Bugs and limitations
 - So far it supports only one virtiofs drive with no way to specify specific tag
-- It doesn't work: [NBS-3031](https://st.yandex-team.ru/NBS-3031)
+- It doesn't work: NBS-3031
 
 
 # initctl help
-**NOTE**: you can chain commands but they are order sensitive. 
+**NOTE**: you can chain commands but they are order sensitive.
 
 ```bash
 ./initctl.sh stop           # stop all running services
@@ -117,7 +117,7 @@ C:\Program Files\Virtio-Win\VioFS>virtiofs.exe -D - -d -1
 ./initctl.sh start          # launches kikimr itself, kikimr storage service & vhost
 ./initctl.sh initialize     # same as above but initializes kikimr, required at first run and after format cmd
 ./initctl.sh startlocal     # launches passthrough to local fs storage service & vhost
-./initctl.sh startnull      # launches dummy storage service & vhost 
+./initctl.sh startnull      # launches dummy storage service & vhost
 
 ./initctl.sh create         # creates filestore, required for local/kikimr services at first run or after format
 ./initctl.sh mount          # mounts filestore via fuse driver usually at ~/nfs unless configuration changed

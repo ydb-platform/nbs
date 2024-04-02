@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -20,7 +21,10 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     TBlockRange64 nextProcessingRange) const
 {
     // migration range is 4_MB
-    const auto migrationFactorPerAgent = MaxMigrationBandwidthMiBs / 4.0;
+    const double processingRangeSizeMiBs =
+        static_cast<double>(ProcessingRangeSize) / (1024 * 1024);
+    const double migrationFactorPerAgent =
+        MaxMigrationBandwidthMiBs / processingRangeSizeMiBs;
 
     if (PartitionConfig->GetUseSimpleMigrationBandwidthLimiter()) {
         return TDuration::Seconds(1) / migrationFactorPerAgent;

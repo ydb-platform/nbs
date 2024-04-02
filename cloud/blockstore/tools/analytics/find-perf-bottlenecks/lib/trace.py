@@ -113,7 +113,7 @@ def describe_trace(trace):
     return " ".join(probes)
 
 
-# https://a.yandex-team.ru/arc/trunk/arcadia/cloud/storage/core/protos/media.proto?rev=r9021410#L11
+# https://github.com/ydb-platform/nbs/blob/main/cloud/storage/core/protos/media.proto#L10
 def media_kind2str(media_kind):
     if media_kind == "0" or media_kind == "2" or media_kind == "3":
         return "HDD"

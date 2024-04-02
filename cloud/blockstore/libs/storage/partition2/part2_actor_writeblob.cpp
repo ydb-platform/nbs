@@ -234,7 +234,7 @@ void TWriteBlobActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }

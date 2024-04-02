@@ -43,7 +43,7 @@ bool TIndexTabletState::EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request
 
 TWriteRequestList TIndexTabletState::DequeueWriteBatch()
 {
-    // TODO: deduplicate writes (https://st.yandex-team.ru/NBS-2161)
+    // TODO: deduplicate writes (NBS-2161)
     return std::move(Impl->WriteBatch);
 }
 
@@ -921,9 +921,15 @@ void TIndexTabletState::AcquireCollectBarrier(ui64 commitId)
     Impl->GarbageQueue.AcquireCollectBarrier(commitId);
 }
 
-void TIndexTabletState::ReleaseCollectBarrier(ui64 commitId)
+// returns true if the barrier was present
+bool TIndexTabletState::TryReleaseCollectBarrier(ui64 commitId)
 {
-    Impl->GarbageQueue.ReleaseCollectBarrier(commitId);
+    return Impl->GarbageQueue.TryReleaseCollectBarrier(commitId);
+}
+
+bool TIndexTabletState::IsCollectBarrierAcquired(ui64 commitId) const
+{
+    return Impl->GarbageQueue.IsCollectBarrierAcquired(commitId);
 }
 
 ui64 TIndexTabletState::GetCollectCommitId() const

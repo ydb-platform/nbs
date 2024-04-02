@@ -18,7 +18,6 @@ def core_pattern(binary_path, cwd=None):
         if not p.startswith('|'):
             return p.replace('%e', mask)
 
-    # see: https://a.yandex-team.ru/arc/trunk/arcadia/sandbox/bin/coredumper.py?rev=r5646070#L28
     # > filename = ".".join((name, pid, sig))
 
     name = ".".join((mask, '%p', '%s'))

@@ -37,7 +37,7 @@ struct TNode
     {
         // we lose actual RefCount values after restart, so we should expect
         // forget requests that try to subtract values greater than RefCount
-        // see https://st.yandex-team.ru/NBS-2102
+        // see NBS-2102
         RefCount -= Min(RefCount, count);
         return RefCount;
     }

@@ -319,6 +319,56 @@ void TIndexTabletActor::ResetThrottlingPolicy()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+NProto::TError TIndexTabletActor::ValidateWriteRequest(
+    const TActorContext& ctx,
+    const TRequest& request,
+    const TByteRange& range)
+{
+    if (auto error = ValidateRange(range); HasError(error)) {
+        return error;
+    }
+
+    auto* handle = FindHandle(request.GetHandle());
+    if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        return ErrorInvalidHandle(request.GetHandle());
+    }
+
+    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+        if (CompactionStateLoadStatus.Finished &&
+            ++BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Suiciding after %u backpressure errors",
+                LogTag.c_str(),
+                BackpressureErrorCount);
+
+            Suicide(ctx);
+        }
+
+        return MakeError(E_REJECTED, "rejected due to backpressure");
+    }
+
+    return NProto::TError{};
+}
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
+    const TActorContext& ctx,
+    const NProto::TWriteDataRequest& request,
+    const TByteRange& range);
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
+    const TActorContext& ctx,
+    const NProtoPrivate::TAddDataRequest& request,
+    const TByteRange& range);
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 {
     if (!CompactionStateLoadStatus.Finished) {
@@ -507,6 +557,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -530,6 +581,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -553,9 +605,12 @@ STFUNC(TIndexTabletActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
+        HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -594,8 +649,11 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         // tablet related requests
         IgnoreFunc(TEvents::TEvPoisonPill);
@@ -619,6 +677,7 @@ STFUNC(TIndexTabletActor::StateBroken)
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -631,6 +690,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

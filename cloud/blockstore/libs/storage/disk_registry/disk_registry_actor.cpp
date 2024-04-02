@@ -186,8 +186,6 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
             MakeError(E_REJECTED, "Tablet is dead"));
     }
     PendingDiskDeallocationRequests.clear();
-
-    CancelAllPendingWaitForDeviceCleanupRequests(ctx);
 }
 
 void TDiskRegistryActor::OnDetach(const TActorContext& ctx)
@@ -753,6 +751,9 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
+
+        HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
+            HandleCleanupDisksResponse);
 
         default:
             if (!RejectRequests(ev)) {

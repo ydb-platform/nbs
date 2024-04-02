@@ -42,7 +42,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	imageCrc32, _ := testcommon.CreateImage(
+	diskContentInfo := testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -121,7 +121,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 				return
 			}
 
-			err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
+			err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 			errs <- err
 		}()
 	}
@@ -171,7 +171,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	imageCrc32, _ := testcommon.CreateImage(
+	diskContentInfo := testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -225,7 +225,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
+	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
@@ -252,7 +252,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	imageCrc32, _ := testcommon.CreateImage(
+	diskContentInfo := testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -317,7 +317,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 				return
 			}
 
-			err = nbsClient.ValidateCrc32(diskID, imageSize, imageCrc32)
+			err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 			errs <- err
 		}()
 	}
@@ -362,7 +362,7 @@ func TestPrivateServiceConfigurePool(t *testing.T) {
 
 	imageSize := uint64(4 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,
@@ -406,7 +406,7 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	imageID := t.Name()
 	imageSize := uint64(64 * 1024 * 1024)
 
-	_, _ = testcommon.CreateImage(
+	_ = testcommon.CreateImage(
 		t,
 		ctx,
 		imageID,

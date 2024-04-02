@@ -17,6 +17,8 @@ func main() {
 	flag.StringVar(&cfg.Endpoint, "endpoint", "/csi/csi.sock", "CSI endpoint")
 	flag.StringVar(&cfg.NodeID, "node-id", "undefined", "Node ID")
 	flag.UintVar(&cfg.NbsPort, "nbs-port", 9766, "NBS port")
+	flag.UintVar(&cfg.NfsServerPort, "nfs-server-port", 9021, "NFS server port")
+	flag.UintVar(&cfg.NfsVhostPort, "nfs-vhost-port", 9022, "NFS vhost port")
 	flag.StringVar(&cfg.NbsSocketsDir,
 		"nbs-sockets-dir",
 		"/run/nbsd/sockets",
@@ -27,6 +29,7 @@ func main() {
 		"/nbsd-sockets",
 		"Path to folder with disk sockets on the pod",
 	)
+
 	flag.Parse()
 
 	log.Printf("Run NBS CSI driver: %s:%s", cfg.DriverName, cfg.VendorVersion)

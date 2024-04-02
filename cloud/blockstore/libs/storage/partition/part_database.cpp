@@ -1277,10 +1277,11 @@ bool TPartitionDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 
 void TPartitionDatabase::WriteUnconfirmedBlob(
     const TPartialBlobId& blobId,
-    const TBlobUniqueIdWithRange& blob)
+    const TBlobToConfirm& blob)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
+    // TODO: persist blob checksums (issue-122)
     Table<TTable>()
         .Key(blobId.CommitId(), blobId.UniqueId())
         .Update(
@@ -1298,8 +1299,7 @@ void TPartitionDatabase::DeleteUnconfirmedBlob(const TPartialBlobId& blobId)
         .Delete();
 }
 
-bool TPartitionDatabase::ReadUnconfirmedBlobs(
-    TCommitIdToBlobUniqueIdWithRange& blobs)
+bool TPartitionDatabase::ReadUnconfirmedBlobs(TCommitIdToBlobsToConfirm& blobs)
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
@@ -1318,7 +1318,11 @@ bool TPartitionDatabase::ReadUnconfirmedBlobs(
             it.GetValue<TTable::RangeStart>(),
             it.GetValue<TTable::RangeEnd>());
 
-        blobs[commitId].emplace_back(uniqueId, blockRange);
+        blobs[commitId].emplace_back(
+            uniqueId,
+            blockRange,
+            TVector<ui32>() /* TODO: checksums */
+        );
 
         if (!it.Next()) {
             return false;   // not ready

@@ -11,8 +11,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	log "github.com/sirupsen/logrus"
-	nbsblockstorepublicapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc"
 )
 
@@ -24,6 +24,8 @@ type Config struct {
 	NodeID        string
 	VendorVersion string
 	NbsPort       uint
+	NfsServerPort uint
+	NfsVhostPort  uint
 	NbsSocketsDir string
 	PodSocketsDir string
 }
@@ -46,10 +48,28 @@ func NewDriver(cfg Config) (*Driver, error) {
 		return nil, err
 	}
 
-	ctx := context.Background()
-	_, err = nbsClient.Ping(ctx, &nbsblockstorepublicapi.TPingRequest{})
-	if err != nil {
-		log.Printf("Failed to ping NBS: %+v", err)
+	var nfsClient nfsclient.ClientIface
+	if cfg.NfsServerPort != 0 {
+		nfsClient, err = nfsclient.NewGrpcClient(
+			&nfsclient.GrpcClientOpts{
+				Endpoint: fmt.Sprintf("localhost:%d", cfg.NfsServerPort),
+			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var nfsEndpointClient nfsclient.EndpointClientIface
+	if cfg.NfsVhostPort != 0 {
+		nfsEndpointClient, err = nfsclient.NewGrpcEndpointClient(
+			&nfsclient.GrpcClientOpts{
+				Endpoint: fmt.Sprintf("localhost:%d", cfg.NfsVhostPort),
+			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	errInterceptor := func(
@@ -73,7 +93,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	csi.RegisterControllerServer(
 		grpcServer,
-		newNBSServerControllerService(nbsClient))
+		newNBSServerControllerService(nbsClient, nfsClient))
 
 	csi.RegisterNodeServer(
 		grpcServer,
@@ -82,7 +102,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 			nbsClientID,
 			cfg.NbsSocketsDir,
 			cfg.PodSocketsDir,
-			nbsClient))
+			nbsClient,
+			nfsEndpointClient))
 
 	return &Driver{grpcServer: grpcServer}, nil
 }

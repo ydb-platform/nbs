@@ -21,6 +21,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func withComponentLoggingField(ctx context.Context) context.Context {
+	return logging.WithComponent(ctx, logging.ComponentS3)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type S3Client struct {
 	s3          *aws_s3.S3
 	callTimeout time.Duration
@@ -92,6 +98,7 @@ func (c *S3Client) CreateBucket(
 	bucket string,
 ) (err error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "creating bucket %v in s3", bucket)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -125,6 +132,7 @@ func (c *S3Client) GetObject(
 	key string,
 ) (o S3Object, err error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -170,6 +178,7 @@ func (c *S3Client) PutObject(
 	object S3Object,
 ) (err error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -204,6 +213,7 @@ func (c *S3Client) DeleteObject(
 	key string,
 ) (err error) {
 
+	ctx = withComponentLoggingField(ctx)
 	logging.Debug(
 		ctx,
 		"deleting object from s3, bucket %v, key %v",

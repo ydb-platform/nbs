@@ -339,7 +339,7 @@ def _get_vm_use_virtiofs_server(args):
 
 
 def _prepare_test_environment(ssh, virtio):
-    # Workaround for https://st.yandex-team.ru/DISKMAN-63
+    # Workaround for DISKMAN-63
     if "TMPDIR" in os.environ:
         ssh("sudo mkdir -m a=rwx -p {}".format(os.environ['TMPDIR']))
 

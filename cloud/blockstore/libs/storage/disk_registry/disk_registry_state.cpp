@@ -258,11 +258,11 @@ TString TCheckpointInfo::MakeUniqueId(
 }
 
 // static
-TString TCheckpointInfo::MakeCheckpointDiskId(
+TString TCheckpointInfo::MakeShadowDiskId(
     const TString& sourceDiskId,
     const TString& checkpointId)
 {
-    return sourceDiskId + "/" + checkpointId;
+    return sourceDiskId + "-" + checkpointId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2034,12 +2034,12 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         return MakeError(E_ARGUMENT, "Can't create checkpoint for checkpoint");
     }
 
-    auto checkpointDiskId =
-        TCheckpointInfo::MakeCheckpointDiskId(sourceDiskId, checkpointId);
+    auto shadowDiskId =
+        TCheckpointInfo::MakeShadowDiskId(sourceDiskId, checkpointId);
     auto checkpointMediaKind = GetCheckpointShadowDiskType(diskInfo.MediaKind);
 
     TAllocateDiskParams diskParams{
-        checkpointDiskId,
+        shadowDiskId,
         diskInfo.CloudId,
         diskInfo.FolderId,
         {},   // PlacementGroupId
@@ -2084,12 +2084,12 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         return error;
     }
 
-    result->CheckpointDiskId = checkpointDiskId;
+    result->ShadowDiskId = shadowDiskId;
 
     TCheckpointInfo checkpointInfo{
         sourceDiskId,
         checkpointId,
-        checkpointDiskId};
+        shadowDiskId};
     Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
     return error;
 }
@@ -2109,12 +2109,12 @@ NProto::TError TDiskRegistryState::DeallocateCheckpoint(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    const auto checkpointDiskId = checkpointInfo->CheckpointDiskId;
+    const auto shadowDiskId = checkpointInfo->ShadowDiskId;
 
     Checkpoints.erase(id);
 
-    MarkDiskForCleanup(db, checkpointDiskId);
-    return DeallocateDisk(db, checkpointDiskId);
+    MarkDiskForCleanup(db, shadowDiskId);
+    return DeallocateDisk(db, shadowDiskId);
 }
 
 NProto::TError TDiskRegistryState::GetCheckpointDataState(
@@ -2133,12 +2133,12 @@ NProto::TError TDiskRegistryState::GetCheckpointDataState(
     }
 
     const auto* checkpointDisk =
-        Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+        Disks.FindPtr(checkpointInfo->ShadowDiskId);
     if (!checkpointDisk) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
-                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << "Disk " << checkpointInfo->ShadowDiskId.Quote()
                 << " not found");
     }
 
@@ -2164,12 +2164,12 @@ NProto::TError TDiskRegistryState::SetCheckpointDataState(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    auto* checkpointDisk = Disks.FindPtr(checkpointInfo->CheckpointDiskId);
+    auto* checkpointDisk = Disks.FindPtr(checkpointInfo->ShadowDiskId);
     if (!checkpointDisk) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder()
-                << "Disk " << checkpointInfo->CheckpointDiskId.Quote()
+                << "Disk " << checkpointInfo->ShadowDiskId.Quote()
                 << " not found");
     }
 
@@ -2183,7 +2183,7 @@ NProto::TError TDiskRegistryState::SetCheckpointDataState(
     checkpointDisk->CheckpointReplica.SetState(checkpointState);
     checkpointDisk->CheckpointReplica.SetStateTs(now.MicroSeconds());
     db.UpdateDisk(
-        BuildDiskConfig(checkpointInfo->CheckpointDiskId, *checkpointDisk));
+        BuildDiskConfig(checkpointInfo->ShadowDiskId, *checkpointDisk));
     return MakeError(S_OK);
 }
 
@@ -2786,10 +2786,10 @@ void TDiskRegistryState::DeleteCheckpointByDisk(
     for (const auto& [id, checkpointInfo]: Checkpoints) {
         if (checkpointInfo.SourceDiskId == diskId)
         {
-            disksToDelete.push_back(checkpointInfo.CheckpointDiskId);
+            disksToDelete.push_back(checkpointInfo.ShadowDiskId);
             checkpointsToDelete.push_back(id);
         }
-        if (checkpointInfo.CheckpointDiskId == diskId)
+        if (checkpointInfo.ShadowDiskId == diskId)
         {
             checkpointsToDelete.push_back(id);
         }
@@ -3094,10 +3094,10 @@ NProto::EDiskState TDiskRegistryState::GetDiskState(const TDiskId& diskId) const
     return disk->State;
 }
 
-NProto::TError TDiskRegistryState::GetCheckpointDiskId(
+NProto::TError TDiskRegistryState::GetShadowDiskId(
     const TDiskId& sourceDiskId,
     const TCheckpointId& checkpointId,
-    TDiskId* checkpointDiskId) const
+    TDiskId* shadowDiskId) const
 {
     auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
@@ -3109,7 +3109,7 @@ NProto::TError TDiskRegistryState::GetCheckpointDiskId(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    *checkpointDiskId = checkpointInfo->CheckpointDiskId;
+    *shadowDiskId = checkpointInfo->ShadowDiskId;
     return MakeError(S_OK);
 }
 
@@ -4495,21 +4495,15 @@ void TDiskRegistryState::DeleteDiskStateChanges(
 }
 
 NProto::TError TDiskRegistryState::CheckAgentStateTransition(
-    const TString& agentId,
+    const NProto::TAgentConfig& agent,
     NProto::EAgentState newState,
     TInstant timestamp) const
 {
-    const auto* agent = AgentList.FindAgent(agentId);
-
-    if (!agent) {
-        return MakeError(E_NOT_FOUND, "agent not found");
-    }
-
-    if (agent->GetState() == newState) {
+    if (agent.GetState() == newState) {
         return MakeError(S_ALREADY);
     }
 
-    if (agent->GetStateTs() > timestamp.MicroSeconds()) {
+    if (agent.GetStateTs() > timestamp.MicroSeconds()) {
         return MakeError(E_INVALID_STATE, "out of order");
     }
 
@@ -4518,23 +4512,21 @@ NProto::TError TDiskRegistryState::CheckAgentStateTransition(
 
 NProto::TError TDiskRegistryState::UpdateAgentState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant timestamp,
     TString reason,
     TVector<TDiskId>& affectedDisks)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, timestamp);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateAgentState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, timestamp);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     const auto cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -4797,24 +4789,22 @@ ui32 TDiskRegistryState::CountBrokenHddPlacementGroupPartitionsAfterDeviceRemova
 
 NProto::TError TDiskRegistryState::UpdateCmsHostState(
     TDiskRegistryDatabase& db,
-    TString agentId,
+    const TString& agentId,
     NProto::EAgentState newState,
     TInstant now,
     bool dryRun,
     TVector<TDiskId>& affectedDisks,
     TDuration& timeout)
 {
-    auto error = CheckAgentStateTransition(agentId, newState, now);
-    if (FAILED(error.GetCode())) {
-        return error;
+    auto* agent = AgentList.FindAgent(agentId);
+
+    if (!agent) {
+        return MakeError(E_NOT_FOUND, "agent not found");
     }
 
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        auto message = ReportDiskRegistryAgentNotFound(
-            TStringBuilder() << "UpdateCmsHostState:AgentId: " << agentId);
-
-        return MakeError(E_FAIL, agentId);
+    auto error = CheckAgentStateTransition(*agent, newState, now);
+    if (FAILED(error.GetCode())) {
+        return error;
     }
 
     TInstant cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
@@ -4852,25 +4842,24 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     }
 
     NProto::TError result;
-    if (timeout == TDuration::Zero()) {
-        result = MakeError(S_OK);
-        cmsTs = TInstant::Zero();
-    } else {
+
+    // Agent can return from 'unavailable' state only when it is reconnected to
+    // the cluster.
+    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE &&
+        newState == NProto::AGENT_STATE_ONLINE)
+    {
+        timeout = cmsTs + CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT - now;
+        if (!timeout) {
+            result.SetCode(E_INVALID_STATE);
+        }
+    }
+
+    if (timeout) {
         result = MakeError(
             E_TRY_AGAIN,
             TStringBuilder() << "time remaining: " << timeout);
-    }
-
-    if (agent->GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
-        // Agent can return from 'unavailable' state only when it is reconnected
-        // to the cluster.
-        if (newState == NProto::AGENT_STATE_ONLINE) {
-            // Should retry while agent is in 'unavailable' state.
-            result = MakeError(E_TRY_AGAIN, "agent currently unavailable");
-            if (timeout == TDuration::Zero()) {
-                timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-            }
-        }
+    } else {
+        cmsTs = TInstant::Zero();
     }
 
     if (dryRun) {
@@ -5136,9 +5125,7 @@ auto TDiskRegistryState::AddNewDevices(
     }
 
     if (dryRun) {
-        return {
-            .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
-        };
+        return {};
     }
 
     TVector<TString> ids;
@@ -5184,7 +5171,6 @@ auto TDiskRegistryState::AddNewDevices(
 
     return {
         .Error = std::move(error),
-        .DevicesThatNeedToBeCleaned = std::move(devicesThatNeedToBeCleaned)
     };
 }
 
@@ -5210,11 +5196,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
 
     if (device.GetState() == NProto::DEVICE_STATE_ERROR) {
         // CMS can't return device from 'error' state.
-        // Should retry while device is in 'error' state.
-        error = MakeError(E_TRY_AGAIN, "device is in error state");
-        if (!timeout) {
-            timeout = CMS_UPDATE_STATE_TO_ONLINE_TIMEOUT;
-        }
+        error = MakeError(E_INVALID_STATE, "device is in error state");
     }
 
     if (dryRun) {
@@ -5351,13 +5333,6 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 now,
                 dryRun,
                 result.Timeout);
-
-            if (!HasError(result.Error)
-                    && IsDirtyDevice(device->GetDeviceUUID())
-                    && device->GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
-            {
-                result.DevicesThatNeedToBeCleaned.push_back(device->GetDeviceUUID());
-            }
         } else {
             TString affectedDisk;
             result.Error = CmsRemoveDevice(

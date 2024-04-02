@@ -484,6 +484,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                                 TABLED() { out << "Executor Reject Probability"; }
                                 TABLED() { out << Executor()->GetRejectProbability(); }
                             }
+                            TABLER() {
+                                TABLED() { out << "Write and zero requests in progress"; }
+                                TABLED() { out << WriteAndZeroRequestsInProgress; }
+                            }
                         }
                     }
                 }

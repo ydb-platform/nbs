@@ -448,7 +448,7 @@ message TStorageServiceConfig
     optional uint32 CompactionGarbageBlockLimit = 174;
 
     // User data may be dumped on some monitoring pages if this flag is set.
-    // See https://st.yandex-team.ru/NBS-1726#5fd39472aa62c1459c7287cb
+    // See NBS-1726
     optional bool UserDataDebugDumpAllowed = 175;
 
     // Fresh channels configuration.
@@ -949,7 +949,10 @@ message TStorageServiceConfig
     // disk are not blocked (in ms).
     optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
 
+    // Max number of volume MetaHistory records displayed on volume monpage.
+    optional uint32 VolumeMetaHistoryDisplayedRecordLimit = 359;
+
     // Duration of attempts to connect to tablet for cached tablets before
     // switching to describe volume (in ms).
-    optional uint32 VolumeProxyCacheRetryDuration = 359;
+    optional uint32 VolumeProxyCacheRetryDuration = 360;
 }

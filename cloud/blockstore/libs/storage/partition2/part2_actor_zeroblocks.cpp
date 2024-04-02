@@ -186,7 +186,7 @@ void TZeroBlocksActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto respose = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
 }
@@ -214,7 +214,7 @@ void TPartitionActor::HandleZeroBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -332,7 +332,7 @@ void TPartitionActor::HandleZeroBlocks(
         TabletID(),
         DescribeRange(writeRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
 
     ExecuteTx<TZeroBlocks>(
         ctx,

@@ -269,6 +269,21 @@ void TVolumeActor::CompleteSavePartStats(
 
 void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 {
+    DoSendPartStatsToService(ctx, State->GetConfig().GetDiskId());
+
+    for (const auto& [checkpointId, checkpointInfo]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.ShadowDiskId) {
+            DoSendPartStatsToService(ctx, checkpointInfo.ShadowDiskId);
+        }
+    }
+}
+
+void TVolumeActor::DoSendPartStatsToService(
+    const NActors::TActorContext& ctx,
+    const TString& diskId)
+{
     auto stats = CreatePartitionDiskCounters(State->CountersPolicy());
     ui64 systemCpu = 0;
     ui64 userCpu = 0;
@@ -281,8 +296,12 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 
     NBlobMetrics::TBlobLoadMetrics offsetPartitionMetrics;
 
+    bool partStatFound = false;
     for (auto& info: State->GetPartitionStatInfos())
     {
+        if (info.DiskId != diskId) {
+            continue;
+        }
         if (!info.LastCounters) {
             stats->AggregateWith(info.CachedCounters);
             channelsHistorySize +=
@@ -299,8 +318,12 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
         info.LastCounters = nullptr;
         info.LastSystemCpu = 0;
         info.LastUserCpu = 0;
+        partStatFound = true;
     }
 
+    if (!partStatFound) {
+        return;
+    }
     stats->Simple.ChannelHistorySize.Set(channelsHistorySize);
 
     auto blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
@@ -312,7 +335,7 @@ void TVolumeActor::SendPartStatsToService(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvStatsService::TEvVolumePartCounters>(
         MakeIntrusive<TCallContext>(),
-        State->GetConfig().GetDiskId(),
+        diskId,
         std::move(stats),
         systemCpu,
         userCpu,

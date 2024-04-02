@@ -663,7 +663,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         auto it = EndpointMap.find(socketPath);
         if (it != EndpointMap.end()) {
             NProto::TError error;
-            error.SetCode(E_FAIL);
+            error.SetCode(S_ALREADY);
             error.SetMessage(TStringBuilder()
                 << "endpoint " << socketPath.Quote()
                 << " has already been started");

@@ -162,6 +162,9 @@ private:
 
     bool StartPartitionsNeeded = false;
 
+    // The number of blocks that need to be migrated to complete the migration.
+    std::optional<ui64> BlockCountToMigrate;
+
 public:
     TVolumeState(
         TStorageConfigPtr storageConfig,
@@ -201,6 +204,17 @@ public:
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
     {
         Meta.SetMigrationIndex(migrationIndex);
+    }
+
+    void SetBlockCountToMigrate(
+        std::optional<ui64> blockCountToMigrate)
+    {
+        BlockCountToMigrate = blockCountToMigrate;
+    }
+
+    std::optional<ui64> GetBlockCountToMigrate() const
+    {
+        return BlockCountToMigrate;
     }
 
     void UpdateResyncIndexInMeta(ui64 resyncIndex)
@@ -328,7 +342,8 @@ public:
 
     EPublishingPolicy CountersPolicy() const;
 
-    void CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
+    TPartitionStatInfo&
+    CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
 
     TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
 

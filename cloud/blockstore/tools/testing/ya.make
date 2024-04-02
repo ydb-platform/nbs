@@ -1,4 +1,5 @@
 RECURSE(
+    bad-guest
     build-fresh-blob
     chaos-monkey
     eternal_tests

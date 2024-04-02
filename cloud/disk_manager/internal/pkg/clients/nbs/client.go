@@ -572,6 +572,32 @@ func (t CheckpointType) toProto() protos.ECheckpointType {
 	}[t]
 }
 
+func parseCheckpointStatus(protoType protos.ECheckpointStatus) CheckpointStatus {
+	switch protoType {
+	case protos.ECheckpointStatus_NOT_READY:
+		return CheckpointStatusNotReady
+	case protos.ECheckpointStatus_READY:
+		return CheckpointStatusReady
+	case protos.ECheckpointStatus_ERROR:
+		return CheckpointStatusError
+	default:
+		return CheckpointStatusError
+	}
+}
+
+func (m CheckpointStatus) String() string {
+	switch m {
+	case CheckpointStatusNotReady:
+		return "CheckpointStatusNotReady"
+	case CheckpointStatusReady:
+		return "CheckpointStatusReady"
+	case CheckpointStatusError:
+		return "CheckpointStatusError"
+	default:
+		return "CheckpointStatusUnknown"
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (c *client) Ping(ctx context.Context) (err error) {
@@ -748,6 +774,16 @@ func (c *client) CreateCheckpoint(
 		params.CheckpointType.toProto(),
 	)
 	return wrapError(err)
+}
+
+func (c *client) GetCheckpointStatus(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (CheckpointStatus, error) {
+
+	status, err := c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
+	return parseCheckpointStatus(status), wrapError(err)
 }
 
 func (c *client) DeleteCheckpoint(

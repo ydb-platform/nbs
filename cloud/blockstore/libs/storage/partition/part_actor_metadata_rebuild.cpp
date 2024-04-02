@@ -96,7 +96,7 @@ void TPartitionActor::HandleGetRebuildMetadataStatus(
             progress.SetIsCompleted(p.IsCompleted);
         }
     } else {
-        result = MakeError(E_REJECTED, "Tablet is dead");
+        result = MakeError(E_REJECTED, "tablet is shutting down");
     };
 
     *response->Record.MutableError() = std::move(result);

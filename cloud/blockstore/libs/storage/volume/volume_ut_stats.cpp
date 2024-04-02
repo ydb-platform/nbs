@@ -430,6 +430,123 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             return nonEmptyReports == 3;
         }}, TDuration::Seconds(1));
     }
+
+    Y_UNIT_TEST(ShouldSendPartitionStatsForShadowDisk)
+    {
+        constexpr ui64 DiskBlockCount = 32768;
+        constexpr ui64 DiskBlockSize = 4096;
+        constexpr ui64 DiskByteCount = DiskBlockCount * DiskBlockSize;
+        constexpr ui32 WriteBlockCount = 2;
+        constexpr ui32 ReadFromSourceBlockCount = 5;
+        constexpr ui32 ReadFromCheckpointBlockCount = 10;
+
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        struct TReadAndWriteByteCount
+        {
+            ui64 ReadByteCount = 0;
+            ui64 WriteByteCount = 0;
+        };
+        TMap<TString, TReadAndWriteByteCount> statsForDisks;
+        auto statEventInterceptor = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->Recipient == MakeStorageStatsServiceId() &&
+                event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+            {
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumePartCounters>();
+                statsForDisks[msg->DiskId].ReadByteCount +=
+                    msg->DiskCounters->RequestCounters.ReadBlocks.RequestBytes;
+                statsForDisks[msg->DiskId].WriteByteCount +=
+                    msg->DiskCounters->RequestCounters.WriteBlocks.RequestBytes;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(statEventInterceptor);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DiskBlockCount,
+            "vol0");
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Write to the source disk. These writes will be mirrored to the shadow
+        // disk too.
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(
+                DiskBlockCount - WriteBlockCount - 1,
+                WriteBlockCount),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+
+        // Read from the source disk.
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, ReadFromSourceBlockCount),
+            clientInfo.GetClientId());
+
+        // Wait for checkpoint get ready.
+        for (;;) {
+            auto status = volume.GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Read from checkpoint.
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(0, ReadFromCheckpointBlockCount),
+            clientInfo.GetClientId(),
+            "c1");
+
+        // Wait for stats send to StorageStatsService.
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // Validate bytes count for source and shadow disks.
+        UNIT_ASSERT_VALUES_EQUAL(2, statsForDisks.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DiskByteCount + ReadFromSourceBlockCount * DiskBlockSize,
+            statsForDisks["vol0"].ReadByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            WriteBlockCount * DiskBlockSize,
+            statsForDisks["vol0"].WriteByteCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadFromCheckpointBlockCount * DiskBlockSize,
+            statsForDisks["vol0-c1"].ReadByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            DiskByteCount + WriteBlockCount * DiskBlockSize,
+            statsForDisks["vol0-c1"].WriteByteCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

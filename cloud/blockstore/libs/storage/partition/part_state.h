@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
-#include <cloud/blockstore/libs/storage/partition/model/blob_unique_id_with_range.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_index.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
@@ -1298,15 +1298,15 @@ public:
     }
 
 private:
-    TCommitIdToBlobUniqueIdWithRange UnconfirmedBlobs;
+    TCommitIdToBlobsToConfirm UnconfirmedBlobs;
     ui32 UnconfirmedBlobCount = 0;
     // contains entries from UnconfirmedBlobs that have been confirmed but have
     // not yet been added to the index
-    TCommitIdToBlobUniqueIdWithRange ConfirmedBlobs;
+    TCommitIdToBlobsToConfirm ConfirmedBlobs;
     ui32 ConfirmedBlobCount = 0;
 
 public:
-    const TCommitIdToBlobUniqueIdWithRange& GetUnconfirmedBlobs() const
+    const TCommitIdToBlobsToConfirm& GetUnconfirmedBlobs() const
     {
         return UnconfirmedBlobs;
     }
@@ -1316,7 +1316,7 @@ public:
         return UnconfirmedBlobCount;
     }
 
-    const TCommitIdToBlobUniqueIdWithRange& GetConfirmedBlobs() const
+    const TCommitIdToBlobsToConfirm& GetConfirmedBlobs() const
     {
         return ConfirmedBlobs;
     }
@@ -1336,16 +1336,16 @@ public:
         ui64 highCommitId,
         const TBlockRange32& blockRange) const;
 
-    void InitUnconfirmedBlobs(TCommitIdToBlobUniqueIdWithRange blobs);
+    void InitUnconfirmedBlobs(TCommitIdToBlobsToConfirm blobs);
 
     void WriteUnconfirmedBlob(
         TPartitionDatabase& db,
         ui64 commitId,
-        const TBlobUniqueIdWithRange& blob);
+        const TBlobToConfirm& blob);
 
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 
-    void BlobsConfirmed(ui64 commitId);
+    void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
     //
     // AddConfirmedBlobs

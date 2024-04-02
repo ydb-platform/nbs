@@ -346,10 +346,10 @@ class EternalTestHelper:
     def _mount_fs(self, instance: Ycp.Instance):
         self.logger.info('Mounting fs')
         config = self.test_config.fs_config
-        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             cmd = (f'mkdir -p {config.mount_path} && {{ sudo umount {config.mount_path} || true; }} &&'
                    f' mount -t virtiofs {config.device_name} {config.mount_path}')
-            if hasattr(self.test_config.load_config, 'test_file'):
+            if hasattr(self.test_config, 'load_config') and hasattr(self.test_config.load_config, 'test_file'):
                 cmd += f' && touch {self.test_config.load_config.test_file}'
 
             _, _, stderr = ssh.exec_command(cmd)
@@ -581,14 +581,14 @@ class EternalTestHelper:
 
         instance = self.create_and_configure_vm()
         self.logger.info('Prepare database, executing script')
-        with self.module_factories.make_sftp_client(self.args.dry_run, instance.ip) as sftp:
+        with self.module_factories.make_sftp_client(self.args.dry_run, instance.ip, ssh_key_path=self.args.ssh_key_path) as sftp:
             script_name = self._DB_TEST_INIT_SCRIPT % self.test_config.db
             file = sftp.file(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 'w')
             file.write(resource.find(script_name).decode('utf8'))
             file.flush()
             sftp.chmod(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}', 0o755)
 
-        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip) as ssh:
+        with self.module_factories.make_ssh_client(self.args.dry_run, instance.ip, ssh_key_path=self.args.ssh_key_path) as ssh:
             _, stdout, stderr = ssh.exec_command(f'{self._DB_TEST_INIT_SCRIPT_PATH}/{script_name}')
             exit_code = stdout.channel.recv_exit_status()
             if exit_code != 0:

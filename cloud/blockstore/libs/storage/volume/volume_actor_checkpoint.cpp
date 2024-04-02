@@ -471,9 +471,8 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
 
     UpdateCheckpointRequest(
         ctx,
-        true,                               // Completed
-        msg->Record.GetCheckpointDiskId()   // ShadowDiskId
-    );
+        true,   // Completed
+        msg->Record.GetShadowDiskId());
 }
 
 template <typename TMethod>
@@ -546,7 +545,7 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 
     Error = MakeError(
         E_REJECTED,
-        "tablet is dead"
+        "tablet is shutting down"
     );
 
     ReplyAndDie(ctx);
@@ -1351,6 +1350,14 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
          request.ReqType == ECheckpointRequestType::DeleteData) &&
          State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
 
+    if (needToDestroyShadowActor) {
+        auto checkpointInfo =
+            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
+        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+        }
+    }
+
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,
@@ -1448,8 +1455,7 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
     State->GetCheckpointStore().SetShadowDiskState(
         request.CheckpointId,
         newState,
-        args.ProcessedBlockCount,
-        args.TotalBlockCount);
+        args.ProcessedBlockCount);
 
     NCloud::Reply(
         ctx,
@@ -1517,8 +1523,7 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         std::move(requestInfo),
         checkpointInfo->RequestId,
         newShadowDiskState,
-        msg->ProcessedBlockCount,
-        msg->TotalBlockCount);
+        msg->ProcessedBlockCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

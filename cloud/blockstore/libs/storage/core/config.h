@@ -395,6 +395,7 @@ public:
 
     TDuration GetVolumeHistoryDuration() const;
     ui32 GetVolumeHistoryCacheSize() const;
+    ui32 GetVolumeMetaHistoryDisplayedRecordLimit() const;
 
     ui64 GetBytesPerPartition() const;
     ui64 GetBytesPerPartitionSSD() const;

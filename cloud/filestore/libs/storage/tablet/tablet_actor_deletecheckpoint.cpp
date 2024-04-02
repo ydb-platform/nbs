@@ -255,7 +255,7 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
         FormatError(args.Error).c_str());
 
     ReleaseMixedBlocks(args.MixedBlocksRanges);
-    ReleaseCollectBarrier(args.CollectBarrier);
+    TABLET_VERIFY(TryReleaseCollectBarrier(args.CollectBarrier));
 
     auto response = std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

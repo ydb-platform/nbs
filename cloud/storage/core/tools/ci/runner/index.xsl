@@ -125,6 +125,46 @@
     </div>
 </xsl:template>
 
+<!-- templates for nb-nbs-stable-lab teamcity badges -->
+<xsl:template match="teamcity_testcase">
+    <xsl:param name="teamcity-domain"/>
+    <xsl:variable name="badge-url" select="concat(
+        'https://',
+        $teamcity-domain,
+        '/guestAuth/app/rest/builds/buildType:(id:',
+        @build-configuration-name,
+        ')/statusIcon')"/>
+    <xsl:variable name="run-url" select="concat(
+        'https://',
+        $teamcity-domain,
+        '/buildConfiguration/',
+        @build-configuration-name)"/>
+    <xsl:value-of select="@test-case-name"/>
+    <a>
+        <xsl:attribute name="href">
+            <xsl:value-of select="$run-url"/>
+        </xsl:attribute>
+        <img>
+            <xsl:attribute name="src">
+                <xsl:value-of select="$badge-url"/>
+            </xsl:attribute>
+            <xsl:attribute name="alt">
+                <xsl:value-of select="@test-case-name"/>
+            </xsl:attribute>
+        </img>
+    </a>
+</xsl:template>
+
+<xsl:template match="nb-nbs-stable-lab-teamcity-tests/child::*">
+    <xsl:param name="teamcity-domain"/>
+    <div style="border-top: 1px dashed black; margin-bottom: 10px; padding-top: 10px">
+        <b>nb-nbs-stable-lab/<xsl:value-of select="name(.)"/>:</b>
+        <xsl:apply-templates select="./child::teamcity_testcase">
+            <xsl:with-param name="teamcity-domain" select="$teamcity-domain"/>
+        </xsl:apply-templates>
+    </div>
+</xsl:template>
+
 <!-- boilerplate wrappers for detailed suite reports -->
 
 <xsl:template match="fio" mode="detailed">
@@ -257,6 +297,13 @@
         <body>
             <div style="margin-bottom: 20px">
                 <h3>github CI</h3>
+                <p>
+                    <a href="https://github.com/ydb-platform/nbs/actions/workflows/nightly.yaml">
+                        <img src="https://github.com/ydb-platform/nbs/actions/workflows/nightly.yaml/badge.svg?branch=main"
+                             alt="Nightly build">
+                        </img>
+                    </a>
+                </p>
                 <xsl:apply-templates select="tests"/>
             </div>
             <div style="border-top: 1px dashed black; margin-bottom: 20px">
@@ -276,6 +323,9 @@
                 </div>
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>
+                    <xsl:apply-templates select="nb-nbs-stable-lab-teamcity-tests/child::*">
+                        <xsl:with-param name="teamcity-domain" select="nb-nbs-stable-lab-teamcity-tests/@teamcity-domain"/>
+                    </xsl:apply-templates>
                     <xsl:apply-templates select="disk_manager_acceptance" mode="brief"/>
                     <xsl:apply-templates select="disk_manager_eternal" mode="brief"/>
                     <xsl:apply-templates select="disk_manager_sync" mode="brief"/>

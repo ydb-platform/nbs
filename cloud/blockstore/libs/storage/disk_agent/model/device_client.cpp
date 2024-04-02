@@ -39,6 +39,7 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(ws.MountSeqNumber);
+                session.SetLastActivityTs(ws.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -51,6 +52,7 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
                 session.SetDiskId(state->DiskId);
                 session.SetVolumeGeneration(state->VolumeGeneration);
                 session.SetMountSeqNumber(rs.MountSeqNumber);
+                session.SetLastActivityTs(rs.LastActivityTs.MicroSeconds());
             }
             *session.AddDeviceIds() = id;
         }
@@ -116,9 +118,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                     > now)
         {
             return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "Device " << uuid.Quote()
+                << "Error acquiring device " << uuid.Quote()
+                << " with client " << clientId.Quote()
                 << " already acquired by another client: "
-                << deviceState->WriterSession.Id);
+                << deviceState->WriterSession.Id.Quote());
         }
     }
 
@@ -154,12 +157,17 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
+            // a new session or activation of a stale session
+            if (s == ds.ReaderSessions.end() ||
+                s->LastActivityTs + ReleaseInactiveSessionsTimeout <= now)
+            {
+                somethingHasChanged = true;
+            }
+
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
                 STORAGE_INFO("Device %s was acquired by client %s for reading.",
                     uuid.Quote().c_str(), clientId.c_str());
-
-                somethingHasChanged = true;
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
@@ -179,7 +187,11 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
                 somethingHasChanged = true;
             }
 
-            if (ds.WriterSession.MountSeqNumber != mountSeqNumber) {
+            if (ds.WriterSession.MountSeqNumber != mountSeqNumber ||
+                ds.WriterSession.LastActivityTs +
+                        ReleaseInactiveSessionsTimeout <=
+                    now)
+            {
                 somethingHasChanged = true;
             }
 
@@ -293,9 +305,21 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     }
 
     if (!acquired) {
-        return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-            << "Device " << uuid.Quote() << " not acquired by client " << clientId
-            << ", current active writer: " << deviceState->WriterSession.Id);
+        TStringBuilder allReaders;
+        for (const auto& reader: deviceState->ReaderSessions) {
+            bool isFirst = allReaders.Empty();
+            allReaders << reader.Id.Quote();
+            if (!isFirst) {
+                allReaders << ", ";
+            }
+        }
+        return MakeError(
+            E_BS_INVALID_SESSION,
+            TStringBuilder()
+                << "Device " << uuid.Quote() << " not acquired by client "
+                << clientId.Quote() << ", current active writer: "
+                << deviceState->WriterSession.Id.Quote()
+                << ", current readers: [" << allReaders << "]");
     }
 
     return {};

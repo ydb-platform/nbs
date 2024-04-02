@@ -6,6 +6,7 @@ SRCS(
     client_handler_ut.cpp
     server_handler_ut.cpp
     server_ut.cpp
+    utils_ut.cpp
 )
 
 PEERDIR(

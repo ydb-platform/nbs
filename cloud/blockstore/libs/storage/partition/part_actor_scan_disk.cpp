@@ -241,7 +241,7 @@ void TScanDiskActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    const auto error = MakeError(E_REJECTED, "Tablet is dead");
+    const auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     NotifyCompleted(ctx, error);
 }
@@ -404,7 +404,7 @@ void TPartitionActor::HandleGetScanDiskStatus(
             }
         }
     } else {
-        result = MakeError(E_REJECTED, "Tablet is dead");
+        result = MakeError(E_REJECTED, "tablet is shutting down");
     };
 
     *response->Record.MutableError() = std::move(result);
@@ -417,7 +417,7 @@ void TPartitionActor::HandleScanDiskBatch(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TScanDiskBatchMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -473,7 +473,7 @@ void TPartitionActor::HandleScanDiskBatch(
         gen,
         step);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TScanDiskBatchMethod>(*requestInfo);
 
     ExecuteTx(ctx, CreateTx<TScanDiskBatch>(
         requestInfo,

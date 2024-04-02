@@ -103,6 +103,7 @@ spec:
             - "--version=$(DRIVER_VERSION)"
             - "--node-id=$(KUBE_NODE_NAME)"
             - "--endpoint=/csi/csi.sock"
+            - "--nfs-server-port=0"
           env:
             - name: DRIVER_VERSION
               value: "v0.1"

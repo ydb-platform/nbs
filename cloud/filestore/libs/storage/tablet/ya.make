@@ -15,6 +15,7 @@ SRCS(
     tablet_actor_accessnode.cpp
     tablet_actor_acquirelock.cpp
     tablet_actor_addblob.cpp
+    tablet_actor_adddata.cpp
     tablet_actor_allocatedata.cpp
     tablet_actor_change_storage_config.cpp
     tablet_actor_cleanup.cpp
@@ -87,6 +88,7 @@ PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
     cloud/filestore/libs/storage/model
+    cloud/filestore/libs/storage/tablet/actors
     cloud/filestore/libs/storage/tablet/model
     cloud/filestore/libs/storage/tablet/protos
 

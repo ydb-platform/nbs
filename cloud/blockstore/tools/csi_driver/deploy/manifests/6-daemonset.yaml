@@ -54,6 +54,7 @@ spec:
             - "--endpoint=/csi/csi.sock"
             - "--nbs-sockets-dir=/run/nbsd/sockets"
             - "--pod-sockets-dir=/nbsd-sockets"
+            - "--nfs-vhost-port=0"
           env:
             - name: DRIVER_VERSION
               value: "v0.1"

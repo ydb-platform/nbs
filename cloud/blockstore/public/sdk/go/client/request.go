@@ -67,21 +67,21 @@ func requestLogLevel(req request) LogLevel {
 func requestDetails(req request) string {
 	if readReq, ok := req.(*protos.TReadBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, blocks count: %d)",
 			readReq.StartIndex,
 			readReq.BlocksCount)
 	}
 
 	if writeReq, ok := req.(*protos.TWriteBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, buffers count: %d)",
 			writeReq.StartIndex,
 			len(writeReq.Blocks.Buffers))
 	}
 
 	if zeroReq, ok := req.(*protos.TZeroBlocksRequest); ok {
 		return fmt.Sprintf(
-			" (offset: %d, count: %d)",
+			" (offset: %d, blocks count: %d)",
 			zeroReq.StartIndex,
 			zeroReq.BlocksCount)
 	}

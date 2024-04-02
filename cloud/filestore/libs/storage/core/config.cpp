@@ -139,11 +139,17 @@ namespace {
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(ThreeStageWriteEnabled,          bool,      false                     )\
+    xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
+                                                                               \
+    xxx(GenerateBlobIdsReleaseCollectBarrierTimeout,                           \
+        TDuration,                                                             \
+        TDuration::Seconds(10)                                                )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
