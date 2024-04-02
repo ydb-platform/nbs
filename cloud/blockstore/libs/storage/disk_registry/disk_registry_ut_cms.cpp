@@ -20,11 +20,14 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -1059,8 +1062,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = AddDevice(diskRegistry, "agent-1", "dev-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
-            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
         diskRegistry.ChangeDeviceState(
@@ -1109,6 +1112,94 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto [error, timeout] = AddDevice(diskRegistry, "agent-1", "dev-2");
 
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectAddHostForUnavailableAgent)
+    {
+        const TVector agents{CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)})};
+
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.SetWritableState(true);
+        diskRegistry.WaitReady();
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAgents(*runtime, 1);
+        WaitForAgents(*runtime, 1);
+        WaitForSecureErase(*runtime, agents);
+
+        {
+            auto [error, timeout] = RemoveHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+
+        runtime->AdvanceCurrentTime(15min);
+
+        diskRegistry.ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+        runtime->AdvanceCurrentTime(15min);
+
+        {
+            auto [error, timeout] = AddHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration{5min},
+                TDuration::Seconds(timeout));
+        }
+
+        runtime->AdvanceCurrentTime(2min);
+
+        {
+            auto [error, timeout] = AddHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_LE(TDuration::Seconds(timeout), TDuration{3min});
+            UNIT_ASSERT_GT(TDuration::Seconds(timeout), TDuration{2min});
+        }
+
+        runtime->AdvanceCurrentTime(10min);
+
+        {
+            auto [error, timeout] = AddHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+
+        runtime->AdvanceCurrentTime(10min);
+
+        {
+            auto [error, timeout] = AddHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration{5min},
+                TDuration::Seconds(timeout));
+        }
+
+        runtime->AdvanceCurrentTime(1min);
+
+        diskRegistry.ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(1min);
+
+        {
+            auto [error, timeout] = AddHost(diskRegistry, "agent-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
     }

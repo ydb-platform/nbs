@@ -23,7 +23,6 @@ add_subdirectory(ut_pools)
 add_subdirectory(ut_restore)
 add_subdirectory(ut_session)
 add_subdirectory(ut_suspend)
-add_subdirectory(ut_wait_device)
 
 add_library(libs-storage-disk_registry)
 target_link_libraries(libs-storage-disk_registry PUBLIC
