@@ -68,9 +68,24 @@ void TServiceActor::RegisterCounters(const TActorContext& ctx)
 {
     Counters = CreateServiceCounters();
 
+    SelfPingMaxUsCounter = AppData(ctx)->
+        Counters->
+        GetSubgroup("counters", "blockstore")->
+        GetSubgroup("component", "service")->
+        GetCounter("SelfPingMaxUs", false);
+
+    ScheduleSelfPing(ctx);
+
     UpdateCounters(ctx);
 
     ScheduleCountersUpdate(ctx);
+}
+
+void TServiceActor::ScheduleSelfPing(const TActorContext& ctx)
+{
+    ctx.Schedule(
+        TDuration::MilliSeconds(10),
+        new TEvServicePrivate::TEvSelfPing(GetCycleCount()));
 }
 
 void TServiceActor::ScheduleCountersUpdate(const TActorContext& ctx)
@@ -117,6 +132,13 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
                 *counter = percentileCounter.GetRangeValue(idxRange);
             }
         }
+    }
+
+    if (SelfPingMaxUsCounter) {
+        auto val =
+            CyclesToDuration(SelfPingMaxUs) - Config->GetServiceSelfPingInterval();
+        *SelfPingMaxUsCounter = val.MicroSeconds();
+        SelfPingMaxUs = 0;
     }
 }
 
@@ -190,6 +212,14 @@ void TServiceActor::HandleWakeup(
     ScheduleCountersUpdate(ctx);
 }
 
+void TServiceActor::HandleSelfPing(
+    const TEvServicePrivate::TEvSelfPing::TPtr& ev,
+    const TActorContext& ctx)
+{
+    SelfPingMaxUs = std::max(SelfPingMaxUs, GetCycleCount() - ev->Get()->StartCycles);
+    ScheduleSelfPing(ctx);
+}
+
 void TServiceActor::HandlePing(
     const TEvService::TEvPingRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -252,6 +282,7 @@ STFUNC(TServiceActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
+        HFunc(TEvServicePrivate::TEvSelfPing, HandleSelfPing);
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
