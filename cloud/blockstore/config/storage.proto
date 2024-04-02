@@ -950,6 +950,6 @@ message TStorageServiceConfig
     optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
 
     // Duration of attempts to connect to tablet for cached tablets before
-    // switching to describe volume.
+    // switching to describe volume (in ms).
     optional uint32 VolumeProxyCacheRetryDuration = 359;
 }

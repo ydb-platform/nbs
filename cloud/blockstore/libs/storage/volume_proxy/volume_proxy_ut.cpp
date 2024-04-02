@@ -479,7 +479,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
     }
 
-    Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfNumberOfConnFailExceedsThreshold)
+    Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfDurationOfFailedConnectsExceedsThreshold)
     {
         constexpr ui32 timeout = 3'000;
 
