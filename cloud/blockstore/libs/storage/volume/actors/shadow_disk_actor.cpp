@@ -669,8 +669,7 @@ void TShadowDiskActor::OnMigrationProgress(
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillProgressUpdate,
-            migrationIndex,
-            SrcConfig->GetBlockCount());
+            migrationIndex);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -685,8 +684,7 @@ void TShadowDiskActor::OnMigrationFinished(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillCompleted,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount());
+            ProcessedBlockCount);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -699,8 +697,7 @@ void TShadowDiskActor::OnMigrationError(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillError,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount());
+            ProcessedBlockCount);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -869,8 +866,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 CheckpointId,
                 EReason::FillProgressUpdate,
-                GetNextProcessingRange().Start,
-                SrcConfig->GetBlockCount()));
+                GetNextProcessingRange().Start));
     }
 
     STORAGE_CHECK_PRECONDITION(Acquired());
@@ -895,8 +891,7 @@ void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillError,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount()));
+            ProcessedBlockCount));
 }
 
 bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const

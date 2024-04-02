@@ -139,6 +139,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
     const auto volumeParams = State->GetVolumeParams();
 
+    State->SetBlockCountToMigrate(std::nullopt);
+
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
     const auto maxTimedOutDeviceStateDurationOverridden = !!maxTimedOutDeviceStateDuration;

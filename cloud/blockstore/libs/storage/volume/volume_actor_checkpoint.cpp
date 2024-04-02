@@ -1455,8 +1455,7 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
     State->GetCheckpointStore().SetShadowDiskState(
         request.CheckpointId,
         newState,
-        args.ProcessedBlockCount,
-        args.TotalBlockCount);
+        args.ProcessedBlockCount);
 
     NCloud::Reply(
         ctx,
@@ -1524,8 +1523,7 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         std::move(requestInfo),
         checkpointInfo->RequestId,
         newShadowDiskState,
-        msg->ProcessedBlockCount,
-        msg->TotalBlockCount);
+        msg->ProcessedBlockCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

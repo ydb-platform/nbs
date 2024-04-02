@@ -7,6 +7,11 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// We process 4 MB of data at a time.
+constexpr ui64 ProcessingRangeSize = 4_MB;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TProcessingBlocks
 {
 private:
@@ -31,6 +36,7 @@ public:
     bool SkipProcessedRanges();
     bool AdvanceProcessingIndex();
     TBlockRange64 BuildProcessingRange() const;
+    ui64 GetBlockCountNeedToBeProcessed() const;
     ui64 GetProcessedBlockCount() const;
 
     ui64 GetLastReportedProcessingIndex() const

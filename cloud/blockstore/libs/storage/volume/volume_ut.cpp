@@ -2538,7 +2538,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
 
         volume.SendToPipe(
-            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512));
+            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512, 1024));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         volume.SendToPipe(
@@ -2554,7 +2554,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.WaitReady();
 
         volume.SendToPipe(
-            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512));
+            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512, 1024));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         volume.SendToPipe(
