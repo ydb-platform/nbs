@@ -63,6 +63,7 @@ build {
       "sudo apt-get install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils tzdata cmake python3-dev python3-pip ninja-build antlr3 m4 libidn11-dev libaio1 libaio-dev make clang-14 lld-14 llvm-14 file distcc s3cmd qemu-kvm dpkg-dev",
       "sudo pip3 install conan==1.59 pytest==7.1.3  pyinstaller==5.13.2 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2  six pyyaml packaging  cryptography grpcio grpcio-tools PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil pygithub==1.59.1",
       "curl -L https://github.com/ccache/ccache/releases/download/v${var.CCACHE_VERSION}/ccache-${var.CCACHE_VERSION}-linux-${var.OS_ARCH}.tar.xz | sudo tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${var.CCACHE_VERSION}-linux-${var.OS_ARCH}/ccache",
+      "sudo apt-get remove -y unattended-upgrades",
 
       # Other packages
       "sudo apt-get install -y git jq tree tmux atop",

@@ -85,6 +85,13 @@ jobs:
       with:
         submodules: true
         ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
+    - name: Rebase PR
+      if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
+      shell: bash
+      run: |
+        git fetch origin ${{ github.event.pull_request.base.ref }}
+        git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout
       uses: actions/checkout@v4
       if: github.event.pull_request.head.sha == ''
@@ -124,6 +131,8 @@ jobs:
         test_type: ${{ inputs.test_type }}
         cache_update: ${{ inputs.cache_update_tests }}
         bazel_remote_uri: ${{ vars.REMOTE_CACHE_URL_YA || '' }}
+        bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
+        bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
         sync_to_s3: ${{ vars.SYNC_TO_S3 }}
