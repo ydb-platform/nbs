@@ -18,55 +18,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef NDEBUG
-
-TString ToString(std::span<iocb*> batch)
-{
-    TStringStream ss;
-
-    const char* op[]{
-        "pread",
-        "pwrite",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "preadv",
-        "pwritev",
-    };
-
-    ss << "[ ";
-    for (iocb* cb: batch) {
-        ss << "{ " << op[cb->aio_lio_opcode] << ":" << cb->aio_fildes << " ";
-        switch (cb->aio_lio_opcode) {
-            case IO_CMD_PREAD:
-            case IO_CMD_PWRITE:
-                ss << cb->u.c.buf << " " << cb->u.c.nbytes << ":"
-                   << cb->u.c.offset;
-                break;
-            case IO_CMD_PREADV:
-            case IO_CMD_PWRITEV: {
-                iovec* iov = static_cast<iovec*>(cb->u.c.buf);
-                for (unsigned i = 0; i != cb->u.c.nbytes; ++i) {
-                    ss << "(" << iov[i].iov_base << " " << iov[i].iov_len
-                       << ") ";
-                }
-                break;
-            }
-        }
-        ss << "} ";
-    }
-
-    ss << "]";
-
-    return ss.Str();
-}
-
-#endif   // NDEBUG
-
-////////////////////////////////////////////////////////////////////////////////
-
 void CompleteRequest(
     TAioRequest* req,
     vhd_bdev_io_result status,
@@ -345,11 +296,6 @@ void TAioBackend::ProcessQueue(
 
         queueStats.Submitted += ret;
 
-#ifndef NDEBUG
-        STORAGE_DEBUG(
-            "submitted " << ret << ": "
-                         << ToString(std::span(batch.data(), ret)));
-#endif
         // remove submitted items from the batch
         batch.erase(batch.begin(), batch.begin() + ret);
     }
