@@ -562,7 +562,7 @@ void TPartitionActor::HandleCollectGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCollectGarbageMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -612,7 +612,7 @@ void TPartitionActor::HandleCollectGarbage(
 
         State->GetCollectGarbageState().SetStatus(EOperationStatus::Started);
 
-        AddTransaction(*requestInfo);
+        AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
         ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
         return;

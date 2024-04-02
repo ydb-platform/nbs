@@ -21,7 +21,7 @@ void TPartitionActor::HandleDeleteCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TDeleteCheckpointMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -65,7 +65,7 @@ void TPartitionActor::HandleDeleteCheckpoint(
         return;
     }
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TDeleteCheckpointMethod>(*requestInfo);
 
     auto tx = CreateTx<TDeleteCheckpoint>(
         requestInfo,
