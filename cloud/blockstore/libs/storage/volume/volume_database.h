@@ -114,7 +114,8 @@ public:
         ui64 requestId,
         bool completed,
         const TString& shadowDiskId,
-        EShadowDiskState shadowDiskState);
+        EShadowDiskState shadowDiskState,
+        const TString& error);
     void UpdateShadowDiskState(
         ui64 requestId,
         ui64 processedBlockCount,

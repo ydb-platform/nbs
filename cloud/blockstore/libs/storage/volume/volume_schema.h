@@ -154,6 +154,12 @@ struct TVolumeSchema
         {
         };
 
+        struct CheckpointError
+            : public Column<10, NKikimr::NScheme::NTypeIds::String>
+        {
+        };
+
+
         using TKey = TableKey<RequestId>;
         using TColumns = TableColumns<
             RequestId,
@@ -164,7 +170,8 @@ struct TVolumeSchema
             CheckpointType,
             ShadowDiskId,
             ShadowDiskProcessedBlockCount,
-            ShadowDiskState>;
+            ShadowDiskState,
+            CheckpointError>;
     };
 
     struct NonReplPartStats

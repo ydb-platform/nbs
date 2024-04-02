@@ -8,6 +8,24 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TActiveCheckpointInfo::IsShadowDiskBased() const
+{
+    return ShadowDiskState != EShadowDiskState::None;
+}
+
+bool TActiveCheckpointInfo::ShouldBlockWrites() const
+{
+    if (Type == ECheckpointType::Light) {
+        return false;
+    }
+    if (Data == ECheckpointData::DataDeleted) {
+        return false;
+    }
+    return !IsShadowDiskBased();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCheckpointStore::TCheckpointStore(
     TVector<TCheckpointRequest> checkpointRequests,
     const TString& diskID)
@@ -89,10 +107,9 @@ void TCheckpointStore::SetShadowDiskState(
     EShadowDiskState shadowDiskState,
     ui64 processedBlockCount)
 {
+    Y_DEBUG_ABORT_UNLESS(shadowDiskState != EShadowDiskState::None);
+
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
-        if (shadowDiskState == EShadowDiskState::Ready) {
-            checkpointData->Data = ECheckpointData::DataPresent;
-        }
         checkpointData->ShadowDiskState = shadowDiskState;
         checkpointData->ProcessedBlockCount = processedBlockCount;
 
@@ -295,11 +312,7 @@ void TCheckpointStore::CalcCheckpointsState()
 {
     CheckpointBlockingWritesExists = AnyOf(
         ActiveCheckpoints,
-        [](const auto& it)
-        {
-            return it.second.Data == ECheckpointData::DataPresent &&
-                   it.second.ShadowDiskId.empty();
-        });
+        [](const auto& it) { return it.second.ShouldBlockWrites(); });
 }
 
 void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)

@@ -64,6 +64,7 @@ struct TCheckpointRequest
     TString ShadowDiskId;
     EShadowDiskState ShadowDiskState = EShadowDiskState::None;
     ui64 ShadowDiskProcessedBlockCount = 0;
+    TString CheckpointError;
 
     TCheckpointRequest(
             ui64 requestId,
@@ -89,7 +90,8 @@ struct TCheckpointRequest
             ECheckpointType type,
             TString shadowDiskId,
             EShadowDiskState shadowDiskState,
-            ui64 shadowDiskProcessedBlockCount)
+            ui64 shadowDiskProcessedBlockCount,
+            TString checkpointError)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
@@ -99,6 +101,7 @@ struct TCheckpointRequest
         , ShadowDiskId(std::move(shadowDiskId))
         , ShadowDiskState(shadowDiskState)
         , ShadowDiskProcessedBlockCount(shadowDiskProcessedBlockCount)
+        , CheckpointError(std::move(checkpointError))
     {}
 };
 
@@ -112,6 +115,11 @@ struct TActiveCheckpointInfo
     EShadowDiskState ShadowDiskState = EShadowDiskState::None;
     ui64 ProcessedBlockCount = 0;
     bool HasShadowActor = false;
+
+    [[nodiscard]] bool IsShadowDiskBased() const;
+
+    // Does the checkpoint block write/zero requests.
+    [[nodiscard]] bool ShouldBlockWrites() const;
 };
 
 using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointInfo>;

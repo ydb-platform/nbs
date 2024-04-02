@@ -426,18 +426,21 @@ struct TTxVolume
         const bool Completed;
         const TString ShadowDiskId;
         const EShadowDiskState ShadowDiskState;
+        const std::optional<TString> Error;
 
         TUpdateCheckpointRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
                 TString shadowDiskId,
-                EShadowDiskState shadowDiskState)
+                EShadowDiskState shadowDiskState,
+                std::optional<TString> error)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
             , ShadowDiskId(std::move(shadowDiskId))
             , ShadowDiskState(shadowDiskState)
+            , Error(std::move(error))
         {}
 
         void Clear()
