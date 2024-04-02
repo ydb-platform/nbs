@@ -389,6 +389,7 @@ private:
     // config might be adjusted during initial handshake
     TClientConfigPtr OriginalConfig;
     TClientConfig Config;
+    const EWaitMode WaitMode;
     bool ResetConfig = false;
 
     TCompletionPoller* Poller = nullptr;
@@ -524,6 +525,7 @@ TClientEndpoint::TClientEndpoint(
     , Reconnect(config->MaxReconnectDelay)
     , OriginalConfig(std::move(config))
     , Config(*OriginalConfig)
+    , WaitMode(Config.WaitMode)
 {
     // user data attached to connection events
     Connection->context = this;
@@ -769,14 +771,14 @@ void TClientEndpoint::SendRequest(
     Counters->RequestEnqueued();
     InputRequests.Enqueue(std::move(req));
 
-    if (Config.WaitMode == EWaitMode::Poll) {
+    if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Set();
     }
 }
 
 bool TClientEndpoint::HandleInputRequests()
 {
-    if (Config.WaitMode == EWaitMode::Poll) {
+    if (WaitMode == EWaitMode::Poll) {
         RequestEvent.Clear();
     }
 
@@ -811,7 +813,7 @@ bool TClientEndpoint::AbortRequests() noexcept
 {
     bool ret = false;
 
-    if (Config.WaitMode == EWaitMode::Poll) {
+    if (WaitMode == EWaitMode::Poll) {
         DisconnectEvent.Clear();
     }
 
@@ -856,7 +858,7 @@ bool TClientEndpoint::HandleCompletionEvents()
 {
     ibv_cq* cq = CompletionQueue.get();
 
-    if (Config.WaitMode == EWaitMode::Poll) {
+    if (WaitMode == EWaitMode::Poll) {
         Verbs->GetCompletionEvent(cq);
         Verbs->AckCompletionEvents(cq, 1);
         Verbs->RequestCompletionEvent(cq, 0);
@@ -1113,7 +1115,7 @@ void TClientEndpoint::SetError() noexcept
                 RDMA_ERROR("flush error: " << e.what());
             }
 
-            if (Config.WaitMode == EWaitMode::Poll) {
+            if (WaitMode == EWaitMode::Poll) {
                 DisconnectEvent.Set();
             }
     }
