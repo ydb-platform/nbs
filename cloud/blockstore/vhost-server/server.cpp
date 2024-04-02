@@ -180,14 +180,12 @@ void TServer::Stop()
 {
     STORAGE_INFO("Stopping the server");
 
-    {
-        auto promise = NewPromise();
-        vhd_unregister_blockdev(Handler, [] (void* opaque) {
-            static_cast<TPromise<void>*>(opaque)->SetValue();
-        }, &promise);
+    auto promise = NewPromise();
+    vhd_unregister_blockdev(Handler, [] (void* opaque) {
+        static_cast<TPromise<void>*>(opaque)->SetValue();
+    }, &promise);
 
-        promise.GetFuture().Wait();
-    }
+    promise.GetFuture().Wait();
 
     // 2. Stop request queues. For each do:
     // 2.1 Stop a request queue
