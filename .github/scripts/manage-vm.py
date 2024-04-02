@@ -7,6 +7,7 @@ import logging
 import argparse
 import yaml
 import random
+import time
 import string
 from github import Github, Auth as GithubAuth
 from yandexcloud import SDK, RetryInterceptor, backoff_linear_with_jitter
@@ -124,7 +125,9 @@ def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, labe
     )
 
 
-def get_runner_token(github_repo_owner, github_repo, github_token):
+def get_runner_token(
+    github_repo_owner: str, github_repo: str, github_token: str
+) -> str:
     result = requests.post(
         f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/registration-token",
         headers={
@@ -142,6 +145,48 @@ def get_runner_token(github_repo_owner, github_repo, github_token):
         return token
     else:
         raise ValueError(f"Failed to get runner registration token: {result}")
+
+
+def wait_for_runner_registration(
+    client: Github,
+    vm_id: str,
+    github_repo_owner: str,
+    github_repo: str,
+    sleep_interval: int = 10,
+    intervals: int = 60,
+) -> bool:
+    logger.info(
+        "Waiting for runner registration for %d*%d seconds", intervals, sleep_interval
+    )
+
+    for i in range(intervals):
+        if find_runner_by_name(client, github_repo_owner, github_repo, vm_id):
+            return True
+        else:
+            time.sleep(sleep_interval)
+
+    return False
+
+
+def find_runner_by_name(
+    client: Github, github_repo_owner: str, github_repo: str, vm_id: str
+) -> str:
+    runners = client.get_repo(
+        f"{github_repo_owner}/{github_repo}"
+    ).get_self_hosted_runners()
+
+    runner_id = None
+    for runner in runners:
+        if runner.name == str(vm_id):
+            runner_id = runner.id
+            break
+
+    if runner_id is None:
+        logger.info("Runner with name %s not found", vm_id)
+        return None
+
+    logger.info("Runner with name %s found", vm_id)
+    return runner_id
 
 
 def create_vm(sdk, args):
@@ -253,6 +298,16 @@ def create_vm(sdk, args):
             github_output("local-ipv4", local_ipv4)
             if external_ipv4:
                 github_output("external-ipv4", external_ipv4)
+
+            logger.info("Waiting for VM to be registered as Github Runner")
+            runner_id = wait_for_runner_registration(
+                gh, instance_id, args.github_repo_owner, args.github_repo, 10
+            )
+            if runner_id is not None:
+                logger.info("VM registered as Github Runner %s", runner_id)
+            else:
+                logger.error("Failed to register VM as Github Runner")
+                raise ValueError("Failed to register VM as Github Runner")
         else:
             logger.error("Failed to create VM with request: %s", request)
             logger.error("Response: %s", result)
@@ -264,19 +319,14 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
     github_token = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(github_token))
-    runners = gh.get_repo(
-        f"{github_repo_owner}/{github_repo}"
-    ).get_self_hosted_runners()
 
-    runner_id = None
-    for runner in runners:
-        if runner.name == str(vm_id):
-            runner_id = runner.id
-            break
+    runner_id = find_runner_by_name(gh, github_repo_owner, github_repo, vm_id)
 
     if runner_id is None:
-        logger.info("Runner with name %s not found", vm_id)
-        raise ValueError("Runner with name %s not found", vm_id)
+        # this is not critical error, just log it and be done with it,
+        # removing the VM is more important
+        logger.info("Runner with name %s not found, skipping", vm_id)
+        return
 
     if apply:
         delete_status_code = requests.delete(
@@ -290,6 +340,8 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
 
         if delete_status_code != 204:
             raise ValueError("Failed to remove runner with name %s", vm_id)
+
+        logger.info("Removed runner with name %s and id %s", vm_id, runner_id)
     else:
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
