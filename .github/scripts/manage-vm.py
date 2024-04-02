@@ -9,6 +9,7 @@ import yaml
 import random
 import time
 import string
+from typing import Optional
 from github import Github, Auth as GithubAuth
 from yandexcloud import SDK, RetryInterceptor, backoff_linear_with_jitter
 from yandex.cloud.compute.v1.instance_service_pb2_grpc import InstanceServiceStub
@@ -160,32 +161,35 @@ def wait_for_runner_registration(
     vm_id: str,
     github_repo_owner: str,
     github_repo: str,
-    sleep_interval: int = 10,
-    intervals: int = 60,
-) -> bool:
+    timeout_sec: int = 10,
+    retries: int = 60,
+) -> Optional[str]:
     logger.info(
-        "Waiting for runner registration for %d*%d seconds", intervals, sleep_interval
+        "Waiting for runner registration every %d seconds x %d times",
+        timeout_sec,
+        retries,
     )
 
-    for i in range(intervals):
-        if find_runner_by_name(client, github_repo_owner, github_repo, vm_id):
-            return True
+    for i in range(retries):
+        runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+        if runner_id is not None:
+            return runner_id
         else:
-            time.sleep(sleep_interval)
+            time.sleep(timeout_sec)
 
-    return False
+    return None
 
 
 def find_runner_by_name(
     client: Github, github_repo_owner: str, github_repo: str, vm_id: str
-) -> str:
+) -> Optional[str]:
     runners = client.get_repo(
         f"{github_repo_owner}/{github_repo}"
     ).get_self_hosted_runners()
 
     runner_id = None
     for runner in runners:
-        if runner.name == str(vm_id):
+        if runner.name == vm_id:
             runner_id = runner.id
             break
 
@@ -309,7 +313,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
 
             logger.info("Waiting for VM to be registered as Github Runner")
             runner_id = wait_for_runner_registration(
-                gh, instance_id, args.github_repo_owner, args.github_repo, 10
+                gh, instance_id, args.github_repo_owner, args.github_repo, 10, 60
             )
             if runner_id is not None:
                 logger.info("VM registered as Github Runner %s", runner_id)
