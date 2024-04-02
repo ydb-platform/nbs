@@ -240,4 +240,7 @@ message TStorageConfig
     // to release it in case of a client disconnect, this timeout is used.
     optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 345;
 
+    // If ThreeStageWriteEnabled is true, writes that exceed this threshold
+    // will use the three-stage write path. Similar to WriteBlobThreshold
+    optional uint32 ThreeStageWriteThreshold = 346;
 }

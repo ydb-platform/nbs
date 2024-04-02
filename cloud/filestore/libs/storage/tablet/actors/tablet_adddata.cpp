@@ -83,18 +83,13 @@ void TAddDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    // notify tablet
-    NCloud::Send(
-        ctx,
-        // We try to release commit barrier twice: once for the lock
-        // acquired by the GenerateBlob request and once for the lock
-        // acquired by the AddData request. Though, the first lock is
-        // scheduled to be released, it is better to release it as early
-        // as possible.
-        Tablet,
-        std::make_unique<TEvIndexTabletPrivate::TEvReleaseCollectBarrier>(
-            CommitId,
-            2));
+    {
+        // notify tablet
+        using TCompletion = TEvIndexTabletPrivate::TEvAddDataCompleted;
+        auto response = std::make_unique<TCompletion>(error);
+        response->CommitId = CommitId;
+        NCloud::Send(ctx, Tablet, std::move(response));
+    }
 
     FILESTORE_TRACK(
         ResponseSent_TabletWorker,

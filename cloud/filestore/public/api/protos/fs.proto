@@ -18,6 +18,7 @@ message TFileStoreFeatures
     uint32 NegativeEntryTimeout = 3;
     uint32 AttrTimeout = 4;
     bool ThreeStageWriteEnabled = 5;
+    uint32 ThreeStageWriteThreshold = 6;
 }
 
 message TFileStore

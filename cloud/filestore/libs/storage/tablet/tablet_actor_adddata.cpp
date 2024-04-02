@@ -369,4 +369,24 @@ void TIndexTabletActor::HandleAddData(
     txStarted = true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleAddDataCompleted(
+    const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    // We try to release commit barrier twice: once for the lock
+    // acquired by the GenerateBlob request and once for the lock
+    // acquired by the AddData request. Though, the first lock is
+    // scheduled to be released, it is better to release it as early
+    // as possible.
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
+    TryReleaseCollectBarrier(msg->CommitId);
+
+    WorkerActors.erase(ev->Sender);
+    EnqueueBlobIndexOpIfNeeded(ctx);
+}
+
 }   // namespace NCloud::NFileStore::NStorage
