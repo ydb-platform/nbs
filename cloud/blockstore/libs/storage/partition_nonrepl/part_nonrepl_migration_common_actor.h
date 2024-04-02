@@ -151,6 +151,10 @@ public:
     // Called from the inheritor to get the next processing range.
     TBlockRange64 GetNextProcessingRange() const;
 
+    // Called from the inheritor to get the number of blocks that need to be
+    // processed.
+    ui64 GetBlockCountNeedToBeProcessed() const;
+
     // IPoisonPillHelperOwner implementation
     void Die(const NActors::TActorContext& ctx) override
     {

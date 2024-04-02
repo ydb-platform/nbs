@@ -456,19 +456,16 @@ struct TTxVolume
         const ui64 RequestId;
         const EShadowDiskState ShadowDiskState;
         const ui64 ProcessedBlockCount;
-        const ui64 TotalBlockCount;
 
         TUpdateShadowDiskState(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 EShadowDiskState shadowDiskState,
-                ui64 processedBlockCount,
-                ui64 totalBlockCount)
+                ui64 processedBlockCount)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , ShadowDiskState(shadowDiskState)
             , ProcessedBlockCount(processedBlockCount)
-            , TotalBlockCount(totalBlockCount)
         {}
 
         void Clear()

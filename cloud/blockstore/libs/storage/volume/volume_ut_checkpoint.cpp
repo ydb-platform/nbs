@@ -3683,8 +3683,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 "c1",
                 EReason::FillProgressUpdate,
-                128,
-                expectedBlockCount);
+                128);
 
             volume.SendToPipe(std::move(request));
             runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -3795,8 +3794,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 "c1",
                 EReason::FillProgressUpdate,
-                128,
-                expectedBlockCount);
+                128);
 
             volume.SendToPipe(std::move(request));
             runtime->DispatchEvents({}, TDuration::MilliSeconds(100));

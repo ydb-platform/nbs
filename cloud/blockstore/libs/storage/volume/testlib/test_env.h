@@ -448,8 +448,7 @@ public:
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
         TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
-        ui64 processedBlockCount,
-        ui64 totalBlockCount);
+        ui64 processedBlockCount);
 
     void SendRemoteHttpInfo(
         const TString& params,

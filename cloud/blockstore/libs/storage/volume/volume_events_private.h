@@ -248,17 +248,14 @@ struct TEvVolumePrivate
         TString CheckpointId;
         EReason Reason = EReason::FillError;
         ui64 ProcessedBlockCount = 0;
-        ui64 TotalBlockCount = 0;
 
         TUpdateShadowDiskStateRequest(
                 TString checkpointId,
                 EReason reason,
-                ui64 processedBlockCount,
-                ui64 totalBlockCount)
+                ui64 processedBlockCount)
             : CheckpointId(std::move(checkpointId))
             , Reason(reason)
             , ProcessedBlockCount(processedBlockCount)
-            , TotalBlockCount(totalBlockCount)
         {}
     };
 
