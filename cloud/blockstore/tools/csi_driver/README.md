@@ -67,8 +67,10 @@ kubectl apply -f ./deploy/manifests/2-rbac.yaml
 kubectl apply -f ./deploy/manifests/3-csidriver.yaml
 kubectl apply -f ./deploy/manifests/4-storageclass.yaml
 # TODO: kubectl secret nbs-puller-secret
-kubectl apply -f ./deploy/manifests/5-deployment.yaml
-kubectl apply -f ./deploy/manifests/6-daemonset.yaml
+kubectl apply -f ./deploy/manifests/5-nbs-configmap.yaml
+kubectl apply -f ./deploy/manifests/6-nbs-daemonset.yaml
+kubectl apply -f ./deploy/manifests/7-csi-deployment.yaml
+kubectl apply -f ./deploy/manifests/8-csi-daemonset.yaml
 ```
 
 # copy nbsd and blockstore-nbd to minikube and run them

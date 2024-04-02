@@ -78,6 +78,8 @@ spec:
               mountPath: /csi
             - name: sockets-dir
               mountPath: /nbsd-sockets
+            - name: dev
+              mountPath: /mnt/dev
       volumes:
         - name: registration-dir
           hostPath:
@@ -94,6 +96,10 @@ spec:
         - name: sockets-dir
           hostPath:
             path: /run/nbsd/sockets
+            type: DirectoryOrCreate
+        - name: dev
+          hostPath:
+            path: /dev
             type: DirectoryOrCreate
       imagePullSecrets:
         - name: nbs-puller-secret
