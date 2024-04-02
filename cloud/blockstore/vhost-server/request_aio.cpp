@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
+#include <util/system/sanitizers.h>
 
 #include <algorithm>
 
@@ -81,11 +82,13 @@ void PrepareCompoundIO(
         sreq->data = req;
 
         batch.push_back(sreq);
+        NSan::Release(sreq);
 
         ptr += count;
         totalBytes -= count;
         deviceOffset = 0;
     }
+    NSan::Release(req);
 }
 
 }   // namespace
@@ -198,6 +201,7 @@ void PrepareIO(
     STORAGE_DEBUG("Prepared IO request with addr: %p", req);
 
     batch.push_back(req);
+    NSan::Release(req);
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer
