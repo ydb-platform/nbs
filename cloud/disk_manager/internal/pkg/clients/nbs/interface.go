@@ -113,6 +113,14 @@ type CheckpointParams struct {
 	CheckpointType CheckpointType
 }
 
+// Used in tests.
+type DiskContentInfo struct {
+	ContentSize uint64 // The coordinate of the last non-zero byte.
+	StorageSize uint64
+	Crc32       uint32
+	BlockCrc32s []uint32
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Client interface {
@@ -297,32 +305,47 @@ type Client interface {
 	FillDisk(
 		ctx context.Context,
 		diskID string,
-		diskSize uint64,
-	) error
+		contentSize uint64,
+	) (DiskContentInfo, error)
 
 	// Used in tests.
-	FillEncryptedDisk(diskID string, contentSize uint64, expectedCrc32 uint32) error
-
-	// Used in tests.
-	GoWriteRandomBlocksToNbsDisk(diskID string, contentSize uint64, expectedCrc32 uint32) error
-
-	// Used in tests.
-	ValidateCrc32WithEncryption(
+	FillEncryptedDisk(
+		ctx context.Context,
 		diskID string,
 		contentSize uint64,
 		encryption *types.EncryptionDesc,
-		expectedCrc32 uint32,
+	) (DiskContentInfo, error)
+
+	// Used in tests.
+	GoWriteRandomBlocksToNbsDisk(
+		ctx context.Context,
+		diskID string,
+	) (func() error, error)
+
+	// Used in tests.
+	ValidateCrc32(
+		ctx context.Context,
+		diskID string,
+		expectedDiskContentInfo DiskContentInfo,
 	) error
 
 	// Used in tests.
-	CalculateCrc32(diskID string, contentSize uint64) (uint32, error)
+	ValidateCrc32WithEncryption(
+		ctx context.Context,
+		diskID string,
+		expectedDiskContentInfo DiskContentInfo,
+		encryption *types.EncryptionDesc,
+	) error
+
+	// Used in tests.
+	CalculateCrc32(diskID string, contentSize uint64) (DiskContentInfo, error)
 
 	// Used in tests.
 	CalculateCrc32WithEncryption(
 		diskID string,
 		contentSize uint64,
 		encryption *types.EncryptionDesc,
-	) (uint32, error)
+	) (DiskContentInfo, error)
 
 	// Used in tests.
 	MountForReadWrite(diskID string) (func(), error)

@@ -322,6 +322,35 @@ func (c *ClientMock) Stat(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (c *ClientMock) FillDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+) (nbs.DiskContentInfo, error) {
+
+	return c.FillEncryptedDisk(ctx, diskID, contentSize, nil)
+}
+
+func (c *ClientMock) FillEncryptedDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+	encryption *types.EncryptionDesc,
+) (nbs.DiskContentInfo, error) {
+
+	args := c.Called(ctx, diskID, contentSize, encryption)
+	return args.Get(0).(nbs.DiskContentInfo), args.Error(1)
+}
+
+func (c *ClientMock) GoWriteRandomBlocksToNbsDisk(
+	ctx context.Context,
+	diskID string,
+) (func() error, error) {
+
+	args := c.Called(ctx, diskID)
+	return args.Get(0).(func() error), args.Error(1)
+}
+
 func (c *ClientMock) ValidateCrc32(
 	ctx context.Context,
 	diskID string,

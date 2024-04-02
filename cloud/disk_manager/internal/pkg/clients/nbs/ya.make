@@ -18,6 +18,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
-    testcommon
     tests
 )

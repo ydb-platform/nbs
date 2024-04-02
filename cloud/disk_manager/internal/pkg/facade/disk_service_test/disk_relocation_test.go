@@ -11,7 +11,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
-	nbs_testcommon "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -60,8 +59,8 @@ func setupMigrationTest(
 
 	if params.FillDisk {
 		nbsClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-		_, err = testcommon.FillDisk(
-			nbsClient,
+		_, err = nbsClient.FillDisk(
+			ctx,
 			params.DiskID,
 			uint64(params.DiskSize),
 		)
@@ -81,9 +80,8 @@ func successfullyMigrateDisk(
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migration.
-	waitForWrite, err := nbs_testcommon.GoWriteRandomBlocksToNbsDisk(
+	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
 		ctx,
-		srcZoneNBSClient,
 		params.DiskID,
 	)
 	require.NoError(t, err)
@@ -289,9 +287,8 @@ func migrateDiskInParallel(
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migrations.
-	waitForWrite, err := nbs_testcommon.GoWriteRandomBlocksToNbsDisk(
+	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
 		ctx,
-		srcZoneNBSClient,
 		params.DiskID,
 	)
 	require.NoError(t, err)
