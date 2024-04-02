@@ -33,14 +33,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def github_output(key, value, secret=False):
+def github_output(key: str, value: str, is_secret: bool = False):
     GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
 
     if GITHUB_OUTPUT:
         with open(GITHUB_OUTPUT, "a") as fp:
             fp.write(f"{key}={value}\n")
 
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if secret else value)
+    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
 
 
 def generate_github_label():
@@ -60,7 +60,7 @@ class KeyValueAction(argparse.Action):
         setattr(namespace, self.dest, kv_dict)
 
 
-def fetch_github_team_public_keys(gh, github_org, team_slug):
+def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
     org = gh.get_organization(github_org)
     team = org.get_team_by_slug(team_slug)
     members = [member for member in team.get_members()]
@@ -83,7 +83,15 @@ def fetch_github_team_public_keys(gh, github_org, team_slug):
     return ssh_keys
 
 
-def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, label):
+def generate_cloud_init_script(
+    user: str,
+    ssh_keys: list[str],
+    owner: str,
+    repo: str,
+    token: str,
+    version: str,
+    label: str,
+):
 
     script = [
         "#!/bin/bash",
@@ -189,7 +197,7 @@ def find_runner_by_name(
     return runner_id
 
 
-def create_vm(sdk, args):
+def create_vm(sdk: SDK, args: argparse.Namespace):
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
@@ -315,7 +323,9 @@ def create_vm(sdk, args):
         logger.info("Would create VM with request: %s", request)
 
 
-def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
+def remove_runner_from_github(
+    github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
+):
     github_token = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(github_token))
@@ -346,7 +356,7 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
 
-def remove_vm(sdk, args):
+def remove_vm(sdk: SDK, args: argparse.Namespace):
     remove_runner_from_github(
         args.github_repo_owner, args.github_repo, args.id, args.apply
     )
