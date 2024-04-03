@@ -2,8 +2,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/size_literals.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
