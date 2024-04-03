@@ -159,7 +159,6 @@ struct TVolumeSchema
         {
         };
 
-
         using TKey = TableKey<RequestId>;
         using TColumns = TableColumns<
             RequestId,

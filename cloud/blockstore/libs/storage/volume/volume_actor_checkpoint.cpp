@@ -1349,7 +1349,7 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
         args.Completed,
         args.ShadowDiskId,
         args.ShadowDiskState,
-        args.Error.value_or(""));
+        args.ErrorMessage.value_or(""));
 }
 
 void TVolumeActor::CompleteUpdateCheckpointRequest(
