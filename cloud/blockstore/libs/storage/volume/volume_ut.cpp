@@ -3671,11 +3671,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.SendToPipe(std::move(request));
         const auto response1 = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
-        const auto& message1 = response1->Record;
+        auto& message1 = response1->Record;
 
         UNIT_ASSERT(SUCCEEDED(response1->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(0, message1.FreshBlockRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(8, message1.BlobPiecesSize());
+
+        // Sort blob pieces because partitions may answer in any order.
+        SortBy(
+            *message1.MutableBlobPieces(),
+            [](const auto& blobPiece) {
+                return blobPiece.GetRanges(0).GetBlockIndex();
+            }
+        );
 
         const auto& blobPiece1 = message1.GetBlobPieces(0);
         UNIT_ASSERT_VALUES_EQUAL(513, blobPiece1.RangesSize());
@@ -3699,11 +3707,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         volume.SendToPipe(std::move(request));
         const auto response2 = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
-        const auto& message2 = response2->Record;
+        auto& message2 = response2->Record;
 
         UNIT_ASSERT(SUCCEEDED(response2->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(256, message2.FreshBlockRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, message2.BlobPiecesSize());
+
+        // Sort fresh block ranges because partitions may answer in any order.
+        SortBy(
+            *message2.MutableFreshBlockRanges(),
+            [](const auto& freshBlockRange) {
+                return freshBlockRange.GetStartIndex();
+            }
+        );
 
         const auto& freshBlockRange1 = message2.GetFreshBlockRanges(0);
         UNIT_ASSERT_VALUES_EQUAL(9000, freshBlockRange1.GetStartIndex());
