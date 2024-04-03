@@ -297,7 +297,7 @@ func (client *safeClient) GetCheckpointStatus(
 	}
 
 	resp, err := client.Impl.GetCheckpointStatus(ctx, req)
-	return resp.CheckpointStatus, err
+	return resp.GetCheckpointStatus(), err
 }
 
 func (client *safeClient) DeleteCheckpoint(
