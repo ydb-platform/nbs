@@ -72,7 +72,7 @@ void TStorageServiceActor::ForwardRequest(
         ForwardRequest<ns::T##name##Method>(ctx, ev);                          \
     }                                                                          \
 
-    FILESTORE_SERVICE_REQUESTS_HANDLE(FILESTORE_FORWARD_REQUEST, TEvService)
+    FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_FORWARD_REQUEST, TEvService)
 
 #undef FILESTORE_FORWARD_REQUEST
 
@@ -80,7 +80,7 @@ void TStorageServiceActor::ForwardRequest(
 template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \
     const TActorContext&, const ns::TEv##name##Request::TPtr&);                \
 
-    FILESTORE_SERVICE_REQUESTS_NO_HANDLE(FILESTORE_DEFINE_NO_HANDLE_FORWARD, TEvService)
+    FILESTORE_SERVICE_REQUESTS_HANDLE(FILESTORE_DEFINE_NO_HANDLE_FORWARD, TEvService)
 
 #undef FILESTORE_DEFINE_NO_HANDLE_FORWARD
 
