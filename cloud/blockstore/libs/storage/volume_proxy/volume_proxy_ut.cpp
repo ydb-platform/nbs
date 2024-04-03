@@ -478,6 +478,153 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
         UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
     }
+
+    Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfDurationOfFailedConnectsExceedsThreshold)
+    {
+        constexpr ui32 timeout = 3'000;
+
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyCacheRetryDuration(timeout);
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->template Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+
+        service.DestroyVolume();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        runtime.DispatchEvents(options);
+
+        {
+            service.SendStatVolumeRequest();
+            auto response = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(timeout));
+
+        {
+            service.SendStatVolumeRequest();
+            auto response = service.RecvStatVolumeResponse();
+            auto code = response->GetStatus();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FACILITY_SCHEMESHARD,
+                FACILITY_FROM_CODE(code));
+            UNIT_ASSERT_VALUES_EQUAL(
+                NKikimrScheme::StatusPathDoesNotExist,
+                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(code)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResetFailCounterIfDisconnectedCachedVolumeIsOnlineAgain)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyCacheRetryDuration(3'000);
+
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+        service.WaitForVolume();
+
+        ui64 volumeTabletId;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->template Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+        service.DescribeVolume();
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                DefaultDiskId,
+                volumeTabletId));
+
+        service.StatVolume();
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+
+        TActorId proxy;
+        bool failConnects = true;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvClientConnected: {
+                        auto* msg = event->template Get<TEvTabletPipe::TEvClientConnected>();
+                        if (msg->TabletId == volumeTabletId) {
+                            proxy = event->Recipient;
+                            if (failConnects) {
+                              auto& code =
+                                const_cast<NKikimrProto::EReplyStatus&>(msg->Status);
+                              code = NKikimrProto::ERROR;
+                            }
+                        }
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        if (failConnects && event->Recipient == proxy) {
+                            UNIT_ASSERT(false);
+                        }
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        {
+            service.SendStatVolumeRequest();
+            auto response = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        failConnects = false;
+
+        service.StatVolume();
+        service.StatVolume();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -470,6 +470,8 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
                                                                                \
+    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
+                                                                               \
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      500           )\
     xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
     xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
