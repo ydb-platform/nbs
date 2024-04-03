@@ -319,7 +319,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 
 		diskParams, err := nbsClient.Describe(ctx, diskID)
 		require.NoError(t, err)
-		require.NotEqual(t, "", diskParams.BaseDiskID)
+		require.NotEmpty(t, diskParams.BaseDiskID)
 	}
 
 	operations = nil
@@ -448,6 +448,28 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID1,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID2,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
 	testcommon.CheckConsistency(t, ctx)
 }
 
@@ -466,6 +488,8 @@ func TestDiskServiceCreateSsdNonreplDiskFromIncrementalSnapshot(t *testing.T) {
 		262144*4096,
 	)
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	ctx := testcommon.NewContext()
@@ -552,26 +576,45 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestDiskServiceCreateDiskFromImage(t *testing.T) {
+////////////////////////////////////////////////////////////////////////////////
+
+func testCreateDiskFromImage(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	imageSize uint64,
+	pooled bool,
+	diskSize uint64,
+) {
+
 	ctx := testcommon.NewContext()
 
 	client, err := testcommon.NewClient(ctx)
 	require.NoError(t, err)
 	defer client.Close()
 
-	diskSize := uint64(32 * 1024 * 4096)
-	diskID1 := t.Name() + "1"
+	imageID := t.Name() + "_image"
+
+	diskContentInfo := testcommon.CreateImage(
+		t,
+		ctx,
+		imageID,
+		imageSize,
+		"folder",
+		pooled,
+	)
+
+	diskID := t.Name()
 
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: imageID,
 		},
 		Size: int64(diskSize),
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+		Kind: diskKind,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: "zone-a",
-			DiskId: diskID1,
+			DiskId: diskID,
 		},
 	})
 	require.NoError(t, err)
@@ -580,59 +623,54 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
+	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
-	imageID := t.Name() + "_image"
+	diskParams, err := nbsClient.Describe(ctx, diskID)
+	require.NoError(t, err)
+	if pooled {
+		// Check that disk is overlay.
+		require.NotEmpty(t, diskParams.BaseDiskID)
+	} else {
+		// Check that disk is not overlay.
+		require.Empty(t, diskParams.BaseDiskID)
+	}
 
 	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.CreateImage(reqCtx, &disk_manager.CreateImageRequest{
-		Src: &disk_manager.CreateImageRequest_SrcDiskId{
-			SrcDiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
-				DiskId: diskID1,
-			},
-		},
-		DstImageId: imageID,
-		FolderId:   "folder",
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	meta := disk_manager.CreateImageMetadata{}
-	err = internal_client.GetOperationMetadata(ctx, client, operation.Id, &meta)
-	require.NoError(t, err)
-	require.Equal(t, float64(1), meta.Progress)
-
-	diskID2 := t.Name() + "2"
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcImageId{
-			SrcImageId: imageID,
-		},
-		Size: int64(diskSize),
-		Kind: disk_manager.DiskKind_DISK_KIND_SSD,
+	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
-			DiskId: diskID2,
+			DiskId: diskID,
 		},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	err = nbsClient.ValidateCrc32(ctx, diskID1, diskContentInfo)
-	require.NoError(t, err)
-
-	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
 }
+
+func TestDiskServiceCreateDiskFromImage(t *testing.T) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD,
+		32*1024*4096, // imageSize
+		false,        // pooled
+		32*1024*4096, // diskSize
+	)
+}
+
+func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
+	testCreateDiskFromImage(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		262144*4096,  // diskSize
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 	ctx := testcommon.NewContext()
