@@ -12,7 +12,7 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TServiceStatsTest)
 {
-    Y_UNIT_TEST(ShouldReportSelfPingStats)
+    Y_UNIT_TEST(ShouldReportSelfPingMaxUsSensor)
     {
         TTestEnv env;
         auto nodeIdx = SetupTestEnv(env);
@@ -20,10 +20,10 @@ Y_UNIT_TEST_SUITE(TServiceStatsTest)
 
         TServiceClient service {runtime, nodeIdx};
 
-        auto counter = runtime.GetAppData(nodeIdx).Counters->
-            GetSubgroup("counters", "blockstore")->
-            GetSubgroup("component", "service")->
-            GetCounter("SelfPingMaxUs", false);
+        auto counter = runtime.GetAppData(nodeIdx).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "service")
+            ->GetCounter("SelfPingMaxUs", false);
 
         {
             TDispatchOptions opts;

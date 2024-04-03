@@ -68,11 +68,11 @@ void TServiceActor::RegisterCounters(const TActorContext& ctx)
 {
     Counters = CreateServiceCounters();
 
-    SelfPingMaxUsCounter = AppData(ctx)->
-        Counters->
-        GetSubgroup("counters", "blockstore")->
-        GetSubgroup("component", "service")->
-        GetCounter("SelfPingMaxUs", false);
+    SelfPingMaxUsCounter = AppData(ctx)
+        ->Counters
+        ->GetSubgroup("counters", "blockstore")
+        ->GetSubgroup("component", "service")
+        ->GetCounter("SelfPingMaxUs", false);
 
     ScheduleSelfPing(ctx);
 
@@ -134,12 +134,8 @@ void TServiceActor::UpdateCounters(const TActorContext& ctx)
         }
     }
 
-    if (SelfPingMaxUsCounter) {
-        auto val =
-            CyclesToDuration(SelfPingMaxUs) - Config->GetServiceSelfPingInterval();
-        *SelfPingMaxUsCounter = val.MicroSeconds();
-        SelfPingMaxUs = 0;
-    }
+    *SelfPingMaxUsCounter = CyclesToDuration(SelfPingMaxUs).MicroSeconds();
+    SelfPingMaxUs = 0;
 }
 
 void TServiceActor::UpdateActorStats(const TActorContext& ctx)
