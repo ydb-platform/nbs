@@ -38,12 +38,12 @@ jobs:
                 console.log("Event name: " + context.eventName);
                 console.log("Actor: " + context.actor);
                 if (context.eventName === 'issue_comment') {
-                    console.log("Comment: " + github.event.comment.body);
+                    console.log("Comment: " + context.payload.comment.body);
                 }
                 if (
                     context.eventName === 'issue_comment'
                     && isInList(context.actor, superUsers)
-                    && github.event.comment.body.trim() === '/approve'
+                    && context.payload.comment.body.trim() === '/approve'
                 ) {
                     console.log("Approval bypassed by super user.");
                     approvalState = true;
