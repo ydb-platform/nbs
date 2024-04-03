@@ -4199,6 +4199,92 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(clientInfo1.GetClientId(), acquireClientId);
         UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
+
+    Y_UNIT_TEST(ShouldHandleShadowDiskAllocationError)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        auto makeErrorOnShadowDiskAllocation =
+            [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAllocateCheckpointRequest)
+            {
+                auto response = std::make_unique<
+                    TEvDiskRegistry::TEvAllocateCheckpointResponse>(MakeError(
+                    E_BS_DISK_ALLOCATION_FAILED,
+                    "can't allocate disk"));
+                runtime->Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(makeErrorOnShadowDiskAllocation);
+
+        const ui64 expectedBlockCount = 32768;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Write all '1' to block 1.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(1),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        // Try create checkpoint. This will fail because the disk registry will
+        // return a disk allocation error.
+        volume.SendCreateCheckpointRequest("c1");
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        auto response = volume.RecvCreateCheckpointResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
+
+        // Validate checkpoint state (error).
+        auto status = volume.GetCheckpointStatus("c1");
+        UNIT_ASSERT_EQUAL(
+            NProto::ECheckpointStatus::ERROR,
+            status->Record.GetCheckpointStatus());
+
+        // Write all '1' to block 2.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(2),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        // Delete checkpoint.
+        volume.DeleteCheckpoint("c1");
+
+        // Write all '1' to block 3.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(3),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

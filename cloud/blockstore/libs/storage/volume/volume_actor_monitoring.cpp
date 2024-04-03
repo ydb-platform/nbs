@@ -40,6 +40,24 @@ IOutputStream& operator <<(
     }
 }
 
+IOutputStream& operator<<(IOutputStream& out, EShadowDiskState state)
+{
+    switch (state) {
+        case EShadowDiskState::None:
+        case EShadowDiskState::New:
+        case EShadowDiskState::Preparing:
+            out << ToString(state);
+            break;
+        case EShadowDiskState::Ready:
+            out << "<font color=green>" << ToString(state) << "</font>";
+            break;
+        case EShadowDiskState::Error:
+            out << "<font color=red>" << ToString(state) << "</font>";
+            break;
+    }
+    return out;
+}
+
 IOutputStream& operator <<(
     IOutputStream& out,
     NProto::EVolumeIOMode ioMode)
@@ -111,15 +129,30 @@ void RenderCheckpointRequest(
     IOutputStream& out,
     const TCheckpointRequest& request)
 {
-    if (request.ShadowDiskId.empty()) {
-        return;
-    }
+    HTML(out)
+    {
+        if (request.ShadowDiskId) {
+            DIV()
+            {
+                out << "Shadow disk: " << request.ShadowDiskId.Quote();
+            }
+        }
 
-    out << "shadow disk: " << request.ShadowDiskId.Quote()
-        << ", " << ToString(request.ShadowDiskState);
+        DIV()
+        {
+            out << "State: " << request.ShadowDiskState;
+            if (request.ShadowDiskState == EShadowDiskState::Preparing) {
+                out << ", processed blocks: "
+                    << request.ShadowDiskProcessedBlockCount;
+            }
+        }
 
-    if (request.ShadowDiskState == EShadowDiskState::Preparing) {
-        out << " processed blocks: " << request.ShadowDiskProcessedBlockCount;
+        if (request.CheckpointError) {
+            DIV()
+            {
+                out << "Error: " << request.CheckpointError;
+            }
+        }
     }
 }
 
@@ -142,15 +175,19 @@ void RenderCheckpointInfo(
                 } break;
             }
         }
-        if (checkpointInfo.ShadowDiskId) {
+        if (checkpointInfo.IsShadowDiskBased()) {
             DIV()
             {
-                out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote()
-                    << " state: " << ToString(checkpointInfo.ShadowDiskState);
+                out << " Shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
+            }
+            DIV()
+            {
+                out << " State: " << checkpointInfo.ShadowDiskState;
             }
             if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
                 DIV()
                 {
+                    out << "Block: ";
                     OutputProgress(
                         checkpointInfo.ProcessedBlockCount,
                         blocksCount,
