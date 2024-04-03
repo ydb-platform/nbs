@@ -111,6 +111,17 @@ func getDiskKind(
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isDiskRegistryBasedDisk(mediaKind)
+}
+
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -391,22 +402,10 @@ func min(x, y uint64) uint64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func areOverlayDisksSupported(
-	mediaKind core_protos.EStorageMediaKind,
-) bool {
-
+func areOverlayDisksSupported(mediaKind core_protos.EStorageMediaKind) bool {
 	return mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD ||
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID ||
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD
-}
-
-func AreOverlayDisksSupported(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return areOverlayDisksSupported(mediaKind)
 }
 
 func canBeBaseDisk(volume *protos.TVolume) bool {
