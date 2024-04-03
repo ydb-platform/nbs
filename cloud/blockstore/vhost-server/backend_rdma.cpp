@@ -1,6 +1,7 @@
 #include "backend_rdma.h"
 
 #include "backend.h"
+#include "throttler.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -36,6 +37,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 REQUEST_TIMEOUT_MSEC = 86400000;
+constexpr TDuration THROTTLE_DELAY = TDuration::MicroSeconds(100);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -132,12 +134,14 @@ private:
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
+    TVector<IThrottlerPtr> Throttlers;
 
 public:
     explicit TRdmaBackend(ILoggingServicePtr logging);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
+    void PrepareStop() override;
     void Stop() override;
     void ProcessQueue(
         ui32 queueIndex,
@@ -153,6 +157,9 @@ private:
         TCpuCycles startCycles,
         bool isError);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
+    void ProcessThrottledRequests(ui32 queueIndex, TSimpleStats& queueStats);
+
+    void ProcessIo(struct vhd_io *io, TSimpleStats& queueStats);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,6 +177,15 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     Scheduler = CreateScheduler();
     Timer = CreateWallClockTimer();
+
+    for (ui32 i = 0; i < options.QueueCount; i++) {
+        Throttlers.push_back(CreateThrottler(
+            Timer,
+            options.MaxReadBandwidth / options.QueueCount,
+            options.MaxReadIops / options.QueueCount,
+            options.MaxWriteBandwidth / options.QueueCount,
+            options.MaxWriteIops / options.QueueCount));
+    }
 
     ClientId = options.ClientId;
     ReadOnly = options.ReadOnly;
@@ -293,6 +309,13 @@ void TRdmaBackend::Start()
     DataClient = CreateDataClient(std::move(storage));
 }
 
+void TRdmaBackend::PrepareStop()
+{
+    for (auto& throttler : Throttlers) {
+        throttler->Stop();
+    }
+}
+
 void TRdmaBackend::Stop()
 {
     STORAGE_INFO("Stopping RDMA backend");
@@ -306,31 +329,60 @@ void TRdmaBackend::ProcessQueue(
     vhd_request_queue* queue,
     TSimpleStats& queueStats)
 {
-    Y_UNUSED(queueIndex);
+    auto& throttler = Throttlers[queueIndex];
 
     vhd_request req;
     while (vhd_dequeue_request(queue, &req)) {
+
         ++queueStats.Dequeued;
 
-        struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
-        const TCpuCycles now = GetCycleCount();
-        switch (bio->type) {
-            case VHD_BDEV_READ:
-                ProcessReadRequest(req.io, now);
-                ++queueStats.Submitted;
-                break;
-            case VHD_BDEV_WRITE:
-                ProcessWriteRequest(req.io, now);
-                ++queueStats.Submitted;
-                break;
-            default:
-                STORAGE_ERROR(
-                    "Unexpected vhost request type: "
-                    << static_cast<int>(bio->type));
-                vhd_complete_bio(req.io, VHD_BDEV_IOERR);
-                ++queueStats.SubFailed;
-                break;
+        if (throttler->ThrottleIo(req.io)) {
+            continue;
         }
+
+        ProcessIo(req.io, queueStats);
+    }
+
+    ProcessThrottledRequests(queueIndex, queueStats);
+}
+
+void TRdmaBackend::ProcessThrottledRequests(
+    ui32 queueIndex,
+    TSimpleStats& queueStats)
+{
+    auto& throttler = Throttlers[queueIndex];
+
+    while (throttler->HasThrottledIos()) {
+        auto* io = throttler->ResumeNextThrottledIo();
+        if (!io) {
+            ::Sleep(THROTTLE_DELAY);
+            continue;
+        }
+
+        ProcessIo(io, queueStats);
+    }
+}
+
+void TRdmaBackend::ProcessIo(struct vhd_io *io, TSimpleStats& queueStats)
+{
+    struct vhd_bdev_io* bio = vhd_get_bdev_io(io);
+    const TCpuCycles now = GetCycleCount();
+    switch (bio->type) {
+        case VHD_BDEV_READ:
+            ProcessReadRequest(io, now);
+            ++queueStats.Submitted;
+            break;
+        case VHD_BDEV_WRITE:
+            ProcessWriteRequest(io, now);
+            ++queueStats.Submitted;
+            break;
+        default:
+            STORAGE_ERROR(
+                "Unexpected vhost request type: "
+                << static_cast<int>(bio->type));
+            vhd_complete_bio(io, VHD_BDEV_IOERR);
+            ++queueStats.SubFailed;
+            break;
     }
 }
 

@@ -120,6 +120,24 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResultDef(&RdmaClient.MaxBufferSize);
 
+    opts.AddLongOption(
+            "perf-profile",
+            "Performance profile "
+            "(<MaxReadBw>:<MaxReadIops>:<MaxWriteBW>:<MaxWriteIops>)")
+        .RequiredArgument("STR")
+        .Handler1T<TString>(
+            [this](TStringBuf s)
+            {
+                TVector<TString> vals;
+                Split(s.data(), ":", vals);
+                Y_ENSURE(vals.size() == 4, "invalid format");
+
+                MaxReadBandwidth = FromString<ui32>(vals[0]);
+                MaxReadIops = FromString<ui32>(vals[1]);
+                MaxWriteBandwidth = FromString<ui32>(vals[2]);
+                MaxWriteIops = FromString<ui32>(vals[3]);
+            });
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {

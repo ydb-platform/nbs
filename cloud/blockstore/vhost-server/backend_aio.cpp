@@ -157,6 +157,7 @@ public:
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
+    void PrepareStop() override;
     void Stop() override;
     void ProcessQueue(
         ui32 queueIndex,
@@ -276,6 +277,10 @@ void TAioBackend::Start()
     STORAGE_INFO("Starting AIO backend");
 
     CompletionThread = std::thread([this] { CompletionThreadFunc(); });
+}
+
+void TAioBackend::PrepareStop()
+{
 }
 
 void TAioBackend::Stop()

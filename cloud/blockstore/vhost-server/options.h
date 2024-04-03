@@ -36,6 +36,11 @@ struct TOptions
 
     TString ClientId = "vhost-server";
 
+    ui32 MaxReadBandwidth = 0;
+    ui32 MaxReadIops = 0;
+    ui32 MaxWriteBandwidth = 0;
+    ui32 MaxWriteIops = 0;
+
     struct
     {
         ui32 QueueSize = 256;

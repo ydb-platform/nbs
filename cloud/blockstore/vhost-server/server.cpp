@@ -180,6 +180,8 @@ void TServer::Stop()
 {
     STORAGE_INFO("Stopping the server");
 
+    Backend->PrepareStop();
+
     {
         auto promise = NewPromise();
         vhd_unregister_blockdev(Handler, [] (void* opaque) {
