@@ -10825,7 +10825,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetStatus(),
             response->GetErrorReason());
     }
-  
+
     Y_UNIT_TEST(ShouldProperlyCalculateBlockChecksumsForBatchedWrites)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -10946,7 +10946,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetErrorReason());
         }
     }
-  
+
     Y_UNIT_TEST(ShouldCancelRequestsOnTabletRestart)
     {
         constexpr ui32 blockCount = 1024 * 1024;
