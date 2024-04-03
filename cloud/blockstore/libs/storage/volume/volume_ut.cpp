@@ -3677,8 +3677,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, message1.FreshBlockRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(8, message1.BlobPiecesSize());
 
-        // Should sort response message because when the responses from the
-        // partitions are merging they can answer in any order.
+        // Sort blob pieces because partitions may answer in any order.
         SortBy(
             *message1.MutableBlobPieces(),
             [](const auto& blobPiece) {
@@ -3714,8 +3713,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(256, message2.FreshBlockRangesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, message2.BlobPiecesSize());
 
-        // Should sort response message because when the responses from the
-        // partitions are merging they can answer in any order.
+        // Sort fresh block ranges because partitions may answer in any order.
         SortBy(
             *message2.MutableFreshBlockRanges(),
             [](const auto& freshBlockRange) {
