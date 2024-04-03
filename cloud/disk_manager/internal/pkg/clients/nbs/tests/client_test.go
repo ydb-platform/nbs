@@ -1470,11 +1470,7 @@ func TestReadFromProxyOverlayDisk(t *testing.T) {
 	require.True(t, created)
 	require.NoError(t, err)
 
-	err = client.ValidateCrc32(
-		ctx,
-		proxyOverlayDiskID,
-		diskContentInfo,
-	)
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
 }
 
@@ -1494,11 +1490,7 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	diskContentInfo, err := client.FillDisk(
-		ctx,
-		diskID,
-		uint64(diskSize),
-	)
+	diskContentInfo, err := client.FillDisk(ctx, diskID, uint64(diskSize))
 	require.NoError(t, err)
 
 	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
@@ -1533,10 +1525,6 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = client.ValidateCrc32(
-		ctx,
-		proxyOverlayDiskID,
-		diskContentInfo,
-	)
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
 }
