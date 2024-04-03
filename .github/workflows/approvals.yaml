@@ -26,7 +26,7 @@ jobs:
                 ];
                 // users that can approve PRs without any restrictions by commenting /approve
                 const superUsers = ['qkrorlqr', 'EvgeniyKozev', 'librarian'];
-                const prNumber = context.payload.issue.number : context.payload.pull_request.number;
+                const prNumber = context.payload.number;
                 const owner = context.repo.owner;
                 const repo = context.repo.repo;
 
