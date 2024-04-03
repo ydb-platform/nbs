@@ -34,7 +34,12 @@ jobs:
                 const isInList = (username, list) => list.includes(username);
 
                 let approvalState = false;
-
+                console.log("Checking approvals for PR #" + prNumber);
+                console.log("Event name: " + github.eventName);
+                console.log("Actor: " + github.actor);
+                if (github.event_name === 'issue_comment') {
+                    console.log("Comment: " + github.event.comment.body);
+                }
                 if (
                     github.event_name === 'issue_comment'
                     && isInList(github.actor, superUsers)
@@ -55,6 +60,7 @@ jobs:
                     let rightApprovals = new Set();
 
                     for (const review of reviews.data) {
+                        console.log("Review by " + review.user.login + ": " + review.state);
                         if (review.state === 'APPROVED') {
                             if (isInList(review.user.login, leftUsers)) {
                                 leftApprovals.add(review.user.login);
