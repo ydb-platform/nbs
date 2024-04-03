@@ -1,17 +1,190 @@
 package nbs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"hash/crc32"
+	"math/rand"
+	"time"
 
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (c *client) FillDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+) (DiskContentInfo, error) {
+
+	return c.FillEncryptedDisk(ctx, diskID, contentSize, nil)
+}
+
+func (c *client) FillEncryptedDisk(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+	encryption *types.EncryptionDesc,
+) (DiskContentInfo, error) {
+
+	session, err := c.MountRW(
+		ctx,
+		diskID,
+		0, // fillGeneration
+		0, // fillSeqNumber
+		encryption,
+	)
+	if err != nil {
+		return DiskContentInfo{}, err
+	}
+	defer session.Close(ctx)
+
+	chunkSize := uint64(1024 * 4096) // 4 MiB
+	blockSize := uint64(session.BlockSize())
+	blocksInChunk := uint32(chunkSize / blockSize)
+	storageSize := uint64(0)
+	zeroes := make([]byte, chunkSize)
+
+	rand.Seed(time.Now().UnixNano())
+
+	acc := crc32.NewIEEE()
+	blockCrc32s := []uint32{}
+	for offset := uint64(0); offset < contentSize; offset += chunkSize {
+		startIndex := offset / blockSize
+		data := make([]byte, chunkSize)
+		dice := rand.Intn(3)
+
+		var err error
+		switch dice {
+		case 0:
+			rand.Read(data)
+			if bytes.Equal(data, zeroes) {
+				logging.Debug(ctx, "rand generated all zeroes")
+			}
+
+			err = session.Write(ctx, startIndex, data)
+			storageSize += chunkSize
+		case 1:
+			err = session.Zero(ctx, startIndex, blocksInChunk)
+		}
+		if err != nil {
+			return DiskContentInfo{}, err
+		}
+
+		_, err = acc.Write(data)
+		if err != nil {
+			return DiskContentInfo{}, err
+		}
+
+		for blockIndex := uint32(0); blockIndex < blocksInChunk; blockIndex++ {
+			blockAcc := crc32.NewIEEE()
+
+			startOffset := uint64(blockIndex) * blockSize
+			endOffset := uint64(blockIndex+1) * blockSize
+			blockData := data[startOffset:endOffset]
+
+			_, err = blockAcc.Write(blockData)
+			if err != nil {
+				return DiskContentInfo{}, err
+			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				startIndex+uint64(blockIndex),
+				blockAcc.Sum32(),
+			)
+			blockCrc32s = append(blockCrc32s, blockAcc.Sum32())
+		}
+	}
+
+	return DiskContentInfo{
+		ContentSize: contentSize,
+		StorageSize: storageSize,
+		Crc32:       acc.Sum32(),
+		BlockCrc32s: blockCrc32s,
+	}, nil
+}
+
+func (c *client) GoWriteRandomBlocksToNbsDisk(
+	ctx context.Context,
+	diskID string,
+) (func() error, error) {
+
+	session, err := c.MountRW(
+		ctx,
+		diskID,
+		0,   // fillGeneration
+		0,   // fillSeqNumber
+		nil, // encryption
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	errGroup := new(errgroup.Group)
+
+	errGroup.Go(func() error {
+		defer session.Close(ctx)
+
+		writeCount := uint32(1000)
+
+		blockSize := session.BlockSize()
+		blocksCount := session.BlockCount()
+		zeroes := make([]byte, blockSize)
+
+		rand.Seed(time.Now().UnixNano())
+
+		for i := uint32(0); i < writeCount; i++ {
+			blockIndex := uint64(rand.Int63n(int64(blocksCount)))
+			dice := rand.Intn(2)
+
+			var err error
+			blockAcc := crc32.NewIEEE()
+			data := make([]byte, blockSize)
+
+			switch dice {
+			case 0:
+				rand.Read(data)
+				if bytes.Equal(data, zeroes) {
+					logging.Debug(ctx, "rand generated all zeroes")
+				}
+
+				err = session.Write(ctx, blockIndex, data)
+			case 1:
+				err = session.Zero(ctx, blockIndex, 1)
+			}
+
+			if err != nil {
+				return err
+			}
+
+			_, err = blockAcc.Write(data)
+			if err != nil {
+				return err
+			}
+
+			logging.Debug(
+				ctx,
+				"%v block with index %v crc32 now is %v",
+				diskID,
+				blockIndex,
+				blockAcc.Sum32(),
+			)
+		}
+
+		return nil
+	})
+
+	return errGroup.Wait, nil
+}
 
 func (c *client) CalculateCrc32(
 	diskID string,

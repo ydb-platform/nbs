@@ -59,8 +59,8 @@ func setupMigrationTest(
 
 	if params.FillDisk {
 		nbsClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-		_, err = testcommon.FillDisk(
-			nbsClient,
+		_, err = nbsClient.FillDisk(
+			ctx,
 			params.DiskID,
 			uint64(params.DiskSize),
 		)
@@ -80,9 +80,8 @@ func successfullyMigrateDisk(
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migration.
-	waitForWrite, err := testcommon.GoWriteRandomBlocksToNbsDisk(
+	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
 		ctx,
-		srcZoneNBSClient,
 		params.DiskID,
 	)
 	require.NoError(t, err)
@@ -288,9 +287,8 @@ func migrateDiskInParallel(
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
 
 	// Writing some additional data to disk in parallel with migrations.
-	waitForWrite, err := testcommon.GoWriteRandomBlocksToNbsDisk(
+	waitForWrite, err := srcZoneNBSClient.GoWriteRandomBlocksToNbsDisk(
 		ctx,
-		srcZoneNBSClient,
 		params.DiskID,
 	)
 	require.NoError(t, err)

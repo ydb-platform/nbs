@@ -385,7 +385,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	_, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -404,7 +404,7 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	_, err = testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	_, err = nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID2 := t.Name() + "2"
@@ -495,7 +495,7 @@ func TestDiskServiceCreateDiskFromSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	snapshotID1 := t.Name() + "1"
@@ -580,7 +580,7 @@ func TestDiskServiceCreateDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, diskSize)
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, diskSize)
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -664,7 +664,7 @@ func TestDiskServiceCreateDiskFromSnapshotOfOverlayDisk(t *testing.T) {
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
 
-	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID1, imageSize)
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID1, imageSize)
 	require.NoError(t, err)
 
 	imageID := t.Name() + "_image"
@@ -1057,8 +1057,8 @@ func TestDiskServiceCreateEncryptedDiskFromSnapshot(t *testing.T) {
 	encryptionDesc, err := disks.PrepareEncryptionDesc(encryption)
 	require.NoError(t, err)
 
-	diskContentInfo, err := testcommon.FillEncryptedDisk(
-		nbsClient,
+	diskContentInfo, err := nbsClient.FillEncryptedDisk(
+		ctx,
 		diskID1,
 		diskSize,
 		encryptionDesc,

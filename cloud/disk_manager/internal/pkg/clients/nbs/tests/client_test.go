@@ -1429,3 +1429,102 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
 	require.NoError(t, err)
 }
+
+func TestReadFromProxyOverlayDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 1,
+	})
+	require.NoError(t, err)
+
+	diskContentInfo, err := client.FillDisk(
+		ctx,
+		diskID,
+		uint64(diskSize),
+	)
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	require.True(t, created)
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
+	require.NoError(t, err)
+}
+
+func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 2,
+	})
+	require.NoError(t, err)
+
+	diskContentInfo, err := client.FillDisk(ctx, diskID, uint64(diskSize))
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	// Now it is not allowed to create proxy overlay disks for multipartition
+	// disks.
+	require.False(t, created)
+	require.NoError(t, err)
+
+	// We need to create proxy overlay disk manually.
+	err = client.Create(ctx, nbs.CreateDiskParams{
+		ID:                   proxyOverlayDiskID,
+		BaseDiskID:           diskID,
+		BaseDiskCheckpointID: "cp",
+		BlocksCount:          1024,
+		BlockSize:            4096,
+		Kind:                 types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount:      1,
+		IsSystem:             true,
+	})
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
+	require.NoError(t, err)
+}

@@ -49,7 +49,7 @@ func testCreateSnapshotFromDisk(
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	_, err = testcommon.FillDisk(nbsClient, diskID, 64*4096)
+	_, err = nbsClient.FillDisk(ctx, diskID, 64*4096)
 	require.NoError(t, err)
 
 	snapshotID := t.Name()

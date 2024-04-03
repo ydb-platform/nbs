@@ -302,6 +302,27 @@ type Client interface {
 	) error
 
 	// Used in tests.
+	FillDisk(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+	) (DiskContentInfo, error)
+
+	// Used in tests.
+	FillEncryptedDisk(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+		encryption *types.EncryptionDesc,
+	) (DiskContentInfo, error)
+
+	// Used in tests.
+	GoWriteRandomBlocksToNbsDisk(
+		ctx context.Context,
+		diskID string,
+	) (func() error, error)
+
+	// Used in tests.
 	ValidateCrc32(
 		ctx context.Context,
 		diskID string,

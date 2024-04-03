@@ -307,7 +307,7 @@ func TestImageServiceCreateImageFromSnapshot(t *testing.T) {
 	encryption, err := disks.PrepareEncryptionDesc(defaultEncryptionDescWithKey)
 	require.NoError(t, err)
 
-	diskContentInfo, err := testcommon.FillEncryptedDisk(nbsClient, diskID, diskSize, encryption)
+	diskContentInfo, err := nbsClient.FillEncryptedDisk(ctx, diskID, diskSize, encryption)
 	require.NoError(t, err)
 
 	diskParams, err = nbsClient.Describe(ctx, diskID)
@@ -849,7 +849,7 @@ func TestImageServiceCreateImageFromDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	diskContentInfo, err := testcommon.FillDisk(nbsClient, diskID, diskSize)
+	diskContentInfo, err := nbsClient.FillDisk(ctx, diskID, diskSize)
 	require.NoError(t, err)
 
 	imageID := t.Name()
