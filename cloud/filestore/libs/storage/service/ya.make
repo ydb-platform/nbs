@@ -28,6 +28,7 @@ SRCS(
     service_actor_readdata.cpp
     service_actor_statfs.cpp
     service_actor_update_stats.cpp
+    service_actor_writedata.cpp
     service_state.cpp
 )
 

@@ -353,6 +353,12 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    template <typename TRequest>
+    NProto::TError ValidateWriteRequest(
+        const NActors::TActorContext& ctx,
+        const TRequest& request,
+        const TByteRange& range);
+
     NProto::TError IsDataOperationAllowed() const;
 
     void HandleWakeup(
@@ -399,12 +405,20 @@ private:
         const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseCollectBarrier(
+        const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleReadDataCompleted(
         const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteDataCompleted(
         const TEvIndexTabletPrivate::TEvWriteDataCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddDataCompleted(
+        const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

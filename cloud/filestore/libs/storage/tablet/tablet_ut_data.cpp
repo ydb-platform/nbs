@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
+#include <library/cpp/iterator/enumerate.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <ydb/core/base/blobstorage.h>
@@ -4307,6 +4308,426 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             E_REJECTED,
             response->GetStatus(),
             response->GetErrorReason());
+    }
+
+#define CHECK_GENERATED_BLOB(offset, length, expected)                       \
+    {                                                                        \
+        ui64 currentOffset = offset;                                         \
+        TVector<ui64> expectedSizes = expected;                              \
+        auto blobs = tablet.GenerateBlobIds(node, handle, offset, length);   \
+        auto commitId = blobs->Record.GetCommitId();                         \
+        const auto [generation, step] = ParseCommitId(commitId);             \
+        UNIT_ASSERT_VALUES_EQUAL(                                            \
+            blobs->Record.BlobsSize(),                                       \
+            expectedSizes.size());                                           \
+        for (size_t i = 0; i < expectedSizes.size(); ++i) {                  \
+            auto generatedBlob = blobs->Record.GetBlobs(i);                  \
+            auto blob = LogoBlobIDFromLogoBlobID(generatedBlob.GetBlobId()); \
+            UNIT_ASSERT_VALUES_EQUAL(blob.BlobSize(), expectedSizes[i]);     \
+            UNIT_ASSERT_VALUES_EQUAL(blob.Generation(), generation);         \
+            UNIT_ASSERT_VALUES_EQUAL(blob.Step(), step);                     \
+            UNIT_ASSERT_VALUES_EQUAL(                                        \
+                generatedBlob.GetOffset(),                                   \
+                currentOffset);                                              \
+            currentOffset += expectedSizes[i];                               \
+        }                                                                    \
+    }
+
+    TABLET_TEST(ShouldGenerateBlobIds)
+    {
+        auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, node);
+
+        CHECK_GENERATED_BLOB(0, block, TVector<ui64>{block});
+        CHECK_GENERATED_BLOB(block, block, TVector<ui64>{block});
+        CHECK_GENERATED_BLOB(3 * block, 2 * block, TVector<ui64>{2 * block});
+        CHECK_GENERATED_BLOB(
+            BlockGroupSize * block / 2,
+            block * BlockGroupSize,
+            (TVector<ui64>{
+                BlockGroupSize * block / 2,
+                BlockGroupSize * block / 2}));
+        CHECK_GENERATED_BLOB(
+            3 * block * BlockGroupSize,
+            3 * block * BlockGroupSize,
+            (TVector<ui64>{
+                block * BlockGroupSize,
+                block * BlockGroupSize,
+                block * BlockGroupSize}));
+        CHECK_GENERATED_BLOB(
+            block,
+            2 * block * BlockGroupSize,
+            (TVector<ui64>{
+                block * (BlockGroupSize - 1),
+                block * BlockGroupSize,
+                block}));
+    }
+
+#undef CHECK_GENERATED_BLOB
+
+    TABLET_TEST(ShouldAcquireLockForCollectGarbageOnGenerateBlobIds)
+    {
+        auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto moveBarrier = [&tablet, block]
+        {
+            auto node =
+                CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+            ui64 handle = CreateHandle(tablet, node);
+            tablet.WriteData(handle, 0, block, 'a');
+            tablet.Flush();
+            tablet.DestroyHandle(handle);
+            tablet.UnlinkNode(RootNodeId, "test", false);
+            tablet.CollectGarbage();
+        };
+        moveBarrier();
+
+        ui64 lastCollectGarbage = 0;
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            lastCollectGarbage = stats.GetLastCollectCommitId();
+        }
+        UNIT_ASSERT_GT(lastCollectGarbage, 0);
+
+        auto node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        ui64 handle = CreateHandle(tablet, node);
+
+        auto blobs = tablet.GenerateBlobIds(node, handle, 0, block);
+        auto commitId = blobs->Record.GetCommitId();
+
+        moveBarrier();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_LE(stats.GetLastCollectCommitId(), commitId);
+        }
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
+
+        moveBarrier();
+        // After the GenerateBlobIdsReleaseCollectBarrierTimeout has passed, we
+        // can observe that the last collect garbage has moved beyond the commit
+        // id of the generated blob.
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+
+        // Now we validate that the barrier is released even if the TX fails
+        TVector<NKikimr::TLogoBlobID> blobIds;
+
+        NProto::TError error;
+        error.SetCode(E_REJECTED);
+
+        auto filter = [&](auto& runtime, auto& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    using TResponse = TEvBlobStorage::TEvPutResult;
+                    auto* msg = event->template Get<TResponse>();
+                    if (msg->Id.Channel() >= TIndexTabletSchema::DataChannel) {
+                        blobIds.push_back(msg->Id);
+                    }
+                    return false;
+                }
+                case TEvIndexTabletPrivate::EvWriteBlobResponse: {
+                    using TResponse =
+                        TEvIndexTabletPrivate::TEvWriteBlobResponse;
+                    auto* msg = event->template Get<TResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+            }
+
+            return false;
+        };
+
+        env.GetRuntime().SetEventFilter(filter);
+
+        auto generateResult =
+            tablet.GenerateBlobIds(node, handle, 0, block * BlockGroupSize);
+        commitId = generateResult->Record.GetCommitId();
+
+        // intercepted blob was successfully written to BlobStorage, yet the
+        // following operation is expected to fail
+        tablet.AssertWriteDataFailed(handle, 0, block * BlockGroupSize, 'x');
+
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // because we use handle + 1 instead of handle, it is expected that the
+        // handler will fail will fail
+        tablet.AssertAddDataFailed(
+            node,
+            handle + 1,
+            0,
+            block * BlockGroupSize,
+            blobIds,
+            commitId);
+
+        moveBarrier();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            // We expect that upon failre the barrier was released, thus moving
+            // the last collect garbage beyond the commit id of the issued blob
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+
+        node =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+        handle = CreateHandle(tablet, node, "", TCreateHandleArgs::RDNLY);
+
+
+        // now we do the same thing, but expect HandleAddData to execute tx, yet
+        // the tx to fail
+        generateResult =
+            tablet.GenerateBlobIds(node, handle, 0, block * BlockGroupSize);
+        commitId = generateResult->Record.GetCommitId();
+
+        tablet.AssertAddDataFailed(
+            node,
+            handle,
+            0,
+            block * BlockGroupSize,
+            blobIds,
+            commitId);
+
+        moveBarrier();
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            // We expect that upon failre the barrier was released, thus moving
+            // the last collect garbage beyond the commit id of the issued blob
+            UNIT_ASSERT_GT(stats.GetLastCollectCommitId(), commitId);
+        }
+    }
+
+    TABLET_TEST(ShouldAddData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<NKikimr::TLogoBlobID> blobIds;
+        bool shouldDropPutResult = true;
+
+        // We can't make direct writes to BlobStorage, so we store the blob ids
+        // from an ordinary write and then use them in AddData
+        env.GetRuntime().SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        // We intercept all PutResult events in order for tablet
+                        // to consider them as written. Nevertheless, these
+                        // blobs are already written and we will use them in
+                        // AddData
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            blobIds.push_back(msg->Id);
+                        }
+                        if (shouldDropPutResult) {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        TString data(block * BlockGroupSize * 2, '\0');
+        for (size_t i = 0; i < data.size(); ++i) {
+            // 77 and 256 are coprimes
+            data[i] = static_cast<char>(i % 77);
+        }
+
+        tablet.SendWriteDataRequest(handle, 0, data.size(), data.data());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+        shouldDropPutResult = false;
+
+        // We acquire commitId just so there is something to release on
+        // completion
+        auto commitId = tablet.GenerateBlobIds(id, handle, 0, block)
+                            ->Record.GetCommitId();
+
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto handle2 = CreateHandle(tablet, id2);
+
+        Sort(blobIds.begin(), blobIds.end());
+
+        // Now we try to submit the same blobs for another node
+        auto request = tablet.CreateAddDataRequest(
+            id2,
+            handle2,
+            0,
+            data.size(),
+            blobIds,
+            commitId);
+
+        tablet.SendRequest(std::move(request));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+
+        auto readData = tablet.ReadData(handle2, 0, data.size());
+
+        // After AddData, we should receive AddDataResponse
+        auto response = tablet.RecvAddDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+        // Use DescribeData to check that proper blobs were added
+        auto describe = tablet.DescribeData(handle2, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(describe->Record.BlobPiecesSize(), 2);
+        for (auto [i, blobPiece]: Enumerate(describe->Record.GetBlobPieces())) {
+            UNIT_ASSERT_VALUES_EQUAL(1, blobPiece.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                i * (block * BlockGroupSize),
+                blobPiece.GetRanges(0).GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL(0, blobPiece.GetRanges(0).GetBlobOffset());
+            UNIT_ASSERT_VALUES_EQUAL(
+                block * BlockGroupSize,
+                blobPiece.GetRanges(0).GetLength());
+
+            auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
+            UNIT_ASSERT_VALUES_EQUAL(blobId, blobIds[i]);
+        }
+
+        // validate, that no more BlobStorage requests were made
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(data, readData->Record.GetBuffer());
+    }
+
+    TABLET_TEST(ShouldRejectAddDataIfCollectBarrierIsAlreadyReleased)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<NKikimr::TLogoBlobID> blobIds;
+
+        env.GetRuntime().SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            blobIds.push_back(msg->Id);
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        TString data(block * BlockGroupSize * 2, 'x');
+
+        tablet.SendWriteDataRequest(handle, 0, data.size(), data.data());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(2));
+        UNIT_ASSERT_VALUES_EQUAL(blobIds.size(), 2);
+
+        auto commitId = tablet.GenerateBlobIds(id, handle, 0, block)
+                            ->Record.GetCommitId();
+
+        // We wait for the collect barrier lease to expire. We expect that the
+        // following AddData request will be rejected
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(15));
+
+        auto id2 =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto handle2 = CreateHandle(tablet, id2);
+
+        Sort(blobIds.begin(), blobIds.end());
+
+        tablet.SendAddDataRequest(
+            id2,
+            handle2,
+            0,
+            data.size(),
+            blobIds,
+            commitId);
+
+        auto response = tablet.RecvAddDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
 #undef TABLET_TEST

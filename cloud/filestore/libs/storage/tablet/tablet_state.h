@@ -765,7 +765,8 @@ public:
     }
 
     void AcquireCollectBarrier(ui64 commitId);
-    void ReleaseCollectBarrier(ui64 commitId);
+    bool TryReleaseCollectBarrier(ui64 commitId);
+    bool IsCollectBarrierAcquired(ui64 commitId) const;
 
     ui64 GetCollectCommitId() const;
 
