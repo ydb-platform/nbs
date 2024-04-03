@@ -653,7 +653,7 @@ private:
         ui64 newFillSeqNumber,
         ui64 proposedFillGeneration);
 
-    bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info);
+    bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 

@@ -765,7 +765,7 @@ bool TVolumeState::CanAcceptClient(
 }
 
 bool TVolumeState::ShouldForceTabletRestart(
-    const NProto::TVolumeClientInfo& info)
+    const NProto::TVolumeClientInfo& info) const
 {
     return info.GetMountSeqNumber() != MountSeqNumber ||
         info.GetFillSeqNumber() != Meta.GetFillSeqNumber();
