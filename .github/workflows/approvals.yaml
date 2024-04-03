@@ -75,4 +75,6 @@ jobs:
                         console.log("PR does not have the required approvals from both lists.");
                         core.setFailed("PR does not meet approval requirements.");
                     }
+                } else {
+                    console.log("No action taken.");
                 }
