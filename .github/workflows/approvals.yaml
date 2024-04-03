@@ -26,7 +26,7 @@ jobs:
                 ];
                 // users that can approve PRs without any restrictions by commenting /approve
                 const superUsers = ['qkrorlqr', 'EvgeniyKozev', 'librarian'];
-                const prNumber = context.payload.number;
+                const prNumber = context.issue.number;
                 const owner = context.repo.owner;
                 const repo = context.repo.repo;
 
@@ -47,7 +47,7 @@ jobs:
                 ) {
                     console.log("Approval bypassed by super user.");
                     approvalState = true;
-                } else if (github.eventName === 'pull_request_review') {
+                } else if (context.eventName === 'pull_request_review') {
                     // Fetch PR reviews
                     const reviews = await github.rest.pulls.listReviews({
                         owner,
@@ -82,5 +82,6 @@ jobs:
                         core.setFailed("PR does not meet approval requirements.");
                     }
                 } else {
-                    console.log("No action taken.");
+                    console.log("Not enough approvals");
+                    core.setFailed("Not enough approvals");
                 }
