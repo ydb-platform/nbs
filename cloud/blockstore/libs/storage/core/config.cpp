@@ -111,6 +111,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20       )\
     xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
     xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
+    xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
