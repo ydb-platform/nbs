@@ -1078,6 +1078,61 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, false);
     }
 
+    void DoMaybeDrainBeforeCheckpointCreation(bool useShadowDisk)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(useShadowDisk);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount /
+                DefaultBlockSize);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Count drain requests.
+        ui32 drainRequestCount = 0;
+        auto monitorDrainRequest = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvPartition::EvDrainRequest) {
+                ++drainRequestCount;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(monitorDrainRequest);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Should see drain requests only for checkpoints without shadow disk.
+        UNIT_ASSERT_VALUES_EQUAL(useShadowDisk ? 0 : 1, drainRequestCount);
+    }
+
+    Y_UNIT_TEST(ShouldDrainBeforeCheckpointCreationWithoutShadowDisk)
+    {
+        DoMaybeDrainBeforeCheckpointCreation(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotDrainBeforeCheckpointCreationWithShadowDisk)
+    {
+        DoMaybeDrainBeforeCheckpointCreation(true);
+    }
+
     bool DoShouldCreateCheckpointDuringMigration(int checkpointAt)
     {
         NProto::TStorageServiceConfig config;
