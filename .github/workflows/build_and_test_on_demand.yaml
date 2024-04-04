@@ -66,6 +66,9 @@ on:
       build_preset:
         type: string
         default: "relwithdebinfo"
+      vm_name_suffix:
+        type: string
+        default: ""
       test_size:
         type: string
         default: "small,medium,large"
@@ -101,7 +104,7 @@ on:
 
 jobs:
   provide-runner:
-    name: Start self-hosted runner
+    name: Start self-hosted runner (${{ inputs.build_preset }})
     timeout-minutes: 60
     if: always()
     runs-on: ubuntu-latest
@@ -142,7 +145,7 @@ jobs:
           service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
           vm_folder: bjeuq5o166dq4ukv3eec
-          vm_name: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+          vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}', github.event.pull_request.number, inputs.vm_name_suffix) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
           vm_zone: eu-north1-c
           vm_cpu: 60
           vm_memory: 240
@@ -155,7 +158,7 @@ jobs:
 
 
   prepare-vm:
-    name: Prepare runner [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Prepare runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     needs: provide-runner
     runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
     steps:
@@ -181,7 +184,7 @@ jobs:
         uses: ./.github/actions/prepare
 
   build-and-test:
-    name: Build and test NBS [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     uses: ./.github/workflows/build_and_test_ya.yaml
     needs:
       - provide-runner
@@ -219,7 +222,7 @@ jobs:
         run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
   release-runner:
-    name: Release self-hosted runner [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
+    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     needs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
