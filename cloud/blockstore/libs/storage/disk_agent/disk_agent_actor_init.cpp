@@ -131,7 +131,12 @@ void TDiskAgentActor::HandleInitAgentCompleted(
 
     Become(&TThis::StateWork);
 
-    SendRegisterRequest(ctx);
+    NCloud::Send(
+        ctx,
+        MakeDiskRegistryProxyServiceId(),
+        std::make_unique<TEvDiskRegistryProxy::TEvSubscribeRequest>(
+            ctx.SelfID));
+
     ScheduleUpdateStats(ctx);
 
     RunSessionCacheActor(ctx);
