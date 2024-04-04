@@ -610,20 +610,11 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 
 	successfullyMigrateDisk(t, ctx, client, params)
 
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: diskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	// Check that disk is deleted.
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)
-	_, err = srcZoneNBSClient.Describe(ctx, params.DiskID)
+	_, err := srcZoneNBSClient.Describe(ctx, params.DiskID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Path not found")
 
