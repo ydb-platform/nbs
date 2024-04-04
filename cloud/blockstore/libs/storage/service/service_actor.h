@@ -59,6 +59,9 @@ private:
     bool HasPendingManuallyPreemptedVolumesUpdate = false;
     bool IsVolumeLivenessCheckRunning = false;
 
+    NMonitoring::TDynamicCounters::TCounterPtr SelfPingMaxUsCounter;
+    ui64 SelfPingMaxUs = 0;
+
 public:
     TServiceActor(
         TStorageConfigPtr config,
@@ -123,11 +126,17 @@ private:
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo);
 
+    void ScheduleSelfPing(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateWork);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleSelfPing(
+        const TEvServicePrivate::TEvSelfPing::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleHttpInfo(
