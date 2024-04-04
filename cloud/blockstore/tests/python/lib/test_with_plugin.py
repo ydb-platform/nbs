@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import os
 from subprocess import call
 import tempfile
@@ -24,6 +25,21 @@ def __convert_to_proto(ipc_type):
         return protos.EClientIpcType.Value("IPC_VHOST")
     else:
         return None
+
+
+@contextmanager
+def tsan_suppressions_env(plugin_version, plugin_lib_path):
+    # supress tsan on stable plugin since it always the same binary we use
+    if plugin_version != "stable":
+        yield dict(os.environ)
+        return
+
+    with tempfile.NamedTemporaryFile() as f:
+        f.write("called_from_lib:{}\n".format(os.path.basename(plugin_lib_path)).encode())
+        f.flush()
+
+        tsan_options = "suppressions={} {}".format(f.name, os.environ.get("TSAN_OPTIONS", ""))
+        yield dict(os.environ, TSAN_OPTIONS=tsan_options)
 
 
 def run_plugin_test(
@@ -139,8 +155,9 @@ def run_plugin_test(
             "--run-count", str(run_count),
         ]
 
-        result = call(params, stdout=stdout_file, stderr=stderr_file)
-        assert result == 0
+        with tsan_suppressions_env(plugin_version, plugin_lib_path) as call_env:
+            result = call(params, stdout=stdout_file, stderr=stderr_file, env=call_env)
+            assert result == 0
 
     ret = common.canonical_file(results_path, local=True)
     env.tear_down()
