@@ -7,9 +7,9 @@ metadata:
 data:
   nbs-server.txt: |-
     ServerConfig {
-      Host: "localhost"
+      Host: "0.0.0.0"
       Port: 9766
-      DataHost: "localhost"
+      DataHost: "0.0.0.0"
       DataPort: 9767
       StrictContractValidation: true
       UnixSocketPath: "/run/nbsd/grpc.sock"

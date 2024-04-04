@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nbs-server-service
+  namespace: nbs-csi-ns
+spec:
+  clusterIP: None
+  ports:
+    - protocol: TCP
+      port: 9766
+      targetPort: 9766
+    - protocol: TCP
+      port: 9767
+      targetPort: 9767
+  selector:
+    app: "nbs-server-app"
