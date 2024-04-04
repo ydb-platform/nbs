@@ -228,6 +228,13 @@ func (s *service) prepareCreateDiskParams(
 	}, nil
 }
 
+func (s *service) areOverlayDisksSupportedForDiskKind(kind types.DiskKind) bool {
+	return kind == types.DiskKind_DISK_KIND_SSD ||
+		kind == types.DiskKind_DISK_KIND_HDD ||
+		(s.config.GetEnableOverlayDiskRegistryBasedDisks() &&
+			nbs.IsDiskRegistryBasedDisk(kind))
+}
+
 func (s *service) isOverlayDiskAllowed(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -236,7 +243,7 @@ func (s *service) isOverlayDiskAllowed(
 ) (bool, error) {
 
 	compatibleWithBaseDisksFromPools :=
-		nbs.AreOverlayDisksSupported(params.Kind) &&
+		s.areOverlayDisksSupportedForDiskKind(params.Kind) &&
 			params.BlockSize == 4096 &&
 			req.Size <= 4<<40 // 4 TB - maximum base disk size
 	if !compatibleWithBaseDisksFromPools {

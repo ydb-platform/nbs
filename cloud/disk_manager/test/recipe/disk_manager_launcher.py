@@ -112,6 +112,7 @@ DisksConfig: <
     DeletedDiskExpirationTimeout: "1s"
     ClearDeletedDisksTaskScheduleInterval: "2s"
     EndedMigrationExpirationTimeout: "30s"
+    EnableOverlayDiskRegistryBasedDisks: true
 >
 PoolsConfig: <
     MaxActiveSlots: 10
