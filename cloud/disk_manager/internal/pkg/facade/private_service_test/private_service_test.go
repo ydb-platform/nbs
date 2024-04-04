@@ -228,16 +228,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: diskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -492,27 +483,8 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: diskID1,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: diskID2,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
+	testcommon.DeleteDisk(t, ctx, client, diskID1)
+	testcommon.DeleteDisk(t, ctx, client, diskID2)
 
 	testcommon.CheckConsistency(t, ctx)
 }

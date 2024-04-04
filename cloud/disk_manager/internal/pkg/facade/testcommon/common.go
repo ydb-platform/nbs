@@ -412,6 +412,26 @@ func CreateImage(
 	return diskContentInfo
 }
 
+func DeleteDisk(
+	t *testing.T,
+	ctx context.Context,
+	client sdk_client.Client,
+	diskID string,
+) {
+
+	reqCtx := GetRequestContext(t, ctx)
+	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{
+			DiskId: diskID,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
