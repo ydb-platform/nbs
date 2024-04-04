@@ -9,8 +9,10 @@ spec:
     - protocol: TCP
       port: 9766
       targetPort: 9766
+      name: controlplane
     - protocol: TCP
       port: 9767
       targetPort: 9767
+      name: dataplane
   selector:
     app: "nbs-server-app"
