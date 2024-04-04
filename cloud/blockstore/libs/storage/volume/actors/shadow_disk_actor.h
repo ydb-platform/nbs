@@ -93,9 +93,8 @@ private:
     const NActors::TActorId SrcActorId;
 
     TString SourceDiskClientId;
-    // We update CurrentShadowDiskClientId when get response from
-    // TAcquireShadowDiskActor with confirmation that we have successfully
-    // acquired shadow disk.
+    // We update CurrentShadowDiskClientId when send request to
+    // TAcquireShadowDiskActor with desired clientId.
     TString CurrentShadowDiskClientId;
     TNonreplicatedPartitionConfigPtr DstConfig;
     NActors::TActorId DstActorId;

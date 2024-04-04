@@ -4112,15 +4112,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         acquireClientId = "";
         releaseClientId = "";
 
-        // Connecting a new client should not lead to reacquiring.
+        // Connecting a new client should lead to reacquiring with the same
+        // ShadowDiskClientId.
         auto clientInfo3 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume.RemoveClient(clientInfo2.GetClientId());
         volume.AddClient(clientInfo3);
-        UNIT_ASSERT_VALUES_EQUAL("", acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
 
     Y_UNIT_TEST(ShouldAcquireShadowDiskEvenIfReleaseFailed)
