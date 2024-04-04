@@ -38,8 +38,11 @@ spec:
           image: cr.ai.nebius.cloud/crnvrq2hg2rgmbj3ebr9/nebius-blockstore-server:85.stable-23-3-21
           imagePullPolicy: Always
           volumeMounts:
-            - name: nbs-server
-              mountPath: /Berkanavt/nbs-server
+            - name: nbs-server-backups
+              mountPath: /Berkanavt/nbs-server/backups
+              readOnly: false
+            - name: nbs-server-endpoints
+              mountPath: /Berkanavt/nbs-server/endpoints
               readOnly: false
             - name: nbs-configs
               mountPath: /Berkanavt/nbs-server/cfg
