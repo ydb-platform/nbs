@@ -5224,9 +5224,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 1);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -5241,16 +5240,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service1.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service1.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
-        auto mountVolume = [&](
-            TServiceClient& service,
-            const ui64 mountSeqNumber,
-            const ui64 fillSeqNumber,
-            const ui64 fillGeneration,
-            const NProto::EVolumeAccessMode accessMode = NProto::VOLUME_ACCESS_READ_WRITE
-        ) -> std::pair<ui64, ui64>
+        auto mountVolume =
+            [&](TServiceClient& service,
+                const ui64 mountSeqNumber,
+                const ui64 fillSeqNumber,
+                const ui64 fillGeneration,
+                const NProto::EVolumeAccessMode accessMode =
+                    NProto::VOLUME_ACCESS_READ_WRITE) -> std::pair<ui64, ui64>
         {
             auto statResponseBefore = service1.StatVolume(DefaultDiskId);
 
@@ -5269,8 +5271,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
 
             auto statResponseAfter = service1.StatVolume(DefaultDiskId);
 
@@ -5288,7 +5289,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         ++fillSeqNumber;
@@ -5298,7 +5302,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         {
@@ -5320,7 +5327,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         service1.UnmountVolume(DefaultDiskId);
@@ -5331,7 +5341,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         {
@@ -5346,8 +5359,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         fillGeneration = 0;
@@ -5358,7 +5370,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         ++mountSeqNumber;
@@ -5368,7 +5383,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         {
@@ -5390,7 +5408,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber,
                 fillSeqNumber,
                 fillGeneration);
-            UNIT_ASSERT_LE_C(generationBefore + 1, generationAfter, "volume should restart");
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
         }
 
         ++mountSeqNumber;
@@ -5412,9 +5433,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 1);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -5428,14 +5448,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
-        auto mountVolume = [&](
-            const ui64 mountSeqNumber,
-            const ui64 fillSeqNumber,
-            const ui64 fillGeneration,
-            EWellKnownResultCodes expectedResult)
+        auto mountVolume = [&](const ui64 mountSeqNumber,
+                               const ui64 fillSeqNumber,
+                               const ui64 fillGeneration,
+                               EWellKnownResultCodes expectedResult)
         {
             auto statResponseBefore = service.StatVolume(DefaultDiskId);
 
@@ -5456,8 +5478,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedResult,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
 
             auto statResponseAfter = service.StatVolume(DefaultDiskId);
         };
@@ -5468,11 +5489,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_ALREADY);
-        mountVolume(mountSeqNumber, fillSeqNumber - 1, fillGeneration, E_PRECONDITION_FAILED);
+        mountVolume(
+            mountSeqNumber,
+            fillSeqNumber - 1,
+            fillGeneration,
+            E_PRECONDITION_FAILED);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
         mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_ALREADY);
-        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration - 1, E_PRECONDITION_FAILED);
+        mountVolume(
+            mountSeqNumber,
+            fillSeqNumber,
+            fillGeneration - 1,
+            E_PRECONDITION_FAILED);
     }
 }
 

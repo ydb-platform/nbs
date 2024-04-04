@@ -639,7 +639,9 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
 
-        if (msg->Record.GetForceTabletRestart() && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
+        if (msg->Record.GetForceTabletRestart() &&
+            MountMode == NProto::VOLUME_MOUNT_LOCAL)
+        {
             IsVolumeRestaring = true;
             RequestVolumeStop(ctx);
             return;
@@ -937,7 +939,8 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
 
     if (mountSeqNumber != clientInfo->MountSeqNumber ||
         fillSeqNumber != clientInfo->FillSeqNumber ||
-        fillGeneration != clientInfo->FillGeneration) {
+        fillGeneration != clientInfo->FillGeneration)
+    {
         // If mountSeqNumber, fillSeqNumber or fillGeneration
         // has changed in MountVolumeRequest from client
         // then let volume know about this
