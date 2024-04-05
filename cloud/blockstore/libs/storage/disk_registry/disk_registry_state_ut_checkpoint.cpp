@@ -358,8 +358,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_SUCCESS(error);
             });
 
@@ -369,8 +372,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
             });
 
@@ -457,8 +463,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_SUCCESS(error);
             });
 

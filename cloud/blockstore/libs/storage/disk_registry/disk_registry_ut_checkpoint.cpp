@@ -322,6 +322,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             E_NOT_FOUND,
             describeResponse->GetStatus(),
             describeResponse->GetError());
+
+        // Check that the released devices have been erased.
+        WaitForSecureErase(*runtime, 2);
     }
 
     Y_UNIT_TEST(ShouldDeallocateCheckpointOnSourceDiskDelete)
