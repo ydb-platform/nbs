@@ -358,7 +358,7 @@ void TAcquireShadowDiskActor::ReplyAndDie(
     auto response =
         std::make_unique<TEvVolumePrivate::TEvShadowDiskAcquired>(error);
     if (!HasError(error)) {
-        response->Devices.Swap(&AcquiredShadowDiskDevices);
+        response->Devices.Swap(&ShadowDiskDevices);
         response->ClientId = RwClientId;
     }
 

@@ -4286,6 +4286,81 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             clientInfo.GetClientId(),
             GetBlockContent(1));
     }
+
+    Y_UNIT_TEST(ShouldUseShadowDiskDevicesWithRightOrder)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVector<TString> describedDevices;
+        TVector<TString> allocatedDevices;
+        auto getDeviceUUIDs = [](const TDevices& devices) -> auto
+        {
+            TVector<TString> result;
+            for (const auto& deviceInfo: devices) {
+                result.push_back(deviceInfo.GetDeviceUUID());
+            }
+            return result;
+        };
+        auto patchAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDescribeDiskResponse)
+            {
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
+                describedDevices = getDeviceUUIDs(msg->Record.GetDevices());
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
+                auto* devices = msg->Record.MutableDevices();
+                for (size_t i = 0; i < describedDevices.size(); ++i) {
+                    devices->at(i).SetDeviceUUID(
+                        describedDevices[describedDevices.size() - i - 1]);
+                }
+            }
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvShadowDiskAcquired)
+            {
+                auto* msg =
+                    event->Get<TEvVolumePrivate::TEvShadowDiskAcquired>();
+                allocatedDevices = getDeviceUUIDs(msg->Devices);
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(patchAcquireResponse);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768 * 2);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        UNIT_ASSERT_EQUAL(2, describedDevices.size());
+        UNIT_ASSERT_EQUAL(2, allocatedDevices.size());
+        UNIT_ASSERT_EQUAL(describedDevices, allocatedDevices);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
