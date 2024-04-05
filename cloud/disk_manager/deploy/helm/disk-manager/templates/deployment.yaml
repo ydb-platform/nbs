@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
+  name: {{ $fullname }}
+  namespace: {{ .Values.namespace | default "disk-manager" }}
+  labels:
+    app: {{ $fullname }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+  annotations:
+    checksum/client-config: {{ tpl (.Files.Get "configs/client-config.txt") . | sha256sum }}
+    checksum/server-config: {{ tpl (.Files.Get "configs/server-config.txt") . | sha256sum }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $fullname }}
+  replicas: {{ default 9 .Values.replicaCount | int }}
+  template:
+    metadata:
+      labels:
+        app: {{ $fullname }}
+    spec: {{ $configPath := "/etc/yc/disk-manager/server-config.txt"}}
+      containers:
+      - name: {{ $fullname }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: {{ .Values.service.internalPort | int }}
+      volumes:
+      - name: disk-manager-config
+        configMap:
+          name: disk-manager-config
+      initContainers:
+      - name: disk-manager-init
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
+        command: ["/usr/bin/yc-disk-manager-init-db", "--config={{ $configPath }}"]
+        volumeMounts:
+        - name: disk-manager-config
+          mountPath: "{{ $configPath }}"
+          subPath: server-config.txt
+
+      containers:
+      - name: disk-manager
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        command: ["/usr/bin/yc-disk-manager", "--config={{ $configPath }}"]
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: disk-manager-config
+          mountPath: "{{ $configPath }}"
+          subPath: server-config.txt
+
+

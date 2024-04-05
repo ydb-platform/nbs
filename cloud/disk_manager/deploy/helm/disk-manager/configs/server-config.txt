@@ -1,0 +1,282 @@
+{{- if eq .Values.serviceKind "controlplane" }}
+GrpcConfig: {
+  Port: {{- .Values.service.internalPort}}
+  {{- if not .Values.insecure }}
+  certs: [
+    {
+      cert_file: "{{ .Values.certificates.balancer.certFile }}"
+      private_key_file: "{{ .Values.certificates.balancer.privateKeyFile }}"
+    },
+    {
+      cert_file: "{{ .Values.certificates.svms.certFile }}"
+      private_key_file: "{{ .Values.certificates.svms.privateKeyFile }}"
+    }
+  ]
+  {{- else }}
+  insecure: true
+  {{- end }}
+  KeepAlive: {}
+}
+{{- end }}
+TasksConfig: {
+{{- if eq .Values.serviceKind "dataplane" }}
+    {{- $zones := keys .Values.zones }}
+    {{- $length := len $zones }}
+        ZoneIds: [{{- range $i, $zone := $zones }}{{ if $i }}, {{ end }}"{{ $zone }}"{{- end }}]
+{{- end }}
+{{- if .Values.tasksConfig.runnersCount }}
+    RunnersCount: {{ .Values.tasksConfig.runnersCount }}
+{{- end }}
+{{- if .Values.tasksConfig.stalkingRunnersCount }}
+    StalkingRunnersCount: {{ .Values.tasksConfig.stalkingRunnersCount }}
+{{- end }}
+    ExceptHangingTaskTypes: [
+        "tasks.CollectListerMetrics",
+        "disks.CreateDiskFromImage",
+        "disks.CreateDiskFromSnapshot",
+        "disks.MigrateDisk",
+        "images.CreateImageFromURL",
+        "images.CreateImageFromDisk",
+        "images.CreateImageFromSnapshot",
+        "images.DeleteImage",
+        "pools.OptimizeBaseDisks",
+        "snapshots.CreateSnapshotFromDisk",
+        "snapshots.DeleteSnapshot",
+        "transfer.TransferFromImageToDisk",
+        "transfer.TransferFromSnapshotToDisk",
+        "pools.RetireBaseDisks",
+        "pools.RebaseOverlayDisk",
+        "dataplane.CreateSnapshotFromDisk",
+        "dataplane.TransferFromDiskToDisk",
+        "dataplane.ReplicateDisk",
+        "dataplane.TransferFromSnapshotToDisk",
+        "dataplane.TransferFromLegacySnapshotToDisk",
+        "dataplane.CreateSnapshotFromLegacySnapshot",
+        "dataplane.DeleteSnapshotData",
+        "dataplane.CollectSnapshots",
+        "dataplane.CollectSnapshotMetrics",
+        "dataplane.CreateSnapshotFromURL"
+    ]
+    InflightTaskPerNodeLimits: {
+        key: "dataplane.ReplicateDisk"
+        value: 2
+    }
+}
+NbsConfig: {
+{{- range $zone, $params := .Values.zones }}
+    Zones: {
+        key: "{{ $zone }}"
+        value: {
+            Endpoints: [
+            {{- $length := len $params.nbsSvms }}
+            {{- range $i, $svm := $params.nbsSvms }}
+                "{{ $svm }}:{{ $params.nbsPort }}"{{- if lt $i (sub $length 1) }},{{- end }}
+            {{- end }}
+            ]
+        }
+    }
+{{- end }}
+    GrpcKeepAlive: {}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.Insecure }}
+    Insecure: true
+    DisableAuthentication: true
+{{- end }}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
+    EnableThrottlingForMediaKinds: [
+    {{- $length := len .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
+    {{- range $i, $kind := .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
+        "{{ $kind }}"{{- if lt $i (sub $length 1) }},{{- end }}
+    {{- end }}
+    ]
+{{- end }}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.UseGZIPCompression }}
+    UseGZIPCompression: true
+{{- end }}
+}
+{{- if eq .Values.serviceKind "controlplane" }}
+DisksConfig: {
+    OverlayDisksFolderIdBlacklist: [
+        "yc.nbs.nbs-control"
+    ]
+}
+{{- if .Values.nfs.enabled }}
+NfsConfig: {
+{{- range $zone, $params := .Values.zones }}
+    Zones: {
+        key: "{{ $zone }}"
+        value: {
+            Endpoints: [
+            {{- $length := len $params.nfsSvms }}
+            {{- range $i, $svm := $params.nfsSvms }}
+                "{{ $svm }}:{{ $params.nfsPort }}"{{- if lt $i (sub $length 1) }},{{- end}}
+            {{- end }}
+            ]
+        }
+    }
+{{- end }}
+    Insecure: {{ .Values.nfs.insecure}}
+    DisableAuthentication: {{ .Values.nfs.disableAuthentication}}
+}
+{{- end }}
+FilesystemConfig: {
+}
+PoolsConfig: {
+{{- with .Values.poolsConfig }}
+{{- if .maxActiveSlots }}
+    MaxActiveSlots: {{ .maxActiveSlots }}
+{{- end }}
+{{- if .maxBaseDisksInflight }}
+    MaxBaseDisksInflight: {{ .maxBaseDisksInflight }}
+{{- end }}
+{{- if .maxBaseDiskUnits }}
+    MaxBaseDiskUnits: {{ .maxBaseDiskUnits }}
+{{- end }}
+{{- if .takeBaseDisksToScheduleParallelism }}
+    TakeBaseDisksToScheduleParallelism: {{ .takeBaseDisksToScheduleParallelism }}
+{{- end }}
+{{- if .deleteBaseDisksLimit }}
+    DeleteBaseDisksLimit: {{ .deleteBaseDisksLimit }}
+{{- end }}
+{{- end }}
+}
+ImagesConfig: {
+    DefaultDiskPoolConfigs: [
+    {{- $zones := keys .Values.zones }}
+    {{- $length := len $zones }}
+    {{- range $i, $zone := $zones }}
+        {
+            ZoneId: "{{ $zone }}"
+        }{{- if lt $i (sub $length 1) }},{{- end}}
+    {{- end }}
+    ]
+{{- if .Values.imagesUseS3ForFolder }}
+    imagesUseS3ForFolder: [
+    {{- $length := len .Values.imagesUseS3ForFolder }}
+    {{- range $i, $folder := .Values.imagesUseS3ForFolder }}
+        "{{ $folder }}"{{- if lt $i (sub $length 1) }},{{- end}}
+    {{- end }}
+    ]
+{{- end }}
+{{- if .Values.imagesUseS3Percentage }}
+    UseS3Percentage: {{ .Values.imagesUseS3Percentage }}
+{{- end }}
+}
+SnapshotsConfig: {
+{{- if .Values.snapshotsUseS3ForFolder }}
+    UseS3ForFolder: [
+    {{- $length := len .Values.snapshotsUseS3ForFolder }}
+    {{- range $i, $folder := .Values.snapshotsUseS3ForFolder }}
+        "{{ $folder }}"{{- if lt $i (sub $length 1) }},{{- end}}
+    {{- end }}
+    ]
+{{- end }}
+{{- if .Values.snapshotsUseS3Percentage }}
+    UseS3Percentage: {{ .Values.snapshotsUseS3Percentage }}
+{{- end }}
+{{- if .Values.snapshotsUseProxyOverlayDisk }}
+    UseProxyOverlayDisk: {{ .Values.snapshotsUseProxyOverlayDisk }}
+{{- end }}
+}
+{{- end }}
+LoggingConfig: {
+    LoggingStderr: {}
+    Level: {{ .Values.logLevel }}
+}
+MonitoringConfig: {
+{{- if .Values.monitoringPort }}
+    Port: {{ .Values.monitoringPort }}
+{{- end }}
+    RestartsCountFile: "/etc/yc/disk-manager-external/restarts-count.txt"
+    ServerVersionFile: "/usr/lib/yc/disk-manager/server-version.txt"
+}
+AuthConfig: {
+{{- if and .Values.auth_config .Values.auth_config.DisableAuthorization }}
+    DisableAuthorization: true
+{{- else }}
+    MetadataUrl: "http://localhost:6770/computeMetadata/v1/instance/service-accounts/default/token"
+{{- end }}
+{{- if eq .Values.serviceKind "controlplane" }}
+    AccessServiceEndpoint: "{{ .Values.auth_config.AccessServiceEndpoint }}"
+    FolderId: "yc.disk-manager.disk-manager-permissions"
+{{- end }}
+}
+PersistenceConfig: {
+{{- if .Values.ydb.Secure }}
+    Secure: true
+{{- end }}
+{{- if .Values.ydb.disableAuthentication}}
+    DisableAuthentication: true
+{{- end }}
+    Endpoint: "{{ .Values.ydb.Endpoint }}"
+    Database: "{{ .Values.ydb.Database }}"
+{{- if .Values.ydb.RootPath }}
+    RootPath: "{{ .Values.ydb.RootPath }}"
+{{- end }}
+}
+{{- if eq .Values.serviceKind "dataplane" }}
+DataplaneConfig: {
+    SnapshotConfig: {
+        PersistenceConfig: {
+{{- if .Values.ydb.Secure }}
+            Secure: true
+{{- end }}
+            Endpoint: "{{ .Values.ydb.snapshot.Endpoint }}"
+            Database: "{{ .Values.ydb.snapshot.Database }}"
+{{- if .Values.ydb.snapshot.RootPath }}
+            RootPath: "{{ .Values.ydb.snapshot.RootPath }}"
+{{- end }}
+{{- if .Values.S3Endpoint }}
+            S3Config: {
+                Endpoint: "{{ .Values.S3Endpoint }}"
+                Region: "ru-central1"
+                CredentialsFilePath: "/etc/yc/disk-manager-external/disk-manager-s3-credentials.json"
+            }
+{{- end }}
+        }
+{{- if .Values.ChunkBlobsTableShardCount }}
+        ChunkBlobsTableShardCount: {{ .Values.ChunkBlobsTableShardCount }}
+{{- end }}
+{{- if .Values.ChunkMapTableShardCount }}
+        ChunkMapTableShardCount: {{ .Values.ChunkMapTableShardCount }}
+{{- end }}
+{{- if .Values.ExternalBlobsMediaKind }}
+        ExternalBlobsMediaKind: {{ .Values.ExternalBlobsMediaKind }}
+{{- end }}
+{{- if .Values.DeleteWorkerCount }}
+        DeleteWorkerCount: {{ .Values.DeleteWorkerCount }}
+{{- end }}
+{{- if .Values.ShallowCopyWorkerCount }}
+        ShallowCopyWorkerCount: {{ .Values.ShallowCopyWorkerCount }}
+{{- end }}
+{{- if .Values.ShallowCopyInflightLimit }}
+        ShallowCopyInflightLimit: {{ .Values.ShallowCopyInflightLimit }}
+{{- end }}
+{{- if .Values.S3Bucket }}
+        S3Bucket: "{{ .Values.S3Bucket }}"
+{{- end }}
+{{- if .Values.ChunkBlobsS3KeyPrefix }}
+        ChunkBlobsS3KeyPrefix: "{{ .Values.ChunkBlobsS3KeyPrefix }}"
+{{-   end }}
+{{- if .Values.probeCompressionPercentage }}
+{{- range $codec, $percentage := .Values.probeCompressionPercentage }}
+ProbeCompressionPercentage: {
+    key: "{{ $codec }}"
+    value: {{ $percentage }}
+}
+{{- end }}
+{{- end }}
+    }
+{{- if .Values.ReaderCount }}
+    ReaderCount: {{ .Values.ReaderCount }}
+{{- end }}
+{{- if .Values.WriterCount }}
+    WriterCount: {{ .Values.WriterCount}}
+{{- end }}
+{{- if .Values.ChunksInflightLimit }}
+    ChunksInflightLimit: {{ .Values.ChunksInflightLimit }}
+{{- end }}
+{{- if .Values.SnapshotCollectionInflightLimit }}
+    SnapshotCollectionInflightLimit: {{ .Values.SnapshotCollectionInflightLimit }}
+{{- end }}
+}
+{{- end }}

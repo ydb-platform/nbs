@@ -1,0 +1,7 @@
+{{- if .Values.Insecure -}}
+Insecure: true
+{{ end -}}
+LoggingConfig: {
+    LoggingStderr: {}
+    Level: {{ .Values.logLevel }}
+}

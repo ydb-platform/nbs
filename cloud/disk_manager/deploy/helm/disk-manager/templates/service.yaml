@@ -1,0 +1,19 @@
+{{- if eq .Values.serviceKind "controlplane" }}
+apiVersion: v1
+kind: Service
+metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
+  name: {{ $fullname }}
+  namespace: {{ .Values.namespace | default "disk-manager" }}
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
+    app: {{ $fullname }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - port: {{ .Values.service.externalPort }}
+    targetPort: {{ .Values.service.internalPort }}
+    protocol: TCP
+    name: grpc-api
+  selector: 
+    app: {{ $fullname }}
+{{- end }}
