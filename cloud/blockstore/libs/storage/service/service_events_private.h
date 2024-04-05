@@ -268,7 +268,7 @@ struct TEvServicePrivate
     {
         const ui64 StartCycles;
 
-        TSelfPing(ui64 startCycles)
+        explicit TSelfPing(ui64 startCycles)
             : StartCycles(startCycles)
         {}
     };
