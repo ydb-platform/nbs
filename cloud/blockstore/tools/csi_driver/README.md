@@ -66,7 +66,12 @@ kubectl apply -f ./deploy/manifests/1-priorityclass.yaml
 kubectl apply -f ./deploy/manifests/2-rbac.yaml
 kubectl apply -f ./deploy/manifests/3-csidriver.yaml
 kubectl apply -f ./deploy/manifests/4-storageclass.yaml
-# TODO: kubectl secret nbs-puller-secret
+# Download docker-config.json from the lockbox under the name docker-config.json
+export DOCKER_CONFIG=$(cat docker-config.json)
+kubectl create secret generic nbs-puller-secret \
+    --namespace nbs-csi-ns \ 
+    --type=kubernetes.io/dockerconfigjson \
+    --from-literal=.dockerconfigjson="$DOCKER_CONFIG"
 kubectl apply -f ./deploy/manifests/5-nbs-configmap.yaml
 kubectl apply -f ./deploy/manifests/6-nbs-daemonset.yaml
 kubectl apply -f ./deploy/manifests/7-csi-deployment.yaml
