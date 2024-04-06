@@ -175,6 +175,8 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
 {
     FILESTORE_VALIDATE_TX_ERROR(AllocateData, args);
 
+    InvalidateReadAheadCache(args.NodeId);
+
     const ui64 size = args.Offset + args.Length;
     const ui64 minBorder = Min(size, args.Node->Attrs.GetSize());
     const bool needExtend = args.Node->Attrs.GetSize() < size &&

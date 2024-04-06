@@ -15,6 +15,7 @@ enum class EAllocatorTag
     FreshBlocks,
     FreshBytes,
     GarbageQueue,
+    ReadAheadCache,
 
     Max
 };
