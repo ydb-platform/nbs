@@ -6,7 +6,7 @@ import time
 from copy import deepcopy
 
 from cloud.blockstore.public.sdk.python.client import CreateClient
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, TAction
+from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, TAction, EStoragePoolKind
 
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -24,6 +24,7 @@ DEVICE_SIZE = 1024**2
 
 KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
+        {"Kind": "DEVICE_POOL_KIND_DEFAULT", "AllocationUnit": DEVICE_SIZE},
         {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
         {"Name": "rot", "Kind": "DEVICE_POOL_KIND_GLOBAL", "AllocationUnit": DEVICE_SIZE},
         {"Name": "local", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
@@ -66,6 +67,16 @@ def _setup_disk_registry_config(nbs, agent_id):
                 [{"DeviceUUID": _md5(f"{agent_id}-{i + 1:02}-local")} for i in range(4)]
             }],
         } | KNOWN_DEVICE_POOLS)
+
+
+def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
+    while True:
+        bkp = client.backup_disk_registry_state()["Backup"]
+        dirty_devices = bkp.get("DirtyDevices")
+        dirty_count = 0 if dirty_devices is None else len(dirty_devices)
+        if dirty_count == expected_dirty_count:
+            break
+        time.sleep(1)
 
 
 @pytest.fixture(name='ydb')
@@ -150,7 +161,6 @@ def create_disk_agent_static_config(data_path, agent_id):
         return {
             "Path": os.path.join(data_path, f"NVMENBS{i + 1:02}"),
             "BlockSize": 4096,
-            "PoolName": "1Mb",
             "DeviceId": _md5(f"{agent_id}-{i + 1:02}")
         }
 
@@ -202,7 +212,6 @@ def create_disk_agent_dynamic_config(data_path):
             }, {
                 "PathRegExp": f"{data_path}/NVMENBS([0-9]+)",
                 "PoolConfigs": [{
-                    "PoolName": "1Mb",
                     "MinSize": DEVICE_SIZE,
                     "MaxSize": DEVICE_SIZE + 5 * 4096
                 }]}, {
@@ -228,10 +237,10 @@ def _check_disk_agent_config(config, agent_id, data_path):
     for d in devices:
         assert d.get("State") is None
         assert d["AgentId"] == agent_id
-        assert d["PoolName"] in ["rot", "1Mb", "local"]
+        assert d.get("PoolName", "") in ["rot", "local", ""]
 
     nvme = sorted(
-        [d for d in devices if d["PoolName"] == "1Mb"],
+        [d for d in devices if d.get("PoolName") is None],
         key=lambda d: d["DeviceName"])
     assert len(nvme) == 6
 
@@ -242,7 +251,7 @@ def _check_disk_agent_config(config, agent_id, data_path):
         assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 4096 + i
 
     local = sorted(
-        [d for d in devices if d["PoolName"] == "local"],
+        [d for d in devices if d.get("PoolName") == "local"],
         key=lambda d: d["DeviceName"])
     assert len(local) == 4
 
@@ -253,7 +262,7 @@ def _check_disk_agent_config(config, agent_id, data_path):
         assert int(d["UnadjustedBlockCount"]) == DEVICE_SIZE / 512 + i
 
     rot = sorted(
-        [d for d in devices if d["PoolName"] == "rot"],
+        [d for d in devices if d.get("PoolName") == "rot"],
         key=lambda d: int(d["PhysicalOffset"]))
     assert len(rot) == 8
 
@@ -370,32 +379,41 @@ def test_add_devices(
 
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
-    storage = grpc_client.query_available_storage([agent_id])
-    assert len(storage) == 1
-    assert storage[0].AgentId == agent_id
+    default_storage = grpc_client.query_available_storage(
+        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+    local_storage = grpc_client.query_available_storage(
+        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+    assert len(default_storage) == 1
+    assert len(local_storage) == 1
+    assert default_storage[0].AgentId == agent_id
+    assert local_storage[0].AgentId == agent_id
     # no devices have been added yet
-    assert storage[0].ChunkCount == 0
+    assert default_storage[0].ChunkCount == 0
+    assert local_storage[0].ChunkCount == 0
 
-    # adding one local device: DR must wait for this device to be cleaned.
+    # adding one device
     r = _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'NVMENBS01')])
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0, r
 
-    storage = grpc_client.query_available_storage([agent_id])
-    assert len(storage) == 1
-    assert storage[0].AgentId == agent_id
+    # wait until it is cleared
+    _wait_for_devices_to_be_cleared(client)
+
+    default_storage = grpc_client.query_available_storage(
+        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+    assert len(default_storage) == 1
+    assert default_storage[0].AgentId == agent_id
     # now we see one chunk
-    assert storage[0].ChunkCount == 1
-    assert storage[0].ChunkSize == DEVICE_SIZE
+    assert default_storage[0].ChunkCount == 1
+    assert default_storage[0].ChunkSize == DEVICE_SIZE
 
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp.get("DirtyDevices") is None
     assert bkp["Agents"][0]["AgentId"] == agent_id
-
     assert len(bkp["Agents"][0]["Devices"]) == 1
     assert bkp["Agents"][0]["Devices"][0].get("State") is None
 
-    # adding all the local devices
+    # adding all default and local devices
     r = _add_devices(grpc_client, agent_id, [
         os.path.join(data_path, f'NVMENBS{i + 1:02}') for i in range(6)
     ] + [
@@ -405,25 +423,51 @@ def test_add_devices(
     assert all(x.Result.Code == 0 for x in r.ActionResults)
 
     # wait until the local devices are cleared
-    while True:
-        bkp = client.backup_disk_registry_state()["Backup"]
-        if bkp.get("DirtyDevices", 0) == 0:
-            break
-        time.sleep(1)
+    _wait_for_devices_to_be_cleared(client, 4)
 
-    storage = grpc_client.query_available_storage([agent_id])
-    assert len(storage) == 1
-    assert storage[0].AgentId == agent_id
-    # now we see all the local devices
-    assert storage[0].ChunkCount == 10
-    assert storage[0].ChunkSize == DEVICE_SIZE
+    default_storage = grpc_client.query_available_storage(
+        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+    local_storage = grpc_client.query_available_storage(
+        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+    assert len(default_storage) == 1
+    assert len(local_storage) == 1
+    assert default_storage[0].AgentId == agent_id
+    assert local_storage[0].AgentId == agent_id
+    # now we see all the default devices, but local are still suspended
+    assert local_storage[0].ChunkCount == 0
+    assert default_storage[0].ChunkCount == 6
+    assert default_storage[0].ChunkSize == DEVICE_SIZE
+
+    # resume all local devices
+    for i in range(4):
+        grpc_client.resume_device(
+            agent_id,
+            os.path.join(data_path, f'NVMECOMPUTE{i + 1:02}'),
+            dry_run=False)
+    # wait until the local devices are cleared
+    _wait_for_devices_to_be_cleared(client)
+
+    local_storage = grpc_client.query_available_storage(
+        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+    assert len(local_storage) == 1
+    assert local_storage[0].AgentId == agent_id
+    # local devices are ready
+    assert local_storage[0].ChunkCount == 4
+    assert local_storage[0].ChunkSize == DEVICE_SIZE
 
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp.get("DirtyDevices") is None
     assert len(bkp["Agents"][0]["Devices"]) == 10
     assert all([d.get("State") is None for d in bkp["Agents"][0]["Devices"]])
 
-    # adding a non local device: DR will not wait for this device to clear.
+    # Check that there is no rot devices
+    rot_storage = grpc_client.query_available_storage(
+        [agent_id], "rot", EStoragePoolKind.Value("STORAGE_POOL_KIND_GLOBAL"))
+    assert len(rot_storage) == 1
+    assert rot_storage[0].AgentId == agent_id
+    assert rot_storage[0].ChunkCount == 0
+
+    # adding a rot device
     r = _add_devices(grpc_client, agent_id, [os.path.join(data_path, 'ROTNBS01')])
     assert len(r.ActionResults) == 1
     assert r.ActionResults[0].Result.Code == 0, r
@@ -432,14 +476,26 @@ def test_add_devices(
     bkp = client.backup_disk_registry_state()["Backup"]
     assert bkp.get("DirtyDevices") is not None
 
+    # wait until rot devices to be cleared.
+    _wait_for_devices_to_be_cleared(client)
+
     _check_disk_agent_config(bkp["Agents"][0], agent_id, data_path)
 
-    storage = grpc_client.query_available_storage([agent_id])
-    assert len(storage) == 1
-    assert storage[0].AgentId == agent_id
+    local_storage = grpc_client.query_available_storage(
+        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+    assert len(local_storage) == 1
+    assert local_storage[0].AgentId == agent_id
     # we still see all the local devices
-    assert storage[0].ChunkCount == 10
-    assert storage[0].ChunkSize == DEVICE_SIZE
+    assert local_storage[0].ChunkCount == 4
+    assert local_storage[0].ChunkSize == DEVICE_SIZE
+
+    rot_storage = grpc_client.query_available_storage(
+        [agent_id], "rot", EStoragePoolKind.Value("STORAGE_POOL_KIND_GLOBAL"))
+    assert len(rot_storage) == 1
+    assert rot_storage[0].AgentId == agent_id
+    # we see the rot devices
+    assert rot_storage[0].ChunkCount == 8
+    assert rot_storage[0].ChunkSize == DEVICE_SIZE
 
     disk_agent.kill()
 

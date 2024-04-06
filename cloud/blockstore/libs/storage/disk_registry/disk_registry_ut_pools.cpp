@@ -221,7 +221,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 0, msg.GetAvailableStorage(2).GetChunkCount());
         }
 
-        diskRegistry.ResumeDevice("agent-1", "dev-2");
+        diskRegistry.ResumeDevice("agent-1", "dev-2", /*dryRun=*/false);
         UNIT_ASSERT_VALUES_EQUAL(4, GetSuspendedDeviceCount(diskRegistry));
 
         WaitForSecureErase(*runtime, 1);
@@ -254,9 +254,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 0, msg.GetAvailableStorage(2).GetChunkCount());
         }
 
-        diskRegistry.ResumeDevice("agent-1", "dev-4");
-        diskRegistry.ResumeDevice("agent-3", "dev-1");
-        diskRegistry.ResumeDevice("agent-3", "dev-2");
+        diskRegistry.ResumeDevice("agent-1", "dev-4", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-3", "dev-1", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-3", "dev-2", /*dryRun=*/false);
 
         WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
 

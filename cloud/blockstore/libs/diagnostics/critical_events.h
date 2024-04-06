@@ -57,6 +57,7 @@ namespace NCloud::NBlockStore {
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(BlockDigestMismatchInBlob)                                             \
+    xxx(DiskRegistryResumeDeviceFailed)                                        \
 // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_IMPOSSIBLE_EVENTS(xxx)                                      \

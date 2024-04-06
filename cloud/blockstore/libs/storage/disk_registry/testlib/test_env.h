@@ -936,13 +936,14 @@ public:
         return request;
     }
 
-    auto CreateResumeDeviceRequest(TString agentId, TString path)
+    auto CreateResumeDeviceRequest(TString agentId, TString path, bool dryRun)
     {
         auto request =
             std::make_unique<TEvService::TEvResumeDeviceRequest>();
 
         request->Record.SetAgentId(std::move(agentId));
         request->Record.SetPath(std::move(path));
+        request->Record.SetDryRun(dryRun);
 
         return request;
     }

@@ -765,6 +765,8 @@ class _SafeClient(object):
     def query_available_storage_async(
             self,
             agent_ids,
+            pool_name,
+            pool_kind,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -772,6 +774,8 @@ class _SafeClient(object):
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
+            StoragePoolName=pool_name,
+            StoragePoolKind=pool_kind,
         )
 
         future = futures.Future()
@@ -796,6 +800,8 @@ class _SafeClient(object):
     def query_available_storage(
             self,
             agent_ids,
+            pool_name,
+            pool_kind,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -803,6 +809,8 @@ class _SafeClient(object):
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
+            StoragePoolName=pool_name,
+            StoragePoolKind=pool_kind,
         )
         return self.__impl.query_available_storage(
             request,
@@ -816,6 +824,7 @@ class _SafeClient(object):
             self,
             agent_id,
             path,
+            dry_run,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -824,6 +833,7 @@ class _SafeClient(object):
         request = protos.TResumeDeviceRequest(
             AgentId=agent_id,
             Path=path,
+            DryRun=dry_run,
         )
 
         future = futures.Future()
@@ -849,6 +859,7 @@ class _SafeClient(object):
             self,
             agent_id,
             path,
+            dry_run,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -857,6 +868,7 @@ class _SafeClient(object):
         request = protos.TResumeDeviceRequest(
             AgentId=agent_id,
             Path=path,
+            DryRun=dry_run,
         )
         return self.__impl.resume_device(
             request,

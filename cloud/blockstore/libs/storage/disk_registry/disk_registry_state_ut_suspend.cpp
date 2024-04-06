@@ -183,7 +183,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
             state.ResumeDevices(Now(), db, {"uuid-2.1"});
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetDirtyDevices().size());
 
-            state.ResumeDevices(Now(), db, {"uuid-2.2"});
+            // Simulate ResumeDevice method call in blockstore-client.
+            auto r = state.UpdateCmsDeviceState(
+                db,
+                Agents[1].GetAgentId(),
+                "dev-2",
+                NProto::DEVICE_STATE_ONLINE,
+                TInstant::FromValue(1),
+                true,     // shouldResumeDevice
+                false);   // dryRun
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, r.Error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetDirtyDevices().size());
 
             UNIT_ASSERT(state.IsSuspendedDevice("uuid-2.1"));
@@ -286,6 +295,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                     d.GetDeviceName(),
                     NProto::DEVICE_STATE_WARNING,
                     TInstant::FromValue(1),
+                    false,  // shouldResumeDevice
                     false); // dryRun
 
                 UNIT_ASSERT(!state.IsSuspendedDevice(d.GetDeviceUUID()));

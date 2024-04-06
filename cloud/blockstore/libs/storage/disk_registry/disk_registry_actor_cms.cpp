@@ -114,6 +114,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 action.GetHost(),
                 action.GetDevice(),
                 NProto::EDeviceState::DEVICE_STATE_WARNING,
+                /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
             NCloud::Send(
@@ -146,6 +147,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 action.GetHost(),
                 action.GetDevice(),
                 NProto::EDeviceState::DEVICE_STATE_ONLINE,
+                /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
             NCloud::Send(

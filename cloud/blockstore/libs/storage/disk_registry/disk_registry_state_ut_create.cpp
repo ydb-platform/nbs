@@ -465,6 +465,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
                 testDeviceName,
                 NProto::DEVICE_STATE_ONLINE,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_SUCCESS(r.Error);

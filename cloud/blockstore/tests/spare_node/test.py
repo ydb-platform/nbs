@@ -1,6 +1,7 @@
 import pytest
 
 from cloud.blockstore.public.sdk.python.client import CreateClient
+import cloud.blockstore.public.sdk.python.protos as protos
 
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, get_fqdn
@@ -27,7 +28,8 @@ def test_spare_node(ydb):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
-    r = client.query_available_storage(["unknown"])
+    r = client.query_available_storage(
+        ["unknown"], "", protos.EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
 
     assert len(r) == 0
 

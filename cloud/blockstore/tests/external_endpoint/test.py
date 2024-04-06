@@ -10,6 +10,7 @@ from cloud.blockstore.public.sdk.python.client import CreateClient, \
 from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
     TAction, STORAGE_MEDIA_SSD_LOCAL, IPC_VHOST
 
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, \
@@ -166,6 +167,20 @@ def setup_env(nbs, disk_agent, data_path):
     assert len(response.ActionResults) == 2
     for r in response.ActionResults:
         assert r.Result.Code == 0, r
+
+    for i in range(2):
+        client.resume_device(
+            get_fqdn(),
+            os.path.join(data_path, f"NVMENBS{i + 1:02}"),
+            dry_run=False)
+
+    # wait for devices to be cleared
+    nbs_client = NbsClient(nbs.port)
+    while True:
+        bkp = nbs_client.backup_disk_registry_state()["Backup"]
+        if bkp.get("DirtyDevices", 0) == 0:
+            break
+        time.sleep(1)
 
 
 def test_external_endpoint(nbs, fake_vhost_server):
