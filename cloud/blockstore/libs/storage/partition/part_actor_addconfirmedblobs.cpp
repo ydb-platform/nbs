@@ -286,7 +286,10 @@ void TPartitionActor::HandleAddConfirmedBlobs(
                 MakePartialBlobId(commitId, blob.UniqueId),
                 blob.BlockRange,
                 TBlockMask(), // skipMask
-                blob.Checksums);
+                blob.Checksums,
+                // compression is turned off
+                TCompressedBlobInfo()
+            );
         }
 
         auto request = std::make_unique<TRequest>(

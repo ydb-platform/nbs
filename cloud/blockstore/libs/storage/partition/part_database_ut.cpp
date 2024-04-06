@@ -334,7 +334,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::WithLength(0, 3),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -342,7 +343,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -350,7 +352,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -358,7 +361,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::WithLength(0, 7),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -442,7 +446,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::WithLength(0, 3),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -450,7 +455,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -458,7 +464,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -466,7 +473,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.WriteMergedBlocks(
                 executor.MakeBlobId(),
                 TBlockRange32::WithLength(0, 7),
-                TBlockMask()
+                TBlockMask(),
+                TCompressedBlobInfo()
             );
         });
 
@@ -864,7 +872,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             mb->SetSkipped(5);
             blob1 = executor.MakeBlobId();
             db.WriteBlobMeta(blob1, meta);
-            db.WriteMergedBlocks(blob1, range1, skipMask1);
+            db.WriteMergedBlocks(blob1, range1, skipMask1, TCompressedBlobInfo());
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
@@ -879,7 +887,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             meta.AddBlockChecksums(333);
             blob2 = executor.MakeBlobId();
             db.WriteBlobMeta(blob2, meta);
-            db.WriteMergedBlocks(blob2, range2, skipMask2);
+            db.WriteMergedBlocks(blob2, range2, skipMask2, TCompressedBlobInfo());
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {

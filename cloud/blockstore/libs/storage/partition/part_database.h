@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_index_cache.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_compression.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
@@ -93,7 +94,8 @@ public:
     void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const TBlockMask& skipMask);
+        const TBlockMask& skipMask,
+        const TCompressedBlobInfo& compressedBlobInfo);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,

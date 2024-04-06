@@ -322,7 +322,8 @@ void TPartitionActor::HandleZeroBlocks(
                 blobId,
                 range,
                 TBlockMask(), // skipMask
-                TVector<ui32>() /* checksums */);
+                TVector<ui32>(), // checksums
+                TCompressedBlobInfo());
         }
 
         Y_ABORT_UNLESS(requests);

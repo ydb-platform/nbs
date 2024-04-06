@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_compression.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -67,16 +68,19 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const TCompressedBlobInfo CompressedBlobInfo;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
             const TBlockRange32& blockRange,
             const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            TCompressedBlobInfo compressedBlobInfo)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , CompressedBlobInfo(std::move(compressedBlobInfo))
     {}
 };
 
@@ -257,6 +261,7 @@ struct TEvPartitionPrivate
     struct TWriteBlobResponse
     {
         TVector<ui32> BlockChecksums;
+        TCompressedBlobInfo CompressedBlobInfo;
         ui64 ExecCycles = 0;
     };
 

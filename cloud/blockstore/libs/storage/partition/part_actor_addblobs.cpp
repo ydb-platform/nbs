@@ -255,7 +255,12 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        db.WriteMergedBlocks(blob.BlobId, blob.BlockRange, blob.SkipMask);
+        // TODO: write compressed blob info
+        db.WriteMergedBlocks(
+            blob.BlobId,
+            blob.BlockRange,
+            blob.SkipMask,
+            blob.CompressedBlobInfo);
 
         // update counters
         State.IncrementMergedBlobsCount(1);

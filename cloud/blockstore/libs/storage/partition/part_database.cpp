@@ -335,7 +335,8 @@ bool TPartitionDatabase::FindMixedBlocks(
 void TPartitionDatabase::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const TBlockMask& skipMask)
+    const TBlockMask& skipMask,
+    const TCompressedBlobInfo& compressedBlobInfo)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -349,6 +350,11 @@ void TPartitionDatabase::WriteMergedBlocks(
     if (!skipMask.Empty()) {
         value.Update(
             NIceDb::TUpdate<TTable::SkipMask>(BlockMaskAsString(skipMask)));
+    }
+
+    if (compressedBlobInfo) {
+        auto s = compressedBlobInfo.SerializeAsString();
+        value.Update(NIceDb::TUpdate<TTable::CompressedBlobInfo>(s));
     }
 }
 

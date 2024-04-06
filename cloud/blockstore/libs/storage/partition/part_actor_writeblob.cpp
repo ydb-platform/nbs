@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/blob_compression.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 
@@ -44,6 +45,7 @@ private:
     TStorageStatusFlags StorageStatusFlags;
     double ApproximateFreeSpaceShare = 0;
     TVector<ui32> BlockChecksums;
+    TCompressedBlobInfo CompressedBlobInfo;
 
 public:
     TWriteBlobActor(
@@ -164,6 +166,12 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         }
     }
 
+    TString compressedBlobContent;
+    CompressedBlobInfo = TryCompressBlob(blobContent, &compressedBlobContent);
+    if (CompressedBlobInfo) {
+        blobContent = std::move(compressedBlobContent);
+    }
+
     auto request = std::make_unique<TEvBlobStorage::TEvPut>(
         MakeBlobId(TabletId, Request->BlobId),
         std::move(blobContent),
@@ -264,6 +272,7 @@ void TWriteBlobActor::HandlePutResult(
     auto response = std::make_unique<TResponse>();
     response->ExecCycles = RequestInfo->GetExecCycles();
     response->BlockChecksums = std::move(BlockChecksums);
+    response->CompressedBlobInfo = std::move(CompressedBlobInfo);
 
     ReplyAndDie(ctx, std::move(response));
 }

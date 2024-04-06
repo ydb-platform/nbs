@@ -40,6 +40,7 @@ struct TRangeCompactionInfo
     const ui32 BlobsSkippedByCompaction;
     const ui32 BlocksSkippedByCompaction;
     const TVector<ui32> BlockChecksums;
+    const TCompressedBlobInfo CompressedBlobInfo;
 
     TGuardedBuffer<TBlockBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
@@ -59,6 +60,7 @@ struct TRangeCompactionInfo
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
             TVector<ui32> blockChecksums,
+            TCompressedBlobInfo compressedBlobInfo,
             TBlockBuffer blobContent,
             TVector<ui32> zeroBlocks,
             TAffectedBlobs affectedBlobs,
@@ -72,6 +74,7 @@ struct TRangeCompactionInfo
         , BlobsSkippedByCompaction(blobsSkippedByCompaction)
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
         , BlockChecksums(std::move(blockChecksums))
+        , CompressedBlobInfo(std::move(compressedBlobInfo))
         , BlobContent(std::move(blobContent))
         , ZeroBlocks(std::move(zeroBlocks))
         , AffectedBlobs(std::move(affectedBlobs))
@@ -541,6 +544,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         TBlockRange32 range,
         TBlockMask skipMask,
         const TVector<ui32>& blockChecksums,
+        const TCompressedBlobInfo& compressedBlobInfo,
         ui32 blobsSkipped,
         ui32 blocksSkipped)
     {
@@ -553,7 +557,12 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             --range.End;
         }
 
-        mergedBlobs.emplace_back(blobId, range, skipMask, blockChecksums);
+        mergedBlobs.emplace_back(
+            blobId,
+            range,
+            skipMask,
+            blockChecksums,
+            compressedBlobInfo);
 
         blobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
     };
@@ -565,6 +574,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockRange,
                 rc.DataBlobSkipMask,
                 rc.BlockChecksums,
+                rc.CompressedBlobInfo,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction);
         }
@@ -583,6 +593,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockRange,
                 rc.ZeroBlobSkipMask,
                 rc.BlockChecksums,
+                TCompressedBlobInfo(),
                 blobsSkipped,
                 blocksSkipped);
         }
@@ -1838,6 +1849,7 @@ void CompleteRangeCompaction(
         args.BlobsSkipped,
         args.BlocksSkipped,
         std::move(blockChecksums),
+        TCompressedBlobInfo(), // TODO: pass me
         std::move(blobContent),
         std::move(zeroBlocks),
         std::move(args.AffectedBlobs),

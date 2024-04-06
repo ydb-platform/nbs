@@ -9,6 +9,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/storage/partition
     cloud/blockstore/libs/storage/testlib
 )
 

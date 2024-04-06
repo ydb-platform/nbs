@@ -3,6 +3,7 @@ LIBRARY()
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
+    blob_compression.cpp
     blob_markers.cpp
     fresh_blob.cpp
 )

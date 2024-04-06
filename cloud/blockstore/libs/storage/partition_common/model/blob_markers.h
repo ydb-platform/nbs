@@ -7,7 +7,6 @@
 
 #include <contrib/ydb/core/base/logoblob.h>
 
-
 namespace NCloud::NBlockStore::NStorage::NBlobMarkers {
 
 ////////////////////////////////////////////////////////////////////////////////
