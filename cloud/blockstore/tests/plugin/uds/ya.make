@@ -27,4 +27,6 @@ PEERDIR(
     contrib/ydb/tests/library
 )
 
+ENV(SANITIZER_TYPE=${SANITIZER_TYPE})
+
 END()
