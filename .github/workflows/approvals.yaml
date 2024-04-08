@@ -12,18 +12,29 @@ jobs:
         - name: Check approvals from left and right teams
           uses: actions/github-script@v7
           with:
+            github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
             script: |
-                // Better to get list from teams in organization,
-                // but for now it is merged for both halves
-                const leftUsers = [
-                    'qkrorlqr', 'budevg', 'jkuradobery', 'debnatkh', 'librarian',
-                    'sharpeye', 'SvartMetal', '0x2493', 'sanek325', 'dvrazumov',
-                    'WilyTiger'
-                ];
-                const rightUsers = [
-                    'EvgeniyKozev', 'BarkovBG', 'gy2411', 'leftmain', 'v131v',
-                    'yegorskii', 'drbasic', 'slipstak2', 'komarevtsev-d',
-                ];
+                var org = 'ydb-platform';
+                var nebiusTeamSlug = 'nbs_nebius';
+                var yandexTeamSlug = 'nbs_yandex';
+                const leftUsersData = await github.paginate(
+                    github.rest.teams.listMembersInOrg,
+                    {
+                      org,
+                      team_slug: nebiusTeamSlug,
+                    }
+                );
+                const rightUsersData = await github.paginate(
+                    github.rest.teams.listMembersInOrg,
+                    {
+                      org,
+                      team_slug: yandexTeamSlug,
+                    }
+                );
+                const leftUsers = leftUsersData.map(user => user.login);
+                const rightUsers = rightUsersData.map(user => user.login);
+                console.log("Left team members: " + leftUsers.join(', '));
+                console.log("Right team members: " + rightUsers.join(', '));
                 // users that can approve PRs without any restrictions by commenting /approve
                 const superUsers = ['qkrorlqr', 'EvgeniyKozev'];
                 const prNumber = context.issue.number;
