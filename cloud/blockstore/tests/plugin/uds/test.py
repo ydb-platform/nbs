@@ -1,3 +1,4 @@
+import os
 import pytest
 
 from cloud.blockstore.tests.python.lib.test_with_plugin import run_plugin_test
@@ -64,6 +65,9 @@ TESTS = [
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("plugin_version", ["trunk", "stable"])
 def test_load(test_case, plugin_version):
+    if plugin_version == "stable" and os.environ.get("SANITIZER_TYPE") == "thread":
+        pytest.skip("skip stable plugin test with tsan")
+
     return run_plugin_test(
         test_case.name,
         test_case.disk_id,
