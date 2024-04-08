@@ -48,7 +48,10 @@ func newNBSServerControllerService(
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.ClientIface) csi.ControllerServer {
 
-	return &nbsServerControllerService{nbsClient: nbsClient}
+	return &nbsServerControllerService{
+		nbsClient: nbsClient,
+		nfsClient: nfsClient,
+	}
 }
 
 func (c *nbsServerControllerService) CreateVolume(
@@ -148,6 +151,8 @@ func (c *nbsServerControllerService) createFileStore(
 
 	_, err := c.nfsClient.CreateFileStore(ctx, &nfsapi.TCreateFileStoreRequest{
 		FileSystemId:     fileSystemId,
+		CloudId:          "fakeCloud",
+		FolderId:         "fakeFolder",
 		BlockSize:        diskBlockSize,
 		BlocksCount:      uint64(requiredBytes) / uint64(diskBlockSize),
 		StorageMediaKind: storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_SSD,
