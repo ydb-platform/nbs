@@ -533,7 +533,10 @@ void TIndexTabletActor::ExecuteTx_Compaction(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
-    Y_UNUSED(args);
+
+    for (const ui64 nodeId: args.Nodes) {
+        InvalidateReadAheadCache(nodeId);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_Compaction(

@@ -80,7 +80,7 @@ void FillDescribeDataResponse(
     for (ui64 i = 0; i < args.Blocks.size(); ++i) {
         const auto& block = args.Blocks[i];
         const auto& bytes = args.Bytes[i];
-        const ui64 curOffset = args.AlignedByteRange.Offset + i * blockSize;
+        const ui64 curOffset = args.ActualRange().Offset + i * blockSize;
 
         if (!block.BlobId && block.MinCommitId) {
             // it's a fresh block
@@ -194,15 +194,15 @@ public:
         : LogTag(logTag)
         , Args(args)
     {
-        TABLET_VERIFY(Args.AlignedByteRange.IsAligned());
+        TABLET_VERIFY(Args.ActualRange().IsAligned());
     }
 
     void Accept(const TBlock& block, TStringBuf blockData) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
-        ui32 blockOffset = block.BlockIndex - Args.AlignedByteRange.FirstBlock();
-        TABLET_VERIFY(blockOffset < Args.AlignedByteRange.BlockCount());
+        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
+        TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, {}, 0)) {
@@ -218,8 +218,8 @@ public:
         TABLET_VERIFY(!ApplyingByteLayer);
         TABLET_VERIFY(blobId);
 
-        ui32 blockOffset = block.BlockIndex - Args.AlignedByteRange.FirstBlock();
-        TABLET_VERIFY(blockOffset < Args.AlignedByteRange.BlockCount());
+        ui32 blockOffset = block.BlockIndex - Args.ActualRange().FirstBlock();
+        TABLET_VERIFY(blockOffset < Args.ActualRange().BlockCount());
 
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, blobId, blobOffset)) {
@@ -232,21 +232,22 @@ public:
         ApplyingByteLayer = true;
 
         const auto firstBlockOffset =
-            Args.AlignedByteRange.FirstBlock() * Args.AlignedByteRange.BlockSize;
+            Args.ActualRange().FirstBlock() * Args.ActualRange().BlockSize;
         ui64 i = 0;
 
         while (i < bytes.Length) {
             auto offset = bytes.Offset + i;
             auto relOffset = offset - firstBlockOffset;
-            auto blockIndex = relOffset / Args.AlignedByteRange.BlockSize;
-            auto offsetInBlock = relOffset - blockIndex * Args.AlignedByteRange.BlockSize;
+            auto blockIndex = relOffset / Args.ActualRange().BlockSize;
+            auto offsetInBlock =
+                relOffset - blockIndex * Args.ActualRange().BlockSize;
             // FreshBytes should be organized in such a way that newer commits
             // for the same bytes will be visited later than older commits, so
             // tracking individual byte commit ids is not needed
             auto& prev = Args.Blocks[blockIndex];
             auto next = Min<ui32>(
                 bytes.Length,
-                (blockIndex + 1) * Args.AlignedByteRange.BlockSize
+                (blockIndex + 1) * Args.ActualRange().BlockSize
             );
             if (prev.MinCommitId < bytes.MinCommitId) {
                 Args.Bytes[blockIndex].Intervals.push_back({
@@ -288,7 +289,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
     const TByteRange OriginByteRange;
-    const TByteRange AlignedByteRange;
+    const TByteRange ActualRange;
     const ui64 TotalSize;
     const TVector<TBlockDataRef> Blocks;
     TVector<TBlockBytes> Bytes;
@@ -303,7 +304,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TByteRange originByteRange,
-        TByteRange alignedByteRange,
+        TByteRange actualRange,
         ui64 totalSize,
         TVector<TBlockDataRef> blocks,
         TVector<TBlockBytes> bytes,
@@ -338,7 +339,7 @@ TReadDataActor::TReadDataActor(
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TByteRange originByteRange,
-        TByteRange alignedByteRange,
+        TByteRange actualRange,
         ui64 totalSize,
         TVector<TBlockDataRef> blocks,
         TVector<TBlockBytes> bytes,
@@ -350,14 +351,14 @@ TReadDataActor::TReadDataActor(
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
     , OriginByteRange(originByteRange)
-    , AlignedByteRange(alignedByteRange)
+    , ActualRange(actualRange)
     , TotalSize(totalSize)
     , Blocks(std::move(blocks))
     , Bytes(std::move(bytes))
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
 {
-    TABLET_VERIFY(AlignedByteRange.IsAligned());
+    TABLET_VERIFY(ActualRange.IsAligned());
 }
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
@@ -413,7 +414,7 @@ void TReadDataActor::HandleReadBlobResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    ApplyBytes(LogTag, AlignedByteRange, std::move(Bytes), *Buffer);
+    ApplyBytes(LogTag, ActualRange, std::move(Bytes), *Buffer);
     ReplyAndDie(ctx, msg->GetError());
 }
 
@@ -454,7 +455,7 @@ void TReadDataActor::ReplyAndDie(
             CopyFileData(
                 LogTag,
                 OriginByteRange,
-                AlignedByteRange,
+                ActualRange,
                 TotalSize,
                 *Buffer,
                 response->Record.MutableBuffer());
@@ -602,6 +603,29 @@ void TIndexTabletActor::HandleDescribeData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    NProtoPrivate::TDescribeDataResponse result;
+    if (TryFillDescribeResult(msg->Record, &result)) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
+        response->Record = std::move(result);
+
+        CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
+            response->Record,
+            requestInfo->CallContext,
+            ctx);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
+        Metrics.DescribeData.RequestBytes.fetch_add(
+            byteRange.Length,
+            std::memory_order_relaxed);
+        Metrics.DescribeData.Time.Record(
+            ctx.Now() - requestInfo->StartedTs);
+
+        return;
+    }
+
     AddTransaction<TEvIndexTablet::TDescribeDataMethod>(*requestInfo);
 
     TByteRange alignedByteRange = byteRange.AlignedSuperRange();
@@ -649,6 +673,16 @@ bool TIndexTabletActor::PrepareTx_ReadData(
 
     args.NodeId = handle->GetNodeId();
     args.CommitId = handle->GetCommitId();
+    if (args.DescribeOnly) {
+        // initializing args.ReadAheadRange in an ugly way since TMaybe doesn't
+        // support classes which don't have an assignment operator
+        auto readAheadRange = RegisterDescribe(
+            args.NodeId,
+            args.AlignedByteRange);
+        if (readAheadRange.Defined()) {
+            args.ReadAheadRange.ConstructInPlace(*readAheadRange);
+        }
+    }
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] ReadNodeData @%lu [%lu] %s",
@@ -656,7 +690,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         session->GetSessionId().c_str(),
         args.Handle,
         args.NodeId,
-        args.AlignedByteRange.Describe().c_str());
+        args.ActualRange().Describe().c_str());
 
     if (args.CommitId == InvalidCommitId) {
         args.CommitId = GetCurrentCommitId();
@@ -674,13 +708,13 @@ bool TIndexTabletActor::PrepareTx_ReadData(
 
     TSet<ui32> ranges;
     SplitRange(
-        args.AlignedByteRange.FirstBlock(),
-        args.AlignedByteRange.BlockCount(),
+        args.ActualRange().FirstBlock(),
+        args.ActualRange().BlockCount(),
         BlockGroupSize,
         [&] (ui32 blockOffset, ui32 blocksCount) {
             ranges.insert(GetMixedRangeIndex(
                 args.NodeId,
-                IntegerCast<ui32>(args.AlignedByteRange.FirstBlock() + blockOffset),
+                IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount));
         });
 
@@ -713,19 +747,19 @@ void TIndexTabletActor::ExecuteTx_ReadData(
         visitor,
         args.NodeId,
         args.CommitId,
-        args.AlignedByteRange.FirstBlock(),
-        args.AlignedByteRange.BlockCount());
+        args.ActualRange().FirstBlock(),
+        args.ActualRange().BlockCount());
 
     SplitRange(
-        args.AlignedByteRange.FirstBlock(),
-        args.AlignedByteRange.BlockCount(),
+        args.ActualRange().FirstBlock(),
+        args.ActualRange().BlockCount(),
         BlockGroupSize,
         [&] (ui32 blockOffset, ui32 blocksCount) {
             FindMixedBlocks(
                 visitor,
                 args.NodeId,
                 args.CommitId,
-                IntegerCast<ui32>(args.AlignedByteRange.FirstBlock() + blockOffset),
+                IntegerCast<ui32>(args.ActualRange().FirstBlock() + blockOffset),
                 blocksCount);
         });
 
@@ -737,7 +771,7 @@ void TIndexTabletActor::ExecuteTx_ReadData(
         visitor,
         args.NodeId,
         args.CommitId,
-        args.AlignedByteRange);
+        args.ActualRange());
 }
 
 void TIndexTabletActor::CompleteTx_ReadData(
@@ -756,6 +790,11 @@ void TIndexTabletActor::CompleteTx_ReadData(
             GetBlockSize(),
             args,
             record);
+
+        if (args.ReadAheadRange) {
+            RegisterReadAheadResult(args.NodeId, record);
+            // TODO: cut extra data from the response returned to the client
+        }
 
         CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
             response->Record,
@@ -801,7 +840,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
     if (!ShouldReadBlobs(args.Blocks)) {
         ApplyBytes(
             LogTag,
-            args.AlignedByteRange,
+            args.ActualRange(),
             std::move(args.Bytes),
             *args.Buffer);
 
@@ -809,7 +848,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         CopyFileData(
             LogTag,
             args.OriginByteRange,
-            args.AlignedByteRange,
+            args.ActualRange(),
             args.Node->Attrs.GetSize(),
             *args.Buffer,
             response->Record.MutableBuffer());
@@ -833,7 +872,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         args.RequestInfo,
         args.CommitId,
         args.OriginByteRange,
-        args.AlignedByteRange,
+        args.ActualRange(),
         args.Node->Attrs.GetSize(),
         std::move(args.Blocks),
         std::move(args.Bytes),

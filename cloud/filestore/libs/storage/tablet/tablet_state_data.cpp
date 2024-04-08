@@ -118,6 +118,8 @@ void TIndexTabletState::TruncateRange(
             // FIXME: do not allocate each time
             TString(headBound.Length, 0));
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::ZeroRange(
@@ -304,6 +306,8 @@ void TIndexTabletState::WriteFreshBytes(
         data);
 
     IncrementFreshBytesCount(db, data.Size());
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::WriteFreshBytesDeletionMarker(
@@ -324,6 +328,8 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
         commitId,
         offset,
         len);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes)
@@ -411,6 +417,8 @@ void TIndexTabletState::WriteFreshBlock(
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 
     IncrementFreshBlocksCount(db);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::MarkFreshBlocksDeleted(
@@ -433,6 +441,8 @@ void TIndexTabletState::MarkFreshBlocksDeleted(
             commitId,
             blockIndex);
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::DeleteFreshBlocks(
@@ -730,6 +740,8 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
         stats.BlobsCount,
         stats.DeletionsCount + blocksCount
     );
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::UpdateBlockLists(
@@ -1088,6 +1100,35 @@ void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
     ForcedRangeOperationState.reset();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadAhead
+
+bool TIndexTabletState::TryFillDescribeResult(
+    const NProtoPrivate::TDescribeDataRequest& request,
+    NProtoPrivate::TDescribeDataResponse* response)
+{
+    return Impl->ReadAheadCache.TryFillResult(request, response);
+}
+
+TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
+    ui64 nodeId,
+    const TByteRange inputRange)
+{
+    return Impl->ReadAheadCache.RegisterDescribe(nodeId, inputRange);
+}
+
+void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
+{
+    Impl->ReadAheadCache.InvalidateCache(nodeId);
+}
+
+void TIndexTabletState::RegisterReadAheadResult(
+    ui64 nodeId,
+    const NProtoPrivate::TDescribeDataResponse& result)
+{
+    Impl->ReadAheadCache.RegisterResult(nodeId, result);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

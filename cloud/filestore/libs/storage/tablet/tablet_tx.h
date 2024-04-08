@@ -1129,6 +1129,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
+        TMaybe<TByteRange> ReadAheadRange;
         TMaybe<TIndexTabletDatabase::TNode> Node;
         TVector<TBlockDataRef> Blocks;
         TVector<TBlockBytes> Bytes;
@@ -1161,10 +1162,16 @@ struct TTxIndexTablet
         {
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
+            ReadAheadRange.Clear();
             Node.Clear();
 
             std::fill(Blocks.begin(), Blocks.end(), TBlockDataRef());
             std::fill(Bytes.begin(), Bytes.end(), TBlockBytes());
+        }
+
+        const TByteRange& ActualRange() const
+        {
+            return ReadAheadRange.GetOrElse(AlignedByteRange);
         }
     };
 

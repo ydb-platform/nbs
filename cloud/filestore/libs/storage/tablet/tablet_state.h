@@ -983,6 +983,22 @@ private:
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& range);
+
+    //
+    // ReadAhead.
+    //
+
+public:
+    bool TryFillDescribeResult(
+        const NProtoPrivate::TDescribeDataRequest& request,
+        NProtoPrivate::TDescribeDataResponse* response);
+    TMaybe<TByteRange> RegisterDescribe(
+        ui64 nodeId,
+        const TByteRange inputRange);
+    void InvalidateReadAheadCache(ui64 nodeId);
+    void RegisterReadAheadResult(
+        ui64 nodeId,
+        const NProtoPrivate::TDescribeDataResponse& result);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
