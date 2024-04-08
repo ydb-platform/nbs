@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nbs-csi-driver-controller
-  namespace: nbs-csi-ns
+  namespace: nbs
 spec:
   replicas: 1
   selector:

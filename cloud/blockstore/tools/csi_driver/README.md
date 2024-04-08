@@ -69,7 +69,7 @@ kubectl apply -f ./deploy/manifests/4-storageclass.yaml
 # Download docker-config.json from the lockbox under the name docker-config.json
 export DOCKER_CONFIG=$(cat docker-config.json)
 kubectl create secret generic nbs-puller-secret \
-    --namespace nbs-csi-ns \ 
+    --namespace nbs \
     --type=kubernetes.io/dockerconfigjson \
     --from-literal=.dockerconfigjson="$DOCKER_CONFIG"
 kubectl apply -f ./deploy/manifests/5-nbs-configmap.yaml
@@ -133,12 +133,12 @@ exit
 
 ```bash
 kubectl get nodes
-kubectl -n nbs-csi-ns get all
-kubectl -n nbs-csi-ns get pods
-kubectl -n nbs-csi-ns describe node
-kubectl -n nbs-csi-ns describe pod/nbs-csi-driver-node-xxxxx
-kubectl -n nbs-csi-ns logs     pod/nbs-csi-driver-node-xxxxx
-kubectl -n nbs-csi-ns delete deployment.apps/nbs-csi-driver-controller
+kubectl -n nbs get all
+kubectl -n nbs get pods
+kubectl -n nbs describe node
+kubectl -n nbs describe pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs logs     pod/nbs-csi-driver-node-xxxxx
+kubectl -n nbs delete deployment.apps/nbs-csi-driver-controller
 kubectl get CSIDriver
 minikube ssh
   docker ps
