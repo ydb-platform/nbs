@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -16,6 +14,7 @@ import (
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/mount-utils"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,6 +44,8 @@ type nodeService struct {
 	podSocketsDir string
 	nbsClient     nbsclient.ClientIface
 	nfsClient     nfsclient.EndpointClientIface
+
+	mounter mount.Interface
 }
 
 func newNodeService(
@@ -62,6 +63,7 @@ func newNodeService(
 		podSocketsDir: podSocketsDir,
 		nbsClient:     nbsClient,
 		nfsClient:     nfsClient,
+		mounter:       mount.New(""),
 	}
 }
 
@@ -120,6 +122,16 @@ func (s *nodeService) NodePublishVolume(
 		return nil, status.Error(
 			codes.InvalidArgument,
 			"VolumeId missing in NodePublishVolumeRequest")
+	}
+	if req.StagingTargetPath == "" {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"StagingTargetPath missing im NodePublishVolumeRequest")
+	}
+	if req.TargetPath == "" {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"TargetPath missing im NodePublishVolumeRequest")
 	}
 	if req.VolumeCapability == nil {
 		return nil, status.Error(
@@ -225,10 +237,11 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 			"Failed to start NBS endpoint: %+v", err)
 	}
 
-	if resp.NbdDeviceFile != "" {
-		log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
+	if resp.NbdDeviceFile == "" {
+		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
 	}
 
+	log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
 	return s.mountBlockDevice(resp.NbdDeviceFile, req.TargetPath)
 }
 
@@ -298,6 +311,10 @@ func (s *nodeService) nodeUnpublishVolume(
 	ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) error {
 
+	if err := mount.CleanupMountPoint(req.TargetPath, s.mounter, true); err != nil {
+		return err
+	}
+
 	// Trying to stop both NBS and NFS endpoints,
 	// because the endpoint's backend service is unknown here.
 	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
@@ -322,19 +339,7 @@ func (s *nodeService) nodeUnpublishVolume(
 	}
 
 	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
-	if err := os.RemoveAll(endpointDir); err != nil {
-		return err
-	}
-
-	if err := s.unmount(req.TargetPath); err != nil {
-		return err
-	}
-
-	if err := os.RemoveAll(req.TargetPath); err != nil {
-		return err
-	}
-
-	return nil
+	return os.RemoveAll(endpointDir)
 }
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
@@ -357,8 +362,10 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	}
 	file.Close()
 
-	source := endpointDir
-	target := req.TargetPath
+	err = os.MkdirAll(req.TargetPath, 0755)
+	if err != nil {
+		return err
+	}
 
 	fsType := "ext4"
 	mountOptions := []string{"bind"}
@@ -374,84 +381,21 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 		}
 	}
 
-	return s.mount(source, target, fsType, mountOptions...)
+	return s.mounter.Mount(endpointDir, req.TargetPath, fsType, mountOptions)
 }
 
 func (s *nodeService) mountBlockDevice(source string, target string) error {
+	err := os.MkdirAll(filepath.Dir(target), 0750)
+	if err != nil {
+		return fmt.Errorf("failed to create target directory: %v", err)
+	}
+
+	file, err := os.OpenFile(target, os.O_CREATE, 0660)
+	if err != nil {
+		return fmt.Errorf("failed to create target file: %v", err)
+	}
+	file.Close()
+
 	mountOptions := []string{"bind"}
-	return s.mount(source, target, "", mountOptions...)
-}
-
-func (s *nodeService) mount(
-	source string,
-	target string,
-	fsType string,
-	opts ...string) error {
-
-	mountCmd := "mount"
-	mountArgs := []string{}
-
-	if source == "" {
-		return status.Error(
-			codes.Internal,
-			"source is not specified for mounting the volume")
-	}
-
-	if target == "" {
-		return status.Error(
-			codes.Internal,
-			"target is not specified for mounting the volume")
-	}
-
-	// This is a raw block device mount. Create the mount point as a file
-	// since bind mount device node requires it to be a file
-	if fsType == "" {
-		err := os.MkdirAll(filepath.Dir(target), 0750)
-		if err != nil {
-			return fmt.Errorf("failed to create target directory: %v", err)
-		}
-
-		file, err := os.OpenFile(target, os.O_CREATE, 0660)
-		if err != nil {
-			return fmt.Errorf("failed to create target file: %v", err)
-		}
-		file.Close()
-	} else {
-		mountArgs = append(mountArgs, "-t", fsType)
-
-		err := os.MkdirAll(target, 0755)
-		if err != nil {
-			return err
-		}
-	}
-
-	if len(opts) > 0 {
-		mountArgs = append(mountArgs, "-o", strings.Join(opts, ","))
-	}
-
-	mountArgs = append(mountArgs, source)
-	mountArgs = append(mountArgs, target)
-
-	out, err := exec.Command(mountCmd, mountArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("mounting failed: %v cmd: '%s %s' output: %q",
-			err, mountCmd, strings.Join(mountArgs, " "), string(out))
-	}
-
-	return nil
-}
-
-func (s *nodeService) unmount(target string) error {
-	unmountCmd := "umount"
-	unmountArgs := []string{}
-
-	unmountArgs = append(unmountArgs, target)
-
-	out, err := exec.Command(unmountCmd, unmountArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("unmounting failed: %v cmd: '%s %s' output: %q",
-			err, unmountCmd, strings.Join(unmountArgs, " "), string(out))
-	}
-
-	return nil
+	return s.mounter.Mount(source, target, "", mountOptions)
 }
