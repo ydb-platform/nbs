@@ -141,6 +141,9 @@ namespace {
     xxx(TwoStageReadEnabled,             bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
+    xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
+    xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\

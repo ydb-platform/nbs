@@ -243,4 +243,12 @@ message TStorageConfig
     // If ThreeStageWriteEnabled is true, writes that exceed this threshold
     // will use the three-stage write path. Similar to WriteBlobThreshold
     optional uint32 ThreeStageWriteThreshold = 346;
+
+    // ReadAhead cache params. Used upon DescribeData requests.
+    // If ReadAheadCacheRangeSize is not 0 the requested ranges may be widened
+    // to this value and the results will be cached to serve future describe
+    // requests.
+    optional uint32 ReadAheadCacheMaxNodes = 347;
+    optional uint32 ReadAheadCacheMaxResultsPerNode = 348;
+    optional uint32 ReadAheadCacheRangeSize = 349;
 }
