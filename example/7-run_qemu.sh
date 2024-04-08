@@ -9,7 +9,7 @@ source ./prepare_binaries.sh || exit 1
 
 show_help() {
     cat << EOF
-Usage: ./6-run_qemu.sh [-hids]
+Usage: ./7-run_qemu.sh [-hids]
 Run qemu
 -h, --help         Display help
 -i, --image        Image path

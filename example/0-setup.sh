@@ -59,6 +59,7 @@ AgentId: "remote$1.cloud-example.net"
 Enabled: true
 DedicatedDiskAgent: true
 Backend: DISK_AGENT_BACKEND_AIO
+AcquireRequired: true
 
 FileDevices: {
     Path: "$BIN_DIR/data/remote$1-1024-1.bin"
