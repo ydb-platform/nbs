@@ -1374,6 +1374,7 @@ private:
         auto error = EndpointPoller->StartListenEndpoint(
             unixSocketPath,
             backlog,
+            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
             true,   // multiClient
             NProto::SOURCE_FD_CONTROL_CHANNEL,
             AppCtx.SessionStorage->CreateClientStorage());

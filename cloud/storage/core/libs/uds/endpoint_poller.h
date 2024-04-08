@@ -30,6 +30,7 @@ public:
     NProto::TError StartListenEndpoint(
         const TString& unixSocketPath,
         ui32 backlog,
+        int accessMode,
         bool multiClient,
         NProto::ERequestSource source,
         IClientStoragePtr clientStorage);

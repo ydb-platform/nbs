@@ -126,6 +126,7 @@ public:
     TString GetEndpointStorageDir() const;
     TString GetVhostServerPath() const;
     TString GetNbdDevicePrefix() const;
+    ui32 GetSocketAccessMode() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
