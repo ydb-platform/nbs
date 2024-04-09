@@ -603,8 +603,12 @@ void TIndexTabletActor::HandleDescribeData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
+    auto* handle = FindHandle(msg->Record.GetHandle());
+    const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
     NProtoPrivate::TDescribeDataResponse result;
-    if (TryFillDescribeResult(msg->Record, &result)) {
+    if (TryFillDescribeResult(nodeId, byteRange, &result)) {
+        RegisterDescribe(nodeId, byteRange);
+
         auto response =
             std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
         response->Record = std::move(result);
@@ -792,7 +796,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
             record);
 
         if (args.ReadAheadRange) {
-            RegisterReadAheadResult(args.NodeId, record);
+            RegisterReadAheadResult(args.NodeId, *args.ReadAheadRange, record);
             // TODO: cut extra data from the response returned to the client
         }
 

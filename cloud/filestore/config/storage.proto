@@ -251,4 +251,5 @@ message TStorageConfig
     optional uint32 ReadAheadCacheMaxNodes = 347;
     optional uint32 ReadAheadCacheMaxResultsPerNode = 348;
     optional uint32 ReadAheadCacheRangeSize = 349;
+    optional uint32 ReadAheadMaxGapPercentage = 350;
 }
