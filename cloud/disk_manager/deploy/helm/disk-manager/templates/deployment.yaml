@@ -19,16 +19,10 @@ spec:
       labels:
         app: {{ $fullname }}
     spec: {{ $configPath := "/etc/yc/disk-manager/server-config.txt"}}
-      containers:
-      - name: {{ $fullname }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
-        ports:
-        - containerPort: {{ .Values.service.internalPort | int }}
       volumes:
       - name: disk-manager-config
         configMap:
-          name: disk-manager-config
+          name: "disk-manager-config"
       initContainers:
       - name: disk-manager-init
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -48,5 +42,5 @@ spec:
         - name: disk-manager-config
           mountPath: "{{ $configPath }}"
           subPath: server-config.txt
-
-
+        ports:
+          - containerPort: {{ .Values.service.internalPort | int }}
