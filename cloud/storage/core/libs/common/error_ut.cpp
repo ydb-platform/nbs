@@ -67,10 +67,12 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
 
     Y_UNIT_TEST(ShouldWrapExceptionInResponse)
     {
-        auto response = SafeExecute<TTestResponse>([] {
-            throw TServiceError(E_REJECTED) << "request cancelled";
-            return TTestResponse();
-        });
+        auto response = SafeExecute<TTestResponse>(
+            []
+            {
+                throw TServiceError(E_REJECTED) << "request cancelled";
+                return TTestResponse();
+            });
     }
 
     Y_UNIT_TEST(ShouldExtractResponse)
@@ -139,7 +141,9 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
                 NProto::TError e;
                 e.SetCode(errorCode);
 
-                UNIT_ASSERT_VALUES_EQUAL( EErrorKind::ErrorRetriable, GetErrorKind(e));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    EErrorKind::ErrorRetriable,
+                    GetErrorKind(e));
             }
         }
 
@@ -147,7 +151,7 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             NProto::TError e;
             e.SetCode(E_GRPC_UNIMPLEMENTED);
 
-            UNIT_ASSERT_VALUES_EQUAL( EErrorKind::ErrorFatal, GetErrorKind(e));
+            UNIT_ASSERT_VALUES_EQUAL(EErrorKind::ErrorFatal, GetErrorKind(e));
         }
     }
 }
