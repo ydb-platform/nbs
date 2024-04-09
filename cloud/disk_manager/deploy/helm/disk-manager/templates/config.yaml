@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: disk-manager-config
+  name: disk-manager-config-{{ .Values.serviceKind }}
   namespace: {{ .Values.namespace | default "disk-manager" }}
 data:
   client-config.txt: |
