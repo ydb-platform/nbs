@@ -60,7 +60,7 @@ public:
 
     void Stop(int exitCode)
     {
-        if (auto prevState = AtomicSwap(&State, Stopped); prevState != Stopped) {
+        if (AtomicCas(&State, Stopped, Started)) {
             ShouldContinue->ShouldStop(exitCode);
             WaitCondVar.Signal();
         }
