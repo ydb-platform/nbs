@@ -22,7 +22,7 @@ spec:
       containers:
       - name: {{ $fullname }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         ports:
         - containerPort: {{ .Values.service.internalPort | int }}
       volumes:
@@ -32,7 +32,7 @@ spec:
       initContainers:
       - name: disk-manager-init
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         command: ["/usr/bin/yc-disk-manager-init-db", "--config={{ $configPath }}"]
         volumeMounts:
         - name: disk-manager-config
@@ -43,7 +43,7 @@ spec:
       - name: disk-manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         command: ["/usr/bin/yc-disk-manager", "--config={{ $configPath }}"]
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         volumeMounts:
         - name: disk-manager-config
           mountPath: "{{ $configPath }}"
