@@ -42,6 +42,7 @@ def _start(argv):
     for inst_index in range(args.instance_count):
         start_instance(args, inst_index)
 
+
 # Retry is a workaround for the issue when ssh onto the qemu instance fails
 # with "Connection timed out during banner exchange". See CLOUD-142732
 @retry(max_times=10)
@@ -56,7 +57,7 @@ def start(argv):
         try:
             logger.info("Trying to stop qemu")
             stop(argv)
-        except:
+        except err:
             pass
         raise e
 
