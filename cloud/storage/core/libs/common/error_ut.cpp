@@ -139,7 +139,7 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
                 NProto::TError e;
                 e.SetCode(errorCode);
 
-                UNIT_ASSERT_VALUES_EQUAL(GetErrorKind(e), EErrorKind::ErrorRetriable);
+                UNIT_ASSERT_VALUES_EQUAL( EErrorKind::ErrorRetriable, GetErrorKind(e));
             }
         }
 
@@ -147,7 +147,7 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             NProto::TError e;
             e.SetCode(E_GRPC_UNIMPLEMENTED);
 
-            UNIT_ASSERT_VALUES_EQUAL(GetErrorKind(e), EErrorKind::ErrorFatal);
+            UNIT_ASSERT_VALUES_EQUAL( EErrorKind::ErrorFatal, GetErrorKind(e));
         }
     }
 }
