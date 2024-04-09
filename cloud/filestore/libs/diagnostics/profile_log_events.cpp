@@ -194,6 +194,30 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TGenerateBlobIdsRequest& request)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(request.GetLength());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TAddDataRequest& request)
+{
+    auto* rangeInfo = profileLogRequest.AddRanges();
+    rangeInfo->SetNodeId(request.GetNodeId());
+    rangeInfo->SetHandle(request.GetHandle());
+    rangeInfo->SetOffset(request.GetOffset());
+    rangeInfo->SetBytes(request.GetLength());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TWriteDataRequest& request)
 {
     auto* rangeInfo = profileLogRequest.AddRanges();
@@ -448,6 +472,8 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
     IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
     IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
+    IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
