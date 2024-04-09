@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nbs-server-config-node
-  namespace: nbs-csi-ns
+  namespace: nbs
 data:
   nbs-server.txt: |-
     ServerConfig {
