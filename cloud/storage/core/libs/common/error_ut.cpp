@@ -67,10 +67,12 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
 
     Y_UNIT_TEST(ShouldWrapExceptionInResponse)
     {
-        auto response = SafeExecute<TTestResponse>([] {
-            throw TServiceError(E_REJECTED) << "request cancelled";
-            return TTestResponse();
-        });
+        auto response = SafeExecute<TTestResponse>(
+            []
+            {
+                throw TServiceError(E_REJECTED) << "request cancelled";
+                return TTestResponse();
+            });
     }
 
     Y_UNIT_TEST(ShouldExtractResponse)
@@ -112,6 +114,44 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
             UNIT_ASSERT(!HasError(error));
             const TMoveOnly moveOnly = std::move(value);
             Y_UNUSED(moveOnly);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyInterpretGrpcErrors)
+    {
+        {
+            constexpr EWellKnownResultCodes errors[] = {
+                E_GRPC_CANCELLED,
+                E_GRPC_UNKNOWN,
+                E_GRPC_INVALID_ARGUMENT,
+                E_GRPC_DEADLINE_EXCEEDED,
+                E_GRPC_NOT_FOUND,
+                E_GRPC_ALREADY_EXISTS,
+                E_GRPC_PERMISSION_DENIED,
+                E_GRPC_RESOURCE_EXHAUSTED,
+                E_GRPC_FAILED_PRECONDITION,
+                E_GRPC_ABORTED,
+                E_GRPC_OUT_OF_RANGE,
+                E_GRPC_INTERNAL,
+                E_GRPC_UNAVAILABLE,
+                E_GRPC_DATA_LOSS,
+                E_GRPC_UNAUTHENTICATED};
+
+            for (auto errorCode: errors) {
+                NProto::TError e;
+                e.SetCode(errorCode);
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    EErrorKind::ErrorRetriable,
+                    GetErrorKind(e));
+            }
+        }
+
+        {
+            NProto::TError e;
+            e.SetCode(E_GRPC_UNIMPLEMENTED);
+
+            UNIT_ASSERT_VALUES_EQUAL(EErrorKind::ErrorFatal, GetErrorKind(e));
         }
     }
 }

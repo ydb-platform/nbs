@@ -65,9 +65,14 @@ EErrorKind GetErrorKind(const NProto::TError& e)
             return EErrorKind::ErrorAborted;
     }
 
-    if (FACILITY_FROM_CODE(code) == FACILITY_GRPC ||
-        FACILITY_FROM_CODE(code) == FACILITY_SYSTEM)
-    {
+    if (FACILITY_FROM_CODE(code) == FACILITY_GRPC) {
+        if (code == E_GRPC_UNIMPLEMENTED) {
+            return EErrorKind::ErrorFatal;
+        }
+        return EErrorKind::ErrorRetriable;
+    }
+
+    if (FACILITY_FROM_CODE(code) == FACILITY_SYSTEM) {
         // system/network errors should be retriable
         return EErrorKind::ErrorRetriable;
     }
