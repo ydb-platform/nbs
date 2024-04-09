@@ -207,7 +207,7 @@ PersistenceConfig: {
 {{- if .Values.ydb.disableAuthentication}}
     DisableAuthentication: true
 {{- end }}
-    Endpoint: "{{ .Values.ydb.Endpoint }}"
+    Endpoint: "{{ .Values.ydb.Endpoint }}:{{ .Values.ydb.Port }}"
     Database: "{{ .Values.ydb.Database }}"
 {{- if .Values.ydb.RootPath }}
     RootPath: "{{ .Values.ydb.RootPath }}"
@@ -220,7 +220,7 @@ DataplaneConfig: {
 {{- if .Values.ydb.Secure }}
             Secure: true
 {{- end }}
-            Endpoint: "{{ .Values.ydb.snapshot.Endpoint }}"
+            Endpoint: "{{ .Values.ydb.snapshot.Endpoint }}:{{ .Values.ydb.snapshot.Port }}"
             Database: "{{ .Values.ydb.snapshot.Database }}"
 {{- if .Values.ydb.snapshot.RootPath }}
             RootPath: "{{ .Values.ydb.snapshot.RootPath }}"
