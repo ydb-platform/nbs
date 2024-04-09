@@ -1,11 +1,9 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/storage/api/public.h>
-#include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
-using namespace NPartition;
 using namespace NActors;
 using namespace NKikimr;
 
