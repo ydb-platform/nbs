@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/spf13/cobra"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/accounting"
 	internal_auth "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
@@ -67,8 +69,6 @@ func run(
 	newAuthorizer auth.NewAuthorizer,
 ) error {
 
-	var err error
-
 	ignoreSigpipe()
 
 	// Use cancellable context.
@@ -83,6 +83,13 @@ func run(
 
 	logger := logging.NewLogger(config.LoggingConfig)
 	ctx = logging.SetLogger(ctx, logger)
+
+	logging.Info(ctx, "Locking virtual memory")
+	err := mlock()
+	if err != nil {
+		logging.Error(ctx, "Failed to lock virtual memory")
+		return err
+	}
 
 	if len(hostname) == 0 {
 		hostname, err = os.Hostname()
@@ -271,4 +278,9 @@ func run(
 func ignoreSigpipe() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGPIPE)
+}
+
+// Prevents all current pages from being swapped out.
+func mlock() error {
+	return unix.Mlockall(syscall.MCL_CURRENT)
 }
