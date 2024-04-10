@@ -983,7 +983,8 @@ private:
 
 public:
     bool TryFillDescribeResult(
-        const NProtoPrivate::TDescribeDataRequest& request,
+        ui64 nodeId,
+        const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(
         ui64 nodeId,
@@ -991,6 +992,7 @@ public:
     void InvalidateReadAheadCache(ui64 nodeId);
     void RegisterReadAheadResult(
         ui64 nodeId,
+        const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
 };
 

@@ -198,6 +198,7 @@ public:
     ui32 GetReadAheadCacheMaxNodes() const;
     ui32 GetReadAheadCacheMaxResultsPerNode() const;
     ui32 GetReadAheadCacheRangeSize() const;
+    ui32 GetReadAheadMaxGapPercentage() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

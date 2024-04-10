@@ -1106,10 +1106,11 @@ void TIndexTabletState::CompleteForcedRangeOperation()
 // ReadAhead
 
 bool TIndexTabletState::TryFillDescribeResult(
-    const NProtoPrivate::TDescribeDataRequest& request,
+    ui64 nodeId,
+    const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
-    return Impl->ReadAheadCache.TryFillResult(request, response);
+    return Impl->ReadAheadCache.TryFillResult(nodeId, range, response);
 }
 
 TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
@@ -1126,9 +1127,10 @@ void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
 
 void TIndexTabletState::RegisterReadAheadResult(
     ui64 nodeId,
+    const TByteRange& range,
     const NProtoPrivate::TDescribeDataResponse& result)
 {
-    Impl->ReadAheadCache.RegisterResult(nodeId, result);
+    Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
