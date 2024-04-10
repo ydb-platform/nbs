@@ -15,7 +15,7 @@ from cloud.tasks.test.common.processes import register_process, kill_processes
 
 SERVICE_NAME = "nbs"
 DEFAULT_BLOCK_SIZE = 4096
-DEFAULT_BLOCK_COUNT_PER_DEVICE = 262186  # 262144 + 42
+DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
 class NbsLauncher:
