@@ -5,6 +5,7 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -30,6 +31,7 @@ struct TOptions
     ui32 BatchSize = 1024;
     ui32 BlockSize = 512;
     ui32 QueueCount = 0;
+    ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
     TString LogType = "json";
     TString VerboseLevel = "info";

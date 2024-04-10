@@ -278,7 +278,8 @@ void TBootstrapVhost::InitEndpoints()
     EndpointManager = CreateEndpointManager(
         Logging,
         EndpointStorage,
-        EndpointListener);
+        EndpointListener,
+        Configs->VhostServiceConfig->GetSocketAccessMode());
 }
 
 void TBootstrapVhost::InitNullEndpoints()

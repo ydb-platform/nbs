@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/keyring/endpoints.h>
 
 #include <util/generic/map.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore {
 
@@ -94,6 +95,7 @@ private:
     const ILoggingServicePtr Logging;
     const IEndpointStoragePtr Storage;
     const IEndpointListenerPtr Listener;
+    const ui32 SocketAccessMode;
 
     TExecutorPtr Executor = TExecutor::Create("SVC");
     TLog Log;
@@ -107,10 +109,12 @@ public:
     TEndpointManager(
             ILoggingServicePtr logging,
             IEndpointStoragePtr storage,
-            IEndpointListenerPtr listener)
+            IEndpointListenerPtr listener,
+            ui32 socketAccessMode)
         : Logging(std::move(logging))
         , Storage(std::move(storage))
         , Listener(std::move(listener))
+        , SocketAccessMode(socketAccessMode)
     {
         Log = Logging->CreateLog("NFS_SERVICE");
     }
@@ -273,10 +277,15 @@ NProto::TStartEndpointResponse TEndpointManager::DoStartEndpoint(
 
     auto endpoint = Listener->CreateEndpoint(config);
     auto future = endpoint->StartAsync().Apply(
-        [=] (const TFuture<NProto::TError>& future) {
+        [socketPath, socketAccessMode = SocketAccessMode]
+        (const TFuture<NProto::TError>& future) {
             NProto::TStartEndpointResponse response;
             response.MutableError()->CopyFrom(future.GetValue());
+            if (HasError(response)) {
+                return response;
+            }
 
+            Chmod(socketPath.c_str(), socketAccessMode);
             return response;
         });
 
@@ -415,12 +424,14 @@ class TNullEndpointManager final
 IEndpointManagerPtr CreateEndpointManager(
     ILoggingServicePtr logging,
     IEndpointStoragePtr storage,
-    IEndpointListenerPtr listener)
+    IEndpointListenerPtr listener,
+    ui32 socketAccessMode)
 {
     return std::make_shared<TEndpointManager>(
         std::move(logging),
         std::move(storage),
-        std::move(listener));
+        std::move(listener),
+        socketAccessMode);
 }
 
 IEndpointManagerPtr CreateNullEndpointManager()
