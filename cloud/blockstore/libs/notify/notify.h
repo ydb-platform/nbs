@@ -58,7 +58,7 @@ struct IService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr IamTokenClient);
+IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr IamTokenClientPtr);
 
 IServicePtr CreateNullService(ILoggingServicePtr logging);
 
