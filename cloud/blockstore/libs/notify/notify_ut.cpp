@@ -41,8 +41,6 @@ auto MakeConfigV2()
         JoinFsPaths(getenv("TEST_CERT_FILES_DIR"), "server.crt"));
     proto.SetVersion(2);
 
-    
-
     return std::make_shared<TNotifyConfig>(std::move(proto));
 }
 
