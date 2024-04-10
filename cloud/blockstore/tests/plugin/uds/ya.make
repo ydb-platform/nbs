@@ -8,13 +8,11 @@ TEST_SRCS(
 
 DEPENDS(
     cloud/blockstore/apps/client
-    cloud/blockstore/apps/server
+    cloud/blockstore/apps/server_lightweight
     cloud/blockstore/tools/testing/plugintest
     cloud/blockstore/tools/testing/stable-plugin
     cloud/storage/core/tools/testing/unstable-process
     cloud/vm/blockstore
-
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -23,8 +21,6 @@ DATA(
 
 PEERDIR(
     cloud/blockstore/tests/python/lib
-
-    contrib/ydb/tests/library
 )
 
 ENV(SANITIZER_TYPE=${SANITIZER_TYPE})
