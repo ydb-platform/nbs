@@ -85,6 +85,7 @@ void TDiskRegistryProxyActor::StartWork(
     TThis::Become(&TThis::StateWork);
 
     DiskRegistryTabletId = tabletId;
+    NotifySubscribersConnectionEstablished(ctx);
 }
 
 void TDiskRegistryProxyActor::CreateClient(const TActorContext& ctx)
@@ -166,10 +167,23 @@ void TDiskRegistryProxyActor::RegisterPages(const TActorContext& ctx)
     }
 }
 
-void TDiskRegistryProxyActor::NotifySubscribers(const TActorContext& ctx)
+void TDiskRegistryProxyActor::NotifySubscribersConnectionLost(
+    const TActorContext& ctx)
 {
     for (const auto& subscriber: Subscribers) {
-        auto request = std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>();
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>();
+
+        NCloud::Send(ctx, subscriber, std::move(request));
+    }
+}
+
+void TDiskRegistryProxyActor::NotifySubscribersConnectionEstablished(
+    const TActorContext& ctx)
+{
+    for (const auto& subscriber: Subscribers) {
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionEstablished>();
 
         NCloud::Send(ctx, subscriber, std::move(request));
     }
@@ -217,7 +231,7 @@ void TDiskRegistryProxyActor::HandleDisconnect(
         "Connection to Disk Registry failed: %s",
         FormatError(error).data());
 
-    NotifySubscribers(ctx);
+    NotifySubscribersConnectionLost(ctx);
 
     CancelActiveRequests(ctx);
 }

@@ -263,6 +263,7 @@ STFUNC(TDiskAgentActor::StateWork)
             HandleRegisterAgentResponse);
 
         HFunc(TEvDiskRegistryProxy::TEvSubscribeResponse, HandleSubscribeResponse);
+        HFunc(TEvDiskRegistryProxy::TEvConnectionEstablished, HandleConnectionEstablished);
         HFunc(TEvDiskRegistryProxy::TEvConnectionLost, HandleConnectionLost);
 
         HFunc(TEvDiskAgentPrivate::TEvWriteOrZeroCompleted, HandleWriteOrZeroCompleted);
