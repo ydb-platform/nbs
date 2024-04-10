@@ -180,7 +180,7 @@ private:
 
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
-    bool IsVolumeRestaring = false;
+    bool IsVolumeRestarting = false;
 
 public:
     TMountRequestActor(
@@ -642,7 +642,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         if (msg->Record.GetForceTabletRestart() &&
             MountMode == NProto::VOLUME_MOUNT_LOCAL)
         {
-            IsVolumeRestaring = true;
+            IsVolumeRestarting = true;
             RequestVolumeStop(ctx);
             return;
         }
@@ -753,7 +753,7 @@ void TMountRequestActor::HandleStartVolumeResponse(
     const auto& error = msg->GetError();
     const auto& mountMode = Request.GetVolumeMountMode();
 
-    IsVolumeRestaring = false;
+    IsVolumeRestarting = false;
 
     if (!AddClientRequestCompleted) {
         Volume = msg->VolumeInfo;
@@ -788,7 +788,7 @@ void TMountRequestActor::HandleStopVolumeResponse(
     IsTabletAcquired = false;
 
     if (!FAILED(Error.GetCode())) {
-        if (IsVolumeRestaring) {
+        if (IsVolumeRestarting) {
             RequestVolumeStart(ctx);
             return;
         }
