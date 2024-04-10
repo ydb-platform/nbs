@@ -270,12 +270,13 @@ class TEndpoint final
 {
 private:
     TAppContext& AppCtx;
-
     TLog Log;
     TContExecutor* Executor;
-    ILimiterPtr Limiter;
-    IServerHandlerFactoryPtr HandlerFactory;
-    TNetworkAddress ListenAddress;
+
+    const ILimiterPtr Limiter;
+    const IServerHandlerFactoryPtr HandlerFactory;
+    const TNetworkAddress ListenAddress;
+    const ui32 SocketAccessMode;
 
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
@@ -286,13 +287,15 @@ public:
             TContExecutor* executor,
             ILimiterPtr limiter,
             IServerHandlerFactoryPtr handlerFactory,
-            const TNetworkAddress& listenAddress)
+            const TNetworkAddress& listenAddress,
+            const ui32 socketAccessMode)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(executor)
         , Limiter(std::move(limiter))
         , HandlerFactory(std::move(handlerFactory))
         , ListenAddress(listenAddress)
+        , SocketAccessMode(socketAccessMode)
     {}
 
     ~TEndpoint()
@@ -315,7 +318,7 @@ public:
             if (IsUnixAddress(ListenAddress)) {
                 ChmodSocket(
                     ListenAddress,
-                    S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR);
+                    SocketAccessMode);
             }
 
             return NProto::TError();
@@ -427,6 +430,7 @@ private:
     const TExecutorPtr Executor;
     const bool LimiterEnabled;
     const size_t MaxInFlightBytesPerThread;
+    const ui32 SocketAccessMode;
 
     ILimiterPtr Limiter;
 
@@ -438,12 +442,14 @@ public:
             TAppContext& appCtx,
             TExecutorPtr executor,
             bool limiterEnabled,
-            size_t maxInFlightBytesPerThread)
+            size_t maxInFlightBytesPerThread,
+            ui32 socketAccessMode)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(std::move(executor))
         , LimiterEnabled(limiterEnabled)
         , MaxInFlightBytesPerThread(maxInFlightBytesPerThread)
+        , SocketAccessMode(socketAccessMode)
     {}
 
     void Start()
@@ -476,7 +482,8 @@ public:
             Executor->GetContExecutor(),
             Limiter,
             std::move(handlerFactory),
-            std::move(listenAddress));
+            std::move(listenAddress),
+            SocketAccessMode);
     }
 
     TFuture<NProto::TError> StartEndpoint(TEndpointPtr endpoint)
@@ -715,7 +722,8 @@ private:
                 *this,
                 std::move(executor),
                 config.LimiterEnabled,
-                config.MaxInFlightBytesPerThread);
+                config.MaxInFlightBytesPerThread,
+                config.SocketAccessMode);
 
             ExecutorThreads.push_back(std::move(executorThread));
         }

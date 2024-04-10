@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
+#include <cloud/blockstore/vhost-server/options.h>
 
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -560,6 +561,7 @@ private:
     const IServerStatsPtr ServerStats;
     const TExecutorPtr Executor;
     const TString LocalAgentId;
+    const ui32 SocketAccessMode;
     const IEndpointListenerPtr FallbackListener;
     const TExternalEndpointFactory EndpointFactory;
 
@@ -573,12 +575,14 @@ public:
             IServerStatsPtr serverStats,
             TExecutorPtr executor,
             TString localAgentId,
+            ui32 socketAccessMode,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
         , ServerStats {std::move(serverStats)}
         , Executor {std::move(executor)}
         , LocalAgentId {std::move(localAgentId)}
+        , SocketAccessMode {socketAccessMode}
         , FallbackListener {std::move(fallbackListener)}
         , EndpointFactory {std::move(endpointFactory)}
         , Log {Logging->CreateLog("BLOCKSTORE_SERVER")}
@@ -846,6 +850,12 @@ private:
             "-q", ToString(request.GetVhostQueuesCount())
         };
 
+        // TODO: get rid of "if" (was needed for backward compatibility)
+        if (SocketAccessMode != Default<NVHostServer::TOptions>().SocketAccessMode) {
+            args.emplace_back("--socket-access-mode");
+            args.emplace_back(ToString(SocketAccessMode));
+        }
+
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
             args.emplace_back(clientId);
@@ -948,6 +958,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString binaryPath,
     TString localAgentId,
+    ui32 socketAccessMode,
     IEndpointListenerPtr fallbackListener)
 {
     auto defaultFactory = [=] (
@@ -976,6 +987,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(serverStats),
         std::move(executor),
         std::move(localAgentId),
+        socketAccessMode,
         std::move(fallbackListener),
         std::move(defaultFactory));
 }
@@ -985,6 +997,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     TString localAgentId,
+    ui32 socketAccessMode,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
@@ -993,6 +1006,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(serverStats),
         std::move(executor),
         std::move(localAgentId),
+        socketAccessMode,
         std::move(fallbackListener),
         std::move(factory));
 }

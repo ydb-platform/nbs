@@ -22,6 +22,7 @@ struct ISocketEndpointListener
 
 ISocketEndpointListenerPtr CreateSocketEndpointListener(
     ILoggingServicePtr logging,
-    ui32 unixSocketBacklog);
+    ui32 socketBacklog,
+    ui32 socketAccessMode);
 
 }   // namespace NCloud::NBlockStore::NServer

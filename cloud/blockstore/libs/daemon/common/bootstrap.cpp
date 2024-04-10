@@ -125,6 +125,7 @@ NVhost::TServerConfig CreateVhostServerConfig(const TServerAppConfig& config)
 {
     return NVhost::TServerConfig {
         .ThreadsCount = config.GetVhostThreadsCount(),
+        .SocketAccessMode = config.GetSocketAccessMode(),
         .Affinity = config.GetVhostAffinity()
     };
 }
@@ -135,6 +136,7 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .ThreadsCount = config.GetNbdThreadsCount(),
         .LimiterEnabled = config.GetNbdLimiterEnabled(),
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
+        .SocketAccessMode = config.GetSocketAccessMode(),
         .Affinity = config.GetNbdAffinity()
     };
 }
@@ -356,7 +358,8 @@ void TBootstrapBase::Init()
 
     GrpcEndpointListener = CreateSocketEndpointListener(
         Logging,
-        Configs->ServerConfig->GetUnixSocketBacklog());
+        Configs->ServerConfig->GetUnixSocketBacklog(),
+        Configs->ServerConfig->GetSocketAccessMode());
     endpointListeners.emplace(NProto::IPC_GRPC, GrpcEndpointListener);
 
     STORAGE_INFO("SocketEndpointListener initialized");
@@ -411,6 +414,7 @@ void TBootstrapBase::Init()
                 Configs->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),
+                Configs->ServerConfig->GetSocketAccessMode(),
                 std::move(vhostEndpointListener));
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");

@@ -15,6 +15,7 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -24,6 +25,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
+
+static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -177,7 +180,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
             endpointStorage,
-            listener);
+            listener,
+            MODE0660);
         service->Start();
 
         auto strOrError = SerializeEndpoint(start);
@@ -256,7 +260,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
             endpointStorage,
-            listener);
+            listener,
+            MODE0660);
         service->Start();
 
         auto strOrError = SerializeEndpoint(start);
@@ -376,7 +381,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
             endpointStorage,
-            listener);
+            listener,
+            MODE0660);
         service->Start();
 
         Y_DEFER {

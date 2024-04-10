@@ -104,6 +104,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResult(&QueueCount);
 
+    opts.AddLongOption('a', "socket-access-mode")
+        .RequiredArgument("INT")
+        .StoreResult(&SocketAccessMode);
+
     opts.AddLongOption('v', "verbose", "output level for diagnostics messages")
         .OptionalArgument("STR")
         .StoreResultDef(&VerboseLevel);

@@ -50,6 +50,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 static constexpr TDuration TestRequestTimeout = TDuration::Seconds(42);
 static const TString TestClientId = "testClientId";
 
@@ -1011,7 +1012,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto grpcListener = CreateSocketEndpointListener(bootstrap.Logging, 16);
+        auto grpcListener = CreateSocketEndpointListener(
+            bootstrap.Logging,
+            16,
+            MODE0660);
         grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
         bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, grpcListener }};
 
@@ -1790,7 +1794,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
         bootstrap.Service = CreateTestService(mountedVolumes);
 
-        auto grpcListener = CreateSocketEndpointListener(bootstrap.Logging, 16);
+        auto grpcListener = CreateSocketEndpointListener(
+            bootstrap.Logging,
+            16,
+            MODE0660);
         grpcListener->SetClientStorageFactory(CreateClientStorageFactoryStub());
         bootstrap.EndpointListeners = {{ NProto::IPC_GRPC, grpcListener }};
 

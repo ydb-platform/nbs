@@ -2,9 +2,15 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/system/sysstat.h>
+
 namespace NCloud::NFileStore::NVhost {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,6 +23,7 @@ namespace {
         NCloud::NProto::EEndpointStorageType,                                  \
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
     xxx(EndpointStorageDir,         TString,                {}                )\
+    xxx(SocketAccessMode,           ui32,                   MODE0660          )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \
