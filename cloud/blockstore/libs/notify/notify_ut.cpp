@@ -161,7 +161,7 @@ Y_UNIT_TEST_SUITE(TNotifyTestV2)
         service->Stop();
     }
 
-        Y_UNIT_TEST(ShouldNotifyDiskBackOnlineV2)
+    Y_UNIT_TEST(ShouldNotifyDiskBackOnlineV2)
     {
         auto service = CreateService(MakeConfigV2(), NCloud::NIamClient::CreateIamTokenClientStub());
         service->Start();
@@ -178,7 +178,7 @@ Y_UNIT_TEST_SUITE(TNotifyTestV2)
         service->Stop();
     }
 
- Y_UNIT_TEST(ShouldNotifyAboutLotsOfDiskErrorsV2)
+    Y_UNIT_TEST(ShouldNotifyAboutLotsOfDiskErrorsV2)
     {
         auto service = CreateService(MakeConfigV2(), NCloud::NIamClient::CreateIamTokenClientStub());
         service->Start();
