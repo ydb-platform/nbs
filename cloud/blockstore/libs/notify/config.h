@@ -22,7 +22,7 @@ public:
 
     TString GetEndpoint() const;
     TString GetCaCertFilename() const;
-    i32 GetVersion() const;
+    ui32 GetVersion() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

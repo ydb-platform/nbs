@@ -114,9 +114,11 @@ private:
     TLog Log;
 
 public:
-    explicit TService(TNotifyConfigPtr config,NCloud::NIamClient::IIamTokenClientPtr iamClient)
-        : Config(std::move(config)),
-          IamClient(std::move(iamClient))
+    explicit TService(
+        TNotifyConfigPtr config,
+        NCloud::NIamClient::IIamTokenClientPtr iamClient)
+        : Config(std::move(config))
+        , IamClient(std::move(iamClient))
     {}
 
     void Start() override
@@ -129,7 +131,8 @@ public:
     void Stop() override
     {}
 
-    auto GetIamToken(){
+    auto GetIamToken() 
+    {
         if (Config->GetVersion() == 2) {
             if (!IamClient) {
                 STORAGE_WARN(
@@ -137,22 +140,29 @@ public:
                     << "Got error while requesting token: "
                     << "IAM client is missing");
             } else {
-                return IamClient->GetTokenAsync().Apply([this] (const auto& future) {
-                    auto tokenStr = future.GetValue().GetResult().Token;
-                    if (tokenStr.empty()){
-                        auto err = NProto::TError();
-                        err.SetMessage("empty iam token");
-                        STORAGE_WARN(
-                            "missing iam-token "
-                            << "Got error while requesting token: "
-                            << "iam token is empty");
-                        return TResultOrError<NIamClient::TTokenInfo>(err);
-                    }
-                    return future.GetValue();
-                });
+                return IamClient->GetTokenAsync().Apply(
+                    [this](const auto& future) -> TResultOrError<TString>
+                    {
+                        auto response = future.GetValue();
+
+                        if (HasError(response)) {
+                            return response.GetError();
+                        }
+
+                        auto tokenInfo = response.GetResult();
+                        if (tokenInfo.Token.empty()) {
+                            STORAGE_WARN(
+                                "missing iam-token "
+                                << "Got error while requesting token: "
+                                << "iam token is empty");
+                            return MakeError(E_ARGUMENT, "empty iam token");
+                        };
+
+                        return std::move(tokenInfo.Token);
+                    });
             }
         }
-        return MakeFuture(TResultOrError<NIamClient::TTokenInfo>(NIamClient::TTokenInfo()));
+        return MakeFuture(TResultOrError<TString>(TString()));
     }
 
     TFuture<NProto::TError> Notify(const TNotification& data) override
@@ -184,13 +194,19 @@ public:
 
         auto p = NewPromise<NProto::TError>();
 
-        GetIamToken().Subscribe([this, p, event = data.Event, &v, &data] (TFuture<TResultOrError<NIamClient::TTokenInfo>> token) {
+        GetIamToken().Subscribe([this, p, event = data.Event, v] (TFuture<TResultOrError<TString>> future) mutable {
+            auto [token, error] = future.ExtractValue();
+            if (HasError(error)) {
+                p.SetValue(error);
+                return;
+            }
+
             HttpsClient.Post(
                 Config->GetEndpoint(),
                 v.GetStringRobust(),
                 "application/json",
-                token.ExtractValue(),
-                [p, event = data.Event] (int code, const TString& message) mutable {
+                token,
+                [p, event] (int code, const TString& message) mutable {
                     const bool isSuccess = code >= 200 && code < 300;
 
                     if (isSuccess) {

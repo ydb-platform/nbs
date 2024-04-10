@@ -26,7 +26,7 @@ public:
         const TString& endpoint,
         const TString& data,
         const TString& contentType,
-        const NCloud::TResultOrError<NCloud::NIamClient::TTokenInfo> iamToken,
+        const TString& iamTokenStr,
         const THttpsCallback& callback);
 
 private:

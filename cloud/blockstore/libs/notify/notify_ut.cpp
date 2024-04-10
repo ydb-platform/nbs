@@ -11,6 +11,8 @@
 
 namespace NCloud::NBlockStore::NNotify {
 
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -22,19 +24,19 @@ static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-//Same class as TIamTokenClientForStub, but returns nonempty token.
+// Same class as TIamTokenClientForStub, but returns nonempty token.
 class TIamTokenClientForTests final: public NIamClient::IIamTokenClient
 {
 public:
     TResultOrError<NIamClient::TTokenInfo> GetToken() override
     {
-        return NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()};
+        return Token;
     }
 
-    NThreading::TFuture<TResultOrError<NIamClient::TTokenInfo>>
+    TFuture<TResultOrError<NIamClient::TTokenInfo>>
     GetTokenAsync() override
     {
-        return NThreading::MakeFuture(TResultOrError(NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()}));
+        return MakeFuture(TResultOrError(Token));
     }
 
     void Start() override
@@ -42,14 +44,13 @@ public:
 
     void Stop() override
     {}
+
+private:
+    NIamClient::TTokenInfo Token =
+        NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()};
 };
 
 using TIamTokenClientForTestsPtr = std::shared_ptr<TIamTokenClientForTests>;
-
-TIamTokenClientForTestsPtr CreateIamTokenClientForTest()
-{
-    return std::make_shared<TIamTokenClientForTests>();
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,7 +83,7 @@ auto CreateNotifyService(int version)
 {
     return CreateService(
         version == 2 ? MakeConfigV2() : MakeConfig(),
-        CreateIamTokenClientForTest());
+        std::make_shared<TIamTokenClientForTests>());
 }
 
 void ShouldNotifyDiskErrorImpl(int version)
@@ -91,8 +92,7 @@ void ShouldNotifyDiskErrorImpl(int version)
 
     service->Start();
 
-    auto r =
-        service->Notify({
+    auto r = service->Notify({
             .CloudId = "yc-nbs",
             .FolderId = "yc-nbs.folder",
             .Timestamp = TInstant::ParseIso8601("2024-04-01T00:00:01Z"),
@@ -111,8 +111,7 @@ void ShouldNotifyDiskBackOnlineImpl(int version)
     auto service = CreateNotifyService(version);
     service->Start();
 
-    auto r =
-        service->Notify({
+    auto r = service->Notify({
             .CloudId = "yc-nbs",
             .FolderId = "yc-nbs.folder",
             .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
@@ -129,7 +128,7 @@ void ShouldNotifyAboutLotsOfDiskErrorsImpl(int version)
     auto service = CreateNotifyService(version);
     service->Start();
 
-    TVector<NThreading::TFuture<NProto::TError>> futures;
+    TVector<TFuture<NProto::TError>> futures;
     for (ui32 i = 0; i < 20; ++i) {
         futures.push_back(service->Notify({
             .CloudId = "yc-nbs",
