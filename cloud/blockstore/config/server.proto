@@ -171,6 +171,9 @@ message TServerConfig
 
     // Prefix for nbd device paths, e.g. "/dev/nbd"
     optional string NbdDevicePrefix = 109;
+
+    // Access mode for endpoint socket files
+    optional uint32 SocketAccessMode = 110;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

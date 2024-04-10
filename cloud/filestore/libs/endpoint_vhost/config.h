@@ -27,6 +27,7 @@ public:
     bool GetRequireEndpointsKeyring() const;
     NCloud::NProto::EEndpointStorageType GetEndpointStorageType() const;
     TString GetEndpointStorageDir() const;
+    ui32 GetSocketAccessMode() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

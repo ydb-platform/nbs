@@ -11,6 +11,8 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/system/sysstat.h>
+
 namespace NCloud::NBlockStore::NVhost {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +52,7 @@ struct IServer
 struct TServerConfig
 {
     size_t ThreadsCount = 1;
+    ui32 SocketAccessMode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     TAffinity Affinity;
 };
 

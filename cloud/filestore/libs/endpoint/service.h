@@ -14,7 +14,8 @@ namespace NCloud::NFileStore {
 IEndpointManagerPtr CreateEndpointManager(
     ILoggingServicePtr logging,
     IEndpointStoragePtr storage,
-    IEndpointListenerPtr listener);
+    IEndpointListenerPtr listener,
+    ui32 socketAccessMode);
 
 IEndpointManagerPtr CreateNullEndpointManager();
 

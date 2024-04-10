@@ -209,7 +209,8 @@ class TSocketEndpointListener final
     : public ISocketEndpointListener
 {
 private:
-    const ui32 UnixSocketBacklog;
+    const ui32 SocketBacklog;
+    const ui32 SocketAccessMode;
 
     std::unique_ptr<NStorage::NServer::TEndpointPoller> EndpointPoller;
     IClientStorageFactoryPtr ClientStorageFactory;
@@ -219,8 +220,10 @@ private:
 public:
     TSocketEndpointListener(
             ILoggingServicePtr logging,
-            ui32 unixSocketBacklog)
-        : UnixSocketBacklog(unixSocketBacklog)
+            ui32 socketBacklog,
+            ui32 socketAccessMode)
+        : SocketBacklog(socketBacklog)
+        , SocketAccessMode(socketAccessMode)
     {
         Log = logging->CreateLog("BLOCKSTORE_SERVER");
     }
@@ -262,7 +265,8 @@ public:
 
         auto error = EndpointPoller->StartListenEndpoint(
             request.GetUnixSocketPath(),
-            UnixSocketBacklog,
+            SocketBacklog,
+            SocketAccessMode,
             false,  // multiClient
             NProto::SOURCE_FD_DATA_CHANNEL,
             ClientStorageFactory->CreateClientStorage(
@@ -316,11 +320,13 @@ public:
 
 ISocketEndpointListenerPtr CreateSocketEndpointListener(
     ILoggingServicePtr logging,
-    ui32 unixSocketBacklog)
+    ui32 socketBacklog,
+    ui32 socketAccessMode)
 {
     return std::make_unique<TSocketEndpointListener>(
         std::move(logging),
-        unixSocketBacklog);
+        socketBacklog,
+        socketAccessMode);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

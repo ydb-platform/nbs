@@ -29,6 +29,9 @@ message TVhostServiceConfig
     optional bool RequireEndpointsKeyring = 4;
     optional NCloud.NProto.EEndpointStorageType EndpointStorageType = 5;
     optional string EndpointStorageDir = 6;
+
+    // Access mode for endpoint socket files
+    optional uint32 SocketAccessMode = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

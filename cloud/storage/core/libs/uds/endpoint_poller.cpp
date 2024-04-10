@@ -58,7 +58,7 @@ struct TEndpoint final
         , Source(source)
     {}
 
-    NProto::TError Open(const TString& socketPath, ui32 backlog)
+    NProto::TError Open(const TString& socketPath, ui32 backlog, int accessMode)
     {
         auto endPoint = TSockAddrLocal(socketPath.c_str());
         SocketPath = TFsPath(socketPath);
@@ -84,8 +84,7 @@ struct TEndpoint final
 
         SetNonBlock(Socket);
 
-        int mode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
-        if (auto err = Chmod(socketPath.c_str(), mode)) {
+        if (auto err = Chmod(socketPath.c_str(), accessMode)) {
             NProto::TError error;
             error.SetCode(MAKE_BLOCKSTORE_ERROR(err));
             error.SetMessage(TStringBuilder()
@@ -176,7 +175,8 @@ public:
 
     NProto::TError StartListenEndpoint(
         const TString& unixSocketPath,
-        ui32 unixSocketBacklog,
+        ui32 backlog,
+        int accessMode,
         bool multiClient,
         NProto::ERequestSource source,
         IClientStoragePtr clientStorage)
@@ -197,7 +197,7 @@ public:
             }
 
             auto error = SafeExecute<NProto::TError>([&] {
-                return endpoint->Open(unixSocketPath, unixSocketBacklog);
+                return endpoint->Open(unixSocketPath, backlog, accessMode);
             });
             if (HasError(error)) {
                 return error;
@@ -353,6 +353,7 @@ void TEndpointPoller::Stop()
 NProto::TError TEndpointPoller::StartListenEndpoint(
     const TString& unixSocketPath,
     ui32 backlog,
+    int accessMode,
     bool multiClient,
     NProto::ERequestSource source,
     IClientStoragePtr clientStorage)
@@ -360,6 +361,7 @@ NProto::TError TEndpointPoller::StartListenEndpoint(
     return Impl->StartListenEndpoint(
         unixSocketPath,
         backlog,
+        accessMode,
         multiClient,
         source,
         std::move(clientStorage));
