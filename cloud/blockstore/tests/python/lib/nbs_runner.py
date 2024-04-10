@@ -84,10 +84,6 @@ class LocalNbs(Daemon):
         else:
             self.__binary_path = yatest_common.binary_path(
                 "cloud/blockstore/apps/server/nbsd")
-        if kikimr_binary_path is not None:
-            self.__kikimr_binary_path = kikimr_binary_path
-        else:
-            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         self.__output_path = yatest_common.output_path()
         self.__cwd = get_unique_path_for_current_test(
@@ -103,6 +99,7 @@ class LocalNbs(Daemon):
         self.__config_dir = self.config_path()
         self.__rack = rack
 
+        self.__kikimr_binary_path = kikimr_binary_path
         self.__server_app_config = server_app_config
         self.contract_validation = contract_validation
         self.storage_config_patches = storage_config_patches
@@ -215,6 +212,9 @@ ModifyScheme {
     }
 }
 """
+
+        if self.__kikimr_binary_path is None:
+            self.__kikimr_binary_path = yatest_common.binary_path("ydb/apps/ydbd/ydbd")
 
         command = [
             self.__kikimr_binary_path,
