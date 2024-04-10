@@ -15,14 +15,18 @@ bool IsCloseToSequential(
     }
 
     TVector<TReadAheadCache::TRange> tmp(Reserve(byteRanges.Size()));
+    ui64 minOffset = Max<ui64>();
+    ui64 maxEnd = 0;
     for (ui32 i = 0; i < byteRanges.Size(); ++i) {
         tmp.push_back(byteRanges.Front(i));
+        minOffset = Min(minOffset, tmp.back().Offset);
+        maxEnd = Max(maxEnd, tmp.back().End());
     }
     SortBy(tmp, [] (const TReadAheadCache::TRange& range) {
         return std::make_pair(range.Offset, range.Length);
     });
 
-    const ui64 totalLength = tmp.back().End() - tmp.front().Offset;
+    const ui64 totalLength = maxEnd - minOffset;
     if (totalLength < 1_MB) {
         return false;
     }
