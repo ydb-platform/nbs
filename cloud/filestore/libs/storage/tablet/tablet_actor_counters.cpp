@@ -206,6 +206,30 @@ void TIndexTabletActor::TMetrics::Register(
         AggregatableFsRegistry,
         {CreateLabel("request", "WriteData"), CreateLabel("histogram", "Time")});
 
+    REGISTER_AGGREGATABLE_SUM(
+        AddData.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        AddData.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    AddData.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "AddData"), CreateLabel("histogram", "Time")});
+
+    REGISTER_AGGREGATABLE_SUM(
+        GenerateBlobIds.Count,
+        EMetricType::MT_DERIVATIVE);
+
+    REGISTER_AGGREGATABLE_SUM(
+        GenerateBlobIds.RequestBytes,
+        EMetricType::MT_DERIVATIVE);
+
+    GenerateBlobIds.Time.Register(
+        AggregatableFsRegistry,
+        {CreateLabel("request", "GenerateBlobIds"), CreateLabel("histogram", "Time")});
+
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
 

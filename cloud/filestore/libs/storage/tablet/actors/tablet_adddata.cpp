@@ -33,7 +33,11 @@ TAddDataActor::TAddDataActor(
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
-{}
+{
+    for (const auto& blob: Blobs) {
+        BlobsSize += blob.BlobId.BlobSize();
+    }
+}
 
 void TAddDataActor::Bootstrap(const TActorContext& ctx)
 {
@@ -88,6 +92,9 @@ void TAddDataActor::ReplyAndDie(
         using TCompletion = TEvIndexTabletPrivate::TEvAddDataCompleted;
         auto response = std::make_unique<TCompletion>(error);
         response->CommitId = CommitId;
+        response->Count = 1;
+        response->Size = BlobsSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
