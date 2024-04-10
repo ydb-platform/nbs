@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/iam/iface
     library/cpp/testing/unittest
 )
 

@@ -14,4 +14,7 @@ message TNotifyConfig
 
     // TLS details.
     optional string CaCertFilename = 3;
+    
+    // Version number.
+    optional int32 Version = 4;
 }

@@ -24,6 +24,7 @@ public:
         const TString& endpoint,
         const TString& data,
         const TString& contentType,
+        const std::optional<TString> iamToken,
         const THttpsCallback& callback);
 
 private:

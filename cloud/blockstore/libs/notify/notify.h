@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cloud/storage/core/libs/iam/iface/public.h"
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
@@ -57,7 +58,7 @@ struct IService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config);
+IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr IamTokenClient);
 
 IServicePtr CreateNullService(ILoggingServicePtr logging);
 

@@ -1,5 +1,7 @@
 #include "notify.h"
 
+#include "cloud/storage/core/libs/iam/iface/client.h"
+#include "cloud/storage/core/libs/iam/iface/public.h"
 #include "config.h"
 #include "https.h"
 
@@ -15,6 +17,7 @@ using namespace NThreading;
 
 namespace {
 
+static constexpr TDuration WaitTimeout = TDuration::MilliSeconds(100);
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -107,11 +110,14 @@ class TService final
 {
 private:
     const TNotifyConfigPtr Config;
+    NCloud::NIamClient::IIamTokenClientPtr IamClient;
     THttpsClient HttpsClient;
+    TLog Log;
 
 public:
-    explicit TService(TNotifyConfigPtr config)
-        : Config(std::move(config))
+    explicit TService(TNotifyConfigPtr config,NCloud::NIamClient::IIamTokenClientPtr iamClient)
+        : Config(std::move(config)),
+          IamClient(std::move(iamClient))
     {}
 
     void Start() override
@@ -152,11 +158,31 @@ public:
             data.Event);
 
         auto p = NewPromise<NProto::TError>();
+        
+        std::optional<TString> iamTokenStr;
+        if (Config->GetVersion() == 2){
+            if (!IamClient) {
+                STORAGE_WARN("missing iam-client "
+                    <<"Got error while requesting token: " <<
+                        "IAM client is missing");
+            } else {
+                try {
+                    auto tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
+                    if (!HasError(tokenInfo)) {
+                        iamTokenStr = tokenInfo.GetResult().Token;
+                    }
+                } catch (...) {
+                    STORAGE_WARN("problems with iam-client "
+                    <<"Got error while requesting iam-token: " <<CurrentExceptionMessage());
+                }
+            }
+        }
 
         HttpsClient.Post(
             Config->GetEndpoint(),
             v.GetStringRobust(),
             "application/json",
+            iamTokenStr,
             [p, event = data.Event] (int code, const TString& message) mutable {
                 const bool isSuccess = code >= 200 && code < 300;
 
@@ -179,9 +205,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config)
+IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr IamTokenClient)
 {
-    return std::make_shared<TService>(std::move(config));
+    return std::make_shared<TService>(std::move(config), std::move(IamTokenClient));
 }
 
 IServicePtr CreateServiceStub()

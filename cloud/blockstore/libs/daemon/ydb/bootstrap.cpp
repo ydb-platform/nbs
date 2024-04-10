@@ -481,7 +481,7 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("LogbrokerService initialized");
 
     NotifyService = Configs->NotifyConfig->GetEndpoint()
-        ? NNotify::CreateService(Configs->NotifyConfig)
+        ? NNotify::CreateService(Configs->NotifyConfig, IamTokenClient)
         : NNotify::CreateNullService(logging);
 
     STORAGE_INFO("NotifyService initialized");

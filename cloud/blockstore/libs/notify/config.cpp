@@ -8,9 +8,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_NOTIFY_CONFIG(xxx)                                          \
-    xxx(Endpoint,       TString,   "")                                         \
-    xxx(CaCertFilename, TString,   "")                                         \
+#define BLOCKSTORE_NOTIFY_CONFIG(xxx)                                           \
+    xxx(Endpoint,       TString,            "")                                 \
+    xxx(CaCertFilename, TString,            "")                                 \
+    xxx(Version,        NProtoBuf::int32,   1 )                                 \
+
 // BLOCKSTORE_NOTIFY_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

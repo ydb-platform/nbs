@@ -22,6 +22,7 @@ public:
 
     TString GetEndpoint() const;
     TString GetCaCertFilename() const;
+    NProtoBuf::int32 GetVersion() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
