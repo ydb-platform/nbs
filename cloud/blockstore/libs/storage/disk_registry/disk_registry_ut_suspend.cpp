@@ -406,8 +406,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
             UNIT_ASSERT_VALUES_EQUAL(0, n3);
         }
 
-
-
         auto resumeFailed = CriticalEvents->FindCounter(
             "AppCriticalEvents/DiskRegistryResumeDeviceFailed");
         UNIT_ASSERT(resumeFailed);

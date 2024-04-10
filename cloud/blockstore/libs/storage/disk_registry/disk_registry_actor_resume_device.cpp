@@ -42,6 +42,8 @@ private:
         const TActorContext& ctx);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 TResumeDeviceActor::TResumeDeviceActor(
     const TActorId& owner,
     TRequestInfoPtr requestInfo,
