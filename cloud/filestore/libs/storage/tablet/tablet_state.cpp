@@ -105,7 +105,8 @@ void TIndexTabletState::LoadState(
     Impl->ReadAheadCache.Reset(
         config.GetReadAheadCacheMaxNodes(),
         config.GetReadAheadCacheMaxResultsPerNode(),
-        config.GetReadAheadCacheRangeSize());
+        config.GetReadAheadCacheRangeSize(),
+        config.GetReadAheadMaxGapPercentage());
 }
 
 void TIndexTabletState::UpdateConfig(

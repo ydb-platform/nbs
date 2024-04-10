@@ -10,8 +10,8 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TByteRange
 {
-    const ui64 Offset;
-    const ui64 Length;
+    ui64 Offset;
+    ui64 Length;
     const ui32 BlockSize;
 
     TByteRange(ui64 offset, ui64 length, ui32 blockSize)
@@ -20,6 +20,15 @@ struct TByteRange
         , BlockSize(blockSize)
     {
         Y_ABORT_UNLESS(BlockSize);
+    }
+
+    TByteRange(const TByteRange& rhs) = default;
+    TByteRange& operator=(const TByteRange& rhs)
+    {
+        Y_DEBUG_ABORT_UNLESS(BlockSize == rhs.BlockSize);
+        Offset = rhs.Offset;
+        Length = rhs.Length;
+        return *this;
     }
 
     ui64 End() const

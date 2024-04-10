@@ -247,8 +247,13 @@ message TStorageConfig
     // ReadAhead cache params. Used upon DescribeData requests.
     // If ReadAheadCacheRangeSize is not 0 the requested ranges may be widened
     // to this value and the results will be cached to serve future describe
-    // requests.
+    // requests. The requested range is widened if the previous 32 DescribeData
+    // requests represent a pattern which is similar to sequential. The similar
+    // part is controlled by the ReadAheadMaxGapPercentage parameter which
+    // regulates the maximum number of skipped bytes in an otherwise sequential
+    // pattern.
     optional uint32 ReadAheadCacheMaxNodes = 347;
     optional uint32 ReadAheadCacheMaxResultsPerNode = 348;
     optional uint32 ReadAheadCacheRangeSize = 349;
+    optional uint32 ReadAheadMaxGapPercentage = 350;
 }
