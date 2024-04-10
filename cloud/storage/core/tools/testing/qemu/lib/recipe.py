@@ -23,6 +23,7 @@ SSH_PORT = 22
 QEMU_NET = "10.0.2.0/24"
 QEMU_HOST = "10.0.2.2"
 
+PID_FILE = "qemu.pid"
 
 class QemuKvmRecipeException(Exception):
 
@@ -50,15 +51,13 @@ def start(argv):
     try:
         logger.info("Trying to start qemu")
         _start(argv)
-        logger.info("Instance(s) started successfully")
     except Exception as e:
-        logger.error("Failed to start qemu")
-        logger.exception(e)
+        logger.exception("Failed to start qemu")
         try:
             logger.info("Trying to stop qemu")
             stop(argv)
         except err:
-            pass
+            logger.exception("Failed to stop qemu")
         raise e
 
 
@@ -93,9 +92,8 @@ def start_instance(args, inst_index):
     qemu.set_mount_paths(mount_paths)
     qemu.start()
 
-    recipe_set_env("QEMU_KVM_PID", str(qemu.qemu_bin.daemon.process.pid), inst_index)
-
-    logger.info("qemu pid is: '{}'".format(str(qemu.qemu_bin.daemon.process.pid)))
+    with open(PID_FILE, "a+") as f:
+        print(qemu.qemu_bin.daemon.process.pid, file=f)
 
     ssh = SshToGuest(user=_get_ssh_user(args),
                      port=qemu.get_ssh_port(),
@@ -135,20 +133,18 @@ def start_instance(args, inst_index):
 
 
 def stop(argv):
-    args = _parse_args(argv)
-    for inst_index in range(args.instance_count):
-        stop_instance(args, inst_index)
-
-
-def stop_instance(args, inst_index):
-    pid = recipe_get_env("QEMU_KVM_PID", inst_index)
-    if pid:
-        logger.info("will kill process with pid `%s`", pid)
-        try:
-            os.kill(int(pid), signal.SIGTERM)
-        except OSError:
-            logger.exception("While killing pid `%s`", pid)
-            raise
+    with open(PID_FILE, "r") as f:
+        pids = f.read().strip().splitlines()
+        logger.info('Stopping qemu instances with pids: ', ', '.join(pids))
+        for pid in pids:
+            logger.info("will kill process with pid `%s`", pid)
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except OSError:
+                logger.exception("While killing pid `%s`", pid)
+                raise
+    if os.path.exists(PID_FILE):
+        os.remove(PID_FILE)
 
 
 def _parse_args(argv):
