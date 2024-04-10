@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/iterator/enumerate.h>
@@ -29,6 +30,9 @@ private:
     NProto::TWriteDataRequest WriteRequest;
     const TRequestInfoPtr RequestInfo;
 
+    // Filesystem-specific params
+    const TString LogTag;
+
     // generated blob id and associated data
     NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
@@ -47,11 +51,13 @@ public:
     TWriteDataActor(
             NProto::TWriteDataRequest request,
             TRequestInfoPtr requestInfo,
+            TString logTag,
             IRequestStatsPtr requestStats,
             IProfileLogPtr profileLog,
             NCloud::NProto::EStorageMediaKind mediaKind)
         : WriteRequest(std::move(request))
         , RequestInfo(std::move(requestInfo))
+        , LogTag(std::move(logTag))
         , RequestStats(std::move(requestStats))
         , ProfileLog(std::move(profileLog))
         , MediaKind(mediaKind)
@@ -82,7 +88,6 @@ public:
         InitProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
             request->Record);
-
 
         LOG_DEBUG(
             ctx,
@@ -124,7 +129,7 @@ private:
     {
         const auto* msg = ev->Get();
 
-        Y_DEBUG_ABORT_UNLESS(InFlightRequest);
+        TABLET_VERIFY(InFlightRequest);
 
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
         FinalizeProfileLogRequestInfo(
@@ -249,7 +254,6 @@ private:
             InFlightRequest->ProfileLogRequest,
             request->Record);
 
-
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -265,7 +269,7 @@ private:
     {
         auto* msg = ev->Get();
 
-        Y_DEBUG_ABORT_UNLESS(InFlightRequest);
+        TABLET_VERIFY(InFlightRequest);
         InFlightRequest->Complete(ctx.Now(), msg->GetError());
         FinalizeProfileLogRequestInfo(
             InFlightRequest->ProfileLogRequest,
@@ -409,6 +413,7 @@ void TStorageServiceActor::HandleWriteData(
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),
             std::move(requestInfo),
+            filestore.GetFileSystemId(),
             session->RequestStats,
             ProfileLog,
             session->MediaKind);
