@@ -58,10 +58,11 @@ public:
         return ShouldContinue->GetReturnCode();
     }
 
-    void Stop(int exitCode)
+    void Stop()
     {
-        if (AtomicCas(&State, Stopped, Started)) {
-            ShouldContinue->ShouldStop(exitCode);
+        auto prevState = AtomicSwap(&State, Stopped);
+        if (prevState == Started) {
+            ShouldContinue->ShouldStop(0);
             WaitCondVar.Signal();
         }
     }
@@ -72,7 +73,7 @@ public:
 void ProcessSignal(int signum)
 {
     if (signum == SIGINT || signum == SIGTERM) {
-        AppStop(0);
+        AppStop();
     }
 }
 
@@ -97,9 +98,9 @@ int AppMain(TProgramShouldContinue& shouldContinue)
     return TMainThread::GetInstance()->Run(shouldContinue);
 }
 
-void AppStop(int exitCode)
+void AppStop()
 {
-    TMainThread::GetInstance()->Stop(exitCode);
+    TMainThread::GetInstance()->Stop();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
