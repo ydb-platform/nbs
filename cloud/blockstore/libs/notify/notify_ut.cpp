@@ -27,9 +27,7 @@ class TIamTokenClientForTests final: public NIamClient::IIamTokenClient
 public:
     TResultOrError<NIamClient::TTokenInfo> GetToken() override
     {
-        return NIamClient::TTokenInfo{
-            "XXXXXXXXXXXXXXXXXXXXXXXXXX",
-            TInstant::Zero()};
+        return NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()};
     }
 
     NThreading::TFuture<TResultOrError<NIamClient::TTokenInfo>>
