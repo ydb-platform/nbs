@@ -2,10 +2,11 @@ BUILD_ROOT="../cloud/blockstore/buildall"
 YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
 NBSD_BIN="$BUILD_ROOT/cloud/blockstore/apps/server/nbsd"
 BLOCKSTORE_CLIENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/client/blockstore-client"
+BLOCKSTORE_VHOST_SERVER_BIN="$BUILD_ROOT/cloud/blockstore/vhost-server/blockstore-vhost-server"
 DISK_AGENT_BIN="$BUILD_ROOT/cloud/blockstore/apps/disk_agent/diskagentd"
 BLOCKSTORE_NBD_BIN="$BUILD_ROOT/cloud/blockstore/tools/nbd/blockstore-nbd"
 
-for bin in $YDBD_BIN $NBSD_BIN $BLOCKSTORE_CLIENT_BIN $DISK_AGENT_BIN $BLOCKSTORE_NBD_BIN
+for bin in $YDBD_BIN $NBSD_BIN $BLOCKSTORE_CLIENT_BIN $BLOCKSTORE_VHOST_SERVER_BIN $DISK_AGENT_BIN $BLOCKSTORE_NBD_BIN
 do
   if ! test -f $bin; then
     echo "$bin not found, build all targets first"
@@ -23,6 +24,10 @@ function nbsd {
 
 function blockstore-client {
   LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_CLIENT_BIN) $BLOCKSTORE_CLIENT_BIN "$@"
+}
+
+function blockstore-vhost-server {
+  LD_LIBRARY_PATH=$(dirname $BLOCKSTORE_VHOST_SERVER_BIN) $BLOCKSTORE_VHOST_SERVER_BIN "$@"
 }
 
 function diskagentd {
