@@ -12,7 +12,6 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
-#include <future>
 #include <variant>
 
 namespace NCloud::NBlockStore::NNotify {
