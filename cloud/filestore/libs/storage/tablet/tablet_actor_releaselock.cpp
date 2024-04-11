@@ -23,6 +23,8 @@ void TIndexTabletActor::HandleReleaseLock(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TReleaseLockMethod>(*requestInfo);
+
     ExecuteTx<TReleaseLock>(
         ctx,
         std::move(requestInfo),
@@ -89,6 +91,8 @@ void TIndexTabletActor::CompleteTx_ReleaseLock(
     const TActorContext& ctx,
     TTxIndexTablet::TReleaseLock& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvReleaseLockResponse>(args.Error);
     CompleteResponse<TEvService::TReleaseLockMethod>(
         response->Record,

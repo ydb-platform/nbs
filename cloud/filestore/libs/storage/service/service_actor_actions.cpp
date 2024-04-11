@@ -44,6 +44,14 @@ void TStorageServiceActor::HandleExecuteAction(
             "changestorageconfig",
             &TStorageServiceActor::CreateChangeStorageConfigActionActor
         },
+        {
+            "describesessions",
+            &TStorageServiceActor::CreateDescribeSessionsActionActor
+        },
+        {
+            "reassigntablet",
+            &TStorageServiceActor::CreateReassignTabletActionActor
+        },
     };
 
     auto it = actions.find(action);

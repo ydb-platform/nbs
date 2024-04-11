@@ -50,6 +50,8 @@ void TIndexTabletActor::HandleListNodes(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
+
     auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
@@ -162,6 +164,8 @@ void TIndexTabletActor::CompleteTx_ListNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TListNodes& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvListNodesResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto& record = response->Record;

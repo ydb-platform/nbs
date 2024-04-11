@@ -19,6 +19,7 @@ NProto::TStorageServiceConfig CreateDefaultStorageConfig()
     configProto.SetMirroredMigrationStartAllowed(true);
     configProto.SetAllocationUnitNonReplicatedSSD(10);
     configProto.SetDiskRegistryVolumeConfigUpdatePeriod(5000);
+    configProto.SetCachedAcquireRequestLifetime(1000 * 60 * 60);
 
     return configProto;
 }
@@ -34,7 +35,8 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
     if (!StorageConfig) {
         StorageConfig = std::make_shared<TStorageConfig>(
             CreateDefaultStorageConfig(),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
     }
 
@@ -174,7 +176,8 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(
 {
     StorageConfig = std::make_shared<TStorageConfig>(
         config,
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
     return *this;
 }

@@ -16,16 +16,16 @@ FROM_SANDBOX(
 
 FROM_SANDBOX(
     FILE
-    5274078903
+    4709742882
     RENAME RESOURCE
-    OUT_NOAUTO qcow2_images/panic.img
+    OUT_NOAUTO vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk
 )
 
 FROM_SANDBOX(
     FILE
-    4709742882
+    5922914799
     RENAME RESOURCE
-    OUT_NOAUTO vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk
+    OUT_NOAUTO vmdk_images/windows-vmdk-stream-optimised-multiple-grains.vmdk
 )
 
 END()

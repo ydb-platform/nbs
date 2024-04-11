@@ -45,6 +45,8 @@ enum class EPublishingPolicy
     xxx(CompactionGarbageScore, Max,     Permanent,                __VA_ARGS__)\
     xxx(ChannelHistorySize,     Max,     Permanent,                __VA_ARGS__)\
     xxx(CompactionRangeCountPerRun, Max, Permanent,                __VA_ARGS__)\
+    xxx(UnconfirmedBlobCount,   Generic, Permanent,                __VA_ARGS__)\
+    xxx(ConfirmedBlobCount,     Generic, Permanent,                __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,6 +85,7 @@ enum class EPublishingPolicy
     xxx(TrimFreshLog,                                              __VA_ARGS__)\
     xxx(AddConfirmedBlobs,                                         __VA_ARGS__)\
     xxx(AddUnconfirmedBlobs,                                       __VA_ARGS__)\
+    xxx(ConfirmBlobs,                                              __VA_ARGS__)\
 // BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
 
 #define BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(xxx, ...)                   \
@@ -122,6 +125,7 @@ enum class EPublishingPolicy
     xxx(HasStorageConfigPatch,      Generic, Permanent,            __VA_ARGS__)\
     xxx(LongRunningReadBlob,        Generic, Expiring,             __VA_ARGS__)\
     xxx(LongRunningWriteBlob,       Generic, Expiring,             __VA_ARGS__)\
+    xxx(UseFastPath,                Generic, Permanent,            __VA_ARGS__)\
 
 
 #define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \

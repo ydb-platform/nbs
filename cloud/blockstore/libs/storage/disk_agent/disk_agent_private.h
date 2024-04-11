@@ -4,6 +4,7 @@
 
 #include "storage_with_stats.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
@@ -35,14 +36,17 @@ struct TEvDiskAgentPrivate
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
+        TVector<TString> ConfigMismatchErrors;
 
         TInitAgentCompleted() = default;
 
         TInitAgentCompleted(
                 TVector<NProto::TDeviceConfig> configs,
-                TVector<TString> errors)
+                TVector<TString> errors,
+                TVector<TString> configMismatchErrors)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
+            , ConfigMismatchErrors(std::move(configMismatchErrors))
         {}
     };
 
@@ -114,6 +118,37 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // TReportDelayedDiskAgentConfigMismatch
+    //
+
+    struct TReportDelayedDiskAgentConfigMismatch
+    {
+        TString ErrorText;
+
+        explicit TReportDelayedDiskAgentConfigMismatch(TString errorText)
+            : ErrorText(std::move(errorText))
+        {}
+    };
+
+    //
+    // UpdateSessionCache
+    //
+
+    struct TUpdateSessionCacheRequest
+    {
+        TVector<NProto::TDiskAgentDeviceSession> Sessions;
+
+        TUpdateSessionCacheRequest() = default;
+        explicit TUpdateSessionCacheRequest(
+                TVector<NProto::TDiskAgentDeviceSession> sessions)
+            : Sessions(std::move(sessions))
+        {}
+    };
+
+    struct TUpdateSessionCacheResponse
+    {};
+
+    //
     // Events declaration
     //
 
@@ -126,6 +161,9 @@ struct TEvDiskAgentPrivate
         EvInitAgentCompleted,
         EvSecureEraseCompleted,
         EvWriteOrZeroCompleted,
+        EvReportDelayedDiskAgentConfigMismatch,
+
+        BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
         EvEnd
     };
@@ -146,6 +184,12 @@ struct TEvDiskAgentPrivate
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
         EvWriteOrZeroCompleted>;
+
+    using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
+        TReportDelayedDiskAgentConfigMismatch,
+        EvReportDelayedDiskAgentConfigMismatch>;
+
+    BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -205,4 +205,55 @@ message TStorageConfig
 
     // Max inflight for out of order compaction map load requests.
     optional uint32 MaxOutOfOrderCompactionMapLoadRequestsInQueue = 333;
+
+    // IndexTabletActor will suicide (and thus reboot) after observing this
+    // number of backpressure errors. Needed to automatically recover after
+    // various races that may happen during index tablet startup due to bugs.
+    optional uint32 MaxBackpressureErrorsBeforeSuicide = 334;
+
+    // Params that are passed to filestore-vhost via TCreateSessionResponse via
+    // TFilestore::Features. They do not have any effect on the tablet itself.
+    optional uint32 EntryTimeout = 335;
+    optional uint32 NegativeEntryTimeout = 336;
+    optional uint32 AttrTimeout = 337;
+
+    // Threshold for the number of garbage blocks in a compaction range that
+    // triggers automatic compaction.
+    optional uint32 GarbageCompactionThreshold = 338;
+    // Threshold for average CompactionScore for the whole FS.
+    optional uint32 CompactionThresholdAverage = 339;
+    // Threshold for average GarbageCompactionScore for the whole FS.
+    optional uint32 GarbageCompactionThresholdAverage = 340;
+    // Enables 3 aforementioned thresholds.
+    optional bool NewCompactionEnabled = 341;
+
+    // Threshold for average CleanupScore for the whole FS.
+    optional uint32 CleanupThresholdAverage = 342;
+    // Enables the aforementioned threshold.
+    optional bool NewCleanupEnabled = 343;
+
+    // Enables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
+    // for writing.
+    optional bool ThreeStageWriteEnabled = 344;
+
+    // When issuing blob ids, the tablet acquires a collect barrier. In order
+    // to release it in case of a client disconnect, this timeout is used.
+    optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 345;
+
+    // If ThreeStageWriteEnabled is true, writes that exceed this threshold
+    // will use the three-stage write path. Similar to WriteBlobThreshold
+    optional uint32 ThreeStageWriteThreshold = 346;
+
+    // ReadAhead cache params. Used upon DescribeData requests.
+    // If ReadAheadCacheRangeSize is not 0 the requested ranges may be widened
+    // to this value and the results will be cached to serve future describe
+    // requests. The requested range is widened if the previous 32 DescribeData
+    // requests represent a pattern which is similar to sequential. The similar
+    // part is controlled by the ReadAheadMaxGapPercentage parameter which
+    // regulates the maximum number of skipped bytes in an otherwise sequential
+    // pattern.
+    optional uint32 ReadAheadCacheMaxNodes = 347;
+    optional uint32 ReadAheadCacheMaxResultsPerNode = 348;
+    optional uint32 ReadAheadCacheRangeSize = 349;
+    optional uint32 ReadAheadMaxGapPercentage = 350;
 }

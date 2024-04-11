@@ -358,6 +358,11 @@ public:
             rangeId);
     }
 
+    auto CreateCleanupSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
+    }
+
     //
     // TEvService
     //
@@ -549,6 +554,44 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(len);
+        return request;
+    }
+
+    auto CreateGenerateBlobIdsRequest(
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui64 length)
+    {
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvGenerateBlobIdsRequest>();
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+        return request;
+    }
+
+    auto CreateAddDataRequest(
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui32 length,
+        const TVector<NKikimr::TLogoBlobID>& blobIds,
+        ui64 commitId)
+    {
+        auto request = CreateSessionRequest<
+            TEvIndexTablet::TEvAddDataRequest>();
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+        for (const auto& blobId: blobIds) {
+            NKikimr::LogoBlobIDFromLogoBlobID(
+                blobId,
+                request->Record.MutableBlobIds()->Add());
+        }
+        request->Record.SetCommitId(commitId);
         return request;
     }
 
@@ -756,7 +799,7 @@ public:
     }                                                                          \
 // FILESTORE_DECLARE_METHOD
 
-    FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_DECLARE_METHOD, TEvService)
+    FILESTORE_SERVICE_REQUESTS(FILESTORE_DECLARE_METHOD, TEvService)
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_METHOD, TEvIndexTablet)
     FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_DECLARE_METHOD, TEvIndexTabletPrivate)

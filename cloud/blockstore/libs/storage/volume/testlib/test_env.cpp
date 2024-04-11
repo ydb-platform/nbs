@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -368,11 +369,11 @@ std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> TVolumeClient::CreateDescri
 std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
 TVolumeClient::CreateCreateCheckpointRequest(
     const TString& checkpointId,
-    bool isLight)
+    NProto::ECheckpointType checkpointType)
 {
     auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
     request->Record.SetCheckpointId(checkpointId);
-    request->Record.SetIsLight(isLight);
+    request->Record.SetCheckpointType(checkpointType);
     return request;
 }
 
@@ -404,6 +405,15 @@ TVolumeClient::CreateDeleteCheckpointDataRequest(
     const TString& checkpointId)
 {
     auto request = std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
+    request->Record.SetCheckpointId(checkpointId);
+    return request;
+}
+
+std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
+TVolumeClient::CreateGetCheckpointStatusRequest(const TString& checkpointId)
+{
+    auto request =
+        std::make_unique<TEvService::TEvGetCheckpointStatusRequest>();
     request->Record.SetCheckpointId(checkpointId);
     return request;
 }
@@ -515,14 +525,12 @@ std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
 TVolumeClient::CreateUpdateShadowDiskStateRequest(
     TString checkpointId,
     TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
-    ui64 processedBlockCount,
-    ui64 totalBlockCount)
+    ui64 processedBlockCount)
 {
     return make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
         std::move(checkpointId),
         reason,
-        processedBlockCount,
-        totalBlockCount);
+        processedBlockCount);
 }
 
 void TVolumeClient::SendRemoteHttpInfo(
@@ -659,6 +667,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             0
         )
     );
+    runtime->EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
 
     runtime->AddLocalService(
         MakeDiskAgentServiceId(runtime->GetNodeId()),
@@ -691,7 +700,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
                 CreateLoggingService("console"),
                 "BLOCKSTORE_TRACE",
                 NLwTraceMonPage::TraceManager(false)),
-            rdmaClient
+            rdmaClient,
+            NServer::CreateEndpointEventProxy()
         );
         return tablet.release();
     };

@@ -127,9 +127,7 @@ TWriteMergedBlocksActor::TWriteMergedBlocksActor(
     , Requests(std::move(requests))
     , ReplyLocal(replyLocal)
     , WriteHandler(std::move(writeHandler))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -358,7 +356,7 @@ void TWriteMergedBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAndDie(ctx, error);
 }

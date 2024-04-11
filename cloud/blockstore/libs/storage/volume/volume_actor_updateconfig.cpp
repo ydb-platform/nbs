@@ -58,6 +58,7 @@ auto BuildNewMeta(
     partitionConfig.SetMaxBlocksInBlob(volumeConfig.GetMaxBlocksInBlob());
     partitionConfig.SetZoneBlockCount(volumeConfig.GetZoneBlockCount());
     partitionConfig.SetStorageMediaKind(mediaKind);
+    partitionConfig.SetIsSystem(volumeConfig.GetIsSystem());
     while (partitionConfig.ExplicitChannelProfilesSize()
             < volumeConfig.ExplicitChannelProfilesSize())
     {
@@ -342,6 +343,7 @@ void TVolumeActor::CompleteUpdateConfig(
         ));
 
         ResetThrottlingPolicy();
+        RegisterCounters(ctx);
         RegisterVolume(ctx);
     }
 

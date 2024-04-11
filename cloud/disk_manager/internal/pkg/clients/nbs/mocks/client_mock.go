@@ -76,6 +76,16 @@ func (c *ClientMock) CreateCheckpoint(
 	return args.Error(0)
 }
 
+func (c *ClientMock) GetCheckpointStatus(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (nbs.CheckpointStatus, error) {
+
+	args := c.Called(ctx, diskID, checkpointID)
+	return args.Get(0).(nbs.CheckpointStatus), args.Error(1)
+}
+
 func (c *ClientMock) DeleteCheckpoint(
 	ctx context.Context,
 	diskID string,
@@ -312,30 +322,64 @@ func (c *ClientMock) Stat(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *ClientMock) ValidateCrc32(
+func (c *ClientMock) FillDisk(
+	ctx context.Context,
 	diskID string,
 	contentSize uint64,
-	expectedCrc32 uint32,
-) error {
+) (nbs.DiskContentInfo, error) {
 
-	return c.ValidateCrc32WithEncryption(diskID, contentSize, nil, expectedCrc32)
+	return c.FillEncryptedDisk(ctx, diskID, contentSize, nil)
 }
 
-func (c *ClientMock) ValidateCrc32WithEncryption(
+func (c *ClientMock) FillEncryptedDisk(
+	ctx context.Context,
 	diskID string,
 	contentSize uint64,
 	encryption *types.EncryptionDesc,
-	expectedCrc32 uint32,
+) (nbs.DiskContentInfo, error) {
+
+	args := c.Called(ctx, diskID, contentSize, encryption)
+	return args.Get(0).(nbs.DiskContentInfo), args.Error(1)
+}
+
+func (c *ClientMock) GoWriteRandomBlocksToNbsDisk(
+	ctx context.Context,
+	diskID string,
+) (func() error, error) {
+
+	args := c.Called(ctx, diskID)
+	return args.Get(0).(func() error), args.Error(1)
+}
+
+func (c *ClientMock) ValidateCrc32(
+	ctx context.Context,
+	diskID string,
+	expectedDiskContentInfo nbs.DiskContentInfo,
 ) error {
 
-	args := c.Called(diskID, contentSize, encryption, expectedCrc32)
+	return c.ValidateCrc32WithEncryption(
+		ctx,
+		diskID,
+		expectedDiskContentInfo,
+		nil,
+	)
+}
+
+func (c *ClientMock) ValidateCrc32WithEncryption(
+	ctx context.Context,
+	diskID string,
+	expectedDiskContentInfo nbs.DiskContentInfo,
+	encryption *types.EncryptionDesc,
+) error {
+
+	args := c.Called(ctx, diskID, expectedDiskContentInfo, encryption)
 	return args.Error(0)
 }
 
 func (c *ClientMock) CalculateCrc32(
 	diskID string,
 	contentSize uint64,
-) (uint32, error) {
+) (nbs.DiskContentInfo, error) {
 
 	return c.CalculateCrc32WithEncryption(diskID, contentSize, nil)
 }
@@ -344,10 +388,10 @@ func (c *ClientMock) CalculateCrc32WithEncryption(
 	diskID string,
 	contentSize uint64,
 	encryption *types.EncryptionDesc,
-) (uint32, error) {
+) (nbs.DiskContentInfo, error) {
 
 	args := c.Called(diskID, contentSize, encryption)
-	return args.Get(0).(uint32), args.Error(1)
+	return args.Get(0).(nbs.DiskContentInfo), args.Error(1)
 }
 
 func (c *ClientMock) MountForReadWrite(

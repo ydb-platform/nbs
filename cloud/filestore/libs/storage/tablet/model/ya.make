@@ -3,6 +3,7 @@ LIBRARY()
 #INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 GENERATE_ENUM_SERIALIZATION(alloc.h)
+GENERATE_ENUM_SERIALIZATION(range_locks.h)
 
 SRCS(
     alloc.cpp
@@ -25,17 +26,17 @@ SRCS(
     mixed_blocks.cpp
     operation.cpp
     range_locks.cpp
+    read_ahead.cpp
     split_range.cpp
     throttler_logger.cpp
     throttling_policy.cpp
     truncate_queue.cpp
 )
 
-GENERATE_ENUM_SERIALIZATION(range_locks.h)
-
 PEERDIR(
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/model
+    cloud/filestore/private/api/protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/tablet/model

@@ -959,9 +959,12 @@ func testCreateDiskFromImageImpl(
 	}
 
 	err = nbsClient.ValidateCrc32(
+		ctx,
 		diskID,
-		testConfig.GetImageSize(),
-		testConfig.GetImageCrc32(),
+		nbs.DiskContentInfo{
+			ContentSize: testConfig.GetImageSize(),
+			Crc32:       testConfig.GetImageCrc32(),
+		},
 	)
 	if err != nil {
 		return resources{}, err
@@ -1156,9 +1159,12 @@ func testRetireBaseDisks(
 			}
 
 			err = nbsClient.ValidateCrc32(
+				ctx,
 				diskID,
-				testConfig.GetImageSize(),
-				testConfig.GetImageCrc32(),
+				nbs.DiskContentInfo{
+					ContentSize: testConfig.GetImageSize(),
+					Crc32:       testConfig.GetImageCrc32(),
+				},
 			)
 			errs <- err
 		}()
@@ -1268,7 +1274,14 @@ func testCreateDiskFromSnapshotImpl(
 		return resources{}, err
 	}
 
-	err = nbsClient.ValidateCrc32(diskID2, diskSize, expectedCrc32)
+	err = nbsClient.ValidateCrc32(
+		ctx,
+		diskID2,
+		nbs.DiskContentInfo{
+			ContentSize: diskSize,
+			Crc32:       expectedCrc32,
+		},
+	)
 	if err != nil {
 		return resources{}, err
 	}
@@ -1455,7 +1468,14 @@ func testCreateImageFromImageImpl(
 		return resources{}, err
 	}
 
-	err = nbsClient.ValidateCrc32(diskID2, uint64(diskSize), expectedCrc32)
+	err = nbsClient.ValidateCrc32(
+		ctx,
+		diskID2,
+		nbs.DiskContentInfo{
+			ContentSize: diskSize,
+			Crc32:       expectedCrc32,
+		},
+	)
 	if err != nil {
 		return resources{}, err
 	}

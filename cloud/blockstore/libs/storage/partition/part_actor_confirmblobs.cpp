@@ -12,6 +12,8 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
+#include <util/system/datetime.h>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -37,6 +39,7 @@ class TConfirmBlobsActor final
     : public TActorBootstrapped<TConfirmBlobsActor>
 {
 private:
+    const ui64 StartCycleCount = GetCycleCount();
     const ui64 TabletId = 0;
     const TActorId Tablet;
     const TVector<TRequest> Requests;
@@ -78,9 +81,7 @@ TConfirmBlobsActor::TConfirmBlobsActor(
     : TabletId(tabletId)
     , Tablet(tablet)
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TConfirmBlobsActor::Bootstrap(const TActorContext& ctx)
 {
@@ -110,6 +111,7 @@ void TConfirmBlobsActor::NotifyAndDie(const TActorContext& ctx)
 {
     auto ev = std::make_unique<TEvPartitionPrivate::TEvConfirmBlobsCompleted>(
         std::move(Error),
+        StartCycleCount,
         std::move(UnrecoverableBlobs));
     NCloud::Send(ctx, Tablet, std::move(ev));
     Die(ctx);
@@ -191,10 +193,8 @@ void TPartitionActor::ConfirmBlobs(const TActorContext& ctx)
 
     TVector<TRequest> requests;
 
-    for (const auto& entry: State->GetUnconfirmedBlobs()) {
-        auto commitId = entry.first;
-
-        for (const auto& blob: entry.second) {
+    for (const auto& [commitId, blobs]: State->GetUnconfirmedBlobs()) {
+        for (const auto& blob: blobs) {
             auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
             auto proxy = Info()->BSProxyIDForChannel(
                 blobId.Channel(), blobId.Generation()
@@ -235,7 +235,10 @@ void TPartitionActor::HandleConfirmBlobsCompleted(
         "[%lu] ConfirmBlobs: start tx",
         TabletID());
 
-    ExecuteTx<TConfirmBlobs>(ctx, std::move(msg->UnrecoverableBlobs));
+    ExecuteTx<TConfirmBlobs>(
+        ctx,
+        msg->StartCycleCount,
+        std::move(msg->UnrecoverableBlobs));
 }
 
 bool TPartitionActor::PrepareConfirmBlobs(
@@ -270,13 +273,33 @@ void TPartitionActor::CompleteConfirmBlobs(
     const TActorContext& ctx,
     TTxPartition::TConfirmBlobs& args)
 {
-    Y_UNUSED(args);
-
     LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] ConfirmBlobs: complete tx",
         TabletID());
 
     BlobsConfirmed(ctx);
+
+    const auto duration =
+        CyclesToDurationSafe(GetCycleCount() - args.StartCycleCount);
+
+    PartCounters->RequestCounters.ConfirmBlobs.AddRequest(
+        duration.MicroSeconds());
+
+    IProfileLog::TSysReadWriteRequest request;
+    request.RequestType = ESysRequestType::ConfirmBlobs;
+    request.Duration = duration;
+
+    for (const auto& [_, blobs]: State->GetConfirmedBlobs()) {
+        for (const auto& blob: blobs) {
+            request.Ranges.push_back(ConvertRangeSafe(blob.BlockRange));
+        }
+    }
+
+    IProfileLog::TRecord record;
+    record.DiskId = State->GetConfig().GetDiskId();
+    record.Ts = ctx.Now() - duration;
+    record.Request = request;
+    ProfileLog->Write(std::move(record));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

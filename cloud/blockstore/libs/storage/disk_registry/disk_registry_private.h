@@ -4,13 +4,13 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
-
+#include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <util/generic/queue.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -71,6 +71,34 @@ struct TUserNotificationKey
         , SeqNo(seqNo)
     {}
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TAgentAcquireDevicesCachedRequest
+{
+    TString AgentId;
+    NProto::TAcquireDevicesRequest Request;
+    TInstant RequestTime;
+};
+
+struct TAgentReleaseDevicesCachedRequest
+{
+    TString AgentId;
+    NProto::TReleaseDevicesRequest Request;
+};
+
+struct TCachedAcquireKey
+{
+    TString DiskId;
+    TString ClientId;
+
+    friend std::strong_ordering operator<=>(
+        const TCachedAcquireKey&,
+        const TCachedAcquireKey&) = default;
+};
+
+using TCachedAcquireRequests =
+    TMap<TCachedAcquireKey, TAgentAcquireDevicesCachedRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -146,7 +174,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(CleanupDisks,                               __VA_ARGS__)               \
     xxx(SecureErase,                                __VA_ARGS__)               \
     xxx(CleanupDevices,                             __VA_ARGS__)               \
-    xxx(StartAcquireDisk,                           __VA_ARGS__)               \
     xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
     xxx(RemoveDiskSession,                          __VA_ARGS__)               \
     xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
@@ -172,36 +199,6 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
 struct TEvDiskRegistryPrivate
 {
     //
-    // StartAcquireDisk
-    //
-
-    struct TStartAcquireDiskRequest
-    {
-        TString DiskId;
-        TString ClientId;
-
-        TStartAcquireDiskRequest(TString diskId, TString clientId)
-            : DiskId(std::move(diskId))
-            , ClientId(std::move(clientId))
-        {}
-    };
-
-    struct TStartAcquireDiskResponse
-    {
-        TVector<NProto::TDeviceConfig> Devices;
-        ui32 LogicalBlockSize = 0;
-
-        TStartAcquireDiskResponse() = default;
-
-        explicit TStartAcquireDiskResponse(
-                TVector<NProto::TDeviceConfig> devices,
-                ui32 logicalBlockSize)
-            : Devices(std::move(devices))
-            , LogicalBlockSize(logicalBlockSize)
-        {}
-    };
-
-    //
     // FinishAcquireDisk
     //
 
@@ -209,10 +206,15 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
+        TVector<TAgentAcquireDevicesCachedRequest> SentRequests;
 
-        TFinishAcquireDiskRequest(TString diskId, TString clientId)
+        TFinishAcquireDiskRequest(
+                TString diskId,
+                TString clientId,
+                TVector<TAgentAcquireDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
+            , SentRequests(std::move(sentRequests))
         {}
     };
 
@@ -227,12 +229,15 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
         TString ClientId;
+        TVector<TAgentReleaseDevicesCachedRequest> SentRequests;
 
         TRemoveDiskSessionRequest(
                 TString diskId,
-                TString clientId)
+                TString clientId,
+                TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
+            , SentRequests(std::move(sentRequests))
         {}
     };
 

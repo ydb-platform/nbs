@@ -44,9 +44,7 @@ TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
     , RdmaClient(std::move(rdmaClient))
     , StatActorId(statActorId)
     , State(Config, RWClientId, PartConfig, ReplicaDevices, initialResyncIndex)
-{
-    ActivityType = TBlockStoreActivities::PARTITION;
-}
+{}
 
 TMirrorPartitionResyncActor::~TMirrorPartitionResyncActor()
 {
@@ -112,15 +110,16 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             SelfId(),
             SelfId()));
 
-    for (const auto& replicaInfo: State.GetReplicaInfos()) {
+    const auto& replicaInfos = State.GetReplicaInfos();
+    for (ui32 i = 0; i < replicaInfos.size(); i++) {
         IActorPtr actor = CreateNonreplicatedPartition(
             Config,
-            replicaInfo.Config,
+            replicaInfos[i].Config,
             TActorId(), // do not send stats
             RdmaClient);
 
         TActorId actorId = NCloud::Register(ctx, std::move(actor));
-        Replicas.push_back({replicaInfo.Config->GetName(), actorId});
+        Replicas.push_back({replicaInfos[i].Config->GetName(), i, actorId});
     }
 }
 

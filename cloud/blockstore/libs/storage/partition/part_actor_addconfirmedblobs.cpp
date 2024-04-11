@@ -68,9 +68,7 @@ TAddConfirmedBlobsActor::TAddConfirmedBlobsActor(
     : Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TAddConfirmedBlobsActor::Bootstrap(const TActorContext& ctx)
 {
@@ -162,7 +160,7 @@ void TAddConfirmedBlobsActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
     ReplyAndDie(ctx, error);
 }
 
@@ -288,7 +286,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
                 MakePartialBlobId(commitId, blob.UniqueId),
                 blob.BlockRange,
                 TBlockMask(), // skipMask
-                TVector<ui32>() /* TODO: checksums */);
+                blob.Checksums);
         }
 
         auto request = std::make_unique<TRequest>(
@@ -342,6 +340,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     PartCounters->RequestCounters.AddConfirmedBlobs.AddRequest(time);
 
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
+    ProcessCommitQueue(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

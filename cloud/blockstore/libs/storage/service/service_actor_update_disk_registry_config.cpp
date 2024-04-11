@@ -75,9 +75,7 @@ TUpdateDiskRegistryConfigActor::TUpdateDiskRegistryConfigActor(
         NProto::TUpdateDiskRegistryConfigRequest request)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TUpdateDiskRegistryConfigActor::Bootstrap(const TActorContext& ctx)
 {

@@ -7,7 +7,9 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/tenant.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -111,95 +113,37 @@ void DumpChannels(
     const TDiagnosticsConfig& config,
     ui64 hiveTabletId)
 {
-    HTML(out) {
-        DIV() {
-            out << "<p><a href='app?TabletID=" << hiveTabletId
-                << "&page=Groups"
-                << "&tablet_id=" << storage.TabletID
-                << "'>Channel history</a></p>";
-        }
-
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                for (const auto& channel: storage.Channels) {
-                    TABLER() {
-                        TABLED() { out << "Channel: " << channel.Channel; }
-                        TABLED() { out << "StoragePool: " << channel.StoragePool; }
-
-                        if (auto latestEntry = channel.LatestEntry()) {
-                            TABLED() { out << "Id: " << latestEntry->GroupID; }
-                            TABLED() { out << "Gen: " << latestEntry->FromGeneration; }
-                            const auto& cps =
-                                state.GetConfig().GetExplicitChannelProfiles();
-                            if (cps.size()) {
-                                // we need this check for legacy volumes
-                                // see NBS-752
-                                if (channel.Channel < static_cast<ui32>(cps.size())) {
-                                    const auto dataKind = static_cast<EChannelDataKind>(
-                                        cps[channel.Channel].GetDataKind());
-                                    const auto& poolKind =
-                                        cps[channel.Channel].GetPoolKind();
-                                    TABLED() { out << "PoolKind: " << poolKind; }
-                                    TABLED() { out << "DataKind: " << dataKind; }
-                                } else {
-                                    // we need to output 2 cells, otherwise table
-                                    // markup will be a bit broken
-                                    TABLED() { out << "Ghost"; }
-                                    TABLED() { out << "Channel"; }
-                                }
-                            }
-                            TABLED() {
-                                TStringBuf label;
-                                TStringBuf color;
-                                if (state.CheckPermissions(channel.Channel, EChannelPermission::SystemWritesAllowed)) {
-                                    if (state.CheckPermissions(channel.Channel, EChannelPermission::UserWritesAllowed)) {
-                                        color = "green";
-                                        label = "Writable";
-                                    } else {
-                                        color = "yellow";
-                                        label = "SystemWritable";
-                                    }
-                                } else {
-                                    if (state.CheckPermissions(channel.Channel, EChannelPermission::UserWritesAllowed)) {
-                                        color = "pink";
-                                        label = "WeirdState";
-                                    } else {
-                                        color = "orange";
-                                        label = "Readonly";
-                                    }
-                                }
-
-                                SPAN_CLASS_STYLE("label", TStringBuilder() << "background-color: " << color) {
-                                    out << label;
-                                }
-                            }
-                            TABLED() {
-                                out << "<a href='"
-                                    << "../actors/blobstorageproxies/blobstorageproxy"
-                                    << latestEntry->GroupID
-                                    << "'>Status</a>";
-                            }
-                            TABLED() {
-                                out << "<a href='"
-                                    << GetMonitoringYDBGroupUrl(
-                                           config,
-                                           latestEntry->GroupID,
-                                           channel.StoragePool)
-                                    << "'>Graphs</a>";
-                            }
-                            TABLED() {
-                                BuildReassignChannelButton(
-                                    out,
-                                    hiveTabletId,
-                                    storage.TabletID,
-                                    channel.Channel);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    TVector<NCloud::NStorage::TChannelMonInfo> channelInfos;
+    const auto& cps = state.GetConfig().GetExplicitChannelProfiles();
+    for (int c = 0; c < cps.size(); ++c) {
+        const auto& cp = cps[c];
+        const auto dataKind =
+            static_cast<EChannelDataKind>(cps[c].GetDataKind());
+        channelInfos.push_back({
+            cp.GetPoolKind(),
+            TStringBuilder() << dataKind,
+            state.CheckPermissions(c, EChannelPermission::UserWritesAllowed),
+            state.CheckPermissions(c, EChannelPermission::SystemWritesAllowed),
+        });
     }
+    NCloud::NStorage::DumpChannels(
+        out,
+        channelInfos,
+        storage,
+        [&] (ui32 groupId, const TString& storagePool) {
+            return GetMonitoringYDBGroupUrl(
+                config,
+                groupId,
+                storagePool);
+        },
+        [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
+            BuildReassignChannelButton(
+                out,
+                hiveTabletId,
+                tabletId,
+                c);
+        },
+        hiveTabletId);
 }
 
 void DumpCheckpoints(
@@ -539,6 +483,10 @@ void TPartitionActor::HandleHttpInfo_Default(
                             TABLER() {
                                 TABLED() { out << "Executor Reject Probability"; }
                                 TABLED() { out << Executor()->GetRejectProbability(); }
+                            }
+                            TABLER() {
+                                TABLED() { out << "Write and zero requests in progress"; }
+                                TABLED() { out << WriteAndZeroRequestsInProgress; }
                             }
                         }
                     }

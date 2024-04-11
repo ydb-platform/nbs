@@ -95,9 +95,7 @@ TPatchBlobActor::TPatchBlobActor(
     , TabletId(tabletId)
     , Request(std::move(request))
     , OriginalGroupId(originalGroupId)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TPatchBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -219,7 +217,7 @@ void TPatchBlobActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvPatchBlobResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }

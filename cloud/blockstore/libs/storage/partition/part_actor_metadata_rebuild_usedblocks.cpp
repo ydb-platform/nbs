@@ -126,9 +126,7 @@ TMetadataRebuildUsedBlocksActor::TMetadataRebuildUsedBlocksActor(
     , BlocksPerBatch(blocksPerBatch)
     , BlockCount(blockCount)
     , RetryTimeout(retryTimeout)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMetadataRebuildUsedBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -186,7 +184,7 @@ void TMetadataRebuildUsedBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     NotifyCompleted(ctx, error);
 }
@@ -226,7 +224,7 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -275,7 +273,7 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         TabletID(),
         DescribeRange(blockRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildUsedBlocksMethod>(*requestInfo);
 
     ExecuteTx(ctx, CreateTx<TMetadataRebuildUsedBlocks>(requestInfo, blockRange));
 }

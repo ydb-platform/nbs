@@ -79,7 +79,9 @@ struct THistoryLogItem
 
 struct TPartitionStatInfo
 {
-    NActors::TActorId Owner = {};
+    const TString DiskId;
+    const ui64 TabletId;
+
     TPartitionDiskCountersPtr LastCounters = {};
     TPartitionDiskCounters CachedCounters;
     NProto::TCachedPartStats CachedCountersProto;
@@ -87,8 +89,13 @@ struct TPartitionStatInfo
     ui64 LastUserCpu = 0;
     NBlobMetrics::TBlobLoadMetrics LastMetrics;
 
-    TPartitionStatInfo(EPublishingPolicy countersPolicy)
-        : CachedCounters(countersPolicy)
+    TPartitionStatInfo(
+            const TString& diskId,
+            const ui64 tabletId,
+            EPublishingPolicy countersPolicy)
+        : DiskId(diskId)
+        , TabletId(tabletId)
+        , CachedCounters(countersPolicy)
     {}
 };
 
@@ -143,6 +150,7 @@ private:
     bool TrackUsedBlocks = false;
     bool MaskUnusedBlocks = false;
     bool UseRdma = false;
+    bool UseFastPath = false;
     bool UseRdmaForThisVolume = false;
     bool RdmaUnavailable = false;
     TDuration MaxTimedOutDeviceStateDuration;
@@ -153,6 +161,9 @@ private:
     NProto::TError ReadWriteError;
 
     bool StartPartitionsNeeded = false;
+
+    // The number of blocks that need to be migrated to complete the migration.
+    std::optional<ui64> BlockCountToMigrate;
 
 public:
     TVolumeState(
@@ -193,6 +204,17 @@ public:
     void UpdateMigrationIndexInMeta(ui64 migrationIndex)
     {
         Meta.SetMigrationIndex(migrationIndex);
+    }
+
+    void SetBlockCountToMigrate(
+        std::optional<ui64> blockCountToMigrate)
+    {
+        BlockCountToMigrate = blockCountToMigrate;
+    }
+
+    std::optional<ui64> GetBlockCountToMigrate() const
+    {
+        return BlockCountToMigrate;
     }
 
     void UpdateResyncIndexInMeta(ui64 resyncIndex)
@@ -256,6 +278,8 @@ public:
 
     void FillDeviceInfo(NProto::TVolume& volume) const;
 
+    bool IsDiskRegistryMediaKind() const;
+
     //
     // Partitions
     //
@@ -266,7 +290,8 @@ public:
     }
 
     TPartitionInfo* GetPartition(ui64 tabletId);
-    bool FindPartitionIndex(ui64 tabletId, ui32& index) const;
+    std::optional<ui32> FindPartitionIndex(NActors::TActorId owner) const;
+    std::optional<ui64> FindPartitionTabletId(NActors::TActorId owner) const;
 
     //
     // State
@@ -299,12 +324,7 @@ public:
 
     void SetDiskRegistryBasedPartitionActor(
         const NActors::TActorId& actor,
-        TNonreplicatedPartitionConfigPtr config)
-    {
-        PartitionStatInfos[0].Owner = actor;
-        DiskRegistryBasedPartitionActor = actor;
-        NonreplicatedPartitionConfig = std::move(config);
-    }
+        TNonreplicatedPartitionConfigPtr config);
 
     const NActors::TActorId& GetDiskRegistryBasedPartitionActor() const
     {
@@ -316,18 +336,25 @@ public:
         return NonreplicatedPartitionConfig;
     }
 
-    bool FindPartitionStatInfoByOwner(const NActors::TActorId& actorId, ui32& index) const;
+    //
+    // PartitionStat
+    //
 
-    TPartitionStatInfo* GetPartitionStatInfoById(ui64 id);
+    EPublishingPolicy CountersPolicy() const;
 
-    bool SetPartitionStatActor(ui64 id, const NActors::TActorId& actor);
+    TPartitionStatInfo&
+    CreatePartitionStatInfo(const TString& diskId, ui64 tabletId);
 
-    const TVector<TPartitionStatInfo>& GetPartitionStatInfos() const
+    TPartitionStatInfo* GetPartitionStatInfoByTabletId(ui64 tabletId);
+
+    TPartitionStatInfo* GetPartitionStatByDiskId(const TString& diskId);
+
+    std::span<const TPartitionStatInfo> GetPartitionStatInfos() const
     {
         return PartitionStatInfos;
     }
 
-    TVector<TPartitionStatInfo>& GetPartitionStatInfos()
+    std::span<TPartitionStatInfo> GetPartitionStatInfos()
     {
         return PartitionStatInfos;
     }
@@ -566,6 +593,11 @@ public:
     bool GetUseRdmaForThisVolume() const
     {
         return UseRdmaForThisVolume;
+    }
+
+    bool GetUseFastPath() const
+    {
+        return UseFastPath;
     }
 
     void SetRdmaUnavailable()

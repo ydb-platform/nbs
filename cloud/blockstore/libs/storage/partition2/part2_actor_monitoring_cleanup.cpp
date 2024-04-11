@@ -71,9 +71,7 @@ TForcedCleanupActor::TForcedCleanupActor(
         TDuration retryTimeout)
     : Tablet(tablet)
     , RetryTimeout(retryTimeout)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TForcedCleanupActor::Bootstrap(const TActorContext& ctx)
 {
@@ -149,7 +147,7 @@ void TForcedCleanupActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     NotifyCompleted(ctx, error);
 }

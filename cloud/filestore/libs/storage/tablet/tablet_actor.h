@@ -82,13 +82,26 @@ private:
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+        std::atomic<i64> StatefulSessionsCount{0};
+        std::atomic<i64> StatelessSessionsCount{0};
+        std::atomic<i64> SessionTimeouts{0};
 
         std::atomic<i64> AllocatedCompactionRangesCount{0};
         std::atomic<i64> UsedCompactionRangesCount{0};
 
-        std::atomic<i64> MixedBytesCount{0};
+        std::atomic<i64> ReassignCount{0};
+        std::atomic<i64> WritableChannelCount{0};
+        std::atomic<i64> UnwritableChannelCount{0};
+        std::atomic<i64> ChannelsToMoveCount{0};
+
+        // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> MixedBytesCount{0};
+        std::atomic<i64> MixedBlobsCount{0};
+        std::atomic<i64> DeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
+        std::atomic<i64> GarbageBytesCount{0};
+        std::atomic<i64> FreshBlocksCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -120,6 +133,13 @@ private:
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
+        TRequestMetrics ReadData;
+        TRequestMetrics DescribeData;
+        TRequestMetrics WriteData;
+
+        // Compaction/cleanup stats
+        std::atomic<i64> MaxBlobsInRange{0};
+        std::atomic<i64> MaxDeletionsInRange{0};
 
         const NMetrics::IMetricsRegistryPtr StorageRegistry;
         const NMetrics::IMetricsRegistryPtr StorageFsRegistry;
@@ -134,7 +154,9 @@ private:
             const NProto::TFileSystem& fileSystem,
             const NProto::TFileSystemStats& stats,
             const NProto::TFileStorePerformanceProfile& performanceProfile,
-            const TCompactionMapStats& compactionStats);
+            const TCompactionMapStats& compactionStats,
+            const TSessionsStats& sessionsStats,
+            const TChannelsStats& channelsStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
@@ -151,6 +173,7 @@ private:
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
 
     TSet<NActors::TActorId> WorkerActors;
+    TIntrusiveList<TRequestInfo> ActiveTransactions;
 
     TInstant ReassignRequestSentTs;
 
@@ -170,6 +193,8 @@ private:
 
     // used on monpages
     NProto::TStorageConfig StorageConfigOverride;
+
+    ui32 BackpressureErrorCount = 0;
 
 public:
     TIndexTabletActor(
@@ -219,9 +244,29 @@ private:
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
     void RestartCheckpointDestruction(const NActors::TActorContext& ctx);
 
+    template <typename TMethod>
     void EnqueueWriteBatch(
         const NActors::TActorContext& ctx,
-        std::unique_ptr<TWriteRequest> request);
+        std::unique_ptr<TWriteRequest> request)
+    {
+        request->RequestInfo->CancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "tablet is shutting down"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        if (TIndexTabletState::EnqueueWriteBatch(std::move(request))) {
+            if (auto timeout = Config->GetWriteBatchTimeout()) {
+                ctx.Schedule(timeout, new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            } else {
+                ctx.Send(SelfId(), new TEvIndexTabletPrivate::TEvWriteBatchRequest());
+            }
+        }
+    }
 
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
@@ -229,6 +274,30 @@ private:
     void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedRangeOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
+
+    void AddTransaction(
+        TRequestInfo& transaction,
+        TRequestInfo::TCancelRoutine cancelRoutine);
+
+    template <typename TMethod>
+    void AddTransaction(TRequestInfo& transaction)
+    {
+        auto cancelRoutine = [] (
+            const NActors::TActorContext& ctx,
+            TRequestInfo& requestInfo)
+        {
+            auto response = std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_REJECTED, "tablet is shutting down"));
+
+            NCloud::Reply(ctx, requestInfo, std::move(response));
+        };
+
+        AddTransaction(transaction, cancelRoutine);
+    }
+
+    void RemoveTransaction(TRequestInfo& transaction);
+    void TerminateTransactions(const NActors::TActorContext& ctx);
+    void ReleaseTransactions();
 
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,
@@ -284,6 +353,14 @@ private:
         const typename TMethod::TRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    template <typename TRequest>
+    NProto::TError ValidateWriteRequest(
+        const NActors::TActorContext& ctx,
+        const TRequest& request,
+        const TByteRange& range);
+
+    NProto::TError IsDataOperationAllowed() const;
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -328,12 +405,20 @@ private:
         const TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseCollectBarrier(
+        const TEvIndexTabletPrivate::TEvReleaseCollectBarrier::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleReadDataCompleted(
         const TEvIndexTabletPrivate::TEvReadDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteDataCompleted(
         const TEvIndexTabletPrivate::TEvWriteDataCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleAddDataCompleted(
+        const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
@@ -344,7 +429,7 @@ private:
     bool IgnoreCompletions(STFUNC_SIG);
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
-    FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_IMPLEMENT_REQUEST, TEvService)
+    FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
 
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
     FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)

@@ -9,9 +9,9 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
-#include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 
@@ -231,22 +231,24 @@ struct TEvPartitionPrivate
     {
         NActors::TActorId Proxy;
 
-        TPartialBlobId BlobId;
+        const TPartialBlobId BlobId;
         std::variant<TGuardedSgList, TString> Data;
-
-        bool Async = false;
-        TInstant Deadline;
-
-        TWriteBlobRequest() = default;
+        // BlockSize is used to calculate checksums. If it's 0, checksums won't
+        // be calculated.
+        const ui32 BlockSizeForChecksums;
+        const bool Async;
+        const TInstant Deadline;
 
         template <typename TData>
         TWriteBlobRequest(
                 TPartialBlobId blobId,
                 TData data,
-                bool async = false,
+                ui32 blockSizeForChecksums,
+                bool async,
                 TInstant deadline = TInstant::Max())
             : BlobId(blobId)
             , Data(std::move(data))
+            , BlockSizeForChecksums(blockSizeForChecksums)
             , Async(async)
             , Deadline(deadline)
         {}
@@ -254,6 +256,7 @@ struct TEvPartitionPrivate
 
     struct TWriteBlobResponse
     {
+        TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
     };
 
@@ -656,13 +659,13 @@ struct TEvPartitionPrivate
     struct TAddUnconfirmedBlobsRequest
     {
         ui64 CommitId = 0;
-        TVector<TUnconfirmedBlob> Blobs;
+        TVector<TBlobToConfirm> Blobs;
 
         TAddUnconfirmedBlobsRequest() = default;
 
         TAddUnconfirmedBlobsRequest(
                 ui64 commitId,
-                TVector<TUnconfirmedBlob> blobs)
+                TVector<TBlobToConfirm> blobs)
             : CommitId(commitId)
             , Blobs(std::move(blobs))
         {}
@@ -726,12 +729,16 @@ struct TEvPartitionPrivate
     {
         bool CollectGarbageBarrierAcquired = false;
         bool UnconfirmedBlobsAdded = false;
+        // needed to pass block checksums to PartState
+        TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
-                bool unconfirmedBlobsAdded)
+                bool unconfirmedBlobsAdded,
+                TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
             , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , BlobsToConfirm(std::move(blobsToConfirm))
         {
         }
     };
@@ -812,15 +819,15 @@ struct TEvPartitionPrivate
     //
 
     struct TConfirmBlobsCompleted
-        : TOperationCompleted
     {
+        const ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
-        TConfirmBlobsCompleted() = default;
-
-        explicit TConfirmBlobsCompleted(
+        TConfirmBlobsCompleted(
+                ui64 startCycleCount,
                 TVector<TPartialBlobId> unrecoverableBlobs)
-            : UnrecoverableBlobs(std::move(unrecoverableBlobs))
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
     };
 

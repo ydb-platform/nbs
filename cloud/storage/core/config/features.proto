@@ -1,0 +1,47 @@
+syntax = "proto2";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFilters
+{
+    repeated string CloudIds = 1;
+    repeated string FolderIds = 2;
+
+    // DiskId for blockstore or FsId for filestore.
+    repeated string EntityIds = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFeatureConfig
+{
+    // Feature name.
+    optional string Name = 1;
+
+    // Enable feature for Clouds and Folders from this list.
+    optional TFilters Whitelist = 2;
+
+    // Disable feature for Clouds and Folders from this list.
+    optional TFilters Blacklist = 3;
+
+    // Optional value - for non-binary features.
+    optional string Value = 4;
+
+    // By setting these probabilities, feature can be enabled for Ids that
+    // aren't in the whitelist. If blacklist is specified and whitelist is not,
+    // default value is 1 for compatibility with configs that only use
+    // blacklist. In other cases it's 0.
+    optional double CloudProbability = 5;
+    optional double FolderProbability = 6;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TFeaturesConfig
+{
+    repeated TFeatureConfig Features = 1;
+}

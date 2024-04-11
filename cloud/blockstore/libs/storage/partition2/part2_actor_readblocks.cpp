@@ -353,9 +353,7 @@ TReadBlocksActor::TReadBlocksActor(
     , BlockMarks(std::move(blockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -672,7 +670,7 @@ void TReadBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     auto response = CreateReadBlocksResponse(ReplyLocal, error);
     ReplyAndDie(ctx, std::move(response), error);
@@ -944,7 +942,7 @@ void TPartitionActor::ReadBlocks(
         commitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
     ExecuteTx<TReadBlocks>(
         ctx,

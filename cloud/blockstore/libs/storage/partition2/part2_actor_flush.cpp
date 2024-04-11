@@ -93,9 +93,7 @@ TFlushActor::TFlushActor(
     , BlockDigestGenerator(blockDigestGenerator)
     , Tablet(tablet)
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {
@@ -266,7 +264,7 @@ void TFlushActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto respose = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
 }

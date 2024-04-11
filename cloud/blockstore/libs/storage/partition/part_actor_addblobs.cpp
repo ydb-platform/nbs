@@ -616,7 +616,7 @@ void TPartitionActor::HandleAddBlobs(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TAddBlobsMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -629,7 +629,7 @@ void TPartitionActor::HandleAddBlobs(
         "AddBlobs",
         requestInfo->CallContext->RequestId);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TAddBlobsMethod>(*requestInfo);
 
     ExecuteTx<TAddBlobs>(
         ctx,

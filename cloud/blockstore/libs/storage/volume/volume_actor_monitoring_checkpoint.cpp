@@ -89,9 +89,7 @@ THttpCheckpointActor::THttpCheckpointActor(
     , TabletId(tabletId)
     , CheckpointName(std::move(checkpointName))
     , Action(action)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void THttpCheckpointActor::Bootstrap(const TActorContext& ctx)
 {
@@ -175,7 +173,7 @@ void THttpCheckpointActor::HandleCreateCheckpointRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, "create", MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, "create", MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void THttpCheckpointActor::HandleDeleteCheckpointRequest(
@@ -184,7 +182,7 @@ void THttpCheckpointActor::HandleDeleteCheckpointRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, "delete", MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, "delete", MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void THttpCheckpointActor::HandlePoisonPill(
@@ -193,7 +191,7 @@ void THttpCheckpointActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, Action == CreateCheckpoint ? "create" : "delete", MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, Action == CreateCheckpoint ? "create" : "delete", MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 STFUNC(THttpCheckpointActor::StateWork)

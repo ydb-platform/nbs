@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
@@ -44,6 +45,7 @@ class TDiskAgentActor final
 private:
     const TStorageConfigPtr Config;
     const TDiskAgentConfigPtr AgentConfig;
+    const NRdma::TRdmaConfigPtr RdmaConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -73,10 +75,13 @@ private:
     THashMap<TString, TRecentBlocksTracker> RecentBlocksTrackers;
     TList<TPostponedRequest> PostponedRequests;
 
+    NActors::TActorId SessionCacheActor;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -132,9 +137,15 @@ private:
 
     TRecentBlocksTracker& GetRecentBlocksTracker(const TString& deviceUUID);
 
+    TString GetCachedSessionsPath() const;
+
+    void UpdateSessionCache(const NActors::TActorContext& ctx);
+    void RunSessionCacheActor(const NActors::TActorContext& ctx);
+
 private:
     STFUNC(StateInit);
     STFUNC(StateWork);
+    STFUNC(StateIdle);
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
@@ -164,12 +175,21 @@ private:
         const TEvDiskRegistryProxy::TEvSubscribeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleConnectionEstablished(
+        const TEvDiskRegistryProxy::TEvConnectionEstablished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleConnectionLost(
         const TEvDiskRegistryProxy::TEvConnectionLost::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteOrZeroCompleted(
         const TEvDiskAgentPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReportDelayedDiskAgentConfigMismatch(
+        const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

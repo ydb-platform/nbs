@@ -43,6 +43,14 @@ func parseUint64(t *testing.T, str string) uint64 {
 	return value
 }
 
+func getExpectedChunkCount(imageSize uint64) uint32 {
+	if imageSize%chunkSize == 0 {
+		return uint32(imageSize / chunkSize)
+	}
+
+	return uint32(imageSize/chunkSize) + 1
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
@@ -118,10 +126,11 @@ func checkChunks(
 
 func TestImageReading(t *testing.T) {
 	testCases := []struct {
-		name       string
-		imageURL   string
-		imageSize  uint64
-		imageCRC32 uint32
+		name                          string
+		imageURL                      string
+		imageSize                     uint64
+		imageCRC32                    uint32
+		expectedCacheMissedReadCounts uint64
 	}{
 		{
 			name:       "raw image",
@@ -142,6 +151,12 @@ func TestImageReading(t *testing.T) {
 			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_IMAGE_CRC32")),
 		},
 		{
+			name:       "vhd image",
+			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT")),
+			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE")),
+			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32")),
+		},
+		{
 			name:       "vmdk stream optimized image",
 			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_FILE_SERVER_PORT")),
 			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_SIZE")),
@@ -155,10 +170,11 @@ func TestImageReading(t *testing.T) {
 			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_UBUNTU2204_IMAGE_CRC32")),
 		},
 		{
-			name:       "qcow2 image which reproduces panic issue (NBS-4635)",
-			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_FILE_SERVER_PORT")),
-			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_SIZE")),
-			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_QCOW2_PANIC_IMAGE_CRC32")),
+			name:                          "vmdk stream optimized windows image with multiple grains",
+			imageURL:                      getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_FILE_SERVER_PORT")),
+			imageSize:                     parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_SIZE")),
+			imageCRC32:                    parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_WINDOWS_IMAGE_CRC32")),
+			expectedCacheMissedReadCounts: 400,
 		},
 	}
 
@@ -180,10 +196,18 @@ func TestImageReading(t *testing.T) {
 
 			chunkCount, err := source.ChunkCount(ctx)
 			require.NoError(t, err)
-			expectedChunkCount := uint32(testCase.imageSize / chunkSize)
+			expectedChunkCount := getExpectedChunkCount(testCase.imageSize)
 			require.Equal(t, expectedChunkCount, chunkCount)
 
 			checkChunks(t, ctx, testCase.imageCRC32, chunkCount, source)
+
+			if testCase.expectedCacheMissedReadCounts != 0 {
+				require.LessOrEqual(
+					t,
+					source.CacheMissedRequestsCount(),
+					testCase.expectedCacheMissedReadCounts,
+				)
+			}
 		})
 	}
 }

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -48,7 +49,10 @@ struct TRequestInfo
 
     void CancelRequest(const NActors::TActorContext& ctx)
     {
-        Y_ABORT_UNLESS(CancelRoutine);
+        if (!CancelRoutine) {
+            ReportCancelRoutineIsNotSet();
+            return;
+        };
         CancelRoutine(ctx, *this);
     }
 
@@ -144,7 +148,7 @@ TRequestInfoPtr CreateRequestInfo(
         TRequestInfo& requestInfo)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "Tablet is dead"));
+            MakeError(E_REJECTED, "tablet is shutting down"));
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };

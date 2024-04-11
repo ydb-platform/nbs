@@ -181,9 +181,7 @@ TCompactionActor::TCompactionActor(
     , BlocksSkipped(blocksSkipped)
     , ReadRequests(std::move(readRequests))
     , WriteRequests(std::move(writeRequests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -532,7 +530,7 @@ void TCompactionActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -705,7 +703,7 @@ void TPartitionActor::HandleCompaction(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCompactionMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -827,7 +825,7 @@ void TPartitionActor::HandleCompaction(
 
     State->SetCompactionStatus(EOperationStatus::Started);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TCompactionMethod>(*requestInfo);
 
     auto& queue = State->GetCCCRequestQueue();
     // shouldn't wait for inflight fresh blocks to complete (commitID == 0)

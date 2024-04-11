@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/private/api/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -59,20 +60,21 @@ TWritableStateActor::TWritableStateActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TWritableStateActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvDiskRegistry::TEvSetWritableStateRequest>();
+    NPrivateProto::TDiskRegistrySetWritableStateRequest proto;
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &proto).ok()) {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
         ReplyAndDie(ctx);
         return;
     }
+
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvSetWritableStateRequest>();
+    request->Record.SetState(proto.GetState());
 
     Become(&TThis::StateWork);
 

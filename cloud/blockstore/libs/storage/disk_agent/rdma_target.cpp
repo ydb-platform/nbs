@@ -1,6 +1,7 @@
 #include "rdma_target.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -84,6 +85,7 @@ struct TSynchronizedData
     TOldRequestCounters OldRequestCounters;
     TList<TWriteRequestContinuationData> PostponedWriteRequests = {};
     TList<TZeroRequestContinuationData> PostponedZeroRequests = {};
+    bool SecureEraseInProgress = false;
 };
 
 struct TThreadSafeData: public TSynchronized<TSynchronizedData, TAdaptiveLock>
@@ -195,9 +197,37 @@ public:
         TaskQueue->ExecuteSimple(std::move(safeHandleRequest));
     }
 
-    void DeviceSecureErased(const TString& deviceUUID)
+    NProto::TError DeviceSecureEraseStart(const TString& deviceUUID)
     {
         auto token = GetAccessToken(deviceUUID);
+        if (token->RecentBlocksTracker.HasInflight() ||
+            token->PostponedWriteRequests.size() ||
+            token->PostponedZeroRequests.size())
+        {
+            ReportDiskAgentSecureEraseDuringIo();
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "SecureErase with inflight ios present for device "
+                    << deviceUUID);
+        }
+
+        token->SecureEraseInProgress = true;
+        return MakeError(S_OK);
+    }
+
+    void DeviceSecureEraseFinish(
+        const TString& deviceUUID,
+        const NProto::TError& error)
+    {
+        auto token = GetAccessToken(deviceUUID);
+
+        token->SecureEraseInProgress = false;
+
+        if (HasError(error)) {
+            return;
+        }
+
         token->RecentBlocksTracker.Reset();
     }
 
@@ -337,6 +367,19 @@ private:
         TSynchronizedData& synchronizedData,
         TString* overlapDetails) const
     {
+        if (synchronizedData.SecureEraseInProgress) {
+            ReportDiskAgentIoDuringSecureErase(
+                TStringBuilder()
+                << " Device=" << requestDetails.DeviceUUID
+                << ", ClientId=" << requestDetails.ClientId
+                << ", StartIndex=" << requestDetails.Range.Start
+                << ", BlocksCount=" << requestDetails.Range.Size()
+                << ", IsWrite=1"
+                << ", IsRdma=1");
+            *overlapDetails = "Secure erase in progress";
+            return ECheckRange::ResponseRejected;
+        }
+
         const bool overlapsWithInflightRequests =
             synchronizedData.RecentBlocksTracker.CheckInflight(
                 requestDetails.VolumeRequestId,
@@ -472,6 +515,22 @@ private:
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
+
+        auto token = GetAccessToken(request.GetDeviceUUID());
+        if (token->SecureEraseInProgress) {
+            const auto& clientId = request.GetHeaders().GetClientId();
+            if (clientId != CheckHealthClientId) {
+                ReportDiskAgentIoDuringSecureErase(
+                    TStringBuilder()
+                    << " Device=" << request.GetDeviceUUID()
+                    << ", ClientId=" << clientId
+                    << ", StartIndex=" << request.GetStartIndex()
+                    << ", BlocksCount=" << request.GetBlocksCount()
+                    << ", IsWrite=0"
+                    << ", IsRdma=1");
+            }
+            return MakeError(E_REJECTED, "Secure erase in progress");
+        }
 
         auto req = std::make_shared<NProto::TReadBlocksRequest>();
 
@@ -908,12 +967,20 @@ public:
 
     void Stop() override
     {
+        Server->Stop();
         TaskQueue->Stop();
     }
 
-    void DeviceSecureErased(const TString& deviceUUID) override
+    NProto::TError DeviceSecureEraseStart(const TString& deviceUUID) override
     {
-        Handler->DeviceSecureErased(deviceUUID);
+        return Handler->DeviceSecureEraseStart(deviceUUID);
+    }
+
+    void DeviceSecureEraseFinish(
+        const TString& deviceUUID,
+        const NProto::TError& error) override
+    {
+        Handler->DeviceSecureEraseFinish(deviceUUID, error);
     }
 };
 

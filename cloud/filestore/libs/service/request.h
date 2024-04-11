@@ -127,6 +127,9 @@ namespace NCloud::NFileStore {
 enum class EFileStoreRequest
 {
     FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
+    DescribeData,
+    GenerateBlobIds,
+    AddData,
     MAX
 };
 

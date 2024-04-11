@@ -40,7 +40,7 @@ NProto::TError ValidateRequest(
             "FALLOC_FL_PUNCH_HOLE flag must be ORed with FALLOC_FL_KEEP_SIZE");
     }
 
-    // TODO: Support later after https://st.yandex-team.ru/NBS-3095 and
+    // TODO: Support later after NBS-3095 and
     // add errors from https://man7.org/linux/man-pages/man2/fallocate.2.html
     if (HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_INSERT_RANGE) ||
         HasFlag(request.GetFlags(), NProto::TAllocateDataRequest::F_COLLAPSE_RANGE))
@@ -60,6 +60,16 @@ void TIndexTabletActor::HandleAllocateData(
     const TEvService::TEvAllocateDataRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvAllocateDataResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto validator = [&] (const NProto::TAllocateDataRequest& request) {
         return ValidateRequest(request, GetBlockSize());
     };
@@ -73,6 +83,8 @@ void TIndexTabletActor::HandleAllocateData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvService::TAllocateDataMethod>(*requestInfo);
 
     ExecuteTx<TAllocateData>(
         ctx,
@@ -185,7 +197,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
         }
         // TODO: We should not use this range request because tx size
         // is limited. Need some generic process range mechanism after
-        // https://st.yandex-team.ru/NBS-2979
+        // NBS-2979
         ZeroRange(
             db,
             args.NodeId,
@@ -196,7 +208,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
     if (!needExtend) {
         // TODO: Right now we cannot preallocate blocks, but in the future we
         // would do it when F_KEEP_SIZE is set
-        // (probably after: https://st.yandex-team.ru/NBS-3095)
+        // (probably after: NBS-3095)
         return;
     }
 
@@ -223,6 +235,8 @@ void TIndexTabletActor::CompleteTx_AllocateData(
     const TActorContext& ctx,
     TTxIndexTablet::TAllocateData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

@@ -56,6 +56,13 @@ public:
         return future.GetValue();
     }
 
+    void WaitFor(NThreading::TFuture<void> future)
+    {
+        if (!future.HasValue()) {
+            WaitForI(future);
+        }
+    }
+
     template <typename T>
     T ExtractResponse(NThreading::TFuture<T> future)
     {

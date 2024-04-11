@@ -16,5 +16,6 @@ message DisksConfig {
     repeated string OverlayDisksFolderIdWhitelist = 7;
     repeated string OverlayDisksFolderIdBlacklist = 8;
     optional string EndedMigrationExpirationTimeout = 9 [default="30m"];
-    optional bool EnableOptimizationForOverlayDiskRelocation = 10 [default=true];
+    optional bool UseProxyOverlayDiskInReplicateDiskTask = 10 [default = false];
+    optional bool EnableOverlayDiskRegistryBasedDisks = 11;
 }

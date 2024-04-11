@@ -10,10 +10,12 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/target.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -25,7 +27,6 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
-#include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/string/join.h>
 #include <util/system/fs.h>
@@ -240,7 +241,9 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
+        TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
@@ -249,7 +252,9 @@ TDiskAgentState::TDiskAgentState(
         ILoggingServicePtr logging,
         NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager)
-    : AgentConfig(std::move(agentConfig))
+    : StorageConfig(std::move(storageConfig))
+    , AgentConfig(std::move(agentConfig))
+    , RdmaConfig(std::move(rdmaConfig))
     , Spdk(std::move(spdk))
     , Allocator(std::move(allocator))
     , StorageProvider(std::move(storageProvider))
@@ -374,6 +379,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 {
     return InitializeStorage(
             Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+            StorageConfig,
             AgentConfig,
             StorageProvider,
             NvmeManager)
@@ -413,6 +419,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             return TInitializeResult {
                 .Configs = std::move(r.Configs),
                 .Errors = std::move(r.Errors),
+                .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
                 .Guard = std::move(r.Guard)
             };
         });
@@ -423,7 +430,7 @@ void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
     if (RdmaServer) {
         THashMap<TString, TStorageAdapterPtr> devices;
 
-        auto endpoint = AgentConfig->GetRdmaTarget().GetEndpoint();
+        auto endpoint = AgentConfig->GetRdmaEndpoint();
 
         if (endpoint.GetHost().empty()) {
             endpoint.SetHost(FQDNHostName());
@@ -673,22 +680,26 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         return MakeFuture(NProto::TError());
     }
 
-    auto onDeviceSecureErased =
+    auto onDeviceSecureEraseFinish =
         [weakRdmaTarget = std::weak_ptr<IRdmaTarget>(RdmaTarget),
          uuid](const TFuture<NProto::TError>& future)
     {
-        if (HasError(future.GetValue())) {
-            return;
-        }
         // The device has been secure erased and now a new client can use it.
         if (auto rdmaTarget = weakRdmaTarget.lock()) {
-            rdmaTarget->DeviceSecureErased(uuid);
+            rdmaTarget->DeviceSecureEraseFinish(uuid, future.GetValue());
         }
     };
 
+    if (RdmaTarget) {
+        auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
+        if (HasError(error)) {
+            return MakeFuture(std::move(error));
+        }
+    }
+
     return device.StorageAdapter
         ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
-        .Subscribe(std::move(onDeviceSecureErased));
+        .Subscribe(std::move(onDeviceSecureEraseFinish));
 }
 
 TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
@@ -752,7 +763,7 @@ TVector<TDeviceClient::TSessionInfo> TDiskAgentState::GetReaderSessions(
     return DeviceClient->GetReaderSessions(uuid);
 }
 
-void TDiskAgentState::AcquireDevices(
+bool TDiskAgentState::AcquireDevices(
     const TVector<TString>& uuids,
     const TString& clientId,
     TInstant now,
@@ -761,16 +772,18 @@ void TDiskAgentState::AcquireDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
-    CheckError(DeviceClient->AcquireDevices(
+    auto [updated, error] = DeviceClient->AcquireDevices(
         uuids,
         clientId,
         now,
         accessMode,
         mountSeqNumber,
         diskId,
-        volumeGeneration));
+        volumeGeneration);
 
-    UpdateSessionCache(*DeviceClient);
+    CheckError(error);
+
+    return updated;
 }
 
 void TDiskAgentState::ReleaseDevices(
@@ -784,8 +797,6 @@ void TDiskAgentState::ReleaseDevices(
         clientId,
         diskId,
         volumeGeneration));
-
-    UpdateSessionCache(*DeviceClient);
 }
 
 void TDiskAgentState::DisableDevice(const TString& uuid)
@@ -821,41 +832,11 @@ void TDiskAgentState::StopTarget()
     }
 }
 
-void TDiskAgentState::UpdateSessionCache(TDeviceClient& client) const
-{
-    const auto path = AgentConfig->GetCachedSessionsPath();
-
-    if (path.empty()) {
-        STORAGE_INFO("Session cache is not configured.");
-        return;
-    }
-
-    try {
-        auto sessions = client.GetSessions();
-
-        NProto::TDiskAgentDeviceSessionCache proto;
-        proto.MutableSessions()->Assign(
-            std::make_move_iterator(sessions.begin()),
-            std::make_move_iterator(sessions.end())
-        );
-
-        const TString tmpPath {path + ".tmp"};
-
-        SerializeToTextFormat(proto, tmpPath);
-
-        if (!NFs::Rename(tmpPath, path)) {
-            const auto ec = errno;
-            ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)} << strerror(ec);
-        }
-    } catch (...) {
-        STORAGE_ERROR("Can't update session cache: " << CurrentExceptionMessage());
-        ReportDiskAgentSessionCacheUpdateError();
-    }
-}
-
 void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
 {
-    const auto path = AgentConfig->GetCachedSessionsPath();
+    const TString storagePath = StorageConfig->GetCachedDiskAgentSessionsPath();
+    const TString agentPath = AgentConfig->GetCachedSessionsPath();
+    const TString& path = agentPath.empty() ? storagePath : agentPath;
 
     if (path.empty()) {
         STORAGE_INFO("Session cache is not configured.");
@@ -884,13 +865,12 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
                 std::make_move_iterator(session.MutableDeviceIds()->begin()),
                 std::make_move_iterator(session.MutableDeviceIds()->end()));
 
-            const auto error = client.AcquireDevices(
+            const auto [_, error] = client.AcquireDevices(
                 uuids,
                 session.GetClientId(),
                 TInstant::MicroSeconds(session.GetLastActivityTs()),
-                session.GetReadOnly()
-                    ? NProto::VOLUME_ACCESS_READ_ONLY
-                    : NProto::VOLUME_ACCESS_READ_WRITE,
+                session.GetReadOnly() ? NProto::VOLUME_ACCESS_READ_ONLY
+                                      : NProto::VOLUME_ACCESS_READ_WRITE,
                 session.GetMountSeqNumber(),
                 session.GetDiskId(),
                 session.GetVolumeGeneration());
@@ -919,6 +899,11 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
             << CurrentExceptionMessage());
         ReportDiskAgentSessionCacheRestoreError();
     }
+}
+
+TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
+{
+    return DeviceClient->GetSessions();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -5,7 +5,7 @@ import os
 
 
 class ErrorCollector(object):
-    # https://a.yandex-team.ru/arc/trunk/arcadia/util/system/yassert.cpp?rev=2401334#L39-41
+    # https://github.com/ydb-platform/nbs/blob/main/util/system/yassert.cpp
     ERROR_LINES = 3  # Message consist of three lines
     ERROR_PREFIXES = ["VERIFY failed:", "FAIL:", "VERIFY failed (", "FAIL ("]
 

@@ -101,9 +101,7 @@ TNotifyActor::TNotifyActor(
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
     , Notifications(std::move(notifications))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TNotifyActor::Bootstrap(const TActorContext& ctx)
 {

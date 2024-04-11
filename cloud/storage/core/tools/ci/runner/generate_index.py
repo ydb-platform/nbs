@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+from pathlib import Path
 
 from lxml import etree
 
 import os
 import sys
-import time
 
 
 __ROOT = "/var/www/build"
@@ -25,6 +25,32 @@ def generate_github_tests_section(index, tests_xml_index_path):
     tests = etree.SubElement(index, "tests")
     for t in test_report_infos[:3]:
         tests.append(t)
+
+
+def generate_teamcity_nbs_internal_tests(index: etree.Element, teamcity_domain_file_path: Path):
+    test_cases = {
+        "acceptance": {
+            "small": "disk_manager_acceptance_small",
+            "medium": "NBS_Tests_DiskManager_Acceptance_NbNbsStableLab_Acc",
+            "enormous": "NBS_Tests_DiskManager_Acceptance_NbNbsStableLab_Enormous",
+        },
+        "eternal": {
+            "8gib": "eternal_8gib",
+            "256gib": "NBS_Tests_DiskManager_Eternal_NbNbsStableLab_Eternal256gib",
+            "8tib": "NBS_Tests_DiskManager_Eternal_NbNbsStableLab_Eternal8tib",
+        },
+        "sync": {
+            "2gib": "NBS_Tests_DiskManager_Sync_Sync2gib",
+        }
+    }
+    tree = etree.SubElement(index, 'nb-nbs-stable-lab-teamcity-tests')
+    tree.set("teamcity-domain", teamcity_domain_file_path.read_text())
+    for test_kind, value in test_cases.items():
+        sub_element = etree.SubElement(tree, test_kind)
+        for test_case_name, build_configuration_name in value.items():
+            test_case_element = etree.SubElement(sub_element, "teamcity_testcase")
+            test_case_element.set("test-case-name", test_case_name)
+            test_case_element.set("build-configuration-name", build_configuration_name)
 
 
 def generate_generic_tests_section(index, section_name, results_xml_path):
@@ -92,6 +118,9 @@ def generate_dm_section(index, results_xml_path):
     ]:
         generate_generic_tests_section(index, tests_type, results_xml_path)
 
+def generate_degradation_section(index, results_xml_path):
+    for tests_type in ["degradation_tests"]:
+        generate_generic_tests_section(index, tests_type, results_xml_path)
 
 xsl_filename = sys.argv[1]
 
@@ -110,7 +139,8 @@ generate_github_tests_section(index, tests_xml_index_path)
 generate_nbs_section(index, results_xml_path)
 generate_nfs_section(index, results_xml_path)
 generate_dm_section(index, results_xml_path)
-
+generate_degradation_section(index, results_xml_path)
+generate_teamcity_nbs_internal_tests(index, Path(__ROOT) / 'teamcity.url')
 tree = etree.ElementTree(index)
 tree.write(xml_index_path, encoding="utf-8", pretty_print=True)
 

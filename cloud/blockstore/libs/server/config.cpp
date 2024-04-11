@@ -3,6 +3,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -11,6 +12,8 @@ namespace {
 using TStrings = TVector<TString>;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
 constexpr TDuration Seconds(int s)
 {
@@ -88,6 +91,8 @@ constexpr TDuration Seconds(int s)
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
     xxx(EndpointStorageDir,          TString,               {}                )\
     xxx(VhostServerPath,             TString,               {}                )\
+    xxx(NbdDevicePrefix,             TString,               "/dev/nbd"        )\
+    xxx(SocketAccessMode,            ui32,                  MODE0660          )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \
@@ -291,6 +296,17 @@ void TServerAppConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef BLOCKSTORE_CONFIG_DUMP
+}
+
+bool TServerAppConfig::DeprecatedGetRdmaClientEnabled() const
+{
+    return GetRdmaClientEnabled();
+}
+
+const NProto::TRdmaClient&
+TServerAppConfig::DeprecatedGetRdmaClientConfig() const
+{
+    return ServerConfig->GetRdmaClientConfig();
 }
 
 }   // namespace NCloud::NBlockStore::NServer

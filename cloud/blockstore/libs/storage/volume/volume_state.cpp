@@ -183,14 +183,15 @@ void TVolumeState::Reset()
     UseRdma = StorageConfig->GetUseRdma()
         || StorageConfig->IsUseRdmaFeatureEnabled(
             Meta.GetConfig().GetCloudId(),
-            Meta.GetConfig().GetFolderId());
+            Meta.GetConfig().GetFolderId(),
+            Meta.GetConfig().GetDiskId());
+    UseFastPath = false;
     UseRdmaForThisVolume = false;
     AcceptInvalidDiskAllocationResponse = false;
 
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
+    if (IsDiskRegistryMediaKind()) {
         if (Meta.GetDevices().size()) {
-            PartitionStatInfos.emplace_back(
-                EPublishingPolicy::DiskRegistryBased);
+            CreatePartitionStatInfo(GetDiskId(), 0);
         }
         const auto& encryptionDesc = Meta.GetVolumeConfig().GetEncryptionDesc();
         if (encryptionDesc.GetMode() != NProto::NO_ENCRYPTION) {
@@ -203,7 +204,7 @@ void TVolumeState::Reset()
                 Meta.GetConfig(),
                 StorageConfig->GetTabletRebootCoolDownIncrement(),
                 StorageConfig->GetTabletRebootCoolDownMax());
-            PartitionStatInfos.emplace_back(EPublishingPolicy::Repl);
+            CreatePartitionStatInfo(GetDiskId(), tabletId);
         }
     }
 
@@ -236,6 +237,8 @@ void TVolumeState::Reset()
             UseRdmaForThisVolume = true;
         } else if (tag == "max-timed-out-device-state-duration") {
             TDuration::TryParse(value, MaxTimedOutDeviceStateDuration);
+        } else if (tag == "use-fastpath") {
+            UseFastPath = true;
         }
     }
 
@@ -291,6 +294,11 @@ void TVolumeState::FillDeviceInfo(NProto::TVolume& volume) const
         volume);
 }
 
+bool TVolumeState::IsDiskRegistryMediaKind() const
+{
+    return NCloud::IsDiskRegistryMediaKind(Config->GetStorageMediaKind());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
@@ -303,15 +311,26 @@ TPartitionInfo* TVolumeState::GetPartition(ui64 tabletId)
     return nullptr;
 }
 
-bool TVolumeState::FindPartitionIndex(ui64 tabletId, ui32& index) const
+std::optional<ui32>
+TVolumeState::FindPartitionIndex(NActors::TActorId owner) const
 {
     for (ui32 i = 0; i < Partitions.size(); ++i) {
-        if (Partitions[i].TabletId == tabletId) {
-            index = i;
-            return true;
+        if (Partitions[i].Owner == owner) {
+            return i;
         }
     }
-    return false;
+    return std::nullopt;
+}
+
+std::optional<ui64>
+TVolumeState::FindPartitionTabletId(NActors::TActorId owner) const
+{
+    for (const auto& partition: Partitions) {
+        if (partition.Owner == owner) {
+            return partition.TabletId;
+        }
+    }
+    return std::nullopt;
 }
 
 void TVolumeState::SetPartitionsState(TPartitionInfo::EState state)
@@ -323,7 +342,7 @@ void TVolumeState::SetPartitionsState(TPartitionInfo::EState state)
 
 TPartitionInfo::EState TVolumeState::UpdatePartitionsState()
 {
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
+    if (IsDiskRegistryMediaKind()) {
         ui64 bytes = 0;
         for (const auto& device: Meta.GetDevices()) {
             bytes += device.GetBlocksCount() * device.GetBlockSize();
@@ -391,6 +410,14 @@ TString TVolumeState::GetPartitionsError() const
         }
     }
     return out.Str();
+}
+
+void TVolumeState::SetDiskRegistryBasedPartitionActor(
+    const NActors::TActorId& actor,
+    TNonreplicatedPartitionConfigPtr config)
+{
+    DiskRegistryBasedPartitionActor = actor;
+    NonreplicatedPartitionConfig = std::move(config);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -805,43 +832,54 @@ void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TVolumeState::FindPartitionStatInfoByOwner(
-    const TActorId& actorId,
-    ui32& index) const
+EPublishingPolicy TVolumeState::CountersPolicy() const
 {
-    for (ui32 i = 0; i < PartitionStatInfos.size(); ++i) {
-        if (PartitionStatInfos[i].Owner == actorId) {
-            index = i;
-            return true;
-        }
-    }
-    return false;
+    return IsDiskRegistryMediaKind() ? EPublishingPolicy::DiskRegistryBased
+                                     : EPublishingPolicy::Repl;
 }
 
-TPartitionStatInfo* TVolumeState::GetPartitionStatInfoById(ui64 id)
+TPartitionStatInfo& TVolumeState::CreatePartitionStatInfo(
+    const TString& diskId,
+    ui64 tabletId)
 {
-    if (IsDiskRegistryMediaKind(Config->GetStorageMediaKind())) {
-        if (id >= PartitionStatInfos.size()) {
-            return nullptr;
-        }
-        return &PartitionStatInfos[id];
-    } else {
-        ui32 index = 0;
-        if (FindPartitionIndex(id, index)) {
-            return &PartitionStatInfos[index];
-        };
-        return nullptr;
-    }
+    PartitionStatInfos.push_back(
+        TPartitionStatInfo(diskId, tabletId, CountersPolicy()));
+    return PartitionStatInfos.back();
 }
 
-bool TVolumeState::SetPartitionStatActor(ui64 id, const TActorId& actor)
+TPartitionStatInfo* TVolumeState::GetPartitionStatInfoByTabletId(ui64 tabletId)
 {
-    ui32 index = 0;
-    if (FindPartitionIndex(id, index)) {
-        PartitionStatInfos[index].Owner = actor;
-        return true;
-    };
-    return false;
+    if (IsDiskRegistryMediaKind()) {
+        Y_DEBUG_ABORT_UNLESS(tabletId == 0);
+        return &PartitionStatInfos.front();
+    }
+
+    for (auto& statInfo: PartitionStatInfos) {
+        if (statInfo.TabletId == tabletId) {
+            return &statInfo;
+        }
+    }
+    return nullptr;
+}
+
+TPartitionStatInfo*
+TVolumeState::GetPartitionStatByDiskId(const TString& diskId)
+{
+    for (auto& statInfo: PartitionStatInfos) {
+        if (statInfo.DiskId == diskId) {
+            return &statInfo;
+        }
+    }
+
+    for (const auto& [checkpointId, checkpointInfo]:
+         GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.ShadowDiskId == diskId) {
+            return &CreatePartitionStatInfo(diskId, 0);
+        }
+    }
+
+    return nullptr;
 }
 
 bool TVolumeState::GetMuteIOErrors() const
@@ -853,13 +891,13 @@ bool TVolumeState::GetMuteIOErrors() const
 
 void TVolumeState::SetCheckpointRequestFinished(
     const TCheckpointRequest& request,
-    bool success,
+    bool completed,
     TString shadowDiskId,
     EShadowDiskState shadowDiskState)
 {
     GetCheckpointStore().SetCheckpointRequestFinished(
         request.RequestId,
-        success,
+        completed,
         std::move(shadowDiskId),
         shadowDiskState);
     if (GetCheckpointStore().GetLightCheckpoints().empty()) {

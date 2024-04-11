@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 
 import random
 import socket
+import time
 
 from typing import Callable, Protocol
 
@@ -31,12 +33,129 @@ def check_ssh_connection(
 
 def wait_for_block_device_to_appear(
     ip: str,
-    block_device: str,
+    disk_id: str,
     module_factory,
     ssh_key_path: str | None = None,
-) -> None:
-    helpers = module_factory.make_helpers(False)
-    helpers.wait_for_block_device_to_appear(ip, block_device, ssh_key_path=ssh_key_path)
+) -> str:
+    device_to_id_mapper = VirtualDevicesToIdMapper(ip, module_factory, ssh_key_path)
+    return device_to_id_mapper.wait_for_disk_to_appear(disk_id)
+
+
+class VirtualDevicesToIdMapper:
+    def __init__(
+        self,
+        ip: str,
+        module_factory,
+        ssh_key_path: str | None = None,
+    ):
+        self._ip = ip
+        self._module_factory = module_factory
+        self._ssh_key_path = ssh_key_path
+
+    def _execute_command(self, args: list[str]) -> str:
+        with self._module_factory.make_ssh_client(False, self._ip, ssh_key_path=self._ssh_key_path) as ssh:
+            _, stdout, stderr = ssh.exec_command(args)
+            output = ''
+            for line in iter(lambda: stdout.readline(2048), ''):
+                output += line
+                _logger.info("stdout: %s", line.rstrip())
+            if stderr.channel.recv_exit_status():
+                stderr_lines = stderr.readlines()
+                stderr_str = ''.join(stderr_lines)
+                for stderr_line in stderr_lines:
+                    _logger.info("stderr: %s ", stderr_line.rstrip())
+                raise Error(f'failed to execute command {args} on remote host'
+                            f' {self._ip}: {stderr_str}')
+            return output
+
+    def get_virtual_disks_mapping(self) -> dict[str, str]:
+        lsblk_output = self._execute_command(["lsblk",  "--json", "-lpn", "-d", "-o", "name,type,subsystems"])
+        virtual_disk_paths = self.list_virtual_disks(lsblk_output)
+        _logger.info("Collected virtual devices: %s", ', '.join(virtual_disk_paths))
+        udevadm_output = self._execute_command(
+            [
+                "udevadm",
+                "info",
+                *[f"--name={vdisk_path}" for vdisk_path in virtual_disk_paths],
+            ]
+        )
+        return self.get_disk_id_to_device_path_mapping(udevadm_output)
+
+    def wait_for_disk_to_appear(self, disk_id: str, timeout_sec: int = 120) -> str:
+        _logger.info(
+            "Started waiting for disk %s to appear in the guest system, waiting for %d",
+            disk_id,
+            timeout_sec,
+        )
+        started_at = time.monotonic()
+
+        while True:
+
+            try:
+                mapping = self.get_virtual_disks_mapping()
+            except Exception as e:
+                _logger.error("Error while enumerating virtual devices", exc_info=e)
+                time.sleep(1)
+                continue
+
+            if disk_id in mapping:
+                result = mapping[disk_id]
+                _logger.info(
+                    "Successfully found disk: %s, virtual device path %s",
+                    disk_id,
+                    result,
+                )
+                return result
+
+            if time.monotonic() - started_at > timeout_sec:
+                break
+
+            time.sleep(1)
+
+        raise TimeoutError(
+            f"Error while waiting for the disk {disk_id} to appear timeout {timeout_sec} seconds expired",
+        )
+
+    @staticmethod
+    def list_virtual_disks(lsblk_output: str) -> list[str]:
+        result = []
+        record = json.loads(lsblk_output)
+
+        for disk in record['blockdevices']:
+
+            if disk.get('type') != 'disk':
+                continue
+
+            if disk.get('subsystems', '') != 'block:virtio:pci':
+                continue
+
+            result.append(disk['name'])
+        return result
+
+    @staticmethod
+    def get_disk_id_to_device_path_mapping(udevadm_output: str) -> dict[str, str]:
+        result = {}
+        disk_record_line_groups = udevadm_output.split("\n\n")
+
+        for disk_record_line_group in disk_record_line_groups:
+            current_record = {}
+
+            for line in disk_record_line_group.splitlines():
+                if "=" not in line:
+                    continue
+                [_, field] = line.split(" ", maxsplit=1)
+                [key, value] = field.split("=")
+                current_record[key] = value
+
+            if "DEVNAME" not in current_record:
+                continue
+
+            if "ID_SERIAL" not in current_record:
+                continue
+
+            result[current_record["ID_SERIAL"]] = current_record["DEVNAME"]
+
+        return result
 
 
 class YcpConfigGeneratorProtocol(Protocol):

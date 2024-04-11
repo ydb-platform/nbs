@@ -123,9 +123,7 @@ TWriteBlobActor::TWriteBlobActor(
     , ProfileLog(std::move(profileLog))
     , Requests(std::move(requests))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -182,7 +180,7 @@ void TWriteBlobActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TWriteBlobActor::ReplyError(

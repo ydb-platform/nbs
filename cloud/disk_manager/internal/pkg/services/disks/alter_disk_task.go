@@ -66,7 +66,6 @@ func (t *alterDiskTask) Cancel(
 
 func (t *alterDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

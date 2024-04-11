@@ -30,3 +30,14 @@ func NewSourceInvalidError(format string, args ...interface{}) error {
 		},
 	)
 }
+
+func NewSourceForbiddenError(format string, args ...interface{}) error {
+	return errors.NewDetailedError(
+		fmt.Errorf(format, args...),
+		&errors.ErrorDetails{
+			Code:     error_codes.BadSource,
+			Message:  "url source forbidden",
+			Internal: false,
+		},
+	)
+}

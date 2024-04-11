@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-d="/root"
-scripts="${d}/runner"
-nbspath="$d/github/blockstore/nbs"
-cwd=$(pwd)
 
 lockfile="/var/tmp/_run_all.lock"
 if { set -C; true 2>/dev/null > $lockfile; }; then
@@ -14,17 +10,29 @@ else
     exit
 fi
 
-cd $nbspath &&
-git reset --hard &&
-git pull
-
-"${nbspath}/ya" gc cache
-
 logs_root="/var/www/build/logs"
+
 logs_dir="${logs_root}/run_$(date +%y_%m_%d__%H)" &&
 rm -rf "$logs_dir" &&
 mkdir -p "$logs_dir"
-find  "${logs_root}" -maxdepth 1 -mtime +30 -type d -exec rm -rf {} \;
+
+exec 3>&1 4>&2
+exec 1>"${logs_dir}/run_all.out" 2>&1
+
+d="/root"
+scripts="${d}/runner"
+nbspath="$d/github/blockstore/nbs"
+cwd=$(pwd)
+
+cd $nbspath &&
+git reset --hard &&
+git pull &&
+git submodule update --init --recursive ||
+(echo "failed to fetch changes from git repository"; exit)
+
+"${nbspath}/ya" gc cache
+
+find  "${logs_root}" -maxdepth 1 -mtime +7 -type d -exec rm -rf {} \;
 
 lineArr=()
 while IFS='' read -r line; do lineArr+=("$line"); done < <((grep -E -lir --include=ya.make "(PY3TEST|UNITTEST|Y_BENCHMARK|G_BENCHMARK|GO_X?TEST_SRCS)" "$nbspath/cloud"))

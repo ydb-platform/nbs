@@ -1,4 +1,4 @@
-# https://st.yandex-team.ru/DEVTOOLSSUPPORT-18977#6285fbd36101de4de4e29f48
+# DEVTOOLSSUPPORT-18977
 IF (SANITIZER_TYPE != "undefined" AND SANITIZER_TYPE != "memory")
     RECURSE(
         plugin

@@ -137,7 +137,6 @@ func (t *createEmptyDiskTask) Cancel(
 
 func (t *createEmptyDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.CreateDiskMetadata{}, nil

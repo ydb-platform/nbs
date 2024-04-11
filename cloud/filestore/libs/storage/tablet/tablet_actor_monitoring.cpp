@@ -4,11 +4,15 @@
 #include <cloud/filestore/libs/storage/tablet/tablet_state.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/kikimr/tenant.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/is_equal.h>
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <contrib/ydb/library/actors/protos/actors.pb.h>
 
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
@@ -715,6 +719,34 @@ void DumpSessions(IOutputStream& out, const TVector<TMonSessionInfo>& sessions)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void DumpChannels(
+    IOutputStream& out,
+    const TVector<NCloud::NStorage::TChannelMonInfo>& channelInfos,
+    const TTabletStorageInfo& storage,
+    ui64 hiveTabletId)
+{
+    NCloud::NStorage::DumpChannels(
+        out,
+        channelInfos,
+        storage,
+        [&] (ui32 groupId, const TString& storagePool) {
+            // TODO: group mon url
+            Y_UNUSED(groupId);
+            Y_UNUSED(storagePool);
+            return TString();
+        },
+        [&] (IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 c) {
+            // TODO: reassign button
+            Y_UNUSED(out);
+            Y_UNUSED(hiveTabletId);
+            Y_UNUSED(tabletId);
+            Y_UNUSED(c);
+        },
+        hiveTabletId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void GenerateActionsJS(IOutputStream& out)
 {
     out << R"___(
@@ -757,9 +789,7 @@ struct TIndexTabletMonitoringActor
         , Owner(owner)
         , TabletId(tablet)
         , Request(std::move(request))
-    {
-        TThis::ActivityType = TFileStoreComponents::TABLET_WORKER;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -830,7 +860,7 @@ struct TIndexTabletMonitoringActor
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
-        ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"), {});
+        ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"), {});
     }
 
     void ReplyAndDie(
@@ -990,7 +1020,22 @@ void TIndexTabletActor::HandleHttpInfo_Default(
             out << "</div>";
         }
 
-        TAG(TH3) { out << "Profilling allocator stats"; }
+        TAG(TH3) {
+            out << "Channels";
+        }
+
+        ui64 hiveTabletId = Config->GetTenantHiveTabletId();
+        if (!hiveTabletId) {
+            hiveTabletId = NCloud::NStorage::GetHiveTabletId(ctx);
+        }
+
+        DumpChannels(
+            out,
+            MakeChannelMonInfos(),
+            *Info(),
+            hiveTabletId);
+
+        TAG(TH3) { out << "Profiling allocator stats"; }
         DumpProfillingAllocatorStats(GetFileStoreProfilingRegistry(), out);
 
         TAG(TH3) { out << "Blob index stats"; }

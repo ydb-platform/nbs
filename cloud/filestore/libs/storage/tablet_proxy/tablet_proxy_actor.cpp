@@ -53,9 +53,7 @@ TIndexTabletProxyActor::TIndexTabletProxyActor(TStorageConfigPtr config)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , ClientCache(CreateTabletPipeClientCache(*Config))
-{
-    ActivityType = TFileStoreActivities::TABLET_PROXY;
-}
+{}
 
 TIndexTabletProxyActor::TConnection& TIndexTabletProxyActor::CreateConnection(
     const TString& fileSystemId)
@@ -489,7 +487,7 @@ bool TIndexTabletProxyActor::HandleRequests(STFUNC_SIG)
 // FILESTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_HANDLE_METHOD, TEvService)
+        FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_METHOD, TEvService)
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_METHOD, TEvIndexTablet)
 
         default:
@@ -522,7 +520,7 @@ bool TIndexTabletProxyActor::LogLateMessage(STFUNC_SIG)
 // FILESTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_HANDLE_METHOD, TEvService)
+        FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_METHOD, TEvService)
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_METHOD, TEvIndexTablet)
 
         default:

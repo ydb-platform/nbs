@@ -157,16 +157,19 @@ struct TEvVolumePrivate
         TRequestInfoPtr RequestInfo;
         ui64 RequestId;
         bool Completed;
+        std::optional<TString> Error;
         TString ShadowDiskId;
 
         TUpdateCheckpointRequestRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
+                std::optional<TString> error,
                 TString shadowDiskId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
+            , Error(std::move(error))
             , ShadowDiskId(std::move(shadowDiskId))
         {
         }
@@ -215,6 +218,24 @@ struct TEvVolumePrivate
     };
 
     //
+    // ShadowDiskAcquired
+    //
+
+    struct TShadowDiskAcquired
+    {
+        using TDevices =
+            google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>;
+
+        NProto::TError Error;
+        TString ClientId;
+        TDevices Devices;
+
+        explicit TShadowDiskAcquired(NProto::TError error)
+            : Error(std::move(error))
+        {}
+    };
+
+    //
     //  UpdateShadowDiskStateRequest
     //
 
@@ -230,28 +251,29 @@ struct TEvVolumePrivate
         TString CheckpointId;
         EReason Reason = EReason::FillError;
         ui64 ProcessedBlockCount = 0;
-        ui64 TotalBlockCount = 0;
 
         TUpdateShadowDiskStateRequest(
                 TString checkpointId,
                 EReason reason,
-                ui64 processedBlockCount,
-                ui64 totalBlockCount)
+                ui64 processedBlockCount)
             : CheckpointId(std::move(checkpointId))
             , Reason(reason)
             , ProcessedBlockCount(processedBlockCount)
-            , TotalBlockCount(totalBlockCount)
         {}
     };
 
     struct TUpdateShadowDiskStateResponse
     {
         EShadowDiskState NewState = EShadowDiskState::None;
+        ui64 ProcessedBlockCount = 0;
 
-        TUpdateShadowDiskStateResponse() {}
+        TUpdateShadowDiskStateResponse() = default;
 
-        TUpdateShadowDiskStateResponse(EShadowDiskState newState)
+        TUpdateShadowDiskStateResponse(
+                EShadowDiskState newState,
+                ui64 processedBlockCount)
             : NewState(newState)
+            , ProcessedBlockCount(processedBlockCount)
         {}
     };
 
@@ -276,6 +298,7 @@ struct TEvVolumePrivate
         EvWriteOrZeroCompleted,
         EvUpdateReadWriteClientInfo,
         EvRemoveExpiredVolumeParams,
+        EvShadowDiskAcquired,
 
         EvEnd
     };
@@ -332,6 +355,11 @@ struct TEvVolumePrivate
     using TEvRemoveExpiredVolumeParams = TRequestEvent<
         TRemoveExpiredVolumeParams,
         EvRemoveExpiredVolumeParams
+    >;
+
+    using TEvShadowDiskAcquired = TRequestEvent<
+        TShadowDiskAcquired,
+        EvShadowDiskAcquired
     >;
 };
 

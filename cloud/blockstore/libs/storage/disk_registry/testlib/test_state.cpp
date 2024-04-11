@@ -222,7 +222,8 @@ NProto::TError AllocateMirroredDisk(
     TVector<NProto::TDeviceMigration>& migrations,
     TVector<TString>& deviceReplacementIds,
     TInstant now,
-    NProto::EStorageMediaKind mediaKind)
+    NProto::EStorageMediaKind mediaKind,
+    ui32 logicalBlockSize)
 {
     TDiskRegistryState::TAllocateDiskResult result {};
 
@@ -233,8 +234,8 @@ NProto::TError AllocateMirroredDisk(
             .DiskId = diskId,
             .CloudId = "cloud-1",
             .FolderId = "folder-1",
-            .BlockSize = DefaultLogicalBlockSize,
-            .BlocksCount = totalSize / DefaultLogicalBlockSize,
+            .BlockSize = logicalBlockSize,
+            .BlocksCount = totalSize / logicalBlockSize,
             .ReplicaCount = replicaCount,
             .MediaKind = mediaKind
         },
@@ -261,7 +262,8 @@ NProto::TError AllocateDisk(
     TVector<TDeviceConfig>& devices,
     TInstant now,
     NProto::EStorageMediaKind mediaKind,
-    TString poolName)
+    TString poolName,
+    ui32 logicalBlockSize)
 {
     TDiskRegistryState::TAllocateDiskResult result {};
 
@@ -274,8 +276,8 @@ NProto::TError AllocateDisk(
             .FolderId = "folder-1",
             .PlacementGroupId = placementGroupId,
             .PlacementPartitionIndex = placementPartitionIndex,
-            .BlockSize = DefaultLogicalBlockSize,
-            .BlocksCount = totalSize / DefaultLogicalBlockSize,
+            .BlockSize = logicalBlockSize,
+            .BlocksCount = totalSize / logicalBlockSize,
             .ReplicaCount = 0,
             .PoolName = poolName,
             .MediaKind = mediaKind,
@@ -296,7 +298,7 @@ NProto::TError AllocateCheckpoint(
     TDiskRegistryState& state,
     const TString& sourceDiskId,
     const TString& checkpointId,
-    TString* checkpointDiskId,
+    TString* shadowDiskId,
     TVector<TDeviceConfig>* devices)
 {
     TDiskRegistryState::TAllocateCheckpointResult result{};
@@ -308,7 +310,7 @@ NProto::TError AllocateCheckpoint(
     UNIT_ASSERT_VALUES_EQUAL(0, result.DeviceReplacementIds.size());
 
     *devices = std::move(result.Devices);
-    *checkpointDiskId = std::move(result.CheckpointDiskId);
+    *shadowDiskId = std::move(result.ShadowDiskId);
 
     return error;
 }
@@ -329,7 +331,8 @@ TStorageConfigPtr CreateStorageConfig(NProto::TStorageServiceConfig proto)
 {
     return std::make_shared<TStorageConfig>(
         std::move(proto),
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
 }
 
@@ -590,6 +593,14 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithPlacementGroups(
     for (auto& group: groups) {
         PlacementGroups.push_back(std::move(group));
     }
+
+    return *this;
+}
+
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithErrorNotifications(
+    TVector<TString> notifications)
+{
+    ErrorNotifications = std::move(notifications);
 
     return *this;
 }

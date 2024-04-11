@@ -38,6 +38,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
+
+////////////////////////////////////////////////////////////////////////////////
+
 using NStorage::NServer::IClientStorage;
 using NStorage::NServer::IClientStoragePtr;
 
@@ -274,7 +278,8 @@ TBootstrap CreateBootstrap(TOptions options)
 
     auto endpointListener = CreateSocketEndpointListener(
         testFactory.Logging,
-        options.UnixSocketBacklog);
+        options.UnixSocketBacklog,
+        MODE0660);
     endpointListener->SetClientStorageFactory(
         server->GetClientStorageFactory());
 
@@ -341,7 +346,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto clientStorage = std::make_shared<TTestClientStorage>();
-        auto listener = CreateSocketEndpointListener(logging, 16);
+        auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {
@@ -386,7 +391,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TFsPath unixSocket(CreateGuidAsString() + ".sock");
 
         auto clientStorage = std::make_shared<TTestClientStorage>();
-        auto listener = CreateSocketEndpointListener(logging, 16);
+        auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {
@@ -437,7 +442,8 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         auto endpointListener = CreateSocketEndpointListener(
             testFactory.Logging,
-            unixSocketBacklog);
+            unixSocketBacklog,
+            MODE0660);
         endpointListener->SetClientStorageFactory(
             server->GetClientStorageFactory());
 
@@ -1112,7 +1118,7 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         TString unixSocket("./invalid/path/to/socket");
 
         auto clientStorage = std::make_shared<TTestClientStorage>();
-        auto listener = CreateSocketEndpointListener(logging, 16);
+        auto listener = CreateSocketEndpointListener(logging, 16, MODE0660);
         listener->SetClientStorageFactory(clientStorage);
         listener->Start();
         Y_DEFER {

@@ -54,12 +54,13 @@ TIndexTabletActor::TIndexTabletActor(
     )
     , Config(std::move(config))
 {
-    ActivityType = TFileStoreActivities::TABLET;
     UpdateLogTag();
 }
 
 TIndexTabletActor::~TIndexTabletActor()
-{}
+{
+    ReleaseTransactions();
+}
 
 TString TIndexTabletActor::GetStateName(ui32 state)
 {
@@ -180,6 +181,10 @@ void TIndexTabletActor::ReassignDataChannelsIfNeeded(
             sb.c_str());
     }
 
+    Metrics.ReassignCount.fetch_add(
+        channels.size(),
+        std::memory_order_relaxed);
+
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
@@ -223,14 +228,65 @@ void TIndexTabletActor::OnTabletDead(
 {
     Y_UNUSED(ev);
 
+    TerminateTransactions(ctx);
+
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
+    }
+
+    auto writeBatch = DequeueWriteBatch();
+    for (const auto& request: writeBatch) {
+        TRequestInfo& requestInfo = *request.RequestInfo;
+        requestInfo.CancelRoutine(ctx, requestInfo);
     }
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
 
     Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::AddTransaction(
+    TRequestInfo& transaction,
+    TRequestInfo::TCancelRoutine cancelRoutine)
+{
+    transaction.CancelRoutine = cancelRoutine;
+
+    transaction.Ref();
+
+    TABLET_VERIFY(transaction.Empty());
+    ActiveTransactions.PushBack(&transaction);
+}
+
+void TIndexTabletActor::RemoveTransaction(TRequestInfo& requestInfo)
+{
+    TABLET_VERIFY(!requestInfo.Empty());
+    requestInfo.Unlink();
+
+    TABLET_VERIFY(requestInfo.RefCount() > 1);
+    requestInfo.UnRef();
+}
+
+void TIndexTabletActor::TerminateTransactions(const TActorContext& ctx)
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
+
+        requestInfo->CancelRequest(ctx);
+        requestInfo->UnRef();
+    }
+}
+
+void TIndexTabletActor::ReleaseTransactions()
+{
+    while (ActiveTransactions) {
+        TRequestInfo* requestInfo = ActiveTransactions.PopFront();
+        TABLET_VERIFY(requestInfo->RefCount() >= 1);
+        requestInfo->UnRef();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -259,6 +315,67 @@ void TIndexTabletActor::ResetThrottlingPolicy()
     } else {
         Throttler->ResetPolicy(AccessThrottlingPolicy());
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TRequest>
+NProto::TError TIndexTabletActor::ValidateWriteRequest(
+    const TActorContext& ctx,
+    const TRequest& request,
+    const TByteRange& range)
+{
+    if (auto error = ValidateRange(range); HasError(error)) {
+        return error;
+    }
+
+    auto* handle = FindHandle(request.GetHandle());
+    if (!handle || handle->GetSessionId() != GetSessionId(request)) {
+        return ErrorInvalidHandle(request.GetHandle());
+    }
+
+    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+        if (CompactionStateLoadStatus.Finished &&
+            ++BackpressureErrorCount >=
+                Config->GetMaxBackpressureErrorsBeforeSuicide())
+        {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Suiciding after %u backpressure errors",
+                LogTag.c_str(),
+                BackpressureErrorCount);
+
+            Suicide(ctx);
+        }
+
+        return MakeError(E_REJECTED, "rejected due to backpressure");
+    }
+
+    return NProto::TError{};
+}
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
+    const TActorContext& ctx,
+    const NProto::TWriteDataRequest& request,
+    const TByteRange& range);
+
+template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
+    const TActorContext& ctx,
+    const NProtoPrivate::TAddDataRequest& request,
+    const TByteRange& range);
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
+{
+    if (!CompactionStateLoadStatus.Finished) {
+        return MakeError(E_REJECTED, "compaction state not loaded yet");
+    }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,6 +417,8 @@ void TIndexTabletActor::HandleSessionDisconnected(
     OrphanSession(ev->Sender, ctx.Now());
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::HandleGetFileSystemConfig(
     const TEvIndexTablet::TEvGetFileSystemConfigRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -339,10 +458,27 @@ void TIndexTabletActor::HandleGetStorageConfigFields(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TIndexTabletActor::HandleDescribeSessions(
+    const TEvIndexTablet::TEvDescribeSessionsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvDescribeSessionsResponse>();
+
+    auto sessionInfos = DescribeSessions();
+    for (auto& si: sessionInfos) {
+        *response->Record.AddSessions() = std::move(si);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_HANDLE_REQUEST, TEvService)
+        FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvIndexTablet)
         FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST, TEvIndexTabletPrivate)
@@ -381,7 +517,7 @@ bool TIndexTabletActor::IgnoreCompletions(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_REJECT_REQUEST, TEvService)
+        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST, TEvIndexTablet)
         FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST, TEvIndexTabletPrivate)
@@ -396,7 +532,7 @@ bool TIndexTabletActor::RejectRequests(STFUNC_SIG)
 bool TIndexTabletActor::RejectRequestsByBrokenTablet(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
+        FILESTORE_SERVICE_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvService)
 
         FILESTORE_TABLET_REQUESTS(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTablet)
         FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_REJECT_REQUEST_BY_BROKEN_TABLET, TEvIndexTabletPrivate)
@@ -421,6 +557,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -444,6 +581,7 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -467,9 +605,12 @@ STFUNC(TIndexTabletActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvIndexTabletPrivate::TEvReadDataCompleted, HandleReadDataCompleted);
         HFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted, HandleWriteDataCompleted);
+        HFunc(TEvIndexTabletPrivate::TEvAddDataCompleted, HandleAddDataCompleted);
 
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
+
+        HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -508,8 +649,11 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
 
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         // tablet related requests
         IgnoreFunc(TEvents::TEvPoisonPill);
@@ -533,6 +677,7 @@ STFUNC(TIndexTabletActor::StateBroken)
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -545,6 +690,7 @@ STFUNC(TIndexTabletActor::StateBroken)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -558,7 +704,7 @@ void TIndexTabletActor::RebootTabletOnCommitOverflow(
     const TActorContext& ctx,
     const TString& request)
 {
-    LOG_ERROR(ctx, TFileStoreActivities::TABLET,
+    LOG_ERROR(ctx, TFileStoreComponents::TABLET,
         "%s CommitId overflow in %s. Restarting",
         LogTag.c_str(),
         request.c_str());

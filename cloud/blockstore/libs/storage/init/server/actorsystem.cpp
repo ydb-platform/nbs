@@ -228,6 +228,7 @@ public:
 
         auto storageUserStats =
             NCloud::NStorage::NUserStats::CreateStorageUserStats(
+                TBlockStoreComponents::USER_STATS,
                 "blockstore",
                 "BlockStore",
                 Args.UserCounterProviders);
@@ -278,6 +279,7 @@ public:
             auto diskAgent = CreateDiskAgent(
                 Args.StorageConfig,
                 Args.DiskAgentConfig,
+                Args.RdmaConfig,
                 Args.Spdk,
                 Args.Allocator,
                 Args.AioStorageProvider,
@@ -343,10 +345,10 @@ private:
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
-    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const NLogbroker::IServicePtr LogbrokerService;
     const NNotify::IServicePtr NotifyService;
     const NRdma::IClientPtr RdmaClient;
+    const NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const bool IsDiskRegistrySpareNode;
 
 public:
@@ -361,6 +363,7 @@ public:
             NLogbroker::IServicePtr logbrokerService,
             NNotify::IServicePtr notifyService,
             NRdma::IClientPtr rdmaClient,
+            NServer::IEndpointEventHandlerPtr endpointEventHandler,
             bool isDiskRegistrySpareNode)
         : AppConfig(appConfig)
         , Logging(std::move(logging))
@@ -372,6 +375,7 @@ public:
         , LogbrokerService(std::move(logbrokerService))
         , NotifyService(std::move(notifyService))
         , RdmaClient(std::move(rdmaClient))
+        , EndpointEventHandler(std::move(endpointEventHandler))
         , IsDiskRegistrySpareNode(isDiskRegistrySpareNode)
     {}
 
@@ -387,6 +391,7 @@ public:
         auto logbrokerService = LogbrokerService;
         auto notifyService = NotifyService;
         auto rdmaClient = RdmaClient;
+        auto endpointEventHandler = EndpointEventHandler;
         auto logging = Logging;
 
         auto volumeFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
@@ -400,7 +405,8 @@ public:
                 profileLog,
                 blockDigestGenerator,
                 traceSerializer,
-                rdmaClient
+                rdmaClient,
+                endpointEventHandler
             );
             return actor.release();
         };
@@ -496,6 +502,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.LogbrokerService,
             sArgs.NotifyService,
             sArgs.RdmaClient,
+            sArgs.EndpointEventHandler,
             sArgs.IsDiskRegistrySpareNode));
     };
 
@@ -520,7 +527,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
-    servicesMask.EnableNodeIdentifier = 1;
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         storageConfig->GetConfigsDispatcherServiceEnabled();

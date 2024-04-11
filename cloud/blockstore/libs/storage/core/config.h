@@ -1,9 +1,10 @@
 #pragma once
 
 #include "public.h"
-#include "features_config.h"
+
 
 #include <cloud/blockstore/config/storage.pb.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <util/datetime/base.h>
@@ -23,12 +24,12 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        TFeaturesConfigPtr featuresConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig);
     ~TStorageConfig();
 
     TStorageConfig(const TStorageConfig& config);
 
-    void SetFeaturesConfig(TFeaturesConfigPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
@@ -301,57 +302,78 @@ public:
 
     bool IsBalancerFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsIncrementalCompactionFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsMultipartitionVolumesFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsAllocateFreshChannelFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsFreshChannelWriteRequestsFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsMixedIndexCacheV1FeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsBatchCompactionFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsBlobPatchingFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsUseRdmaFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsChangeThrottlingPolicyFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsReplaceDeviceFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     bool IsUseNonReplicatedHDDInsteadOfReplicatedFeatureEnabled(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
+    bool IsAddingUnconfirmedBlobsFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
 
     TString GetSSDSystemChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDLogChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDIndexChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
     TString GetSSDFreshChannelPoolKindFeatureValue(
         const TString& cloudId,
-        const TString& folderId) const;
+        const TString& folderId,
+        const TString& diskId) const;
 
     ui32 GetDefaultTabletVersion() const;
 
@@ -373,6 +395,7 @@ public:
 
     TDuration GetVolumeHistoryDuration() const;
     ui32 GetVolumeHistoryCacheSize() const;
+    ui32 GetVolumeMetaHistoryDisplayedRecordLimit() const;
 
     ui64 GetBytesPerPartition() const;
     ui64 GetBytesPerPartitionSSD() const;
@@ -524,6 +547,25 @@ public:
     bool GetCheckBlockChecksumsInBlobsUponRead() const;
 
     bool GetConfigsDispatcherServiceEnabled() const;
+
+    TDuration GetCachedAcquireRequestLifetime() const;
+
+    ui32 GetUnconfirmedBlobCountHardLimit() const;
+
+    TString GetCachedDiskAgentConfigPath() const;
+    TString GetCachedDiskAgentSessionsPath() const;
+
+    ui32 GetMaxShadowDiskFillBandwidth() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenBlocked() const;
+    TDuration GetMinAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskRetryDelayWhenNonBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked() const;
+    TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
+
+    TDuration GetVolumeProxyCacheRetryDuration() const;
+
+    TDuration GetServiceSelfPingInterval() const;
 };
 
 ui64 GetAllocationUnit(

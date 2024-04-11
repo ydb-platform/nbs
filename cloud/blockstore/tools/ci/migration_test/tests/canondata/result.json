@@ -1,5 +1,8 @@
 {
     "test.test_migration_test[cluster1]": {
         "uri": "file://test.test_migration_test_cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_migration_test_locally[cluster1]": {
+        "uri": "file://test.test_migration_test_locally_cluster1_/testing_out_stuff_results_locally.txt"
     }
 }

@@ -31,6 +31,10 @@ ui64 RelativeToGlobalIndex(
     const ui32 partitionCount,
     const ui32 partitionId);
 
+TBlockRange64 CalculateStripeRange(
+    const ui32 blocksPerStripe,
+    const ui64 globalIndex);
+
 ui32 CalculateRequestCount(
     const ui32 blocksPerStripe,
     const TBlockRange64& original,

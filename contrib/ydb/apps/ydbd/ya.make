@@ -35,6 +35,7 @@ IF (ARCH_X86_64)
 ENDIF()
 
 PEERDIR(
+    contrib/ydb/apps/version
     contrib/ydb/core/driver_lib/run
     contrib/ydb/core/protos
     contrib/ydb/core/security

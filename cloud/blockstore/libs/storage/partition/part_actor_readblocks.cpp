@@ -361,9 +361,7 @@ TReadBlocksActor::TReadBlocksActor(
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -656,7 +654,7 @@ void TReadBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     auto response = CreateReadBlocksResponse(ReplyLocal, error);
     ReplyAndDie(ctx, std::move(response), error);
@@ -953,7 +951,7 @@ void TPartitionActor::ReadBlocks(
         commitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction(*requestInfo, requestInfo->CancelRoutine);
 
     ExecuteTx<TReadBlocks>(
         ctx,
@@ -985,27 +983,19 @@ bool TPartitionActor::PrepareReadBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    for (const auto& entry: State->GetUnconfirmedBlobs()) {
-        for (const auto& blob: entry.second) {
-            if (blob.BlockRange.Overlaps(args.ReadRange)) {
-                args.Interrupted = true;
-                return true;
-            }
-        }
+    ui64 commitId = args.CommitId;
+
+    if (State->OverlapsUnconfirmedBlobs(0, commitId, args.ReadRange)) {
+        args.Interrupted = true;
+        return true;
     }
 
     // NOTE: we should also look in confirmed blobs because they are not added
     // yet
-    for (const auto& entry: State->GetConfirmedBlobs()) {
-        for (const auto& blob: entry.second) {
-            if (blob.BlockRange.Overlaps(args.ReadRange)) {
-                args.Interrupted = true;
-                return true;
-            }
-        }
+    if (State->OverlapsConfirmedBlobs(0, commitId, args.ReadRange)) {
+        args.Interrupted = true;
+        return true;
     }
-
-    ui64 commitId = args.CommitId;
 
     TReadBlocksVisitor visitor(
         BlockDigestGenerator,

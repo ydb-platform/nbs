@@ -92,9 +92,7 @@ TReadBlobActor::TReadBlobActor(
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -313,7 +311,7 @@ void TReadBlobActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TEvPartitionPrivate::TEvReadBlobResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }

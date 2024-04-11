@@ -137,12 +137,12 @@ void TVolumeActor::CompleteLoadState(
         ResetThrottlingPolicy();
 
         for (const auto& partStats: args.PartStats) {
-            const auto& stats = partStats.Stats;
-
             // info doesn't have to be always present
             // see NBS-1668#603e955e319cc33b747904fb
-            if (auto* info = State->GetPartitionStatInfoById(partStats.Id)) {
-                CopyCachedStatsToPartCounters(stats, *info);
+            if (auto* info =
+                    State->GetPartitionStatInfoByTabletId(partStats.TabletId))
+            {
+                CopyCachedStatsToPartCounters(partStats.Stats, *info);
             }
         }
 
@@ -153,17 +153,10 @@ void TVolumeActor::CompleteLoadState(
             "[%lu] State initialization finished",
             TabletID());
 
+        RegisterCounters(ctx);
         RegisterVolume(ctx);
 
-        const bool isDiskRegistryBased =
-            IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind());
-        if (isDiskRegistryBased) {
-            CountersPolicy = EPublishingPolicy::DiskRegistryBased;
-        } else {
-            CountersPolicy = EPublishingPolicy::Repl;
-        }
-
-        if (isDiskRegistryBased || PendingRequests.size()) {
+        if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
         } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
             && !Config->GetDisableStartPartitionsForGc())
@@ -185,6 +178,10 @@ void TVolumeActor::CompleteLoadState(
         "[%lu] State data loaded, time: %lu",
         TabletID(),
         GetLoadTime().MicroSeconds());
+
+    ctx.Send(
+        MakeDiskRegistryProxyServiceId(),
+        new TEvDiskRegistryProxy::TEvGetDrTabletInfoRequest());
 
     SignalTabletActive(ctx);
     ScheduleProcessUpdateVolumeConfig(ctx);

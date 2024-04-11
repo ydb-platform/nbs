@@ -280,12 +280,14 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 1,
                 true,
                 "shadow-disk-id",
-                EShadowDiskState::New);
+                EShadowDiskState::New,
+                TString());
             db.UpdateCheckpointRequest(
                 3,
                 false,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                "Error message");
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -324,6 +326,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(3, requests[2].RequestId);
             UNIT_ASSERT_VALUES_EQUAL("zzz", requests[2].CheckpointId);
             UNIT_ASSERT_VALUES_EQUAL("", requests[2].ShadowDiskId);
+            UNIT_ASSERT_VALUES_EQUAL("Error message", requests[2].CheckpointError);
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(333),
                 requests[2].Timestamp
@@ -365,7 +368,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                     1,
                     true,
                     "shadow-disk-id",
-                    EShadowDiskState::New);
+                    EShadowDiskState::New,
+                    TString());
             });
 
         executor.ReadTx(
@@ -503,7 +507,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
             for (ui32 i = 0; i < 2; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].Id);
+                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].TabletId);
                 const auto& stat = stats[i].Stats;
                 UNIT_ASSERT_VALUES_EQUAL(1 * i, stat.GetMixedBytesCount());
                 UNIT_ASSERT_VALUES_EQUAL(2 * i, stat.GetMergedBytesCount());
@@ -552,7 +556,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(2, stats.size());
 
             for (ui32 i = 0; i < 2; ++i) {
-                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].Id);
+                UNIT_ASSERT_VALUES_EQUAL(i, stats[i].TabletId);
                 const auto& stat = stats[i].Stats;
                 UNIT_ASSERT_VALUES_EQUAL(1 * i, stat.GetMixedBytesCount());
                 UNIT_ASSERT_VALUES_EQUAL(2 * i, stat.GetMergedBytesCount());
@@ -609,22 +613,26 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 1,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 2,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 3,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 4,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -772,7 +780,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 5,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {

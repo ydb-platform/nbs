@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
@@ -36,6 +37,7 @@ using TCreateCheckpointMethod = TEvService::TCreateCheckpointMethod;
 using TDeleteCheckpointMethod = TEvService::TDeleteCheckpointMethod;
 using TDeleteCheckpointDataMethod = TEvVolume::TDeleteCheckpointDataMethod;
 using TGetChangedBlocksMethod = TEvService::TGetChangedBlocksMethod;
+using TGetCheckpointStatusMethod = TEvService::TGetCheckpointStatusMethod;
 
 const char* GetCheckpointRequestName(ECheckpointRequestType reqType) {
     switch (reqType) {
@@ -86,6 +88,38 @@ ECheckpointRequestType ProtoCheckpointType2Create(
     return proto2enum.Value(checkpointType, ECheckpointRequestType::Create);
 }
 
+NProto::ECheckpointStatus GetCheckpointStatus(const TActiveCheckpointInfo& checkpointInfo)
+{
+    switch (checkpointInfo.Type) {
+        case ECheckpointType::Normal:
+            break;
+        case ECheckpointType::Light:
+            return NProto::ECheckpointStatus::READY;
+    }
+
+    switch (checkpointInfo.Data) {
+        case ECheckpointData::DataPresent:
+            break;
+        case ECheckpointData::DataDeleted:
+            return NProto::ECheckpointStatus::ERROR;
+    }
+
+    if (!checkpointInfo.IsShadowDiskBased()) {
+        return NProto::ECheckpointStatus::READY;
+    }
+
+    switch (checkpointInfo.ShadowDiskState) {
+        case EShadowDiskState::None:
+        case EShadowDiskState::New:
+        case EShadowDiskState::Preparing:
+            return NProto::ECheckpointStatus::NOT_READY;
+        case EShadowDiskState::Ready:
+            return NProto::ECheckpointStatus::READY;
+        case EShadowDiskState::Error:
+            return NProto::ECheckpointStatus::ERROR;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
@@ -105,6 +139,7 @@ private:
     const TActorId VolumeActorId;
     const TPartitionDescrs PartitionDescrs;
     const TRequestTraceInfo TraceInfo;
+    const ECheckpointRequestType RequestType;
     const bool CreateCheckpointShadowDisk;
 
     ui32 DrainResponses = 0;
@@ -123,6 +158,7 @@ public:
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk);
 
     void Bootstrap(const TActorContext& ctx);
@@ -131,6 +167,7 @@ public:
     void UpdateCheckpointRequest(
         const TActorContext& ctx,
         bool completed,
+        std::optional<TString> error,
         TString shadowDiskId);
     void ReplyAndDie(const TActorContext& ctx);
 
@@ -195,6 +232,7 @@ TCheckpointActor<TMethod>::TCheckpointActor(
         TActorId volumeActorId,
         TPartitionDescrs partitionDescrs,
         TRequestTraceInfo traceInfo,
+        ECheckpointRequestType requestType,
         bool createCheckpointShadowDisk)
     : RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
@@ -204,11 +242,10 @@ TCheckpointActor<TMethod>::TCheckpointActor(
     , VolumeActorId(volumeActorId)
     , PartitionDescrs(std::move(partitionDescrs))
     , TraceInfo(std::move(traceInfo))
+    , RequestType(requestType)
     , CreateCheckpointShadowDisk(createCheckpointShadowDisk)
     , ChildCallContexts(Reserve(PartitionDescrs.size()))
-{
-    TBase::ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 template <typename TMethod>
 void TCheckpointActor<TMethod>::Drain(const TActorContext& ctx)
@@ -244,6 +281,7 @@ template <typename TMethod>
 void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
     const TActorContext& ctx,
     bool completed,
+    std::optional<TString> error,
     TString shadowDiskId)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
@@ -263,6 +301,7 @@ void TCheckpointActor<TMethod>::UpdateCheckpointRequest(
             std::move(requestInfo),
             RequestId,
             completed,
+            std::move(error),
             std::move(shadowDiskId));
 
     auto event = std::make_unique<IEventHandle>(
@@ -406,8 +445,9 @@ void TCheckpointActor<TMethod>::HandleResponse(
         // request as completed.
         UpdateCheckpointRequest(
             ctx,
-            true,   // Completed
-            {}      // ShadowDiskId
+            true,           // Completed
+            std::nullopt,   // Error
+            {}              // ShadowDiskId
         );
     }
 }
@@ -421,23 +461,25 @@ void TCheckpointActor<TMethod>::HandleAllocateCheckpointResponse(
 
     JoinTraces(ev->Cookie);
 
-    if (FAILED(msg->GetStatus())) {
+    bool success = !HasError(msg->Record);
+    if (!success) {
         Error = msg->GetError();
 
-        NCloud::Send(
+        LOG_ERROR(
             ctx,
-            VolumeActorId,
-            std::make_unique<TEvents::TEvPoisonPill>());
-
-        ReplyAndDie(ctx);
-        return;
+            TBlockStoreComponents::VOLUME,
+            "For disk %s could not create shadow disk for checkpoint %s, "
+            "error: %s",
+            DiskId.Quote().c_str(),
+            CheckpointId.Quote().c_str(),
+            FormatError(Error).c_str());
     }
 
     UpdateCheckpointRequest(
         ctx,
-        true,                               // Completed
-        msg->Record.GetCheckpointDiskId()   // ShadowDiskId
-    );
+        true,   // Completed
+        success ? std::nullopt : std::optional<TString>(FormatError(Error)),
+        success ? msg->Record.GetShadowDiskId() : "ERROR");
 }
 
 template <typename TMethod>
@@ -463,8 +505,9 @@ void TCheckpointActor<TMethod>::HandleDeallocateCheckpointResponse(
 
     UpdateCheckpointRequest(
         ctx,
-        true,   // Completed
-        {}      // ShadowDiskId
+        true,           // Completed
+        std::nullopt,   // Error
+        {}              // ShadowDiskId
     );
 }
 
@@ -510,7 +553,7 @@ void TCheckpointActor<TMethod>::HandlePoisonPill(
 
     Error = MakeError(
         E_REJECTED,
-        "tablet is dead"
+        "tablet is shutting down"
     );
 
     ReplyAndDie(ctx);
@@ -595,14 +638,14 @@ void TCheckpointActor<TMethod>::DoActionForDiskRegistryBasedPartition(
 
     if (!CheckpointId) {
         Error = MakeError(E_ARGUMENT, "empty checkpoint name");
-        UpdateCheckpointRequest(ctx, false, {});
+        UpdateCheckpointRequest(ctx, false, "empty checkpoint name", {});
         return;
     }
 
     if (!CreateCheckpointShadowDisk) {
         // It is not required to send requests to the actor, we reject
         // zero/write requests in TVolume (see CanExecuteWriteRequest).
-        UpdateCheckpointRequest(ctx, true, {});
+        UpdateCheckpointRequest(ctx, true, std::nullopt, {});
         return;
     }
 
@@ -656,6 +699,13 @@ void TCheckpointActor<TMethod>::DoActionForBlobStorageBasedPartition(
     const auto selfId = TBase::SelfId();
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record.SetCheckpointId(CheckpointId);
+    if constexpr (std::is_same_v<TMethod, TCreateCheckpointMethod>) {
+        request->Record.SetCheckpointType(
+            RequestType == ECheckpointRequestType::CreateWithoutData
+                ? NProto::ECheckpointType::WITHOUT_DATA
+                : NProto::ECheckpointType::NORMAL
+        );
+    }
 
     ForkTraces(request->CallContext);
 
@@ -731,7 +781,9 @@ void TVolumeActor::CreateCheckpointLightRequest(
         requestId,
         true,        // Completed
         TString(),   // ShadowDiskId
-        EShadowDiskState::None);
+        EShadowDiskState::None,
+        TString()   // Error
+    );
 }
 
 void TVolumeActor::DeleteCheckpointLightRequest(
@@ -756,7 +808,9 @@ void TVolumeActor::DeleteCheckpointLightRequest(
         requestId,
         true,        // Completed
         TString(),   // ShadowDiskId
-        EShadowDiskState::None);
+        EShadowDiskState::None,
+        TString()   // Error
+    );
 }
 
 void TVolumeActor::GetChangedBlocksForLightCheckpoints(
@@ -968,6 +1022,49 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
     return true;
 }
 
+template <>
+bool TVolumeActor::HandleRequest<TGetCheckpointStatusMethod>(
+    const TActorContext& ctx,
+    const TGetCheckpointStatusMethod::TRequest::TPtr& ev,
+    ui64 volumeRequestId,
+    bool isTraced,
+    ui64 traceTs)
+{
+    Y_UNUSED(volumeRequestId);
+    Y_UNUSED(isTraced);
+    Y_UNUSED(traceTs);
+
+    const auto& msg = *ev->Get();
+    const auto& checkpointId = msg.Record.GetCheckpointId();
+
+    auto reply =
+        [&](const NProto::TError& error, NProto::ECheckpointStatus status)
+    {
+        auto response =
+            std::make_unique<TGetCheckpointStatusMethod::TResponse>(error);
+        response->Record.SetCheckpointStatus(status);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "[%lu] Get checkpoint status for checkpoint %s",
+        TabletID(),
+        checkpointId.Quote().c_str());
+
+    auto checkpoint = State->GetCheckpointStore().GetCheckpoint(checkpointId);
+    if (!checkpoint) {
+        reply(
+            MakeError(E_NOT_FOUND, "Checkpoint not found"),
+            NProto::ECheckpointStatus::ERROR);
+        return true;
+    }
+
+    reply(MakeError(S_OK), GetCheckpointStatus(*checkpoint));
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleUpdateCheckpointRequest(
@@ -976,14 +1073,23 @@ void TVolumeActor::HandleUpdateCheckpointRequest(
 {
     auto* msg = ev->Get();
 
+    EShadowDiskState shadowDiskState = EShadowDiskState::None;
+    if (!msg->Completed || msg->Error) {
+        shadowDiskState = EShadowDiskState::Error;
+    } else if (msg->ShadowDiskId) {
+        shadowDiskState = EShadowDiskState::New;
+    } else {
+        shadowDiskState = EShadowDiskState::None;
+    }
+
     ExecuteTx<TUpdateCheckpointRequest>(
         ctx,
         std::move(msg->RequestInfo),
         msg->RequestId,
         msg->Completed,
         msg->ShadowDiskId,
-        msg->ShadowDiskId.empty() ? EShadowDiskState::None
-                                  : EShadowDiskState::New);
+        shadowDiskState,
+        msg->Error.value_or(""));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1081,6 +1187,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1105,6 +1212,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1123,6 +1231,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
                         requestInfo->IsTraced,
                         requestInfo->TraceTs,
                         TraceSerializer),
+                    request.ReqType,
                     Config->GetUseShadowDisksForNonreplDiskCheckpoints());
             break;
         }
@@ -1239,7 +1348,8 @@ void TVolumeActor::ExecuteUpdateCheckpointRequest(
         args.RequestId,
         args.Completed,
         args.ShadowDiskId,
-        args.ShadowDiskState);
+        args.ShadowDiskState,
+        args.ErrorMessage.value_or(""));
 }
 
 void TVolumeActor::CompleteUpdateCheckpointRequest(
@@ -1257,12 +1367,35 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         args.Completed ? "completed" : "rejected",
         args.ShadowDiskId.Quote().c_str());
 
+    const bool needToDestroyShadowActor =
+        (request.ReqType == ECheckpointRequestType::Delete ||
+         request.ReqType == ECheckpointRequestType::DeleteData) &&
+         State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor) {
+        auto checkpointInfo =
+            State->GetCheckpointStore().GetCheckpoint(request.CheckpointId);
+        if (checkpointInfo && checkpointInfo->ShadowDiskId) {
+            DoUnregisterVolume(ctx, checkpointInfo->ShadowDiskId);
+        }
+    }
+
     State->SetCheckpointRequestFinished(
         request,
         args.Completed,
         args.ShadowDiskId,
         args.ShadowDiskState);
     CheckpointRequests.erase(request.RequestId);
+
+    const bool needToCreateShadowActor =
+        request.ReqType == ECheckpointRequestType::Create &&
+        request.ShadowDiskState != EShadowDiskState::Error &&
+        !request.ShadowDiskId.Empty() &&
+        !State->GetCheckpointStore().HasShadowActor(request.CheckpointId);
+
+    if (needToDestroyShadowActor || needToCreateShadowActor) {
+        RestartDiskRegistryBasedPartition(ctx);
+    }
 
     if (request.Type == ECheckpointType::Light) {
         const bool needReply =
@@ -1329,8 +1462,6 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
     const TCheckpointRequest& request =
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
-    auto newState = static_cast<EShadowDiskState>(args.ShadowDiskState);
-
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -1340,19 +1471,19 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
         request.CheckpointId.Quote().c_str(),
         request.ShadowDiskId.Quote().c_str(),
         args.ProcessedBlockCount,
-        ToString(newState).c_str());
+        ToString(args.ShadowDiskState).c_str());
 
     State->GetCheckpointStore().SetShadowDiskState(
         request.CheckpointId,
-        newState,
-        args.ProcessedBlockCount,
-        args.TotalBlockCount);
+        args.ShadowDiskState,
+        args.ProcessedBlockCount);
 
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
-            newState));
+            args.ShadowDiskState,
+            args.ProcessedBlockCount));
 }
 
 void TVolumeActor::HandleUpdateShadowDiskState(
@@ -1372,7 +1503,9 @@ void TVolumeActor::HandleUpdateShadowDiskState(
     auto reply = [&](EShadowDiskState newState)
     {
         auto response = std::make_unique<
-            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(newState);
+            TEvVolumePrivate::TEvUpdateShadowDiskStateResponse>(
+            newState,
+            msg->ProcessedBlockCount);
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
@@ -1411,8 +1544,7 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         std::move(requestInfo),
         checkpointInfo->RequestId,
         newShadowDiskState,
-        msg->ProcessedBlockCount,
-        msg->TotalBlockCount);
+        msg->ProcessedBlockCount);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

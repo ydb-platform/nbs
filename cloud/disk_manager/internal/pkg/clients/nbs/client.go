@@ -77,6 +77,51 @@ func getStorageMediaKind(
 	}
 }
 
+func getDiskKind(
+	mediaKind core_protos.EStorageMediaKind,
+) (types.DiskKind, error) {
+
+	switch mediaKind {
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_DEFAULT:
+		return 0, errors.NewNonRetriableErrorf(
+			"unsupported media kind %v",
+			mediaKind,
+		)
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD:
+		return types.DiskKind_DISK_KIND_SSD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID:
+		return types.DiskKind_DISK_KIND_HDD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD:
+		return types.DiskKind_DISK_KIND_HDD, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED:
+		return types.DiskKind_DISK_KIND_SSD_NONREPLICATED, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2:
+		return types.DiskKind_DISK_KIND_SSD_MIRROR2, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL:
+		return types.DiskKind_DISK_KIND_SSD_LOCAL, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3:
+		return types.DiskKind_DISK_KIND_SSD_MIRROR3, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED:
+		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
+	default:
+		return 0, errors.NewNonRetriableErrorf(
+			"unknown media kind %v",
+			mediaKind,
+		)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func IsDiskRegistryBasedDisk(kind types.DiskKind) bool {
+	mediaKind, err := getStorageMediaKind(kind)
+	if err != nil {
+		return false
+	}
+
+	return isDiskRegistryBasedDisk(mediaKind)
+}
+
 func isDiskRegistryBasedDisk(mediaKind core_protos.EStorageMediaKind) bool {
 	switch mediaKind {
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -357,22 +402,10 @@ func min(x, y uint64) uint64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func areOverlayDisksSupported(
-	mediaKind core_protos.EStorageMediaKind,
-) bool {
-
+func areOverlayDisksSupported(mediaKind core_protos.EStorageMediaKind) bool {
 	return mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD ||
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID ||
 		mediaKind == core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD
-}
-
-func AreOverlayDisksSupported(kind types.DiskKind) bool {
-	mediaKind, err := getStorageMediaKind(kind)
-	if err != nil {
-		return false
-	}
-
-	return areOverlayDisksSupported(mediaKind)
 }
 
 func canBeBaseDisk(volume *protos.TVolume) bool {
@@ -536,6 +569,32 @@ func (t CheckpointType) toProto() protos.ECheckpointType {
 		CheckpointTypeLight:       protos.ECheckpointType_LIGHT,
 		CheckpointTypeWithoutData: protos.ECheckpointType_WITHOUT_DATA,
 	}[t]
+}
+
+func parseCheckpointStatus(protoType protos.ECheckpointStatus) CheckpointStatus {
+	switch protoType {
+	case protos.ECheckpointStatus_NOT_READY:
+		return CheckpointStatusNotReady
+	case protos.ECheckpointStatus_READY:
+		return CheckpointStatusReady
+	case protos.ECheckpointStatus_ERROR:
+		return CheckpointStatusError
+	default:
+		return CheckpointStatusError
+	}
+}
+
+func (m CheckpointStatus) String() string {
+	switch m {
+	case CheckpointStatusNotReady:
+		return "CheckpointStatusNotReady"
+	case CheckpointStatusReady:
+		return "CheckpointStatusReady"
+	case CheckpointStatusError:
+		return "CheckpointStatusError"
+	default:
+		return "CheckpointStatusUnknown"
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -714,6 +773,16 @@ func (c *client) CreateCheckpoint(
 		params.CheckpointType.toProto(),
 	)
 	return wrapError(err)
+}
+
+func (c *client) GetCheckpointStatus(
+	ctx context.Context,
+	diskID string,
+	checkpointID string,
+) (CheckpointStatus, error) {
+
+	status, err := c.nbs.GetCheckpointStatus(ctx, diskID, checkpointID)
+	return parseCheckpointStatus(status), wrapError(err)
 }
 
 func (c *client) DeleteCheckpoint(
@@ -966,9 +1035,15 @@ func (c *client) Describe(
 		return DiskParams{}, err
 	}
 
+	diskKind, err := getDiskKind(volume.StorageMediaKind)
+	if err != nil {
+		return DiskParams{}, err
+	}
+
 	return DiskParams{
 		BlockSize:      volume.BlockSize,
 		BlocksCount:    volume.BlocksCount,
+		Kind:           diskKind,
 		EncryptionDesc: encryptionDesc,
 		CloudID:        volume.CloudId,
 		FolderID:       volume.FolderId,

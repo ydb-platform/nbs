@@ -102,6 +102,11 @@ void TIndexTabletState::LoadState(
 
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
+    Impl->ReadAheadCache.Reset(
+        config.GetReadAheadCacheMaxNodes(),
+        config.GetReadAheadCacheMaxResultsPerNode(),
+        config.GetReadAheadCacheRangeSize(),
+        config.GetReadAheadMaxGapPercentage());
 }
 
 void TIndexTabletState::UpdateConfig(

@@ -8,6 +8,7 @@ GENERATE_ENUM_SERIALIZATION(operation_status.h)
 SRCS(
     barrier.cpp
     blob_index.cpp
+    blob_to_confirm.cpp
     block.cpp
     block_index.cpp
     block_mask.cpp
@@ -18,7 +19,6 @@ SRCS(
     garbage_queue.cpp
     mixed_index_cache.cpp
     operation_status.cpp
-    unconfirmed_blob.cpp
 )
 
 PEERDIR(

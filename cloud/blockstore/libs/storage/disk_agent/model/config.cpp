@@ -19,7 +19,7 @@ namespace {
     xxx(PageSize,                   ui32,               4_MB                  )\
     xxx(MaxPageCount,               ui32,               256                   )\
     xxx(PageDropSize,               ui32,               512_KB                )\
-    xxx(RegisterRetryTimeout,       TDuration,          TDuration::Seconds(10))\
+    xxx(RegisterRetryTimeout,       TDuration,          TDuration::Seconds(1) )\
     xxx(SecureEraseTimeout,         TDuration,          TDuration::Minutes(1) )\
     xxx(DeviceIOTimeout,            TDuration,          TDuration::Minutes(1) )\
     xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\

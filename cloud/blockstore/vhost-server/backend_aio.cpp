@@ -8,6 +8,8 @@
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/system/sanitizers.h>
+
 #include <libaio.h>
 
 #include <thread>
@@ -15,55 +17,6 @@
 namespace NCloud::NBlockStore::NVHostServer {
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-#ifndef NDEBUG
-
-TString ToString(std::span<iocb*> batch)
-{
-    TStringStream ss;
-
-    const char* op[]{
-        "pread",
-        "pwrite",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "preadv",
-        "pwritev",
-    };
-
-    ss << "[ ";
-    for (iocb* cb: batch) {
-        ss << "{ " << op[cb->aio_lio_opcode] << ":" << cb->aio_fildes << " ";
-        switch (cb->aio_lio_opcode) {
-            case IO_CMD_PREAD:
-            case IO_CMD_PWRITE:
-                ss << cb->u.c.buf << " " << cb->u.c.nbytes << ":"
-                   << cb->u.c.offset;
-                break;
-            case IO_CMD_PREADV:
-            case IO_CMD_PWRITEV: {
-                iovec* iov = static_cast<iovec*>(cb->u.c.buf);
-                for (unsigned i = 0; i != cb->u.c.nbytes; ++i) {
-                    ss << "(" << iov[i].iov_base << " " << iov[i].iov_len
-                       << ") ";
-                }
-                break;
-            }
-        }
-        ss << "} ";
-    }
-
-    ss << "]";
-
-    return ss.Str();
-}
-
-#endif   // NDEBUG
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -345,11 +298,6 @@ void TAioBackend::ProcessQueue(
 
         queueStats.Submitted += ret;
 
-#ifndef NDEBUG
-        STORAGE_DEBUG(
-            "submitted " << ret << ": "
-                         << ToString(std::span(batch.data(), ret)));
-#endif
         // remove submitted items from the batch
         batch.erase(batch.begin(), batch.begin() + ret);
     }
@@ -416,7 +364,9 @@ void TAioBackend::CompletionThreadFunc()
         for (int i = 0; i != ret; ++i) {
             if (events[i].data) {
                 auto* req = static_cast<TAioCompoundRequest*>(events[i].data);
+                NSan::Acquire(req);
                 iocb* sub = events[i].obj;
+                NSan::Acquire(sub);
 
                 vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
 
@@ -440,6 +390,7 @@ void TAioBackend::CompletionThreadFunc()
             }
 
             auto* req = static_cast<TAioRequest*>(events[i].obj);
+            NSan::Acquire(req);
 
             vhd_bdev_io_result result = VHD_BDEV_SUCCESS;
             auto* bio = vhd_get_bdev_io(req->Io);

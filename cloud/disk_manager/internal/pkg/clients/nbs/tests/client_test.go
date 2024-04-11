@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -1167,6 +1168,67 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 	require.True(t, !errors.CanRetry(err))
 }
 
+func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+	otherZoneClient := newOtherZoneClient(t, ctx)
+	multiZoneClient := newMultiZoneClient(t, ctx)
+
+	diskID := t.Name()
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: 4096,
+		BlockSize:   4096,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	})
+	require.NoError(t, err)
+
+	err = multiZoneClient.Clone(
+		ctx,
+		diskID,
+		"", // dstPlacementGroupID
+		0,  // dstPlacementPartitionIndex
+		1,  // fillGeneration
+		"", // baseDiskID
+	)
+	require.NoError(t, err)
+
+	errs := make(chan error)
+
+	go func() {
+		// Need to add some variance for better testing.
+		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+
+		errs <- multiZoneClient.Clone(
+			ctx,
+			diskID,
+			"", // dstPlacementGroupID
+			0,  // dstPlacementPartitionIndex
+			2,  // fillGeneration
+			"", // baseDiskID
+		)
+	}()
+
+	go func() {
+		// Need to add some variance for better testing.
+		testcommon.WaitForRandomDuration(1*time.Millisecond, 10*time.Millisecond)
+
+		errs <- otherZoneClient.DeleteWithFillGeneration(
+			ctx,
+			diskID,
+			1, // fillGeneration
+		)
+	}()
+
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if err != nil {
+			require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+		}
+	}
+}
+
 func TestFinishFillDisk(t *testing.T) {
 	ctx := newContext()
 	client := newClient(t, ctx)
@@ -1365,5 +1427,104 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_2")
 	require.NoError(t, err)
 	err = client.DeleteCheckpoint(ctx, diskID, "checkpoint_3")
+	require.NoError(t, err)
+}
+
+func TestReadFromProxyOverlayDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 1,
+	})
+	require.NoError(t, err)
+
+	diskContentInfo, err := client.FillDisk(
+		ctx,
+		diskID,
+		uint64(diskSize),
+	)
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	require.True(t, created)
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
+	require.NoError(t, err)
+}
+
+func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	diskID := t.Name()
+	diskSize := int64(1024 * 4096)
+
+	err := client.Create(ctx, nbs.CreateDiskParams{
+		ID:              diskID,
+		BlocksCount:     1024,
+		BlockSize:       4096,
+		Kind:            types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount: 2,
+	})
+	require.NoError(t, err)
+
+	diskContentInfo, err := client.FillDisk(ctx, diskID, uint64(diskSize))
+	require.NoError(t, err)
+
+	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
+		DiskID:         diskID,
+		CheckpointID:   "cp",
+		CheckpointType: nbs.CheckpointTypeNormal,
+	})
+	require.NoError(t, err)
+
+	proxyOverlayDiskID := "proxy_" + diskID
+	created, err := client.CreateProxyOverlayDisk(
+		ctx,
+		proxyOverlayDiskID,
+		diskID,
+		"cp",
+	)
+	// Now it is not allowed to create proxy overlay disks for multipartition
+	// disks.
+	require.False(t, created)
+	require.NoError(t, err)
+
+	// We need to create proxy overlay disk manually.
+	err = client.Create(ctx, nbs.CreateDiskParams{
+		ID:                   proxyOverlayDiskID,
+		BaseDiskID:           diskID,
+		BaseDiskCheckpointID: "cp",
+		BlocksCount:          1024,
+		BlockSize:            4096,
+		Kind:                 types.DiskKind_DISK_KIND_SSD,
+		PartitionsCount:      1,
+		IsSystem:             true,
+	})
+	require.NoError(t, err)
+
+	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
 	require.NoError(t, err)
 }

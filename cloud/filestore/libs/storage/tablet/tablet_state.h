@@ -7,6 +7,7 @@
 
 #include "checkpoint.h"
 #include "helpers.h"
+#include "rebase_logic.h"
 #include "session.h"
 
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
@@ -25,6 +26,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
+#include <cloud/storage/core/libs/viewer/tablet_monitoring.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -233,6 +235,9 @@ public:
     TVector<ui32> GetChannels(EChannelDataKind kind) const;
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
+
+    TChannelsStats CalculateChannelsStats() const;
 
     void RegisterUnwritableChannel(ui32 channel);
     void RegisterChannelToMove(ui32 channel);
@@ -440,6 +445,7 @@ public:
 
     TVector<TSession*> GetTimeoutedSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
+    TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
@@ -447,6 +453,7 @@ public:
         const TSessionHistoryEntry& entry, size_t maxEntryCount);
 
     TVector<TMonSessionInfo> GetActiveSessions() const;
+    TSessionsStats CalculateSessionsStats() const;
 
 private:
     TSession* CreateSession(
@@ -735,6 +742,8 @@ private:
         const TPartialBlobId& blobId,
         const TVector<TBlock>& blocks);
 
+    TRebaseResult RebaseMixedBlocks(TVector<TBlock>& blocks) const;
+
     //
     // Garbage
     //
@@ -756,7 +765,8 @@ public:
     }
 
     void AcquireCollectBarrier(ui64 commitId);
-    void ReleaseCollectBarrier(ui64 commitId);
+    bool TryReleaseCollectBarrier(ui64 commitId);
+    bool IsCollectBarrierAcquired(ui64 commitId) const;
 
     ui64 GetCollectCommitId() const;
 
@@ -966,6 +976,24 @@ private:
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& range);
+
+    //
+    // ReadAhead.
+    //
+
+public:
+    bool TryFillDescribeResult(
+        ui64 nodeId,
+        const TByteRange& range,
+        NProtoPrivate::TDescribeDataResponse* response);
+    TMaybe<TByteRange> RegisterDescribe(
+        ui64 nodeId,
+        const TByteRange inputRange);
+    void InvalidateReadAheadCache(ui64 nodeId);
+    void RegisterReadAheadResult(
+        ui64 nodeId,
+        const TByteRange& range,
+        const NProtoPrivate::TDescribeDataResponse& result);
 };
 
 }   // namespace NCloud::NFileStore::NStorage

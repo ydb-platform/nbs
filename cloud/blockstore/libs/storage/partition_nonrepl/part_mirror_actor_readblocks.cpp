@@ -67,9 +67,7 @@ TRequestActor<TMethod>::TRequestActor(
     , Partition(partition)
     , Request(std::move(request))
     , DiskId(std::move(diskId))
-{
-    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 template <typename TMethod>
 void TRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)

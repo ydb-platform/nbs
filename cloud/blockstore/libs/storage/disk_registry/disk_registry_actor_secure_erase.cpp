@@ -78,9 +78,7 @@ TSecureEraseActor::TSecureEraseActor(
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
     , Devices(std::move(devicesToClean))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY_WORKER;
-}
+{}
 
 void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
 {
@@ -297,8 +295,6 @@ void TDiskRegistryActor::CompleteCleanupDevices(
     for (const auto& diskId: args.SyncDeallocatedDisks) {
         ReplyToPendingDeallocations(ctx, diskId);
     }
-
-    ReplyToPendingWaitForDeviceCleanupRequests(ctx, args.Devices);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -467,84 +463,6 @@ void TDiskRegistryActor::HandleCleanupDevices(
             msg->CallContext
         ),
         msg->Devices);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TDiskRegistryActor::TPendingWaitForDeviceCleanupRequest::Reply(
-    const NActors::TActorContext& ctx,
-    const NProto::TError& error)
-{
-    if (!RequestInfo) {
-        return;   // skip completed requests
-    }
-
-    NCloud::Reply(ctx, *RequestInfo, ResponseFactory(error));
-
-    RequestInfo = {};
-}
-
-void TDiskRegistryActor::ReplyToPendingWaitForDeviceCleanupRequests(
-    const NActors::TActorContext& ctx,
-    const TVector<TDeviceId>& devices)
-{
-    for (const auto& uuid: devices) {
-        auto it = PendingWaitForDeviceCleanupRequests.find(uuid);
-        if (it == PendingWaitForDeviceCleanupRequests.end()) {
-            continue;
-        }
-
-        for (auto& pendingRequest: it->second) {
-            pendingRequest->PendingDevices.erase(uuid);
-            if (!pendingRequest->PendingDevices.empty()) {
-                continue;
-            }
-
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] All devices are cleaned. Sending the postponed response",
-                TabletID());
-
-            pendingRequest->Reply(ctx, {});
-        }
-
-        PendingWaitForDeviceCleanupRequests.erase(it);
-    }
-}
-
-void TDiskRegistryActor::CancelPendingWaitForDeviceCleanupRequests(
-    const NActors::TActorContext& ctx,
-    const TDeviceId& id,
-    const NProto::TError& error)
-{
-    auto it = PendingWaitForDeviceCleanupRequests.find(id);
-    if (it == PendingWaitForDeviceCleanupRequests.end()) {
-        return;
-    }
-
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Cancel pending requests for device %s",
-        TabletID(),
-        id.Quote().c_str());
-
-    for (auto& pendingRequest: it->second) {
-        pendingRequest->Reply(ctx, error);
-    }
-
-    PendingWaitForDeviceCleanupRequests.erase(it);
-}
-
-void TDiskRegistryActor::CancelAllPendingWaitForDeviceCleanupRequests(
-    const NActors::TActorContext& ctx)
-{
-    const auto error = MakeError(E_REJECTED, "Tablet is dead");
-
-    for (auto& [_, requests]: PendingWaitForDeviceCleanupRequests) {
-        for (auto& pendingRequest: requests) {
-            pendingRequest->Reply(ctx, error);
-        }
-    }
-
-    PendingWaitForDeviceCleanupRequests.clear();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

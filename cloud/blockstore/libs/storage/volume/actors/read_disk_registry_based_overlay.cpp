@@ -56,8 +56,6 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
               OriginalRequest.GetStartIndex(),
               OriginalRequest.GetBlocksCount())))
 {
-    TBase::ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-
     if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>) {
         ReadHandler = CreateReadBlocksHandler(
             TBlockRange64::WithLength(
@@ -443,7 +441,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -113,6 +113,7 @@ private:
     const IDeviceHandlerPtr DeviceHandler;
     const TString SocketPath;
     const TStorageOptions Options;
+    const ui32 SocketAccessMode;
     IVhostDevicePtr VhostDevice;
 
     TIntrusiveList<TRequest> RequestsInFlight;
@@ -125,11 +126,13 @@ public:
             TAppContext& appCtx,
             IDeviceHandlerPtr deviceHandler,
             TString socketPath,
-            const TStorageOptions& options)
+            const TStorageOptions& options,
+            ui32 socketAccessMode)
         : AppCtx(appCtx)
         , DeviceHandler(std::move(deviceHandler))
         , SocketPath(std::move(socketPath))
         , Options(options)
+        , SocketAccessMode(socketAccessMode)
     {}
 
     void SetVhostDevice(IVhostDevicePtr vhostDevice)
@@ -153,8 +156,7 @@ public:
             return error;
         }
 
-        int mode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
-        auto err = Chmod(SocketPath.c_str(), mode);
+        auto err = Chmod(SocketPath.c_str(), SocketAccessMode);
 
         if (err != 0) {
             NProto::TError error;
@@ -379,6 +381,7 @@ private:
     const TString Name;
     TExecutorCounters::TExecutorScope ExecutorScope;
     const IVhostQueuePtr VhostQueue;
+    const ui32 SocketAccessMode;
     TAffinity Affinity;
 
     TMap<TString, TEndpointPtr> Endpoints;
@@ -388,11 +391,13 @@ public:
             TAppContext& appCtx,
             TString name,
             IVhostQueuePtr vhostQueue,
+            ui32 socketAccessMode,
             const TAffinity& affinity)
         : AppCtx(appCtx)
         , Name(std::move(name))
         , ExecutorScope(AppCtx.ServerStats->StartExecutor())
         , VhostQueue(std::move(vhostQueue))
+        , SocketAccessMode(socketAccessMode)
         , Affinity(affinity)
     {}
 
@@ -427,7 +432,8 @@ public:
             AppCtx,
             std::move(deviceHandler),
             socketPath,
-            options);
+            options,
+            SocketAccessMode);
 
         auto vhostDevice = VhostQueue->CreateDevice(
             socketPath,
@@ -663,7 +669,7 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         auto it = EndpointMap.find(socketPath);
         if (it != EndpointMap.end()) {
             NProto::TError error;
-            error.SetCode(E_FAIL);
+            error.SetCode(S_ALREADY);
             error.SetMessage(TStringBuilder()
                 << "endpoint " << socketPath.Quote()
                 << " has already been started");
@@ -827,6 +833,7 @@ void TServer::InitExecutors()
             *this,
             TStringBuilder() << "VHOST" << i,
             std::move(vhostQueue),
+            Config.SocketAccessMode,
             Config.Affinity);
 
         Executors.push_back(std::move(executor));

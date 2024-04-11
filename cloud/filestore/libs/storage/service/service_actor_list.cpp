@@ -34,9 +34,7 @@ public:
     TDescribeActor(TRequestInfoPtr requestInfo, TString path)
         : RequestInfo(std::move(requestInfo))
         , Path(std::move(path))
-    {
-        ActivityType = TFileStoreActivities::SERVICE;
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {

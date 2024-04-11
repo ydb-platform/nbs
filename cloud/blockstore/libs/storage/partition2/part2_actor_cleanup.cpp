@@ -43,7 +43,7 @@ void TPartitionActor::HandleCleanup(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCleanupMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -87,7 +87,7 @@ void TPartitionActor::HandleCleanup(
     auto createTxAndEnqueueIntoCCCQueue = [&] (ui64 commitId, auto onStartProcessing) {
         State->SetCleanupStatus(EOperationStatus::Delayed);
 
-        AddTransaction(*requestInfo);
+        AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
         auto tx = CreateTx<TCleanup>(requestInfo, commitId, msg->Mode);
 
         auto& queue = State->GetCCCRequestQueue();

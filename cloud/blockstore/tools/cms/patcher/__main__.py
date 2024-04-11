@@ -9,7 +9,7 @@ def make_conductor(test_data_dir: str):
     return ConductorMock(test_data_dir)
 
 
-def make_pssh(robot: bool):
+def make_pssh(robot: bool, cluster: str):
     return PsshMock()
 
 

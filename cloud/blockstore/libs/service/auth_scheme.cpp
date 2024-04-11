@@ -103,6 +103,7 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
                 EPermission::Read,
                 EPermission::Write});
         case EBlockStoreRequest::GetChangedBlocks:
+        case EBlockStoreRequest::GetCheckpointStatus:
             return CreatePermissionList({EPermission::Read});
         case EBlockStoreRequest::DescribeVolume:
         case EBlockStoreRequest::DescribeVolumeModel:
@@ -193,6 +194,7 @@ TPermissionList GetRequestPermissions(
         perms("reallocatedisk", {EPermission::Update}),
         perms("rebindvolumes", {EPermission::Update}),
         perms("setuserid", {EPermission::Update}),
+        perms("cms", {EPermission::Update}),
 
         // Delete
         perms("deletecheckpointdata", {EPermission::Delete}),

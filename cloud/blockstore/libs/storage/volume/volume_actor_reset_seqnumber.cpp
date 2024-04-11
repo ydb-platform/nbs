@@ -71,9 +71,7 @@ THttpResetMountSeqNumberActor::THttpResetMountSeqNumberActor(
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
     , TabletId(tabletId)
-{
-    ActivityType = TBlockStoreActivities::VOLUME;
-}
+{}
 
 void THttpResetMountSeqNumberActor::Bootstrap(const TActorContext& ctx)
 {
@@ -124,7 +122,7 @@ void THttpResetMountSeqNumberActor::HandleResetMountSeqNumber(
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
-    Notify(ctx, "tablet is dead", EAlertLevel::DANGER);
+    Notify(ctx, "tablet is shutting down", EAlertLevel::DANGER);
 
     Die(ctx);
 }
@@ -136,7 +134,7 @@ void THttpResetMountSeqNumberActor::HandlePoisonPill(
     Y_UNUSED(ev);
     Y_UNUSED(ctx);
 
-    Notify(ctx, "tablet is dead", EAlertLevel::DANGER);
+    Notify(ctx, "tablet is shutting down", EAlertLevel::DANGER);
 
     Die(ctx);
 }

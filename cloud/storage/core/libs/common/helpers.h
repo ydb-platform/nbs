@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/protos/error.pb.h>
+
 #include <util/system/defaults.h>
 
 namespace NCloud {
@@ -22,6 +24,14 @@ void SetProtoFlag(ui32& flags, const T flag)
     if (iflag) {
         flags |= 1 << (iflag - 1);
     }
+}
+
+template <typename T>
+void SetErrorProtoFlag(NProto::TError& error, const T flag)
+{
+    auto flags = error.GetFlags();
+    SetProtoFlag(flags, flag);
+    error.SetFlags(flags);
 }
 
 }   // namespace NCloud

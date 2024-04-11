@@ -18,6 +18,16 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
     const TEvIndexTabletPrivate::TEvDeleteCheckpointRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -30,6 +40,8 @@ void TIndexTabletActor::HandleDeleteCheckpoint(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvIndexTabletPrivate::TDeleteCheckpointMethod>(*requestInfo);
 
     ExecuteTx<TDeleteCheckpoint>(
         ctx,
@@ -235,13 +247,15 @@ void TIndexTabletActor::CompleteTx_DeleteCheckpoint(
     const TActorContext& ctx,
     TTxIndexTablet::TDeleteCheckpoint& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s DeleteCheckpoint completed (%s)",
         LogTag.c_str(),
         FormatError(args.Error).c_str());
 
     ReleaseMixedBlocks(args.MixedBlocksRanges);
-    ReleaseCollectBarrier(args.CollectBarrier);
+    TABLET_VERIFY(TryReleaseCollectBarrier(args.CollectBarrier));
 
     auto response = std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointResponse>(args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

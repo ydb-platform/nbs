@@ -11,13 +11,13 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_mirror_resync.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration.h>
-
+#include <cloud/blockstore/libs/storage/volume/actors/shadow_disk_actor.h>
 #include <cloud/storage/core/libs/common/media.h>
+
+#include <util/string/builder.h>
 
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
-#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -93,9 +93,10 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         StartCompletionTimestamp = ctx.Now();
 
         LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
-            "[%lu] Volume started. MountSeqNumber: %lu, generation: %lu, "
+            "[%lu] Volume %s started. MountSeqNumber: %lu, generation: %lu, "
             "time: %lu",
             TabletID(),
+            State->GetDiskId().Quote().c_str(),
             State->GetMountSeqNumber(),
             Executor()->Generation(),
             GetStartTime().MicroSeconds());
@@ -138,6 +139,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
     const auto volumeParams = State->GetVolumeParams();
 
+    State->SetBlockCountToMigrate(std::nullopt);
+
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
     const auto maxTimedOutDeviceStateDurationOverridden = !!maxTimedOutDeviceStateDuration;
@@ -155,7 +158,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
             maxTimedOutDeviceStateDuration =
                 Config->GetMaxTimedOutDeviceStateDurationFeatureValue(
                     volumeConfig.GetCloudId(),
-                    volumeConfig.GetFolderId());
+                    volumeConfig.GetFolderId(),
+                    volumeConfig.GetDiskId());
         }
     }
 
@@ -181,11 +185,6 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 
     TActorId nonreplicatedActorId;
 
-    NRdma::IClientPtr rdmaClient;
-    if (Config->GetUseNonreplicatedRdmaActor() && State->GetUseRdma()) {
-        rdmaClient = RdmaClient;
-    }
-
     const auto& migrations = State->GetMeta().GetMigrations();
     const auto& metaReplicas = State->GetMeta().GetReplicas();
 
@@ -198,7 +197,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     Config,
                     nonreplicatedConfig,
                     SelfId(),
-                    std::move(rdmaClient)));
+                    GetRdmaClient()));
         } else {
             // nonreplicated disk in migration state
             nonreplicatedActorId = NCloud::Register(
@@ -211,7 +210,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     State->GetReadWriteAccessClientId(),
                     nonreplicatedConfig,
                     migrations,
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId()));
         }
     } else {
@@ -234,7 +233,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId(),
                     State->GetMeta().GetResyncIndex()));
         } else {
@@ -249,14 +248,61 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
                     nonreplicatedConfig,
                     migrations,
                     std::move(replicas),
-                    std::move(rdmaClient),
+                    GetRdmaClient(),
                     SelfId()));
         }
     }
 
     State->SetDiskRegistryBasedPartitionActor(
-        nonreplicatedActorId,
-        std::move(nonreplicatedConfig));
+        WrapNonreplActorIfNeeded(ctx, nonreplicatedActorId, nonreplicatedConfig),
+        nonreplicatedConfig);
+}
+
+NActors::TActorId TVolumeActor::WrapNonreplActorIfNeeded(
+    const TActorContext& ctx,
+    NActors::TActorId nonreplicatedActorId,
+    std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig)
+{
+    for (const auto& [checkpointId, checkpointInfo]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        if (checkpointInfo.Data == ECheckpointData::DataDeleted ||
+            !checkpointInfo.IsShadowDiskBased() ||
+            checkpointInfo.ShadowDiskState == EShadowDiskState::Error ||
+            checkpointInfo.HasShadowActor)
+        {
+            continue;
+        }
+
+        nonreplicatedActorId = NCloud::Register<TShadowDiskActor>(
+            ctx,
+            Config,
+            GetRdmaClient(),
+            ProfileLog,
+            BlockDigestGenerator,
+            State->GetReadWriteAccessClientId(),
+            State->GetMountSeqNumber(),
+            Executor()->Generation(),
+            srcConfig,
+            SelfId(),
+            nonreplicatedActorId,
+            checkpointInfo);
+
+        State->GetCheckpointStore().ShadowActorCreated(checkpointId);
+        DoRegisterVolume(ctx, checkpointInfo.ShadowDiskId);
+    }
+    return nonreplicatedActorId;
+}
+
+void TVolumeActor::RestartDiskRegistryBasedPartition(const TActorContext& ctx)
+{
+    if (!State->IsDiskRegistryMediaKind()) {
+        return;
+    }
+
+    StopPartitions(ctx);
+    StartPartitionsForUse(ctx);
+    ResetServicePipes(ctx);
 }
 
 void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
@@ -272,7 +318,7 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
         SendBootExternalRequest(ctx, partition);
     }
 
-    if (IsDiskRegistryMediaKind(State->GetConfig().GetStorageMediaKind())) {
+    if (State->IsDiskRegistryMediaKind()) {
         SetupDiskRegistryBasedPartitions(ctx);
 
         if (State->Ready()) {
@@ -297,6 +343,12 @@ void TVolumeActor::StopPartitions(const TActorContext& ctx)
 {
     if (!State) {
         return;
+    }
+
+    for (const auto& [checkpointId, _]:
+         State->GetCheckpointStore().GetActiveCheckpoints())
+    {
+        State->GetCheckpointStore().ShadowActorDestroyed(checkpointId);
     }
 
     for (auto& part : State->GetPartitions()) {
@@ -526,7 +578,6 @@ void TVolumeActor::HandleTabletStatus(
     switch (msg->Status) {
         case TEvBootstrapper::STARTED:
             partition->SetStarted(msg->TabletUser);
-            Y_ABORT_UNLESS(State->SetPartitionStatActor(msg->TabletId, msg->TabletUser));
             NCloud::Send<TEvPartition::TEvWaitReadyRequest>(
                 ctx,
                 msg->TabletUser,

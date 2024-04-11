@@ -15,6 +15,13 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
     features->SetTwoStageReadEnabled(config.GetTwoStageReadEnabled());
+    features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
+    features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetNegativeEntryTimeout(
+        config.GetNegativeEntryTimeout().MilliSeconds());
+    features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
+    features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
+    features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +107,8 @@ void TIndexTabletActor::HandleCreateSession(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvIndexTablet::TCreateSessionMethod>(*requestInfo);
 
     ExecuteTx<TCreateSession>(
         ctx,
@@ -201,12 +210,12 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 ctx);
 
             return;
-        } else {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s CreateSession: no session available for client c: %s",
-                LogTag.c_str(),
-                clientId.c_str());
         }
+
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession: no session available for client c: %s",
+            LogTag.c_str(),
+            clientId.c_str());
     }
 
     if (!sessionId) {
@@ -237,6 +246,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateSession& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed (%s)",
         LogTag.c_str(),

@@ -176,7 +176,6 @@ func (t *createSnapshotFromURLTask) Cancel(
 
 func (t *createSnapshotFromURLTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &protos.CreateSnapshotFromURLMetadata{

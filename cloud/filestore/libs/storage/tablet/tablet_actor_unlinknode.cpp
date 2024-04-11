@@ -32,6 +32,16 @@ void TIndexTabletActor::HandleUnlinkNode(
     const TEvService::TEvUnlinkNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvUnlinkNodeResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     auto* session = AcceptRequest<TEvService::TUnlinkNodeMethod>(ev, ctx, ValidateRequest);
     if (!session) {
         return;
@@ -48,6 +58,8 @@ void TIndexTabletActor::HandleUnlinkNode(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvService::TUnlinkNodeMethod>(*requestInfo);
 
     ExecuteTx<TUnlinkNode>(
         ctx,
@@ -88,7 +100,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     if (!args.ChildRef) {
-        args.Error = ErrorInvalidTarget(args.ParentNodeId);
+        args.Error = ErrorInvalidTarget(args.ParentNodeId, args.Name);
         return true;
     }
 
@@ -163,6 +175,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
     const TActorContext& ctx,
     TTxIndexTablet::TUnlinkNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
         "%s[%s] UnlinkNode completed (%s)",
         LogTag.c_str(),

@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
+#include <contrib/ydb/core/base/appdata.h>
+
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -56,7 +58,7 @@ void TDiskAgentActor::HandleAcquireDevices(
                 << ", uuids=" << JoinSeq(",", uuids)
         );
 
-        State->AcquireDevices(
+        const bool updated = State->AcquireDevices(
             uuids,
             clientId,
             ctx.Now(),
@@ -64,6 +66,10 @@ void TDiskAgentActor::HandleAcquireDevices(
             record.GetMountSeqNumber(),
             record.GetDiskId(),
             record.GetVolumeGeneration());
+
+        if (updated) {
+            UpdateSessionCache(ctx);
+        }
 
         if (!Spdk || !record.HasRateLimits()) {
             reply(NProto::TError());

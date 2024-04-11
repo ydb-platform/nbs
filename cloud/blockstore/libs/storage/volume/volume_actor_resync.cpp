@@ -167,9 +167,7 @@ void TVolumeActor::CompleteToggleResync(
     Y_UNUSED(args);
 
     if (args.ResyncWasNeeded != State->IsMirrorResyncNeeded()) {
-        StopPartitions(ctx);
-        StartPartitionsForUse(ctx);
-        ResetServicePipes(ctx);
+        RestartDiskRegistryBasedPartition(ctx);
     } else {
         State->SetReadWriteError({});
     }

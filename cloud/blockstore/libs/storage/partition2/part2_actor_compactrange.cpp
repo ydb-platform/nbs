@@ -80,9 +80,7 @@ TForcedCompactionActor::TForcedCompactionActor(
     : Tablet(tablet)
     , RangesToCompact(std::move(rangesToCompact))
     , RetryTimeout(retryTimeout)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TForcedCompactionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -165,7 +163,7 @@ void TForcedCompactionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAndDie(ctx, error);
 }

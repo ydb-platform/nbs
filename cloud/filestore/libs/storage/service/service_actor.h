@@ -95,7 +95,6 @@ private:
         const NActors::TActorContext& ctx);                                    \
 
     FILESTORE_SERVICE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
-    FILESTORE_SERVICE_REQUESTS(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvService)
     FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_DECLARE_REQUEST_RESPONSE, TEvServicePrivate)
 #undef FILESTORE_DECLARE_REQUEST_RESPONSE
 
@@ -116,7 +115,7 @@ private:
         const NActors::TActorContext& ctx);
 
     std::pair<ui64, TInFlightRequest*> CreateInFlightRequest(
-        TRequestInfo&& info,
+        const TRequestInfo& info,
         NProto::EStorageMediaKind media,
         IRequestStatsPtr requestStats,
         TInstant currentTs);
@@ -143,6 +142,14 @@ private:
         TString input);
 
     NActors::IActorPtr CreateChangeStorageConfigActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateDescribeSessionsActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateReassignTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

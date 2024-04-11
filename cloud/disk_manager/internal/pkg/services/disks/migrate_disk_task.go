@@ -17,7 +17,6 @@ import (
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
-	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -152,7 +151,6 @@ func (t *migrateDiskTask) Cancel(
 
 func (t *migrateDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	status, err := t.getStatusForAPI(ctx)
@@ -220,40 +218,48 @@ func (t *migrateDiskTask) start(
 	}
 
 	if t.state.RelocateInfo == nil {
-		if t.disksConfig.GetEnableOptimizationForOverlayDiskRelocation() {
+		err := execCtx.SaveStateWithCallback(
+			ctx,
+			func(ctx context.Context, tx *persistence.Transaction) error {
+				relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
+					ctx,
+					tx,
+					t.request.Disk,
+					t.request.DstZoneId,
+				)
+				if err != nil {
+					return err
+				}
 
-			err := execCtx.SaveStateWithCallback(
-				ctx,
-				func(ctx context.Context, tx *persistence.Transaction) error {
-					relocateInfo, err := t.poolStorage.RelocateOverlayDiskTx(
-						ctx,
-						tx,
-						t.request.Disk,
-						t.request.DstZoneId,
-					)
-					if err != nil {
-						return err
-					}
+				t.state.RelocateInfo = &protos.RelocateInfo{
+					BaseDiskID:       relocateInfo.BaseDiskID,
+					TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
+					SlotGeneration:   relocateInfo.SlotGeneration,
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			return err
+		}
 
-					t.state.RelocateInfo = &protos.RelocateInfo{
-						BaseDiskID:       relocateInfo.BaseDiskID,
-						TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
-						SlotGeneration:   relocateInfo.SlotGeneration,
-					}
-					return nil
-				},
-			)
-			if err != nil {
-				return err
-			}
-
-			// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
-			err = execCtx.SaveState(ctx)
-			if err != nil {
-				return err
-			}
-		} else {
-			t.state.RelocateInfo = &protos.RelocateInfo{}
+		// TODO: refactor SaveStateWithCallback method to avoid one more SaveState.
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	} else if len(t.state.RelocateInfo.TargetBaseDiskID) != 0 {
+		// Need to check that RelocateInfo is still actual.
+		// OverlayDiskRebasing should be idempotent.
+		err := t.poolStorage.OverlayDiskRebasing(ctx, storage.RebaseInfo{
+			OverlayDisk:      t.request.Disk,
+			BaseDiskID:       t.state.RelocateInfo.BaseDiskID,
+			TargetZoneID:     t.request.DstZoneId,
+			TargetBaseDiskID: t.state.RelocateInfo.TargetBaseDiskID,
+			SlotGeneration:   t.state.RelocateInfo.SlotGeneration,
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -327,17 +333,6 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	diskMeta, err := t.resourceStorage.GetDiskMeta(ctx, t.request.Disk.DiskId)
-	if err != nil {
-		return err
-	}
-
-	useLightCheckpoint :=
-		diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_NONREPLICATED) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_MIRROR2) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_SSD_MIRROR3) ||
-			diskMeta.Kind == diskKindToString(types.DiskKind_DISK_KIND_HDD_NONREPLICATED)
-
 	replicateTaskID, err := t.scheduler.ScheduleZonalTask(
 		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()),
 		"dataplane.ReplicateDisk",
@@ -349,10 +344,10 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 				DiskId: t.request.Disk.DiskId,
 				ZoneId: t.request.DstZoneId,
 			},
-			FillGeneration:     t.state.FillGeneration,
-			UseLightCheckpoint: useLightCheckpoint,
+			FillGeneration: t.state.FillGeneration,
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
-			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			IgnoreBaseDisk:      len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			UseProxyOverlayDisk: t.disksConfig.GetUseProxyOverlayDiskInReplicateDiskTask(),
 		},
 		"",
 		"",
@@ -486,15 +481,6 @@ func (t *migrateDiskTask) finishMigration(
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
 
-	// If RelocateInfo.TargetBaseDiskID is not empty we do not need to release base
-	// disk slot because it was rebased during relocation.
-	if len(t.state.RelocateInfo.TargetBaseDiskID) == 0 {
-		err = t.releaseBaseDisk(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-	}
-
 	return execCtx.FinishWithCallback(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
@@ -507,27 +493,6 @@ func (t *migrateDiskTask) finishMigration(
 			)
 		},
 	)
-}
-
-func (t *migrateDiskTask) releaseBaseDisk(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	idempotencyKey := fmt.Sprintf("%v_ReleaseBaseDisk", execCtx.GetTaskID())
-
-	taskID, err := t.poolService.ReleaseBaseDisk(
-		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		&pools_protos.ReleaseBaseDiskRequest{
-			OverlayDisk: t.request.Disk,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
 }
 
 func (t *migrateDiskTask) getStatusForAPI(ctx context.Context) (

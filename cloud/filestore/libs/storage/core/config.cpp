@@ -20,23 +20,29 @@ namespace {
     xxx(PipeClientMaxRetryTime,        TDuration, TDuration::Seconds(4)       )\
                                                                                \
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
-    xxx(IdleSessionTimeout,            TDuration, TDuration::Seconds(30)      )\
+    xxx(IdleSessionTimeout,            TDuration, TDuration::Minutes(5)       )\
                                                                                \
     xxx(WriteBatchEnabled,             bool,      false                       )\
     xxx(WriteBatchTimeout,             TDuration, TDuration::MilliSeconds(0)  )\
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
-    xxx(MaxBlobSize,                   ui32,      4_MB                        )\
-    xxx(FlushThreshold,                ui32,      4_MB                        )\
-    xxx(CleanupThreshold,              ui32,      512                         )\
-    xxx(CompactionThreshold,           ui32,      20                          )\
-    xxx(CollectGarbageThreshold,       ui32,      4_MB                        )\
-    xxx(FlushBytesThreshold,           ui32,      4_MB                        )\
-    xxx(MaxDeleteGarbageBlobsPerTx,    ui32,      16384                       )\
-    xxx(LoadedCompactionRangesPerTx,   ui32,      1048576                     )\
-    xxx(MaxBlocksPerTruncateTx,        ui32,      0 /*TODO: 8388608 32gb/4kb*/)\
-    xxx(MaxTruncateTxInflight,         ui32,      10                          )\
-    xxx(CompactionRetryTimeout,        TDuration, TDuration::Seconds(1)       )\
+    xxx(MaxBlobSize,                        ui32,   4_MB                      )\
+    xxx(FlushThreshold,                     ui32,   4_MB                      )\
+    xxx(CleanupThreshold,                   ui32,   512                       )\
+    xxx(CleanupThresholdAverage,            ui32,   64                        )\
+    xxx(NewCleanupEnabled,                  bool,   false                     )\
+    xxx(CompactionThreshold,                ui32,   20                        )\
+    xxx(GarbageCompactionThreshold,         ui32,   100                       )\
+    xxx(CompactionThresholdAverage,         ui32,   4                         )\
+    xxx(GarbageCompactionThresholdAverage,  ui32,   20                        )\
+    xxx(NewCompactionEnabled,               bool,   false                     )\
+    xxx(CollectGarbageThreshold,            ui32,   4_MB                      )\
+    xxx(FlushBytesThreshold,                ui32,   4_MB                      )\
+    xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
+    xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
+    xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
+    xxx(MaxTruncateTxInflight,              ui32,   10                        )\
+    xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
@@ -133,7 +139,21 @@ namespace {
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(ThreeStageWriteEnabled,          bool,      false                     )\
+    xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
+    xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
+    xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
+    xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
+    xxx(ReadAheadMaxGapPercentage,              ui32,       20                )\
+    xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
+    xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
+    xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
+                                                                               \
+    xxx(GenerateBlobIdsReleaseCollectBarrierTimeout,                           \
+        TDuration,                                                             \
+        TDuration::Seconds(10)                                                )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \

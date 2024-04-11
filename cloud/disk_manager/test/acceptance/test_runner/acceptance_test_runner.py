@@ -1,9 +1,11 @@
+import argparse
 import logging
+import re
 
 from cloud.blockstore.pylibs import common
-
+from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
-    BaseTestBinaryExecutor
+    BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     generate_test_cases,
     YcpNewDiskPolicy
@@ -17,17 +19,29 @@ class AcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
 
     def __init__(self, args, *arguments, **kwargs):
         super(AcceptanceTestBinaryExecutor, self).__init__(args, *arguments, **kwargs)
-        location = args.cluster
-        if args.profile_name is not None:
-            location = args.profile_name
+        location = args.bucket_location or args.profile_name or args.cluster
         self._acceptance_test_cmd.extend([
             '--url-for-create-image-from-url-test',
             f"https://{self._s3_host}/{location}.disk-manager/acceptance-tests/ubuntu-1604-ci-stable"])
 
 
+class AcceptanceTestCleaner(BaseResourceCleaner):
+    def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
+        super(AcceptanceTestCleaner, self).__init__(ycp, args)
+        _instance_name_pattern = re.compile(
+            rf'^acceptance-test-{args.test_type}-'
+            rf'{args.test_suite}-[0-9]+$',
+        )
+        self._patterns = {
+            'instance': [_instance_name_pattern],
+            'disk': [_instance_name_pattern],
+        }
+
+
 class AcceptanceTestRunner(BaseAcceptanceTestRunner):
 
     _test_binary_executor_type = AcceptanceTestBinaryExecutor
+    _cleaner_type = AcceptanceTestCleaner
 
     @property
     def _remote_verify_test_path(self) -> str:
@@ -63,16 +77,13 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                 _logger.info(
                     f'Waiting until disk <id={disk.id}> will be attached'
                     f' to instance <id={instance.id}> and secondary disk'
-                    f' appears as block device'
-                    f' <name={test_case.block_device}>')
+                    f' appears as block device')
 
-                with self._instance_policy.attach_disk(
-                    disk,
-                    test_case.block_device
-                ):
+                with self._instance_policy.attach_disk(disk) as disk_path:
                     self._perform_verification_write(
                         test_case.verify_write_cmd % (
                             self._remote_verify_test_path,
+                            disk_path,
                             self._iodepth),
                         disk,
                         instance)
@@ -87,16 +98,13 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                     _logger.info(
                         f'Waiting until disk <id={output_disk.id}> will be'
                         f' attached to instance <id={instance.id}> and'
-                        f' secondary disk appears as block device'
-                        f' <name={test_case.block_device}>')
+                        f' secondary disk appears as block device')
 
-                    with self._instance_policy.attach_disk(
-                        output_disk,
-                        test_case.block_device
-                    ):
+                    with self._instance_policy.attach_disk(output_disk) as disk_path:
                         self._perform_verification_read(
                             test_case.verify_read_cmd % (
                                 self._remote_verify_test_path,
+                                disk_path,
                                 self._iodepth),
                             output_disk,
                             instance)

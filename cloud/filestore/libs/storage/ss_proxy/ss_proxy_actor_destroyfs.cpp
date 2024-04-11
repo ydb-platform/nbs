@@ -57,9 +57,7 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , FileSystemId(std::move(fileSystemId))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {

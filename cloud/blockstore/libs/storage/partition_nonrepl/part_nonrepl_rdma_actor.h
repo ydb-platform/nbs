@@ -97,6 +97,7 @@ private:
 
     template <typename TMethod>
     bool InitRequests(
+        const typename TMethod::TRequest& msg,
         const NActors::TActorContext& ctx,
         TRequestInfo& requestInfo,
         const TBlockRange64& blockRange,

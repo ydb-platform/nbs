@@ -124,8 +124,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
-
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -220,7 +218,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         CombinedContext,
         blobId,
         std::move(BlobContent),
-        false);  // async
+        0,      // blockSizeForChecksums
+        false); // async
 
     NCloud::Send(
         ctx,
@@ -253,8 +252,10 @@ void TWriteFreshBlocksActor::NotifyCompleted(
     using TEvent = TEvPartitionPrivate::TEvWriteBlocksCompleted;
     auto ev = std::make_unique<TEvent>(
         error,
-        false,  // collectGarbageBarrierAcquired
-        false); // unconfirmedBlobsAdded
+        false,                      // collectGarbageBarrierAcquired
+        false,                      // unconfirmedBlobsAdded
+        TVector<TBlobToConfirm>{}   // blobsToConfirm
+    );
 
     ev->ExecCycles = Requests.front().RequestInfo->GetExecCycles();
     ev->TotalCycles = Requests.front().RequestInfo->GetTotalCycles();
@@ -344,7 +345,7 @@ void TWriteFreshBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAllAndDie(ctx, error);
 }
@@ -430,7 +431,8 @@ void TPartitionActor::WriteFreshBlocks(
         Config->GetFreshChannelWriteRequestsEnabled() ||
         Config->IsFreshChannelWriteRequestsFeatureEnabled(
             PartitionConfig.GetCloudId(),
-            PartitionConfig.GetFolderId());
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
 
     if (freshChannelWriteRequestsEnabled && State->GetFreshChannelCount() > 0) {
         TVector<TWriteFreshBlocksActor::TRequest> requests;
@@ -490,7 +492,7 @@ void TPartitionActor::WriteFreshBlocks(
                 DescribeRange(r.Data.Range).data()
             );
 
-            AddTransaction(*r.Data.RequestInfo);
+            AddTransaction(*r.Data.RequestInfo, r.Data.RequestInfo->CancelRoutine);
 
             subRequests.emplace_back(
                 std::move(r.Data.RequestInfo),

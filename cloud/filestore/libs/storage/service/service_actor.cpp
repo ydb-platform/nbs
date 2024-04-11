@@ -27,9 +27,7 @@ TStorageServiceActor::TStorageServiceActor(
     , CgroupStatsFetcher(std::move(cgroupStatsFetcher))
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
-{
-    ActivityType = TFileStoreActivities::SERVICE;
-}
+{}
 
 TStorageServiceActor::~TStorageServiceActor()
 {
@@ -75,7 +73,7 @@ void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx
 }
 
 std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
-    TRequestInfo&& info,
+    const TRequestInfo& info,
     NProto::EStorageMediaKind media,
     IRequestStatsPtr requestStats,
     TInstant start)
@@ -85,7 +83,7 @@ std::pair<ui64, TInFlightRequest*> TStorageServiceActor::CreateInFlightRequest(
         std::piecewise_construct,
         std::forward_as_tuple(cookie),
         std::forward_as_tuple(
-            std::move(info),
+            info,
             ProfileLog,
             media,
             requestStats));
@@ -128,7 +126,6 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         FILESTORE_HANDLE_RESPONSE(name, ns)             \
 
         FILESTORE_SERVICE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvService)
         FILESTORE_SERVICE_REQUESTS_PRIVATE(FILESTORE_HANDLE_REQUEST_RESPONSE, TEvServicePrivate)
     #undef FILESTORE_HANDLE_REQUEST_RESPONSE
 

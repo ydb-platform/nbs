@@ -39,6 +39,7 @@
 #include <cloud/blockstore/libs/endpoints_spdk/spdk_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
+#include <cloud/blockstore/libs/nbd/device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -124,6 +125,7 @@ NVhost::TServerConfig CreateVhostServerConfig(const TServerAppConfig& config)
 {
     return NVhost::TServerConfig {
         .ThreadsCount = config.GetVhostThreadsCount(),
+        .SocketAccessMode = config.GetSocketAccessMode(),
         .Affinity = config.GetVhostAffinity()
     };
 }
@@ -134,6 +136,7 @@ NBD::TServerConfig CreateNbdServerConfig(const TServerAppConfig& config)
         .ThreadsCount = config.GetNbdThreadsCount(),
         .LimiterEnabled = config.GetNbdLimiterEnabled(),
         .MaxInFlightBytesPerThread = config.GetMaxInFlightBytesPerThread(),
+        .SocketAccessMode = config.GetSocketAccessMode(),
         .Affinity = config.GetNbdAffinity()
     };
 }
@@ -198,6 +201,7 @@ void TBootstrapBase::Init()
 
     BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
     Configs->Log = Log;
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
@@ -355,7 +359,8 @@ void TBootstrapBase::Init()
 
     GrpcEndpointListener = CreateSocketEndpointListener(
         Logging,
-        Configs->ServerConfig->GetUnixSocketBacklog());
+        Configs->ServerConfig->GetUnixSocketBacklog(),
+        Configs->ServerConfig->GetSocketAccessMode());
     endpointListeners.emplace(NProto::IPC_GRPC, GrpcEndpointListener);
 
     STORAGE_INFO("SocketEndpointListener initialized");
@@ -410,6 +415,7 @@ void TBootstrapBase::Init()
                 Configs->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),
+                Configs->ServerConfig->GetSocketAccessMode(),
                 std::move(vhostEndpointListener));
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");
@@ -477,17 +483,6 @@ void TBootstrapBase::Init()
         STORAGE_INFO("RDMA EndpointListener initialized");
     }
 
-    auto endpointManager = CreateEndpointManager(
-        Logging,
-        ServerStats,
-        Executor,
-        EndpointEventHandler,
-        std::move(sessionManager),
-        std::move(endpointListeners),
-        Configs->ServerConfig->GetNbdSocketSuffix());
-
-    STORAGE_INFO("EndpointManager initialized");
-
     IEndpointStoragePtr endpointStorage;
     switch (Configs->ServerConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
@@ -507,18 +502,34 @@ void TBootstrapBase::Init()
     }
     STORAGE_INFO("EndpointStorage initialized");
 
-    EndpointService = CreateMultipleEndpointService(
-        std::move(Service),
+    TEndpointManagerOptions endpointManagerOptions = {
+        .ClientConfig = Configs->EndpointConfig->GetClientConfig(),
+        .NbdSocketSuffix = Configs->ServerConfig->GetNbdSocketSuffix(),
+        .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
+    };
+
+    EndpointManager = CreateEndpointManager(
         Timer,
         Scheduler,
         Logging,
         RequestStats,
         VolumeStats,
         ServerStats,
+        Executor,
+        EndpointEventHandler,
+        std::move(sessionManager),
         std::move(endpointStorage),
-        std::move(endpointManager),
-        Configs->EndpointConfig->GetClientConfig());
-    Service = EndpointService;
+        std::move(endpointListeners),
+        NBD::CreateDeviceConnectionFactory(Logging, TDuration::Days(1)),
+        std::move(endpointManagerOptions));
+
+    STORAGE_INFO("EndpointManager initialized");
+
+    Service = CreateMultipleEndpointService(
+        std::move(Service),
+        Timer,
+        Scheduler,
+        EndpointManager);
 
     STORAGE_INFO("MultipleEndpointService initialized");
 
@@ -584,7 +595,7 @@ void TBootstrapBase::Init()
 
     TVector<IIncompleteRequestProviderPtr> requestProviders = {
         Server,
-        EndpointService
+        EndpointManager
     };
 
     if (NbdServer) {
@@ -627,6 +638,9 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitEndpointConfig();
     Configs->InitHostPerformanceProfile();
     Configs->InitDiskAgentConfig();
+    // InitRdmaConfig should be called after InitDiskAgentConfig and
+    // InitServerConfig to backport legacy RDMA config
+    Configs->InitRdmaConfig();
     Configs->InitDiskRegistryProxyConfig();
     Configs->InitDiagnosticsConfig();
     Configs->InitDiscoveryConfig();
@@ -798,6 +812,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Spdk);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOService);
+    START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
     START_COMMON_COMPONENT(NbdServer);
@@ -820,7 +835,7 @@ void TBootstrapBase::Start()
         STORAGE_INFO("Process memory locked");
     }
 
-    auto restoreFuture = EndpointService->RestoreEndpoints();
+    auto restoreFuture = EndpointManager->RestoreEndpoints();
     if (!Configs->Options->TemporaryServer) {
         auto balancerSwitch = VolumeBalancerSwitch;
         restoreFuture.Subscribe([=] (const auto& future) {
@@ -863,6 +878,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(NbdServer);
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
+    STOP_COMMON_COMPONENT(EndpointManager);
     STOP_COMMON_COMPONENT(FileIOService);
     STOP_KIKIMR_COMPONENT(ActorSystem);
     STOP_COMMON_COMPONENT(Spdk);

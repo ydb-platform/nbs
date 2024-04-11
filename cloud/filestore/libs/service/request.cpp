@@ -115,7 +115,14 @@ ui64 CreateRequestId()
 
 static const TString RequestNames[] = {
     FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
+    "DescribeData",
+    "GenerateBlobIds",
+    "AddData",
 };
+
+static_assert(
+    sizeof(RequestNames) / sizeof(RequestNames[0]) == FileStoreRequestCount,
+    "RequestNames size mismatch");
 
 #undef FILESTORE_DECLARE_REQUEST
 

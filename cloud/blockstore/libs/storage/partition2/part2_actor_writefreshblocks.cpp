@@ -146,8 +146,6 @@ TWriteFreshBlocksActor::TWriteFreshBlocksActor(
     , BlockDigestGenerator(std::move(blockDigestGenerator))
 {
     Y_ABORT_UNLESS(BlockRanges.size() == WriteHandlers.size());
-
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TWriteFreshBlocksActor::Bootstrap(const TActorContext& ctx)
@@ -403,7 +401,7 @@ void TWriteFreshBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAllAndDie(ctx, error);
 }

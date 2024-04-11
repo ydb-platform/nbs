@@ -78,9 +78,7 @@ TZeroBlocksActor::TZeroBlocksActor(
     , Tablet(tablet)
     , CommitId(commitId)
     , MergedBlobs(std::move(mergedBlobs))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TZeroBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -185,7 +183,7 @@ void TZeroBlocksActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto respose = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
 }
@@ -230,7 +228,7 @@ void TPartitionActor::HandleZeroBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TZeroBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -291,7 +289,7 @@ void TPartitionActor::HandleZeroBlocks(
         GetWriteBlobThreshold(*Config, PartitionConfig.GetStorageMediaKind());
     if (requestSize < writeBlobThreshold) {
         // small writes will be accumulated in FreshBlocks table
-        AddTransaction(*requestInfo);
+        AddTransaction<TEvService::TZeroBlocksMethod>(*requestInfo);
 
         auto tx = CreateTx<TZeroBlocks>(
             requestInfo,

@@ -65,6 +65,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help='url for s3 to store images',
     )
+    acceptance_test_type_parser.add_argument(
+        '--bucket-location',
+        type=str,
+        dest='bucket_location',
+        default=None,
+        help='s3 bucket location',
+    )
 
     # eternal test type stuff
     eternal_test_type_parser = subparsers.add_parser(
@@ -187,7 +194,13 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         default=False,
         help='do not delete instance and disk, if fail')
-
+    test_arguments_group.add_argument(
+        '--cleanup-before-tests',
+        dest='cleanup_before_tests',
+        action='store_true',
+        default=False,
+        help='Clean up outdated resources in place'
+    )
     args = parser.parse_args()
 
     if args.profile_name is None:

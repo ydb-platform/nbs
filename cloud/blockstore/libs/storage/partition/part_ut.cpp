@@ -165,7 +165,8 @@ void InitTestActorRuntime(
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
 
     NProto::TPartitionConfig partConfig;
@@ -1132,9 +1133,7 @@ TTestVolumeProxyActor::TTestVolumeProxyActor(
     , BasePartitionContent(std::move(basePartitionContent))
     , BlocksCount(blocksCount)
     , BaseBlockSize(baseBlockSize)
-{
-    ActivityType = TBlockStoreActivities::VOLUME_PROXY;
-}
+{}
 
 void TTestVolumeProxyActor::Bootstrap(const TActorContext& ctx)
 {
@@ -7182,7 +7181,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             BuildRemoteHttpQuery(TestTabletId, {{"action","collectGarbage"}}),
             HTTP_METHOD::HTTP_METHOD_POST);
 
-        UNIT_ASSERT_C(httpResponse->Html.Contains("Tablet is dead"), true);
+        UNIT_ASSERT_C(httpResponse->Html.Contains("tablet is shutting down"), true);
     }
 
     Y_UNIT_TEST(ShouldForgetTooOldCompactRangeOperations)
@@ -9557,7 +9556,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(!garbageCollectorFinished);
     }
 
-    Y_UNIT_TEST(ShouldWriteBlocksWhenAddingUnconfirmedBlobsEnabled)
+    Y_UNIT_TEST(ShouldWriteBlocksWhenAddingUnconfirmedBlobs)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
@@ -9582,11 +9581,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
+        partition.WriteBlocks(11, 0);
+        partition.CreateCheckpoint("checkpoint");
+
         partition.WriteBlocks(10, 1);
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
         }
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
@@ -9595,15 +9599,57 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         dropAddConfirmedBlobs = true;
         partition.WriteBlocks(11, 2);
-        partition.SendReadBlocksRequest(11);
-        auto response = partition.RecvReadBlocksResponse();
-        // can't read unconfirmed range
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
-        // but we can read other ranges
+
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(11);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            // can't describe unconfirmed range
+            partition.SendDescribeBlocksRequest(TBlockRange32::WithLength(11, 1), "");
+            auto response =
+                partition.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            // can't do GetChangedBlocks on unconfirmed range
+            partition.SendGetChangedBlocksRequest(
+                TBlockRange32::WithLength(11, 1),
+                "checkpoint",
+                "",
+                false);
+            auto response =
+                partition.RecvResponse<TEvService::TEvGetChangedBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetConfirmedBlobCount());
+        }
+
+        // but we can work with other ranges
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
             GetBlockContent(partition.ReadBlocks(10))
         );
+        partition.DescribeBlocks(TBlockRange32::WithLength(10, 1), "");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(10, 1), "checkpoint", "", false);
+
+        // older commits are also available even when range overlaps with
+        // unconfirmed blobs
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(0),
+            GetBlockContent(partition.ReadBlocks(11, "checkpoint"))
+        );
+        partition.DescribeBlocks(TBlockRange32::WithLength(11, 1), "checkpoint");
+        partition.GetChangedBlocks(TBlockRange32::WithLength(11, 1), "", "checkpoint", false);
 
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
@@ -9611,6 +9657,63 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(11))
         );
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompactAfterAddingConfirmedBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+
+        TAutoPtr<IEventHandle> addConfirmedBlobs;
+        bool interceptAddConfirmedBlobs = true;
+
+        runtime->SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                        if (interceptAddConfirmedBlobs) {
+                            UNIT_ASSERT(!addConfirmedBlobs);
+                            addConfirmedBlobs = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                return false;
+            }
+        );
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+        UNIT_ASSERT(addConfirmedBlobs);
+
+        partition.SendCompactionRequest();
+        // wait for compaction to be queued
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        interceptAddConfirmedBlobs = false;
+        runtime->Send(addConfirmedBlobs.Release());
+
+        {
+            auto compactResponse = partition.RecvCompactionResponse();
+            // should fail on S_ALREADY and S_FALSE to ensure that compaction
+            // was really taken place here
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, compactResponse->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldConfirmBlobs)
@@ -9636,6 +9739,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     if (spoofWriteBlobs) {
                         auto response =
                             std::make_unique<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                        response->BlockChecksums.resize(1);
                         runtime->Send(new IEventHandle(
                             event->Sender,
                             event->Recipient,
@@ -9668,9 +9772,46 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         dropAddConfirmedBlobs = false;
         partition.RebootTablet();
 
-        // check that we are not affected by previous request
+        // check that we are not affected by previous write
         UNIT_ASSERT_VALUES_EQUAL(
             GetBlockContent(1),
+            GetBlockContent(partition.ReadBlocks(11))
+        );
+    }
+
+    Y_UNIT_TEST(ShouldLimitUnconfirmedBlobCount)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        config.SetUnconfirmedBlobCountHardLimit(1);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        runtime->SetObserverFunc([&] (auto& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvAddConfirmedBlobsRequest: {
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(10, 1);
+        {
+            // can't read unconfirmed range
+            partition.SendReadBlocksRequest(10);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        }
+
+        // but next blob should be added bypassing 'unconfirmed blobs' feature
+        partition.WriteBlocks(11, 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
             GetBlockContent(partition.ReadBlocks(11))
         );
     }
@@ -10618,6 +10759,235 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
+    }
+
+    void EnableReadBlobCorruption(TTestActorRuntime& runtime)
+    {
+        std::shared_ptr<TGuardedSgList> sgList;
+
+        runtime.SetEventFilter([=] (
+            TTestActorRuntimeBase& runtime,
+            TAutoPtr<IEventHandle>& event) mutable
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                    using TEv =
+                        TEvPartitionCommonPrivate::TEvReadBlobRequest;
+                    auto* msg = event->Get<TEv>();
+                    sgList = std::make_shared<TGuardedSgList>(msg->Sglist);
+
+                    break;
+                }
+                case TEvPartitionCommonPrivate::EvReadBlobResponse: {
+                    auto g = sgList->Acquire();
+                    UNIT_ASSERT(g);
+                    UNIT_ASSERT_VALUES_UNEQUAL(0, g.Get().size());
+
+                    const char* block = g.Get()[0].Data();
+                    memset(const_cast<char*>(block), '0', DefaultBlockSize);
+                    break;
+                }
+            }
+            return false;
+        });
+
+    }
+
+    Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobsWhenAddingUnconfirmedBlobs)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto config = DefaultConfig();
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+        partition.WriteBlocks(range, 1);
+
+        EnableReadBlobCorruption(*runtime);
+
+        // direct read should fail
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(
+            blocks,
+            range.Size(),
+            TString::TUninitialized(DefaultBlockSize));
+        partition.SendReadBlocksLocalRequest(range, std::move(sglist));
+        auto response = partition.RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldProperlyCalculateBlockChecksumsForBatchedWrites)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto config = DefaultConfig();
+        // enabling batching + checksum checks
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        config.SetWriteRequestBatchingEnabled(true);
+        // removing the dependency on the current defaults
+        config.SetWriteBlobThreshold(128_KB);
+        config.SetMaxBlobRangeSize(128_MB);
+        // disabling flush
+        config.SetFlushThreshold(1_GB);
+        // enabling fresh channel writes to make stats check a bit more
+        // convenient
+        config.SetFreshChannelCount(1);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        std::unique_ptr<IEventHandle> processQueue;
+        bool intercept = true;
+
+        runtime->SetEventFilter([&] (
+            TTestActorRuntimeBase& runtime,
+            TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvProcessWriteQueue: {
+                    if (intercept) {
+                        processQueue.reset(event.Release());
+                        intercept = false;
+
+                        return true;
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        // the following 14 blocks get batched into mixed blob 1
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(208792, 1),
+            'a');
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(208796, 1),
+            'b');
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(208799, 1),
+            'c');
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(208864, 1),
+            'd');
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(208866, 10),
+            'e');
+        // the following 17 blocks get batched into mixed blob 2
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(251925, 17),
+            'f');
+        // and the remaining block goes to fresh blocks
+        partition.SendWriteBlocksRequest(
+            TBlockRange32::WithLength(800000, 1),
+            'g');
+
+        runtime->DispatchEvents({}, TDuration::Seconds(2));
+        runtime->Send(processQueue.release());
+        partition.RecvWriteBlocksResponse();
+
+        // checking that mixed batching has actually worked
+        {
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(31, stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetFreshBlocksCount());
+        }
+
+        // checking that we don't run into a failed checksum check upon read
+        {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                1024,
+                TString::TUninitialized(DefaultBlockSize));
+            partition.SendReadBlocksLocalRequest(
+                TBlockRange32::WithLength(208792, 1024),
+                std::move(sglist));
+            auto response = partition.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        EnableReadBlobCorruption(*runtime);
+
+        // checking that we actually saved the checksums
+        {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                1024,
+                TString::TUninitialized(DefaultBlockSize));
+            partition.SendReadBlocksLocalRequest(
+                TBlockRange32::WithLength(208792, 1024),
+                std::move(sglist));
+            auto response = partition.RecvReadBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCancelRequestsOnTabletRestart)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto runtime = PrepareTestActorRuntime({}, blockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+        partition.SendWriteBlocksRequest(range, 1);
+
+        bool putSeen = false;
+        runtime->SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvBlobStorage::EvPutResult: {
+                    putSeen = true;
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return putSeen;
+        };
+        runtime->DispatchEvents(options);
+
+        partition.RebootTablet();
+
+        auto response = partition.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down",
+            response->GetErrorReason());
     }
 }
 

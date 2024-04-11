@@ -15,7 +15,7 @@ class ConductorError(Exception):
 
 class Conductor(object):
     HTTP_TIMEOUT = 5
-    API_URL = "http://c.yandex-team.ru/api/hosts2groups/"
+    API_URL = ""
     FILTERED_GROUPS = list()
 
     def __init__(self, hostname=None):

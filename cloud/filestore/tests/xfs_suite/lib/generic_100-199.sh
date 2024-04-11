@@ -1,6 +1,6 @@
 set -ex
 
-# hack until https://st.yandex-team.ru/CLOUD-135098 or https://st.yandex-team.ru/CLOUD-132193 is solved
+# hack until CLOUD-135098 or CLOUD-132193 is solved
 echo "2a02:6b8::183 mirror.yandex.ru" >> /etc/hosts
 echo "2604:1380:4601:e00::1 git.kernel.org" >> /etc/hosts
 systemctl restart systemd-hostnamed

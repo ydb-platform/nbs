@@ -25,9 +25,7 @@ public:
         : TActor(&TThis::StateWork)
         , Owner(owner)
         , TabletId(tabletId)
-    {
-        ActivityType = TBlockStoreActivities::SS_PROXY;
-    }
+    {}
 
 private:
     STFUNC(StateWork);

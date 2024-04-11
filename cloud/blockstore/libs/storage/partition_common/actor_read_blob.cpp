@@ -1,11 +1,9 @@
 #include "actor_read_blob.h"
 
 #include <cloud/blockstore/libs/storage/api/public.h>
-#include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
-using namespace NPartition;
 using namespace NActors;
 using namespace NKikimr;
 
@@ -34,9 +32,7 @@ TReadBlobActor::TReadBlobActor(
     , BlockSize(blockSize)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TReadBlobActor::Bootstrap(const TActorContext& ctx)
 {
@@ -277,7 +273,7 @@ void TReadBlobActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto response = std::make_unique<TResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }

@@ -232,7 +232,6 @@ func (t *doublerTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext
 
 func (t *doublerTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
@@ -286,7 +285,6 @@ func (t *longTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) e
 
 func (t *longTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
@@ -359,7 +357,6 @@ func (t *unstableTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContex
 
 func (t *unstableTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
@@ -417,7 +414,6 @@ func (*failureTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) 
 
 func (t *failureTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
@@ -497,7 +493,6 @@ func (t *sixTimesTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContex
 
 func (t *sixTimesTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
@@ -561,7 +556,6 @@ func (t *regularTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext
 
 func (t *regularTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

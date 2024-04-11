@@ -42,15 +42,6 @@ TDevices MakeDevices()
     return result;
 }
 
-TStorageConfigPtr MakeStorageConfig(ui32 expectedDiskAgentSize)
-{
-    NProto::TStorageServiceConfig storageConfig;
-    storageConfig.SetMaxMigrationBandwidth(16);
-    storageConfig.SetExpectedDiskAgentSize(expectedDiskAgentSize);
-
-    return std::make_shared<TStorageConfig>(std::move(storageConfig), nullptr);
-}
-
 TNonreplicatedPartitionConfigPtr MakePartitionConfig(
     TDevices devices,
     bool useSimpleMigrationBandwidthLimiter)
@@ -80,7 +71,8 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
     Y_UNIT_TEST(ShouldCalculateMigrationTimeout)
     {
         TMigrationTimeoutCalculator timeoutCalculator(
-            MakeStorageConfig(4),
+            16,
+            4,
             MakePartitionConfig(MakeDevices(), false));
 
         // Devices #1, #2, #4 belong to Agent#1, device #3 belong to Agent#2.
@@ -112,7 +104,8 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
     Y_UNIT_TEST(ShouldCalculateMigrationTimeoutWithSimpleLimiter)
     {
         TMigrationTimeoutCalculator timeoutCalculator(
-            MakeStorageConfig(100500),
+            16,
+            100500,
             MakePartitionConfig(MakeDevices(), true));
 
         // When UseSimpleMigrationBandwidthLimiter enabled we expect the same

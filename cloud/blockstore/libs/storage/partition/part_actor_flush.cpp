@@ -132,9 +132,7 @@ TFlushActor::TFlushActor(
     , FlushedFreshBlobCount(flushedFreshBlobCount)
     , FlushedFreshBlobByteCount(flushedFreshBlobByteCount)
     , Requests(std::move(requests))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {
@@ -196,6 +194,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
         auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             req.BlobContent.GetGuardedSgList(),
+            0,      // blockSizeForChecksums
             true);  // async
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
@@ -342,7 +341,7 @@ void TFlushActor::HandlePoisonPill(
     Y_UNUSED(ev);
 
     auto respose = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(
-        MakeError(E_REJECTED, "Tablet is dead"));
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(respose));
 }

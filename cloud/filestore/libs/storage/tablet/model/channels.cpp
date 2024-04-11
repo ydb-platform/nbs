@@ -83,6 +83,10 @@ struct TChannels::TImpl
     TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
 
+    TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
+
+    TChannelsStats CalculateChannelsStats() const;
+
     ui32 Size() const;
     bool Empty() const;
 };
@@ -117,6 +121,11 @@ void TChannels::TImpl::RegisterChannelToMove(ui32 channel)
     AllChannels[channel].ToMove = true;
 }
 
+TVector<ui32> TChannels::TImpl::GetChannels(EChannelDataKind dataKind) const
+{
+    return ByDataKind[static_cast<ui32>(dataKind)].GetChannels();
+}
+
 TVector<ui32> TChannels::TImpl::GetUnwritableChannels() const
 {
     TVector<ui32> result;
@@ -149,6 +158,36 @@ TVector<ui32> TChannels::TImpl::GetChannelsToMove(ui32 percentageThreshold) cons
     return result;
 }
 
+TVector<NCloud::NStorage::TChannelMonInfo>
+TChannels::TImpl::MakeChannelMonInfos() const
+{
+    TVector<NCloud::NStorage::TChannelMonInfo> result;
+
+    for (const auto& meta: AllChannels) {
+        result.push_back({
+            meta.PoolKind,
+            TStringBuilder() << meta.DataKind,
+            meta.Writable,
+            meta.Writable, // TODO: SystemWritable
+        });
+    }
+
+    return result;
+}
+
+TChannelsStats TChannels::TImpl::CalculateChannelsStats() const
+{
+    TChannelsStats stats;
+
+    for (const auto& meta: AllChannels) {
+        stats.WritableChannelCount += meta.Writable;
+        stats.UnwritableChannelCount += !meta.Writable;
+        stats.ChannelsToMoveCount += meta.ToMove;
+    }
+
+    return stats;
+}
+
 TMaybe<ui32> TChannels::TImpl::SelectChannel(EChannelDataKind dataKind)
 {
     auto& byDataKind = ByDataKind[static_cast<ui32>(dataKind)];
@@ -157,11 +196,6 @@ TMaybe<ui32> TChannels::TImpl::SelectChannel(EChannelDataKind dataKind)
     }
 
     return Nothing();
-}
-
-TVector<ui32> TChannels::TImpl::GetChannels(EChannelDataKind dataKind) const
-{
-    return ByDataKind[static_cast<ui32>(dataKind)].GetChannels();
 }
 
 ui32 TChannels::TImpl::Size() const
@@ -202,6 +236,11 @@ void TChannels::RegisterChannelToMove(ui32 channel)
     GetImpl().RegisterChannelToMove(channel);
 }
 
+TVector<ui32> TChannels::GetChannels(EChannelDataKind dataKind) const
+{
+    return GetImpl().GetChannels(dataKind);
+}
+
 TVector<ui32> TChannels::GetUnwritableChannels() const
 {
     return GetImpl().GetUnwritableChannels();
@@ -212,14 +251,19 @@ TVector<ui32> TChannels::GetChannelsToMove(ui32 percentageThreshold) const
     return GetImpl().GetChannelsToMove(percentageThreshold);
 }
 
+TVector<NCloud::NStorage::TChannelMonInfo> TChannels::MakeChannelMonInfos() const
+{
+    return GetImpl().MakeChannelMonInfos();
+}
+
+TChannelsStats TChannels::CalculateChannelsStats() const
+{
+    return GetImpl().CalculateChannelsStats();
+}
+
 TMaybe<ui32> TChannels::SelectChannel(EChannelDataKind dataKind)
 {
     return GetImpl().SelectChannel(dataKind);
-}
-
-TVector<ui32> TChannels::GetChannels(EChannelDataKind dataKind) const
-{
-    return GetImpl().GetChannels(dataKind);
 }
 
 ui32 TChannels::Size() const

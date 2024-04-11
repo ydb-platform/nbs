@@ -117,6 +117,7 @@ message TStorageStats
     uint64 FreshBytesCount = 109;
     uint64 AllocatedCompactionRanges = 110;
     uint64 UsedCompactionRanges = 111;
+    uint64 LastCollectCommitId = 112;
 
     // channel stats
     uint64 TabletChannelCount = 1000;
@@ -336,4 +337,120 @@ message TDescribeDataResponse
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeSessions request/response.
+
+message TDescribeSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TTabletSessionInfo
+{
+    // A subset of the params stored in TSession in the IndexTablet's DB.
+    string SessionId = 1;
+    string ClientId = 2;
+    bytes SessionState = 3;
+    uint64 MaxSeqNo = 4;
+    uint64 MaxRwSeqNo = 5;
+}
+
+message TDescribeSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // All tablet sessions.
+    repeated TTabletSessionInfo Sessions = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// GenerateBlobIds request/response.
+
+message TGenerateBlobIdsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for write. Expected to be aligned to the block size.
+    uint64 Offset = 5;
+
+    // Length of data to write. Expected to be aligned to the block size.
+    uint64 Length = 6;
+}
+
+message TGeneratedBlob
+{
+    // Blob id.
+    NKikimrProto.TLogoBlobID BlobId = 1;
+
+    // Offset
+    uint64 Offset = 2;
+
+    // Group id.
+    uint32 BSGroupId = 3;
+}
+
+message TGenerateBlobIdsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Blob ids, in the same order as in the request.
+    repeated TGeneratedBlob Blobs = 2;
+
+    // AcquireCollectBarrier has been executed for this commit id.
+    uint64 CommitId = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// ThreeStageWrite request/response.
+
+message TAddDataRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node.
+    uint64 NodeId = 3;
+
+    // IO handle.
+    uint64 Handle = 4;
+
+    // Starting offset for write.
+    uint64 Offset = 5;
+
+    // Data size.
+    uint64 Length = 6;
+
+    // Blob ids to be added. Ordered by the offset in the original data.
+    repeated NKikimrProto.TLogoBlobID BlobIds = 7;
+
+    // Commit id.
+    uint64 CommitId = 8;
+}
+
+message TAddDataResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
 }

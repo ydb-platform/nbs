@@ -8,6 +8,9 @@
     "test.test_create_mkdir_ls_write_destroy": {
         "uri": "file://test.test_create_mkdir_ls_write_destroy/results.txt"
     },
+    "test.test_describe_sessions": {
+        "uri": "file://test.test_describe_sessions/results.txt"
+    },
     "test.test_list_filestores": {
         "uri": "file://test.test_list_filestores/results.txt"
     }

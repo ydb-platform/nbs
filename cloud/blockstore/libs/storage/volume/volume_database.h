@@ -87,7 +87,9 @@ public:
 
     struct TPartStats
     {
-        ui64 Id = 0;
+        // For DiskRegistry-based always 0.
+        // For BlobStorage-based TabletId used.
+        ui64 TabletId = 0;
         NProto::TCachedPartStats Stats;
     };
 
@@ -112,7 +114,8 @@ public:
         ui64 requestId,
         bool completed,
         const TString& shadowDiskId,
-        EShadowDiskState shadowDiskState);
+        EShadowDiskState shadowDiskState,
+        const TString& error);
     void UpdateShadowDiskState(
         ui64 requestId,
         ui64 processedBlockCount,

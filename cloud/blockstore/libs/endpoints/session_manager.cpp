@@ -3,7 +3,6 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
-#include <cloud/blockstore/libs/client/metric.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
@@ -27,9 +26,8 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+using namespace NClient;
 using namespace NThreading;
-
-using namespace NCloud::NBlockStore::NClient;
 
 namespace {
 
@@ -41,7 +39,6 @@ private:
     TExecutor& Executor;
     const ISessionPtr Session;
     const IBlockStorePtr DataClient;
-    const IVolumeStatsPtr VolumeStats;
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
     const TString DiskId;
@@ -51,14 +48,12 @@ public:
             TExecutor& executor,
             ISessionPtr session,
             IBlockStorePtr dataClient,
-            IVolumeStatsPtr volumeStats,
             IThrottlerProviderPtr throttlerProvider,
             TString clientId,
             TString diskId)
         : Executor(executor)
         , Session(std::move(session))
         , DataClient(std::move(dataClient))
-        , VolumeStats(std::move(volumeStats))
         , ThrottlerProvider(std::move(throttlerProvider))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
@@ -684,7 +679,12 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             std::move(throttler));
     }
 
-    if (Options.StrictContractValidation) {
+    if (Options.StrictContractValidation &&
+        !volume.GetIsFastPathEnabled()   // switching fast path to slow path
+                                         // during migration might lead to
+                                         // validation false positives
+    )
+    {
         client = CreateValidationClient(
             Logging,
             Monitoring,
@@ -706,7 +706,6 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         *Executor,
         std::move(session),
         std::move(client),
-        VolumeStats,
         ThrottlerProvider,
         clientId,
         volume.GetDiskId());

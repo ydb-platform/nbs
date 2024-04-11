@@ -72,6 +72,53 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
         UNIT_ASSERT(blocks.AdvanceProcessingIndex());
         UNIT_ASSERT(blocks.IsProcessed(range));
     }
+
+    Y_UNIT_TEST(ShouldSkipProcessedRanges)
+    {
+        TProcessingBlocks blocks(
+            1024 * 1024, // blockCount
+            4096,        // blockSize
+            0            // initialProcessingIndex
+        );
+
+        blocks.MarkProcessed(TBlockRange64::WithLength(1000, 500));
+        blocks.MarkProcessed(TBlockRange64::WithLength(3000, 30000));
+        blocks.MarkProcessed(
+            TBlockRange64::MakeHalfOpenInterval(35048, 1024 * 1024));
+        blocks.SkipProcessedRanges();
+
+        UNIT_ASSERT(blocks.IsProcessingStarted());
+        auto range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(0, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(1023, range.End);
+
+        UNIT_ASSERT(blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(blocks.IsProcessingStarted());
+        range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(1500, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(2523, range.End);
+
+        UNIT_ASSERT(blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(blocks.IsProcessingStarted());
+        range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(2524, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(3547, range.End);
+
+        UNIT_ASSERT(blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(blocks.IsProcessingStarted());
+        range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(33000, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(34023, range.End);
+
+        UNIT_ASSERT(blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(blocks.IsProcessingStarted());
+        range = blocks.BuildProcessingRange();
+        UNIT_ASSERT_VALUES_EQUAL(34024, range.Start);
+        UNIT_ASSERT_VALUES_EQUAL(35047, range.End);
+
+        UNIT_ASSERT(!blocks.AdvanceProcessingIndex());
+        UNIT_ASSERT(!blocks.IsProcessingStarted());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

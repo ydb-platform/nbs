@@ -118,9 +118,7 @@ TGetChangedBlocksActor::TGetChangedBlocksActor(
     , BaseDiskId(baseDiskId)
     , BaseDiskCheckpointId(baseDiskCheckpointId)
     , ChangedBlocks(std::move(changedBlocks))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TGetChangedBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -232,7 +230,7 @@ void TGetChangedBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
 
@@ -307,7 +305,7 @@ void TPartitionActor::HandleGetChangedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvService::TGetChangedBlocksMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -428,7 +426,7 @@ void TPartitionActor::HandleGetChangedBlocks(
         highCommitId,
         DescribeRange(readRange).data());
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvService::TGetChangedBlocksMethod>(*requestInfo);
 
     ExecuteTx<TGetChangedBlocks>(
         ctx,
@@ -448,6 +446,26 @@ bool TPartitionActor::PrepareGetChangedBlocks(
 
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
+    if (State->OverlapsUnconfirmedBlobs(
+            args.LowCommitId,
+            args.HighCommitId,
+            args.ReadRange))
+    {
+        args.Interrupted = true;
+        return true;
+    }
+
+    // NOTE: we should also look in confirmed blobs because they are not added
+    // yet
+    if (State->OverlapsConfirmedBlobs(
+            args.LowCommitId,
+            args.HighCommitId,
+            args.ReadRange))
+    {
+        args.Interrupted = true;
+        return true;
+    }
 
     TChangedBlocksVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.ReadRange, args.HighCommitId);
@@ -492,6 +510,20 @@ void TPartitionActor::CompleteGetChangedBlocks(
         args.LowCommitId,
         args.HighCommitId,
         DescribeRange(args.ReadRange).data());
+
+    if (args.Interrupted) {
+        LWTRACK(
+            ResponseSent_Partition,
+            args.RequestInfo->CallContext->LWOrbit,
+            "ChangedBlocks",
+            args.RequestInfo->CallContext->RequestId);
+
+        auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(
+            MakeError(E_REJECTED, "GetChangedBlocks transaction was interrupted")
+        );
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
 
     if (!args.LowCommitId && State->GetBaseDiskId() && !args.IgnoreBaseDisk) {
         auto actor = NCloud::Register<TGetChangedBlocksActor>(

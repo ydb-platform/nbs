@@ -35,17 +35,19 @@ public:
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId);
 
-    void Bootstrap(const NActors::TActorContext& ctx) override;
-
     // IMigrationOwner implementation
-    void OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
+    void OnBootstrap(const NActors::TActorContext& ctx) override;
+    bool OnMessage(const NActors::TActorContext& ctx,
+        TAutoPtr<NActors::IEventHandle>& ev) override;
     TDuration CalculateMigrationTimeout() override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
+    void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:
+    void PrepareForMigration(const NActors::TActorContext& ctx);
     void FinishMigration(const NActors::TActorContext& ctx, bool isRetry);
     NActors::TActorId CreateSrcActor(const NActors::TActorContext& ctx);
     NActors::TActorId CreateDstActor(const NActors::TActorContext& ctx);
@@ -56,6 +58,14 @@ private:
 
     void HandleFinishMigrationResponse(
         const TEvDiskRegistry::TEvFinishMigrationResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePreparePartitionMigrationRequest(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandlePreparePartitionMigrationResponse(
+        const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

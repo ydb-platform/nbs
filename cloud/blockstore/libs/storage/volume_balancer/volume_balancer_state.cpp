@@ -261,7 +261,8 @@ bool TVolumeBalancerState::IsVolumePreemptible(
 {
     const bool isFeatureEnabledForFolder = StorageConfig->IsBalancerFeatureEnabled(
         volume.CloudId,
-        volume.FolderId);
+        volume.FolderId,
+        diskId);
 
     const bool balancerEnabled = isFeatureEnabledForFolder || GetEnabled();
 

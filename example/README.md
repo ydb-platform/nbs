@@ -40,20 +40,25 @@ Run the following command in a new tab:
 ```
 
 ## Create and attach disk
-Run the following command in a new tab to create new disk and attach it to your machine via nbd:
+Run the following command in a new tab to create new disk:
 ```bash
-./5-create_and_attach_disk.sh -k ssd -d /dev/nbd0
+./5-create_disk.sh -k ssd
 ```
-The device may be overridden by ```-d``` option.
 Storage kind may by overridden by ```-k``` option, following values are supported:
 * **ssd** (default) - replicated network disk, ```id=vol0```
 * **nonreplicated** - nonreplicated disk, ```id=nbr0```
 * **mirror2** - x2 mirror (based on nonreplicated disks), ```id=mrr0```
 * **mirror3** - x3 mirror (based on nonreplicated disks), ```id=mrr1```
 
-For example, nonreplicated disk could be attached with the following command:
+Run the following command to attach created disk to your machine via nbd:
 ```bash
-./5-create_and_attach_disk.sh -k nonreplicated -d /dev/nbd1
+./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
+```
+
+For example, nonreplicated disk could be created and attached with the following commands:
+```bash
+./5-create_disk.sh -k nonreplicated --disk-id nrd10
+./6-attach_disk.sh --disk-id nrd10 -d /dev/nbd1
 ```
 
 ## Try to access your disk

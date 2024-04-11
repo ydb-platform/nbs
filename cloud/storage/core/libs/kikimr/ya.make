@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     actorsystem.cpp
     components.cpp
+    components_start.cpp
     config_initializer.cpp
     events.cpp
     helpers.cpp
@@ -17,11 +18,13 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
+    library/cpp/getopt/small
+    library/cpp/lwtrace
+
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/wilson
-    library/cpp/getopt/small
-    library/cpp/lwtrace
+    contrib/ydb/library/keys
 
     contrib/ydb/core/base
     contrib/ydb/core/mind

@@ -1,6 +1,9 @@
 #include "service_endpoint.h"
 
+#include "endpoint_events.h"
+#include "endpoint_listener.h"
 #include "endpoint_manager.h"
+#include "session_manager.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
@@ -9,9 +12,11 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/keyring/endpoints.h>
 #include <cloud/storage/core/libs/keyring/endpoints_test.h>
@@ -21,6 +26,8 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 
@@ -32,85 +39,175 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEndpointManager final
-    : public IEndpointManager
+struct TTestEndpointListener final
+    : public IEndpointListener
 {
-    using TStartEndpointHandler = std::function<
-        NThreading::TFuture<NProto::TStartEndpointResponse>(
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
-        >;
+    using TStartEndpointHandler = std::function<TFuture<NProto::TError>(
+        const NProto::TStartEndpointRequest& request)>;
+    using TStopEndpointHandler = std::function<TFuture<NProto::TError>(
+        const TString& socketPath)>;
 
-    using TStopEndpointHandler = std::function<
-        NThreading::TFuture<NProto::TStopEndpointResponse>(
-            std::shared_ptr<NProto::TStopEndpointRequest> request)
-        >;
-
-    using TListEndpointsHandler = std::function<
-        NThreading::TFuture<NProto::TListEndpointsResponse>(
-            std::shared_ptr<NProto::TListEndpointsRequest> request)
-        >;
-
-    using TDescribeEndpointHandler = std::function<
-        NThreading::TFuture<NProto::TDescribeEndpointResponse>(
-            std::shared_ptr<NProto::TDescribeEndpointRequest> request)
-        >;
-
-    using TRefreshEndpointHandler = std::function<
-        NThreading::TFuture<NProto::TRefreshEndpointResponse>(
-            std::shared_ptr<NProto::TRefreshEndpointRequest> request)
-        >;
-
-    TStartEndpointHandler StartEndpointHandler;
-    TStopEndpointHandler StopEndpointHandler;
-    TListEndpointsHandler ListEndpointsHandler;
-    TDescribeEndpointHandler DescribeEndpointHandler;
-    TRefreshEndpointHandler RefreshEndpointHandler;
-
-    TFuture<NProto::TStartEndpointResponse> StartEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStartEndpointRequest> request) override
+    TStartEndpointHandler StartEndpointHandler = [] (
+        const NProto::TStartEndpointRequest& request)
     {
-        Y_UNUSED(ctx);
-        return StartEndpointHandler(std::move(request));
+        TFsPath(request.GetUnixSocketPath()).Touch();
+        return MakeFuture(NProto::TError{});
+    };
+
+    TStopEndpointHandler StopEndpointHandler = [] (const TString& socketPath)
+    {
+        TFsPath(socketPath).DeleteIfExists();
+        return MakeFuture(NProto::TError{});
+    };
+
+    TFuture<NProto::TError> StartEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
+    {
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+        return StartEndpointHandler(request);
     }
 
-    TFuture<NProto::TStopEndpointResponse> StopEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TStopEndpointRequest> request) override
+    TFuture<NProto::TError> AlterEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
     {
-        Y_UNUSED(ctx);
-        return StopEndpointHandler(std::move(request));
+        Y_UNUSED(request);
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+        return MakeFuture(NProto::TError());
     }
 
-    TFuture<NProto::TListEndpointsResponse> ListEndpoints(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListEndpointsRequest> request) override
+    TFuture<NProto::TError> StopEndpoint(
+        const TString& socketPath) override
     {
-        Y_UNUSED(ctx);
-        return ListEndpointsHandler(std::move(request));
+        return StopEndpointHandler(socketPath);
     }
 
-    TFuture<NProto::TDescribeEndpointResponse> DescribeEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TDescribeEndpointRequest> request) override
+    NProto::TError RefreshEndpoint(
+        const TString& socketPath,
+        const NProto::TVolume& volume) override
     {
-        Y_UNUSED(ctx);
-        return DescribeEndpointHandler(std::move(request));
+        Y_UNUSED(socketPath);
+        Y_UNUSED(volume);
+        return NProto::TError();
     }
 
-    TFuture<NProto::TRefreshEndpointResponse> RefreshEndpoint(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TRefreshEndpointRequest> request) override
+    TFuture<NProto::TError> SwitchEndpoint(
+        const NProto::TStartEndpointRequest& request,
+        const NProto::TVolume& volume,
+        NClient::ISessionPtr session) override
     {
-        Y_UNUSED(ctx);
-        return RefreshEndpointHandler(std::move(request));
+        Y_UNUSED(request);
+        Y_UNUSED(volume);
+        Y_UNUSED(session);
+        return MakeFuture(NProto::TError());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestSessionManager final
+    : public ISessionManager
+{
+    using TCreateSessionHandler
+        = std::function<TFuture<TSessionOrError>()>;
+
+    using TRemoveSessionHandler
+        = std::function<TFuture<NProto::TError>()>;
+
+    using TAlterSessionHandler
+        = std::function<TFuture<NProto::TError>()>;
+
+    using TGetSessionHandler
+        = std::function<TFuture<TSessionOrError>()>;
+
+    using TGetProfileHandler
+        = std::function<TResultOrError<NProto::TClientPerformanceProfile>()>;
+
+    TCreateSessionHandler CreateSessionHandler = [] () {
+        return MakeFuture<TSessionOrError>(TSessionInfo());
+    };
+
+    TRemoveSessionHandler RemoveSessionHandler = [] () {
+        return MakeFuture(NProto::TError());
+    };
+
+    TAlterSessionHandler AlterSessionHandler = [] () {
+        return MakeFuture(NProto::TError());
+    };
+
+    TGetSessionHandler GetSessionHandler = [] () {
+        return MakeFuture<TSessionOrError>(TSessionInfo());
+    };
+
+    TGetProfileHandler GetProfileHandler = [] () {
+        return NProto::TClientPerformanceProfile();
+    };
+
+    TFuture<TSessionOrError> CreateSession(
+        TCallContextPtr callContext,
+        const NProto::TStartEndpointRequest& request) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
+        return CreateSessionHandler();
+    }
+
+    TFuture<NProto::TError> RemoveSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(socketPath);
+        Y_UNUSED(headers);
+        return RemoveSessionHandler();
+    }
+
+    TFuture<NProto::TError> AlterSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode,
+        ui64 mountSeqNumber,
+        const NProto::THeaders& headers) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(socketPath);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
+        Y_UNUSED(mountSeqNumber);
+        Y_UNUSED(headers);
+        return AlterSessionHandler();
+    }
+
+    TFuture<TSessionOrError> GetSession(
+        TCallContextPtr callContext,
+        const TString& socketPath,
+        const NProto::THeaders& headers) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(socketPath);
+        Y_UNUSED(headers);
+        return GetSessionHandler();
+    }
+
+    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
+        const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return GetProfileHandler();
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TKickEndpointResponse KickEndpoint(
-    IBlockStore& service,
+    IEndpointManager& service,
     ui32 keyringId,
     ui32 requestId = 42)
 {
@@ -124,7 +221,6 @@ NProto::TKickEndpointResponse KickEndpoint(
 
      return future.GetValue(TDuration::Seconds(5));
 }
-
 
 }   // namespace
 
@@ -147,30 +243,39 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
-        TString unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
         auto ipcType = NProto::IPC_GRPC;
 
-        TVector<std::shared_ptr<NProto::TStartEndpointRequest>> endpoints;
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        TMap<TString, NProto::TStartEndpointRequest> endpoints;
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request)
         {
-            endpoints.push_back(std::move(request));
-            return MakeFuture(NProto::TStartEndpointResponse());
+            endpoints.emplace(request.GetUnixSocketPath(), request);
+            TFsPath(request.GetUnixSocketPath()).Touch();
+            return MakeFuture(NProto::TError{});
         };
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ ipcType, listener }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
         NProto::TStartEndpointRequest request;
         request.SetUnixSocketPath(unixSocket);
@@ -189,13 +294,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         {
             ui32 requestId = 325;
             auto response = KickEndpoint(
-                *endpointService,
+                *endpointManager,
                 keyringId,
                 requestId);
             UNIT_ASSERT(!HasError(response));
 
             UNIT_ASSERT_VALUES_EQUAL(1, endpoints.size());
-            const auto& endpoint = *endpoints[0];
+            const auto& endpoint = endpoints.begin()->second;
 
             google::protobuf::util::MessageDifferencer comparator;
             request.MutableHeaders()->SetRequestId(requestId);
@@ -204,10 +309,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         {
             auto wrongKeyringId = keyringId + 42;
-            auto response = KickEndpoint(*endpointService, wrongKeyringId);
+            auto response = KickEndpoint(*endpointManager, wrongKeyringId);
             UNIT_ASSERT(HasError(response)
                 && response.GetError().GetCode() == E_INVALID_STATE);
         }
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldTimeoutFrozenRequest)
@@ -224,69 +331,64 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
-        auto testScheduler = std::make_shared<TTestScheduler>();
+        auto logging = CreateLoggingService("console");
 
-        auto startEndpointPromise = NewPromise<NProto::TStartEndpointResponse>();
-        auto stopEndpointPromise = NewPromise<NProto::TStopEndpointResponse>();
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
 
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
-        {
-            Y_UNUSED(request);
+        auto startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
+        auto stopEndpointPromise = NewPromise<NProto::TError>();
+
+        auto sessionManager = std::make_shared<TTestSessionManager>();
+        sessionManager->CreateSessionHandler = [&] () {
             return startEndpointPromise;
         };
-        endpointManager->StopEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStopEndpointRequest> request)
-        {
-            Y_UNUSED(request);
+        sessionManager->RemoveSessionHandler = [&] () {
             return stopEndpointPromise;
         };
-        endpointManager->ListEndpointsHandler = [&] (
-            std::shared_ptr<NProto::TListEndpointsRequest> request)
-        {
-            Y_UNUSED(request);
-            return NewPromise<NProto::TListEndpointsResponse>();
-        };
-        endpointManager->DescribeEndpointHandler = [&] (
-            std::shared_ptr<NProto::TDescribeEndpointRequest> request)
-        {
-            Y_UNUSED(request);
-            return NewPromise<NProto::TDescribeEndpointResponse>();
-        };
-        endpointManager->RefreshEndpointHandler = [&] (
-            std::shared_ptr<NProto::TRefreshEndpointRequest> request)
-        {
-            Y_UNUSED(request);
-            return NewPromise<NProto::TRefreshEndpointResponse>();
-        };
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
-            testScheduler,
+            CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            sessionManager,
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
+        auto endpointService = CreateMultipleEndpointService(
+            std::make_shared<TTestService>(),
+            CreateWallClockTimer(),
+            scheduler,
+            endpointManager);
+
+        TTempDir dir;
+        const TString socketPath = (dir.Path() / "testSocket").GetPath();
         const TString diskId = "testDiskId";
-        const TString socketPath = "testSocket";
 
         {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
             request->MutableHeaders()->SetRequestTimeout(100);
             request->SetDiskId(diskId);
             request->SetUnixSocketPath(socketPath);
+            request->SetClientId("testClientId");
 
             auto future = endpointService->StartEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
-
-            testScheduler->RunAllScheduledTasks();
 
             auto response = future.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -310,13 +412,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 response.GetError().GetCode(),
                 response);
 
-            startEndpointPromise.SetValue({});
+            startEndpointPromise.SetValue(NProto::TError{});
 
             auto future2 = endpointService->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
-
-            testScheduler->RunAllScheduledTasks();
 
             auto response2 = future2.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -326,11 +426,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            startEndpointPromise = NewPromise<NProto::TStartEndpointResponse>();
+            startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
 
             NProto::TStartEndpointRequest startRequest;
             startRequest.SetDiskId(diskId);
             startRequest.SetUnixSocketPath(socketPath);
+            startRequest.SetClientId("testClientId");
 
             auto strOrError = SerializeEndpoint(startRequest);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -361,34 +462,42 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 MakeIntrusive<TCallContext>(),
                 request);
 
-            testScheduler->RunAllScheduledTasks();
-
             auto response2 = future2.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_TIMEOUT,
                 response2.GetError().GetCode(),
                 response2);
 
-            startEndpointPromise.SetValue({});
+            startEndpointPromise.SetValue(NProto::TError{});
+
+            request->MutableHeaders()->SetRequestTimeout(3000);
+            auto future3 = endpointService->KickEndpoint(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto response3 = future3.GetValue(TDuration::Seconds(3));
+            UNIT_ASSERT_C(!HasError(response3), response3);
         }
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldThrowCriticalEventIfFailedToRestoreEndpoint)
     {
-        const TString wrongSocketPath = "wrong.socket";
+        const TString wrongSocketPath = "wrongSocket";
         size_t startedEndpointCount = 0;
 
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request)
         {
-            if (request->GetUnixSocketPath() == wrongSocketPath) {
-                return MakeFuture<NProto::TStartEndpointResponse>(
-                    TErrorResponse(E_FAIL));
+            if (request.GetUnixSocketPath().StartsWith(wrongSocketPath)) {
+                return MakeFuture(MakeError(E_FAIL));
             }
 
             ++startedEndpointCount;
-            return MakeFuture(NProto::TStartEndpointResponse());
+            TFsPath(request.GetUnixSocketPath()).Touch();
+            return MakeFuture(NProto::TError{});
         };
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
@@ -424,7 +533,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < wrongSocketCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath(wrongSocketPath);
+            request.SetUnixSocketPath(wrongSocketPath + ToString(i));
 
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -434,10 +543,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(error), error);
         }
+
+        TTempDir dir;
 
         for (size_t i = 0; i < correctCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("endpoint.sock");
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
 
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -448,24 +560,33 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         }
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, listener }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        endpointService->RestoreEndpoints().Wait();
+        endpointManager->RestoreEndpoints().Wait();
 
         UNIT_ASSERT_VALUES_EQUAL(
             wrongDataCount + wrongSocketCount,
             static_cast<int>(*configCounter));
         UNIT_ASSERT_VALUES_EQUAL(correctCount, startedEndpointCount);
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldThrowCriticalEventIfNotFoundEndpointStorage)
@@ -480,21 +601,30 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         const TString dirPath = "./invalidEndpointStoragePath";
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            std::make_shared<TTestEndpointManager>(),
-            {});
+            {},         // listeners
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        endpointService->RestoreEndpoints().Wait();
+        endpointManager->RestoreEndpoints().Wait();
 
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*configCounter));
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldNotThrowCriticalEventIfKeyringDescIsEmpty)
@@ -508,40 +638,42 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         auto endpointStorage = CreateKeyringEndpointStorage("nbs", "");
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            std::make_shared<TTestEndpointManager>(),
-            {});
+            {},         // listeners
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        endpointService->RestoreEndpoints().Wait();
+        endpointManager->RestoreEndpoints().Wait();
 
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldHandleRestoreFlagInListEndpointsResponse)
     {
-        auto trigger = NewPromise<NProto::TStartEndpointResponse>();
+        auto trigger = NewPromise<NProto::TError>();
 
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request)
         {
-            Y_UNUSED(request);
+            TFsPath(request.GetUnixSocketPath()).Touch();
             return trigger;
-        };
-
-        endpointManager->ListEndpointsHandler = [&] (
-            std::shared_ptr<NProto::TListEndpointsRequest> request)
-        {
-            Y_UNUSED(request);
-            return MakeFuture(NProto::TListEndpointsResponse());
         };
 
         const TString dirPath = "./" + CreateGuidAsString();
@@ -556,11 +688,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
+        TTempDir dir;
         size_t endpointCount = 5;
 
         for (size_t i = 0; i < endpointCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("endpoint.sock");
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
 
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
@@ -571,57 +705,52 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         }
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, listener }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        auto restoreFuture = endpointService->RestoreEndpoints();
+        auto restoreFuture = endpointManager->RestoreEndpoints();
         UNIT_ASSERT(!restoreFuture.HasValue());
 
         {
-            auto future = endpointService->ListEndpoints(
+            auto future = endpointManager->ListEndpoints(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListEndpointsRequest>());
             auto response = future.GetValue(TDuration::Seconds(1));
             UNIT_ASSERT(!response.GetEndpointsWereRestored());
         }
 
-        trigger.SetValue(NProto::TStartEndpointResponse());
+        trigger.SetValue(NProto::TError());
         restoreFuture.Wait();
 
         {
-            auto future = endpointService->ListEndpoints(
+            auto future = endpointManager->ListEndpoints(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListEndpointsRequest>());
             auto response = future.GetValue(TDuration::Seconds(1));
             UNIT_ASSERT(response.GetEndpointsWereRestored());
         }
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldListKeyrings)
     {
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
-        {
-            Y_UNUSED(request);
-            return MakeFuture(NProto::TStartEndpointResponse());
-        };
-        endpointManager->StopEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStopEndpointRequest> request)
-        {
-            Y_UNUSED(request);
-            return MakeFuture(NProto::TStopEndpointResponse());
-        };
-
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
         auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
@@ -634,12 +763,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
+        TTempDir dir;
         ui32 endpointCount = 42;
         THashMap<TString, NProto::TStartEndpointRequest> requests;
 
         for (size_t i = 0; i < endpointCount; ++i) {
             NProto::TStartEndpointRequest request;
-            request.SetUnixSocketPath("testSocket" + ToString(i + 1));
+            const TString socket = "testSocket" + ToString(i + 1);
+            request.SetUnixSocketPath((dir.Path() / socket).GetPath());
             request.SetDiskId("testDiskId" + ToString(i + 1));
             request.SetIpcType(NProto::IPC_GRPC);
 
@@ -654,19 +785,26 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             requests.emplace(ToString(i), request);
         }
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        auto future = endpointService->ListKeyrings(
+        auto future = endpointManager->ListKeyrings(
             MakeIntrusive<TCallContext>(),
             std::make_shared<NProto::TListKeyringsRequest>());
 
@@ -686,13 +824,14 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 5; ++i) {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
-            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            const TString socket = "testPersistentSocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             request->SetDiskId("testPersistentDiskId" + ToString(i + 1));
             request->SetIpcType(NProto::IPC_GRPC);
             request->SetPersistent(true);
             ++endpointCount;
 
-            auto future = endpointService->StartEndpoint(
+            auto future = endpointManager->StartEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
             auto response = future.GetValue(TDuration::Seconds(5));
@@ -700,7 +839,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto future = endpointService->ListKeyrings(
+            auto future = endpointManager->ListKeyrings(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListKeyringsRequest>());
 
@@ -711,12 +850,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 5; ++i) {
             auto request = std::make_shared<NProto::TStartEndpointRequest>();
-            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+            const TString socket = "testTemporarySocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             request->SetDiskId("testTemporaryDiskId" + ToString(i + 1));
             request->SetIpcType(NProto::IPC_GRPC);
             request->SetPersistent(false);
 
-            auto future = endpointService->StartEndpoint(
+            auto future = endpointManager->StartEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
             auto response = future.GetValue(TDuration::Seconds(5));
@@ -724,7 +864,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto future = endpointService->ListKeyrings(
+            auto future = endpointManager->ListKeyrings(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListKeyringsRequest>());
 
@@ -735,10 +875,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 3; ++i) {
             auto request = std::make_shared<NProto::TStopEndpointRequest>();
-            request->SetUnixSocketPath("testPersistentSocket" + ToString(i + 1));
+            const TString socket = "testPersistentSocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
             --endpointCount;
 
-            auto future = endpointService->StopEndpoint(
+            auto future = endpointManager->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
             auto response = future.GetValue(TDuration::Seconds(5));
@@ -746,7 +887,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto future = endpointService->ListKeyrings(
+            auto future = endpointManager->ListKeyrings(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListKeyringsRequest>());
 
@@ -757,9 +898,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         for (size_t i = 0; i < 3; ++i) {
             auto request = std::make_shared<NProto::TStopEndpointRequest>();
-            request->SetUnixSocketPath("testTemporarySocket" + ToString(i + 1));
+            const TString socket = "testTemporarySocket" + ToString(i + 1);
+            request->SetUnixSocketPath((dir.Path() / socket).GetPath());
 
-            auto future = endpointService->StopEndpoint(
+            auto future = endpointManager->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
                 request);
             auto response = future.GetValue(TDuration::Seconds(5));
@@ -767,7 +909,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto future = endpointService->ListKeyrings(
+            auto future = endpointManager->ListKeyrings(
                 MakeIntrusive<TCallContext>(),
                 std::make_shared<NProto::TListKeyringsRequest>());
 
@@ -775,43 +917,54 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT_C(!HasError(response), response);
             UNIT_ASSERT_VALUES_EQUAL(endpointCount, response.GetEndpoints().size());
         }
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldHandleParallelStartStopEndpoints)
     {
-        auto startPromise = NewPromise<NProto::TStartEndpointResponse>();
-        auto stopPromise = NewPromise<NProto::TStopEndpointResponse>();
+        auto startPromise = NewPromise<NProto::TError>();
+        auto stopPromise = NewPromise<NProto::TError>();
 
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request)
         {
             Y_UNUSED(request);
             return startPromise.GetFuture();
         };
-        endpointManager->StopEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStopEndpointRequest> request)
+        listener->StopEndpointHandler = [&] (const TString& socketPath)
         {
-            Y_UNUSED(request);
+            Y_UNUSED(socketPath);
             return stopPromise.GetFuture();
         };
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto logging = CreateLoggingService("console");
+
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
             CreateSchedulerStub(),
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, listener }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        auto unixSocket = "testSocket";
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
         startRequest->SetUnixSocketPath(unixSocket);
@@ -829,20 +982,20 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto ctx = MakeIntrusive<TCallContext>();
 
         {
-            auto future1 = endpointService->StartEndpoint(ctx, startRequest);
-            auto future2 = endpointService->StartEndpoint(ctx, startRequest);
+            auto future1 = endpointManager->StartEndpoint(ctx, startRequest);
+            auto future2 = endpointManager->StartEndpoint(ctx, startRequest);
             UNIT_ASSERT(!future1.HasValue());
             UNIT_ASSERT(!future2.HasValue());
 
-            auto future3 = endpointService->StartEndpoint(ctx, otherStartRequest);
-            auto response3 = future3.GetValue();
+            auto future3 = endpointManager->StartEndpoint(ctx, otherStartRequest);
+            auto response3 = future3.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(response3.GetError().GetCode() == E_REJECTED, response3.GetError());
 
-            auto future = endpointService->StopEndpoint(ctx, stopRequest);
+            auto future = endpointManager->StopEndpoint(ctx, stopRequest);
             auto response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(response.GetError().GetCode() == E_REJECTED);
 
-            startPromise.SetValue({});
+            startPromise.SetValue(NProto::TError{});
 
             auto response1 = future1.GetValue(TDuration::Seconds(5));
             auto response2 = future2.GetValue(TDuration::Seconds(5));
@@ -851,13 +1004,13 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            auto future1 = endpointService->StopEndpoint(ctx, stopRequest);
-            auto future2 = endpointService->StopEndpoint(ctx, stopRequest);
+            auto future1 = endpointManager->StopEndpoint(ctx, stopRequest);
+            auto future2 = endpointManager->StopEndpoint(ctx, stopRequest);
             UNIT_ASSERT(!future1.HasValue());
             UNIT_ASSERT(!future2.HasValue());
 
-            auto future3 = endpointService->StartEndpoint(ctx, otherStartRequest);
-            auto response3 = future3.GetValue();
+            auto future3 = endpointManager->StartEndpoint(ctx, otherStartRequest);
+            auto response3 = future3.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(response3.GetError().GetCode() == E_REJECTED);
 
             stopPromise.SetValue({});
@@ -867,6 +1020,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             UNIT_ASSERT(response1.GetError().GetCode() == S_OK);
             UNIT_ASSERT(response2.GetError().GetCode() == S_OK);
         }
+
+        executor->Stop();
     }
 
     Y_UNIT_TEST(ShouldWaitForRestoredEndpoints)
@@ -885,40 +1040,54 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         };
 
         TAtomic trigger = 0;
+        TManualEvent event;
 
-        auto endpointManager = std::make_shared<TTestEndpointManager>();
-        endpointManager->StartEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStartEndpointRequest> request)
+        auto listener = std::make_shared<TTestEndpointListener>();
+        listener->StartEndpointHandler = [&] (
+            const NProto::TStartEndpointRequest& request)
         {
             Y_UNUSED(request);
-            NProto::TStartEndpointResponse response;
+
+            NProto::TError error;
             if (!AtomicGet(trigger)) {
-                response.MutableError()->SetCode(E_TIMEOUT);
+                error.SetCode(E_TIMEOUT);
             }
-            return MakeFuture(response);
-        };
-        endpointManager->StopEndpointHandler = [&] (
-            std::shared_ptr<NProto::TStopEndpointRequest> request)
-        {
-            Y_UNUSED(request);
-            return MakeFuture(NProto::TStopEndpointResponse());
+            event.Signal();
+            return MakeFuture(error);
         };
 
-        auto testScheduler = std::make_shared<TTestScheduler>();
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
 
-        auto endpointService = CreateMultipleEndpointService(
-            nullptr,
+        auto executor = TExecutor::Create("TestService");
+        executor->Start();
+
+        auto endpointManager = CreateEndpointManager(
             CreateWallClockTimer(),
-            testScheduler,
+            scheduler,
             CreateLoggingService("console"),
             CreateRequestStatsStub(),
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
+            executor,
+            CreateEndpointEventProxy(),
+            std::make_shared<TTestSessionManager>(),
             endpointStorage,
-            endpointManager,
-            {});
+            {{ NProto::IPC_GRPC, listener }},
+            nullptr,    // nbdDeviceFactory
+            {}          // options
+        );
 
-        auto unixSocket = "testSocket";
+        endpointManager->Start();
+        Y_DEFER {
+            endpointManager->Stop();
+        };
+
+        TTempDir dir;
+        TString unixSocket = (dir.Path() / "testSocket").GetPath();
 
         auto startRequest = std::make_shared<NProto::TStartEndpointRequest>();
         startRequest->SetUnixSocketPath(unixSocket);
@@ -939,23 +1108,24 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(error), error);
 
-        auto restoreFuture = endpointService->RestoreEndpoints();
+        auto restoreFuture = endpointManager->RestoreEndpoints();
 
-        auto stopFuture = endpointService->StopEndpoint(ctx, stopRequest);
-        auto stopResponse = stopFuture.GetValue();
+        auto stopFuture = endpointManager->StopEndpoint(ctx, stopRequest);
+        auto stopResponse = stopFuture.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(stopResponse.GetError().GetCode() == E_REJECTED);
 
-        testScheduler->RunAllScheduledTasks();
+        event.Wait();
         UNIT_ASSERT(!restoreFuture.HasValue());
 
         AtomicSet(trigger, 1);
-
-        testScheduler->RunAllScheduledTasks();
+        UNIT_ASSERT(restoreFuture.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(restoreFuture.HasValue());
 
-        auto future = endpointService->StopEndpoint(ctx, stopRequest);
-        auto response = future.GetValue();
+        auto future = endpointManager->StopEndpoint(ctx, stopRequest);
+        auto response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(response.GetError().GetCode() == S_OK);
+
+        executor->Stop();
     }
 }
 

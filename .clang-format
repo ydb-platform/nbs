@@ -102,7 +102,7 @@ IfMacros:
 IncludeBlocks:   Regroup
 IncludeCategories:
   - Regex:           '^\"public.h\"'
-    Priority:        0
+    Priority:        5
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^\".*\"'
@@ -115,6 +115,10 @@ IncludeCategories:
     CaseSensitive:   false
   - Regex:           '^<ydb/.*\.h>'
     Priority:        30
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<contrib/.*\.h>'
+    Priority:        35
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<library/.*\.h>'
@@ -137,7 +141,7 @@ IncludeCategories:
     Priority:        80
     SortPriority:    0
     CaseSensitive:   false
-IncludeIsMainRegex: '([-_](test|unittest|ut))?$'
+IncludeIsMainRegex: '([-_].*)?$'
 IncludeIsMainSourceRegex: ''
 IndentAccessModifiers: false
 IndentCaseBlocks: false
@@ -179,7 +183,7 @@ PenaltyBreakString: 1000
 PenaltyBreakTemplateDeclaration: 10
 PenaltyExcessCharacter: 1000000
 PenaltyIndentedWhitespace: 0
-PenaltyReturnTypeOnItsOwnLine: 20000
+PenaltyReturnTypeOnItsOwnLine: 10
 PointerAlignment: Left
 PPIndentWidth:   -1
 QualifierAlignment: Leave
@@ -264,6 +268,7 @@ StatementAttributeLikeMacros:
 StatementMacros:
   - Q_UNUSED
   - QT_REQUIRE_VERSION
+  - HFunc
 TabWidth:        8
 UseTab:          Never
 WhitespaceSensitiveMacros:

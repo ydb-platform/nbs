@@ -57,7 +57,7 @@ void TPartitionActor::HandleUpdateIndexStructures(
     auto* msg = ev->Get();
 
     auto requestInfo =
-        CreateRequestInfo<TEvPartitionPrivate::TUpdateIndexStructuresMethod>(
+        CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
             msg->CallContext);
@@ -103,7 +103,7 @@ void TPartitionActor::HandleUpdateIndexStructures(
         requestInfo,
         msg->BlockRange);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TUpdateIndexStructuresMethod>(*requestInfo);
 
     ExecuteTx(ctx, std::move(tx));
 }

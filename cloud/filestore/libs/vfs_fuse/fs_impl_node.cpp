@@ -38,7 +38,8 @@ void TFileSystem::Lookup(
                         response.GetNode());
                 } else {
                     fuse_entry_param entry = {};
-                    entry.entry_timeout = Config->GetEntryTimeout().Seconds();
+                    entry.entry_timeout =
+                        Config->GetNegativeEntryTimeout().Seconds();
                     self->ReplyEntry(
                         *callContext,
                         error,

@@ -24,7 +24,6 @@ def verify_coreutils_output(
     debug_mode: bool,
     module_factories,
     ssh_key_path: str | None,
-    original_repo: bool,
     logger
 ):
     logger.info('Validating coreutils output')
@@ -37,7 +36,7 @@ def verify_coreutils_output(
             if not os.path.exists(_COREUTILS_OUTPUT_LOCAL_PATH):
                 raise Error('Failed to fetch coreutils test report from VM')
             log_content = open(_COREUTILS_OUTPUT_LOCAL_PATH, 'r').read()
-            report = parse_coreutils_output(log_content, dry_run, original_repo, logger)
+            report = parse_coreutils_output(log_content, dry_run, logger)
             if report is None:
                 raise Error('Failed to parse coreutils output')
             failed_tests = report['ERROR'] + report['FAIL']
@@ -117,7 +116,6 @@ def create_junit_xml_prettyprint(test_results):
 def parse_coreutils_output(
     content: str,
     dry_run: bool,
-    original_repo: bool,
     logger
 ) -> Optional[Dict[str, List[str]]]:
     """
@@ -143,7 +141,7 @@ def parse_coreutils_output(
         test_statistics = {status: [] for status in statuses}
 
         # Report starts with per-test reports following a separator
-        separator = "initial_cwd_" if original_repo else "============================="
+        separator = "initial_cwd_"
         report_sections = content.split(separator)
         if len(report_sections) < 2:
             logger.error(
@@ -183,34 +181,26 @@ def run_coreutils_test(
     instance_ip: str,
     dry_run: bool,
     debug: bool,
-    clone_original_repo: bool,
     module_factories,
     ssh_key_path: str | None,
     logger
 ):
-    """
-    Args:
-        clone_original_repo (bool): If set to True, clones original GNU coreutils repo
-            (http://git.savannah.gnu.org/gitweb/?p=coreutils), otherwise uses uploaded
-            to sandbox git archive, specified in scripts/coreutils.sh
-    """
     run(instance_ip,
         dry_run,
         _COREUTILS_SCRIPT_NAME,
         _COREUTILS_SCRIPT_PATH,
         {
             'mountPath': MOUNT_PATH,
-            'coreutilsOutputPath': _COREUTILS_OUTPUT_VM_PATH,
-            'cloneOriginalRepo': str(clone_original_repo).lower()
+            'coreutilsOutputPath': _COREUTILS_OUTPUT_VM_PATH
         },
         logger,
         module_factories,
         ssh_key_path)
     verify_coreutils_output(ycp, instance_ip, dry_run, debug, module_factories,
-                            ssh_key_path, clone_original_repo, logger)
+                            ssh_key_path, logger)
 
 
-def execute_coreutils_test(ycp, parser, instance, args, logger, clone_original_repo, module_factories):
+def execute_coreutils_test(ycp, parser, instance, args, logger, module_factories):
     logger.info('Starting test with filestore')
     with create_fs(ycp, TEST_FS_SIZE, 'network-ssd', logger) as fs:
         with ycp.attach_fs(instance, fs, DEVICE_NAME):
@@ -221,7 +211,6 @@ def execute_coreutils_test(ycp, parser, instance, args, logger, clone_original_r
                 instance.ip,
                 args.dry_run,
                 args.debug,
-                clone_original_repo,
                 module_factories,
                 args.ssh_key_path,
                 logger)

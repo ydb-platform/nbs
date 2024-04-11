@@ -79,7 +79,6 @@ PEERDIR(
     contrib/ydb/core/scheme
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
-    contrib/ydb/core/testlib/basics
 )
 
 END()
@@ -103,7 +102,6 @@ RECURSE_FOR_TESTS(
     ut_restore
     ut_session
     ut_suspend
-    ut_wait_device
 )
 
 # DEVTOOLSSUPPORT-28903

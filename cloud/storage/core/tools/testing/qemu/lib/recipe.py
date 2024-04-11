@@ -5,10 +5,11 @@ import argparse
 import yatest.common
 import yatest.common.network
 import retrying
-import pipes
+import shlex
 import tarfile
 
 import library.python.fs as fs
+from library.python.retry import retry
 import library.python.testing.recipe
 
 from .qemu import Qemu
@@ -30,7 +31,7 @@ class QemuKvmRecipeException(Exception):
             "[[bad]]{}[[rst]]".format(msg))
 
 
-def start(argv):
+def _start(argv):
     args = _parse_args(argv)
     if args.instance_count > 1:
         pm = yatest.common.network.PortManager()
@@ -40,6 +41,25 @@ def start(argv):
 
     for inst_index in range(args.instance_count):
         start_instance(args, inst_index)
+
+
+# Retry is a workaround for the issue when ssh onto the qemu instance fails
+# with "Connection timed out during banner exchange". See CLOUD-142732
+@retry(max_times=10)
+def start(argv):
+    try:
+        logger.info("Trying to start qemu")
+        _start(argv)
+        logger.info("Instance(s) started successfully")
+    except Exception as e:
+        logger.error("Failed to start qemu")
+        logger.exception(e)
+        try:
+            logger.info("Trying to stop qemu")
+            stop(argv)
+        except err:
+            pass
+        raise e
 
 
 def start_instance(args, inst_index):
@@ -73,6 +93,10 @@ def start_instance(args, inst_index):
     qemu.set_mount_paths(mount_paths)
     qemu.start()
 
+    recipe_set_env("QEMU_KVM_PID", str(qemu.qemu_bin.daemon.process.pid), inst_index)
+
+    logger.info("qemu pid is: '{}'".format(str(qemu.qemu_bin.daemon.process.pid)))
+
     ssh = SshToGuest(user=_get_ssh_user(args),
                      port=qemu.get_ssh_port(),
                      key=_get_ssh_key(args))
@@ -99,10 +123,6 @@ def start_instance(args, inst_index):
 
     if args.invoke_test:
         _prepare_test_environment(ssh, virtio)
-
-    recipe_set_env("QEMU_KVM_PID", str(qemu.qemu_bin.daemon.process.pid), inst_index)
-
-    logger.info("qemu pid is: '{}'".format(str(qemu.qemu_bin.daemon.process.pid)))
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
@@ -339,7 +359,7 @@ def _get_vm_use_virtiofs_server(args):
 
 
 def _prepare_test_environment(ssh, virtio):
-    # Workaround for https://st.yandex-team.ru/DISKMAN-63
+    # Workaround for DISKMAN-63
     if "TMPDIR" in os.environ:
         ssh("sudo mkdir -m a=rwx -p {}".format(os.environ['TMPDIR']))
 
@@ -386,7 +406,7 @@ def _prepare_test_environment(ssh, virtio):
         [
             "#!/bin/bash"
         ] + [
-            "export {}={}".format(k, pipes.quote(v))
+            "export {}={}".format(k, shlex.quote(v))
             for k, v in vm_env.items()
         ] + [
             '"$@"',

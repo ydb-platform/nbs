@@ -1,13 +1,10 @@
 #include "tablet_actor.h"
 
-#include "helpers.h"
-
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/set.h>
 #include <util/generic/string.h>
@@ -19,203 +16,6 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TWriteDataActor final
-    : public TActorBootstrapped<TWriteDataActor>
-{
-private:
-    const ITraceSerializerPtr TraceSerializer;
-
-    const TString LogTag;
-    const TActorId Tablet;
-    const TRequestInfoPtr RequestInfo;
-
-   const ui64 CommitId;
-    /*const*/ TVector<TMergedBlob> Blobs;
-    const TWriteRange WriteRange;
-
-public:
-    TWriteDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TWriteRange writeRange);
-
-    void Bootstrap(const TActorContext& ctx);
-
-private:
-    STFUNC(StateWork);
-
-    void WriteBlob(const TActorContext& ctx);
-    void HandleWriteBlobResponse(
-        const TEvIndexTabletPrivate::TEvWriteBlobResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void AddBlob(const TActorContext& ctx);
-    void HandleAddBlobResponse(
-        const TEvIndexTabletPrivate::TEvAddBlobResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandlePoisonPill(
-        const TEvents::TEvPoisonPill::TPtr& ev,
-        const TActorContext& ctx);
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error = {});
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-TWriteDataActor::TWriteDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TWriteRange writeRange)
-    : TraceSerializer(std::move(traceSerializer))
-    , LogTag(std::move(logTag))
-    , Tablet(tablet)
-    , RequestInfo(std::move(requestInfo))
-    , CommitId(commitId)
-    , Blobs(std::move(blobs))
-    , WriteRange(writeRange)
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
-
-void TWriteDataActor::Bootstrap(const TActorContext& ctx)
-{
-    FILESTORE_TRACK(
-        RequestReceived_TabletWorker,
-        RequestInfo->CallContext,
-        "WriteData");
-
-    WriteBlob(ctx);
-    Become(&TThis::StateWork);
-}
-
-void TWriteDataActor::WriteBlob(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
-
-    for (auto& blob: Blobs) {
-        request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
-    }
-
-    NCloud::Send(ctx, Tablet, std::move(request));
-}
-
-void TWriteDataActor::HandleWriteBlobResponse(
-    const TEvIndexTabletPrivate::TEvWriteBlobResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    if (FAILED(msg->GetStatus())) {
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    AddBlob(ctx);
-}
-
-void TWriteDataActor::AddBlob(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
-    request->Mode = EAddBlobMode::Write;
-    request->WriteRanges.push_back(WriteRange);
-
-    for (const auto& blob: Blobs) {
-        request->MergedBlobs.emplace_back(
-            blob.BlobId,
-            blob.Block,
-            blob.BlocksCount);
-    }
-
-    NCloud::Send(ctx, Tablet, std::move(request));
-}
-
-void TWriteDataActor::HandleAddBlobResponse(
-    const TEvIndexTabletPrivate::TEvAddBlobResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    ReplyAndDie(ctx, msg->GetError());
-}
-
-void TWriteDataActor::HandlePoisonPill(
-    const TEvents::TEvPoisonPill::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
-}
-
-void TWriteDataActor::ReplyAndDie(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    {
-        // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteDataCompleted>(error);
-        response->CommitId = CommitId;
-        NCloud::Send(ctx, Tablet, std::move(response));
-    }
-
-    FILESTORE_TRACK(
-        ResponseSent_TabletWorker,
-        RequestInfo->CallContext,
-        "WriteData");
-
-    if (RequestInfo->Sender != Tablet) {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(error);
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
-            "%s WriteData: #%lu completed (%s)",
-            LogTag.c_str(),
-            RequestInfo->CallContext->RequestId,
-            FormatError(response->Record.GetError()).c_str());
-
-        BuildTraceInfo(
-            TraceSerializer,
-            RequestInfo->CallContext,
-            response->Record);
-        BuildThrottlerInfo(*RequestInfo->CallContext, response->Record);
-
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    }
-
-    Die(ctx);
-}
-
-STFUNC(TWriteDataActor::StateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
-        HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
-
-        default:
-            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
-            break;
-    }
-}
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -296,26 +96,18 @@ void TIndexTabletActor::HandleWriteData(
         }
     }
 
-    auto validator = [&] (const NProto::TWriteDataRequest& request) {
-        if (auto error = ValidateRange(range); HasError(error)) {
-            return error;
-        }
-
-        auto* handle = FindHandle(request.GetHandle());
-        if (!handle || handle->GetSessionId() != GetSessionId(request)) {
-            return ErrorInvalidHandle(request.GetHandle());
-        }
-
-        if (!IsWriteAllowed(BuildBackpressureThresholds())) {
-            return MakeError(E_REJECTED, "rejected due to backpressure");
-        }
-
-        return NProto::TError{};
+    auto validator = [&](const NProto::TWriteDataRequest& request)
+    {
+        return ValidateWriteRequest(ctx, request, range);
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
         return;
     }
+
+    // this request passed the backpressure check => tablet is not stuck
+    // anywhere, we can reset our backpressure error counter
+    BackpressureErrorCount = 0;
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
@@ -326,6 +118,7 @@ void TIndexTabletActor::HandleWriteData(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+    requestInfo->StartedTs = ctx.Now();
 
     auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
     if (Config->GetWriteBatchEnabled()) {
@@ -335,9 +128,11 @@ void TIndexTabletActor::HandleWriteData(
             range,
             std::move(blockBuffer));
 
-        EnqueueWriteBatch(ctx, std::move(request));
+        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
         return;
     }
+
+    AddTransaction<TEvService::TWriteDataMethod>(*requestInfo);
 
     ExecuteTx<TWriteData>(
         ctx,
@@ -354,10 +149,16 @@ void TIndexTabletActor::HandleWriteDataCompleted(
 {
     const auto* msg = ev->Get();
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.WriteData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.WriteData.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.WriteData.Time.Record(msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -516,6 +317,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto reply = [&] (
         const TActorContext& ctx,
         TTxIndexTablet::TWriteData& args)
@@ -539,6 +342,12 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         EnqueueFlushIfNeeded(ctx);
         EnqueueBlobIndexOpIfNeeded(ctx);
+
+        Metrics.WriteData.Count.fetch_add(1, std::memory_order_relaxed);
+        Metrics.WriteData.RequestBytes.fetch_add(
+            args.ByteRange.Length,
+            std::memory_order_relaxed);
+        Metrics.WriteData.Time.Record(ctx.Now() - args.RequestInfo->StartedTs);
 
         return;
     }

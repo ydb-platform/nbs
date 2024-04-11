@@ -13,6 +13,16 @@ void TIndexTabletActor::HandleDestroyHandle(
     const TEvService::TEvDestroyHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDestroyHandleResponse>(
+                std::move(error)));
+
+        return;
+    }
+
     if (!AcceptRequest<TEvService::TDestroyHandleMethod>(ev, ctx)) {
         return;
     }
@@ -32,6 +42,8 @@ void TIndexTabletActor::HandleDestroyHandle(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
 
     ExecuteTx<TDestroyHandle>(
         ctx,
@@ -106,6 +118,8 @@ void TIndexTabletActor::CompleteTx_DestroyHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TDestroyHandle& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvDestroyHandleResponse>(args.Error);
     CompleteResponse<TEvService::TDestroyHandleMethod>(
         response->Record,

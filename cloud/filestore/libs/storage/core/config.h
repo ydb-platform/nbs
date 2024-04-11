@@ -66,7 +66,13 @@ public:
 
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;
+    ui32 GetCleanupThresholdAverage() const;
+    bool GetNewCleanupEnabled() const;
     ui32 GetCompactionThreshold() const;
+    ui32 GetGarbageCompactionThreshold() const;
+    ui32 GetCompactionThresholdAverage() const;
+    ui32 GetGarbageCompactionThresholdAverage() const;
+    bool GetNewCompactionEnabled() const;
     ui32 GetCollectGarbageThreshold() const;
     ui32 GetFlushBytesThreshold() const;
     ui32 GetMaxDeleteGarbageBlobsPerTx() const;
@@ -175,9 +181,24 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    bool GetThreeStageWriteEnabled() const;
+    ui32 GetThreeStageWriteThreshold() const;
+    TDuration GetEntryTimeout() const;
+    TDuration GetNegativeEntryTimeout() const;
+    TDuration GetAttrTimeout() const;
+
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
 
     bool GetConfigsDispatcherServiceEnabled() const;
+
+    ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
+
+    TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
+
+    ui32 GetReadAheadCacheMaxNodes() const;
+    ui32 GetReadAheadCacheMaxResultsPerNode() const;
+    ui32 GetReadAheadCacheRangeSize() const;
+    ui32 GetReadAheadMaxGapPercentage() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

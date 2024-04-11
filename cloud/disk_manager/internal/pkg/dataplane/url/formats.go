@@ -56,7 +56,7 @@ const (
 
 func (f ImageFormat) IsSupported() bool {
 	switch f {
-	case ImageFormatRaw, ImageFormatQCOW2, ImageFormatVMDK:
+	case ImageFormatRaw, ImageFormatQCOW2, ImageFormatVMDK, ImageFormatVHD:
 		return true
 	}
 

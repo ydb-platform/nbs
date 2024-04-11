@@ -11,13 +11,13 @@
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
-
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/cgroup_stats_fetcher.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
@@ -99,6 +99,7 @@ TBootstrapCommon::TBootstrapCommon(
     BootstrapLogging->Start();
 
     Log = BootstrapLogging->CreateLog(logComponent);
+    SetCriticalEventsLog(Log);
 }
 
 TBootstrapCommon::~TBootstrapCommon()
@@ -217,6 +218,7 @@ void TBootstrapCommon::InitCommonConfigs()
     Configs->InitKikimrConfig();
     Configs->InitStorageConfig();
     Configs->InitDiagnosticsConfig();
+    Configs->InitFeaturesConfig();
 }
 
 void TBootstrapCommon::InitDiagnostics()

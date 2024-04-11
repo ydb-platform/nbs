@@ -3,9 +3,10 @@ export d="/root"
 scripts=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export scripts
 export dm="${d}/disk_manager_acceptance_test/disk_manager_acceptance_tests"
-export cluster="nemax"
-
+export cluster="${cluster:=nemax}"
+export bucket_location="${bucket_location:=nemax-tests}"
 export results_dir="/var/www/build/results"
+
 
 function create_results_directory () {
     rm -rf "$results_path"
@@ -25,6 +26,7 @@ function base_shell_args () {
         "--instance-ram" "${instance_ram:?Variable instance_ram not present}"
         "--chunk-storage-type" "${chunk_storage_type:=ydb}"
         "--instance-platform-ids" "standard-v2" "standard-v3"
+        "--cleanup-before-tests"
         "--acceptance-test" "$dm/acceptance-test"
         "--results-path" "${results_path}"
         "--verbose"
@@ -59,7 +61,8 @@ function run_acceptance () {
     acceptance \
     --test-suite "${test_suite:?Test suite is undefined}" \
     --verify-test "$dm/verify-test" \
-    --s3-host "storage.nemax.nebius.cloud"
+    --s3-host "storage.nemax.nebius.cloud" \
+    --bucket-location "${bucket_location}"
 }
 
 function run_eternal () {

@@ -34,7 +34,7 @@ private:
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
-    const bool AssignIdToWriteAndZeroRequestsEnabled;
+    const bool AssignVolumeRequestId;
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
@@ -48,7 +48,7 @@ public:
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
-        bool assignIdToWriteAndZeroRequestsEnabled,
+        bool assignVolumeRequestId,
         bool replyLocal);
 
     void Bootstrap(const TActorContext& ctx);
@@ -86,19 +86,16 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         TVector<TDeviceRequest> deviceRequests,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TActorId& part,
-        bool assignIdToWriteAndZeroRequestsEnabled,
+        bool assignVolumeRequestId,
         bool replyLocal)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
-    , AssignIdToWriteAndZeroRequestsEnabled(
-          assignIdToWriteAndZeroRequestsEnabled)
+    , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TDiskAgentWriteActor::Bootstrap(const TActorContext& ctx)
 {
@@ -132,7 +129,7 @@ void TDiskAgentWriteActor::WriteBlocks(const TActorContext& ctx)
         request->Record.SetDeviceUUID(deviceRequest.Device.GetDeviceUUID());
         request->Record.SetStartIndex(deviceRequest.DeviceBlockRange.Start);
         request->Record.SetBlockSize(PartConfig->GetBlockSize());
-        if (AssignIdToWriteAndZeroRequestsEnabled) {
+        if (AssignVolumeRequestId) {
             request->Record.SetVolumeRequestId(RequestInfo->Cookie);
             request->Record.SetMultideviceRequest(DeviceRequests.size() > 1);
         }
@@ -353,6 +350,10 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         return;
     }
 
+    const bool assignVolumeRequestId =
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
+        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -360,7 +361,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
+        assignVolumeRequestId,
         false); // replyLocal
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
@@ -442,6 +443,10 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
             msg->Record.BlocksCount,
             PartConfig->GetBlockSize()));
 
+    const bool assignVolumeRequestId =
+        Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&
+        !msg->Record.GetHeaders().GetIsBackgroundRequest();
+
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -449,7 +454,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         std::move(deviceRequests),
         PartConfig,
         SelfId(),
-        Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
+        assignVolumeRequestId,
         true); // replyLocal
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));

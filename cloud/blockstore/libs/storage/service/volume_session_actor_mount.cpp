@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
@@ -50,9 +51,7 @@ using TEvInternalMountVolumeResponsePtr =
 NProto::TError MakeErrorSilent(const NProto::TError& error)
 {
     auto result = error;
-    ui32 flags = error.GetFlags();
-    SetProtoFlag(flags, NProto::EF_SILENT);
-    result.SetFlags(flags);
+    SetErrorProtoFlag(result, NProto::EF_SILENT);
     return result;
 }
 
@@ -272,8 +271,6 @@ TMountRequestActor::TMountRequestActor(
     , Params(params)
     , MountOptionsChanged(mountOptionsChanged)
 {
-    ActivityType = TBlockStoreActivities::SERVICE;
-
     MountMode = Request.GetVolumeMountMode();
     if (Params.BindingType == NProto::BINDING_REMOTE) {
         MountMode = NProto::VOLUME_MOUNT_REMOTE;

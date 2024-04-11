@@ -160,9 +160,7 @@ TMetadataRebuildBlockCountActor::TMetadataRebuildBlockCountActor(
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
     , RebuildState{0, 0, mixedBlocksCount, mergedBlocksCount}
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMetadataRebuildBlockCountActor::Bootstrap(const TActorContext& ctx)
 {
@@ -222,7 +220,7 @@ void TMetadataRebuildBlockCountActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     NotifyCompleted(ctx, error);
 }
@@ -263,7 +261,7 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -313,7 +311,7 @@ void TPartitionActor::HandleMetadataRebuildBlockCount(
         gen,
         step);
 
-    AddTransaction(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TMetadataRebuildBlockCountMethod>(*requestInfo);
 
     ExecuteTx(ctx, CreateTx<TMetadataRebuildBlockCount>(
         requestInfo,

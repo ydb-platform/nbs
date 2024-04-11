@@ -35,6 +35,8 @@ TStringBuf GetSysRequestName(ESysRequestType requestType)
         case ESysRequestType::Migration: return "Migration";
         case ESysRequestType::WriteDeviceBlocks: return "WriteDeviceBlocks";
         case ESysRequestType::ZeroDeviceBlocks: return "ZeroDeviceBlocks";
+        case ESysRequestType::Resync: return "Resync";
+        case ESysRequestType::ConfirmBlobs: return "ConfirmBlobs";
         default: return "unknown";
     }
 }

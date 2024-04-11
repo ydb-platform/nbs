@@ -111,9 +111,9 @@ public:
         : Strategy(strategy)
     {}
 
-    void Increment(ui32 partitionIndex)
+    void Increment(const TString& diskId, ui32 partitionIndex)
     {
-        ++BrokenDiskCount;
+        BrokenDisks.insert(diskId);
         if (Strategy == NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION) {
             BrokenPartitions.insert(partitionIndex);
         }
@@ -123,7 +123,7 @@ public:
     {
         switch (Strategy) {
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_SPREAD:
-                return BrokenDiskCount;
+                return BrokenDisks.size();
             case NProto::EPlacementStrategy::PLACEMENT_STRATEGY_PARTITION:
                 return BrokenPartitions.size();
             default:
@@ -135,9 +135,14 @@ public:
         }
     }
 
+    [[nodiscard]] const THashSet<TString>& GetBrokenDisks() const
+    {
+        return BrokenDisks;
+    }
+
 private:
     NProto::EPlacementStrategy Strategy;
-    ui32 BrokenDiskCount = 0;
+    THashSet<TString> BrokenDisks;
     THashSet<ui32> BrokenPartitions;
 };
 
@@ -160,20 +165,20 @@ struct TCheckpointInfo
 {
     TString SourceDiskId;
     TString CheckpointId;
-    TString CheckpointDiskId;
+    TString ShadowDiskId;
 
     TCheckpointInfo() = default;
 
     TCheckpointInfo(
             TString sourceDiskId,
             TString checkpointId,
-            TString checkpointDiskId)
+            TString shadowDiskId)
         : SourceDiskId(std::move(sourceDiskId))
         , CheckpointId(std::move(checkpointId))
-        , CheckpointDiskId(std::move(checkpointDiskId))
+        , ShadowDiskId(std::move(shadowDiskId))
     {}
 
-    static TString MakeCheckpointDiskId(
+    static TString MakeShadowDiskId(
         const TString& sourceDiskId,
         const TString& checkpointId);
 
@@ -327,6 +332,8 @@ private:
 
     NDiskRegistry::TNotificationSystem NotificationSystem;
 
+    THashMap<TString, TCachedAcquireRequests> AcquireCacheByAgentId;
+
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
@@ -393,7 +400,7 @@ public:
 
     struct TAllocateCheckpointResult: public TAllocateDiskResult
     {
-        TString CheckpointDiskId;
+        TString ShadowDiskId;
     };
 
     NProto::TError AllocateDisk(
@@ -436,10 +443,10 @@ public:
 
     NProto::TError GetDiskInfo(const TDiskId& diskId, TDiskInfo& diskInfo) const;
     NProto::EDiskState GetDiskState(const TDiskId& diskId) const;
-    NProto::TError GetCheckpointDiskId(
+    NProto::TError GetShadowDiskId(
         const TDiskId& sourceDiskId,
         const TCheckpointId& checkpointId,
-        TDiskId* checkpointDiskId) const;
+        TDiskId* shadowDiskId) const;
 
     bool FilterDevicesAtUnavailableAgents(TDiskInfo& diskInfo) const;
 
@@ -568,7 +575,7 @@ public:
 
     NProto::TError UpdateAgentState(
         TDiskRegistryDatabase& db,
-        TString agentId,
+        const TString& agentId,
         NProto::EAgentState state,
         TInstant now,
         TString reason,
@@ -581,7 +588,7 @@ public:
 
     NProto::TError UpdateCmsHostState(
         TDiskRegistryDatabase& db,
-        TString agentId,
+        const TString& agentId,
         NProto::EAgentState state,
         TInstant now,
         bool dryRun,
@@ -603,7 +610,6 @@ public:
     {
         NProto::TError Error;
         TVector<TDiskId> AffectedDisks;
-        TVector<TDeviceId> DevicesThatNeedToBeCleaned;
         TDuration Timeout;
     };
 
@@ -790,6 +796,11 @@ public:
         return ReplicaTable;
     }
 
+    THashMap<TString, TCachedAcquireRequests>& GetAcquireCacheByAgentId()
+    {
+        return AcquireCacheByAgentId;
+    }
+
     TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const
     {
         return AgentList.GetRejectAgentTimeout(now, agentId);
@@ -951,7 +962,7 @@ private:
         const THashSet<TString>& deviceIds) const;
 
     NProto::TError CheckAgentStateTransition(
-        const TString& agentId,
+        const NProto::TAgentConfig& agent,
         NProto::EAgentState newState,
         TInstant timestamp) const;
 

@@ -64,6 +64,7 @@ struct TCheckpointRequest
     TString ShadowDiskId;
     EShadowDiskState ShadowDiskState = EShadowDiskState::None;
     ui64 ShadowDiskProcessedBlockCount = 0;
+    TString CheckpointError;
 
     TCheckpointRequest(
             ui64 requestId,
@@ -89,7 +90,8 @@ struct TCheckpointRequest
             ECheckpointType type,
             TString shadowDiskId,
             EShadowDiskState shadowDiskState,
-            ui64 shadowDiskProcessedBlockCount)
+            ui64 shadowDiskProcessedBlockCount,
+            TString checkpointError)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
@@ -99,6 +101,7 @@ struct TCheckpointRequest
         , ShadowDiskId(std::move(shadowDiskId))
         , ShadowDiskState(shadowDiskState)
         , ShadowDiskProcessedBlockCount(shadowDiskProcessedBlockCount)
+        , CheckpointError(std::move(checkpointError))
     {}
 };
 
@@ -111,8 +114,12 @@ struct TActiveCheckpointInfo
     TString ShadowDiskId;
     EShadowDiskState ShadowDiskState = EShadowDiskState::None;
     ui64 ProcessedBlockCount = 0;
-    ui64 TotalBlockCount = 0;
     bool HasShadowActor = false;
+
+    [[nodiscard]] bool IsShadowDiskBased() const;
+
+    // Does the checkpoint block write/zero requests.
+    [[nodiscard]] bool ShouldBlockWrites() const;
 };
 
 using TActiveCheckpointsMap = TMap<TString, TActiveCheckpointInfo>;
@@ -144,15 +151,14 @@ public:
     void SetCheckpointRequestInProgress(ui64 requestId);
     void SetCheckpointRequestFinished(
         ui64 requestId,
-        bool success,
+        bool completed,
         TString shadowDiskId,
         EShadowDiskState shadowDiskState);
 
     void SetShadowDiskState(
         const TString& checkpointId,
         EShadowDiskState shadowDiskState,
-        ui64 processedBlockCount,
-        ui64 totalBlockCount);
+        ui64 processedBlockCount);
     void ShadowActorCreated(const TString& checkpointId);
     void ShadowActorDestroyed(const TString& checkpointId);
     [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;

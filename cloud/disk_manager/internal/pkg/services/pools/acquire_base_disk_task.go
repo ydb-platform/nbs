@@ -124,7 +124,6 @@ func (t *acquireBaseDiskTask) Cancel(
 
 func (t *acquireBaseDiskTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

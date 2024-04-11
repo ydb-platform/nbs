@@ -27,6 +27,7 @@ CHECK_DEPENDENT_DIRS(ALLOW_ONLY PEERDIRS
     contrib/restricted
     library/cpp
     contrib/ydb/library/actors
+    contrib/ydb/library/services
     logbroker
     tools/enum_parser
     util

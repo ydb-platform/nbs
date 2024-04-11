@@ -1,5 +1,7 @@
 #include "disk_agent_actor.h"
 
+#include <contrib/ydb/core/base/appdata.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -25,6 +27,9 @@ void TDiskAgentActor::HandleReleaseDevices(
             record.GetHeaders().GetClientId(),
             record.GetDiskId(),
             record.GetVolumeGeneration());
+
+        UpdateSessionCache(ctx);
+
     } catch (const TServiceError& e) {
         *response->Record.MutableError() = MakeError(e.GetCode(), e.what());
     }

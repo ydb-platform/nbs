@@ -1,6 +1,6 @@
 #include "config.h"
 
-#include "features_config.h"
+#include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
@@ -108,7 +108,10 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(TenantHiveTabletId,             ui64,               0                 )\
                                                                                \
-    xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20        )\
+    xxx(MaxChangedBlocksRangeBlocksCount,           ui64,       1 << 20       )\
+    xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
+    xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
+    xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -366,6 +369,7 @@ TDuration MSeconds(ui32 value)
     xxx(VolumeHistoryDuration,                     TDuration, Days(7)         )\
     xxx(VolumeHistoryCacheSize,                    ui32,      100             )\
     xxx(DeletedCheckpointHistoryLifetime,          TDuration, Days(7)         )\
+    xxx(VolumeMetaHistoryDisplayedRecordLimit,     ui32,      30              )\
                                                                                \
     xxx(BytesPerPartition,                         ui64,      512_TB          )\
     xxx(BytesPerPartitionSSD,                      ui64,      512_GB          )\
@@ -463,6 +467,20 @@ TDuration MSeconds(ui32 value)
     xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
     xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
+    xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
+                                                                               \
+    xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
+                                                                               \
+    xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
+                                                                               \
+    xxx(MaxShadowDiskFillBandwidth,                     ui32,      500           )\
+    xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
+    xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
+    xxx(MinAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(1)    )\
+    xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(10)   )\
+    xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
+    xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
+
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
 #define BLOCKSTORE_STORAGE_CONFIG(xxx)                                         \
@@ -491,6 +509,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ChangeThrottlingPolicy)                                                \
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
+    xxx(AddingUnconfirmedBlobs)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 
@@ -607,7 +626,7 @@ constexpr TAtomicBase ConvertToAtomicBase(const TValue& value, const TValue& def
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
 #define BLOCKSTORE_CONFIG_CONTROL(name, type, value)                           \
     TControlWrapper Control##name {                                            \
@@ -625,12 +644,12 @@ struct TStorageConfig::TImpl
 
     TImpl(
             NProto::TStorageServiceConfig storageServiceConfig,
-            TFeaturesConfigPtr featuresConfig)
+            NFeatures::TFeaturesConfigPtr featuresConfig)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
     {}
 
-    void SetFeaturesConfig(TFeaturesConfigPtr featuresConfig)
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
     {
         FeaturesConfig = std::move(featuresConfig);
     }
@@ -652,7 +671,7 @@ struct TStorageConfig::TImpl
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    TFeaturesConfigPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
     : Impl(new TImpl(std::move(storageServiceConfig), std::move(featuresConfig)))
 {}
 
@@ -664,7 +683,8 @@ TStorageConfig::TStorageConfig(const TStorageConfig& config)
 TStorageConfig::~TStorageConfig()
 {}
 
-void TStorageConfig::SetFeaturesConfig(TFeaturesConfigPtr featuresConfig)
+void TStorageConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
@@ -743,9 +763,14 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 #define BLOCKSTORE_BINARY_FEATURE_GETTER(name)                                 \
 bool TStorageConfig::Is##name##FeatureEnabled(                                 \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->IsFeatureEnabled(cloudId, folderId, #name);   \
+    return Impl->FeaturesConfig->IsFeatureEnabled(                             \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
 }                                                                              \
 
 // BLOCKSTORE_BINARY_FEATURE_GETTER
@@ -757,9 +782,14 @@ bool TStorageConfig::Is##name##FeatureEnabled(                                 \
 #define BLOCKSTORE_DURATION_FEATURE_GETTER(name)                               \
 TDuration TStorageConfig::Get##name##FeatureValue(                             \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    auto v = Impl->FeaturesConfig->GetFeatureValue(cloudId, folderId, #name);  \
+    const auto v = Impl->FeaturesConfig->GetFeatureValue(                      \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
     if (v) {                                                                   \
         return TDuration::Parse(v);                                            \
     }                                                                          \
@@ -776,9 +806,14 @@ TDuration TStorageConfig::Get##name##FeatureValue(                             \
 #define BLOCKSTORE_STRING_FEATURE_GETTER(name)                                 \
 TString TStorageConfig::Get##name##FeatureValue(                               \
     const TString& cloudId,                                                    \
-    const TString& folderId) const                                             \
+    const TString& folderId,                                                   \
+    const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->GetFeatureValue(cloudId, folderId, #name);    \
+    return Impl->FeaturesConfig->GetFeatureValue(                              \
+        cloudId,                                                               \
+        folderId,                                                              \
+        diskId,                                                                \
+        #name);                                                                \
 }                                                                              \
 
 // BLOCKSTORE_STRING_FEATURE_GETTER

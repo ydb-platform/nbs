@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 
@@ -18,6 +19,8 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestInfo
+    : public TAtomicRefCount<TRequestInfo>
+    , public TIntrusiveListItem<TRequestInfo>
 {
     using TCancelRoutine = void(
         const NActors::TActorContext& ctx,
@@ -32,6 +35,9 @@ struct TRequestInfo
     const ui64 Started = GetCycleCount();
     ui64 ExecCycles = 0;
 
+    // ActorSystem start ts. Might be empty.
+    TInstant StartedTs;
+
     TRequestInfo() = default;
 
     TRequestInfo(
@@ -43,11 +49,12 @@ struct TRequestInfo
         , CallContext(std::move(callContext))
     {}
 
-    TRequestInfo(TRequestInfo&& other) = default;
-
     void CancelRequest(const NActors::TActorContext& ctx)
     {
-        Y_ABORT_UNLESS(CancelRoutine);
+        if (!CancelRoutine) {
+            ReportCancelRoutineIsNotSet();
+            return;
+        };
         CancelRoutine(ctx, *this);
     }
 
@@ -102,7 +109,7 @@ inline TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    return std::make_shared<TRequestInfo>(
+    return MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
         std::move(callContext));
@@ -114,7 +121,7 @@ TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    auto requestInfo = std::make_shared<TRequestInfo>(
+    auto requestInfo = MakeIntrusive<TRequestInfo>(
         sender,
         cookie,
         std::move(callContext));
@@ -124,7 +131,7 @@ TRequestInfoPtr CreateRequestInfo(
         TRequestInfo& requestInfo)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
-            MakeError(E_REJECTED, "tablet is dead"));
+            MakeError(E_REJECTED, "tablet is shutting down"));
 
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };

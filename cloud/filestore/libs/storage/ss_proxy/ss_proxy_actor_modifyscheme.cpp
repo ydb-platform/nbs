@@ -83,9 +83,7 @@ TModifySchemeActor::TModifySchemeActor(
     : RequestInfo(std::move(requestInfo))
     , Owner(owner)
     , ModifyScheme(std::move(modifyScheme))
-{
-    ActivityType = TFileStoreActivities::SS_PROXY;
-}
+{}
 
 void TModifySchemeActor::Bootstrap(const TActorContext& ctx)
 {

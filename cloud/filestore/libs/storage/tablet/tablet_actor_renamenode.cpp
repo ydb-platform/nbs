@@ -60,6 +60,8 @@ void TIndexTabletActor::HandleRenameNode(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TRenameNodeMethod>(*requestInfo);
+
     ExecuteTx<TRenameNode>(
         ctx,
         std::move(requestInfo),
@@ -284,6 +286,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     const TActorContext& ctx,
     TTxIndexTablet::TRenameNode& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.ChildRef);
 

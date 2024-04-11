@@ -22,7 +22,7 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
-        TVector<TResyncReplica> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString clientId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
@@ -30,9 +30,7 @@ TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
     , Replicas(std::move(replicas))
     , ClientId(std::move(clientId))
     , SgList(std::move(sgList))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TMirrorPartitionResyncFastPathActor::Bootstrap(const TActorContext& ctx)
 {

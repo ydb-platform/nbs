@@ -20,6 +20,7 @@ SRCS(
     service_ut_read_write.cpp
     service_ut_resume_device.cpp
     service_ut_start.cpp
+    service_ut_stats.cpp
     service_ut_update_config.cpp
 )
 

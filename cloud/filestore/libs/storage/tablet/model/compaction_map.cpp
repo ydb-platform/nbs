@@ -449,9 +449,14 @@ TCompactionMapStats TCompactionMap::GetStats(ui32 topSize) const
     TCompactionMapStats stats = {
         .UsedRangesCount = Impl->UsedRangesCount,
         .AllocatedRangesCount = Impl->Groups.Size() * TCompactionMap::GroupSize,
-        .TopRangesByCleanupScore = GetTopRangesByCleanupScore(topSize),
-        .TopRangesByCompactionScore = GetTopRangesByCompactionScore(topSize),
     };
+
+    if (!topSize) {
+        return stats;
+    }
+
+    stats.TopRangesByCleanupScore = GetTopRangesByCleanupScore(topSize);
+    stats.TopRangesByCompactionScore = GetTopRangesByCompactionScore(topSize);
 
     return stats;
 }

@@ -10,6 +10,7 @@
 
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
+#include <util/string/join.h>
 #include <util/system/file.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -44,9 +45,7 @@ TDiskRegistryActor::TDiskRegistryActor(
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))
-{
-    ActivityType = TBlockStoreActivities::DISK_REGISTRY;
-}
+{}
 
 TDiskRegistryActor::~TDiskRegistryActor()
 {}
@@ -187,8 +186,6 @@ void TDiskRegistryActor::BeforeDie(const NActors::TActorContext& ctx)
             MakeError(E_REJECTED, "Tablet is dead"));
     }
     PendingDiskDeallocationRequests.clear();
-
-    CancelAllPendingWaitForDeviceCleanupRequests(ctx);
 }
 
 void TDiskRegistryActor::OnDetach(const TActorContext& ctx)
@@ -606,6 +603,8 @@ STFUNC(TDiskRegistryActor::StateWork)
         IgnoreFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartRequest);
         IgnoreFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse);
 
+        IgnoreFunc(TEvDiskAgent::TEvAcquireDevicesResponse);
+
         HFunc(TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
             HandleBackupDiskRegistryStateResponse);
 
@@ -753,6 +752,9 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
+        HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
+            HandleCleanupDisksResponse);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
@@ -813,7 +815,133 @@ TString LogDevices(const TVector<NProto::TDeviceConfig>& devices)
     for (const auto& d: devices) {
         sb << d.GetDeviceUUID() << "@" << d.GetAgentId() << " ";
     }
+    sb << ")";
     return sb;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TDiskRegistryActor::OnDiskAcquired(
+    TVector<TAgentAcquireDevicesCachedRequest> sentAcquireRequests)
+{
+    for (auto& sentRequest: sentAcquireRequests) {
+        TCachedAcquireRequests& cachedRequests =
+            State->GetAcquireCacheByAgentId()[sentRequest.AgentId];
+        TCachedAcquireKey key{
+            sentRequest.Request.GetDiskId(),
+            sentRequest.Request.GetHeaders().GetClientId()};
+        cachedRequests[key] = std::move(sentRequest);
+    }
+}
+
+void TDiskRegistryActor::OnDiskReleased(
+    const TVector<TAgentReleaseDevicesCachedRequest>& sentReleaseRequests)
+{
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    for (const auto& [agentId, releaseRequest]: sentReleaseRequests) {
+        auto it = acquireCacheByAgentId.find(agentId);
+        if (it == acquireCacheByAgentId.end()) {
+            continue;
+        }
+        TCachedAcquireRequests& cachedRequests = it->second;
+        TCachedAcquireKey key{
+            releaseRequest.GetDiskId(),
+            releaseRequest.GetHeaders().GetClientId()};
+        cachedRequests.erase(key);
+        if (cachedRequests.empty()) {
+            acquireCacheByAgentId.erase(it);
+        }
+    }
+}
+
+void TDiskRegistryActor::OnDiskDeallocated(const TDiskId& diskId)
+{
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    for (auto& [_, request]: acquireCacheByAgentId) {
+        EraseNodesIf(
+            request,
+            [&diskId](const auto& item)
+            { return item.first.DiskId == diskId; });
+    }
+    EraseNodesIf(
+        acquireCacheByAgentId,
+        [](const auto& item) { return item.second.empty(); });
+}
+
+void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
+    const TActorContext& ctx,
+    const NProto::TAgentConfig& config)
+{
+    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
+    if (cacheIt == acquireCacheByAgentId.end()) {
+        return;
+    }
+    // Since we will send all of the requests and they are non-copyable, just
+    // extract whole container.
+    TCachedAcquireRequests agentAcquireRequestCache =
+        std::move(cacheIt->second);
+    acquireCacheByAgentId.erase(cacheIt);
+
+    TDuration lifetimeThreshold =
+        Config->GetCachedAcquireRequestLifetime();
+    TInstant now = ctx.Now();
+
+    for (auto& [_, request]: agentAcquireRequestCache) {
+        // If it is an old enough request, then we probably shouldn't send it.
+        if (now - request.RequestTime > lifetimeThreshold) {
+            continue;
+        }
+
+        TVector<NProto::TDeviceConfig> diskDevices;
+        NProto::TError error =
+            State->GetDiskDevices(request.Request.GetDiskId(), diskDevices);
+        // Something happened with the disk from the request. Skip it.
+        if (HasError(error) || diskDevices.empty()) {
+            continue;
+        }
+
+        TSet<TString> diskAgentDeviceUUIDs;
+        for (const auto& device: diskDevices) {
+            if (config.GetAgentId() == device.GetAgentId()) {
+                diskAgentDeviceUUIDs.insert(device.GetDeviceUUID());
+            }
+        }
+
+        bool diskDevicesChanged = false;
+        for (const auto& deviceUUID: request.Request.GetDeviceUUIDs()) {
+            if (!diskAgentDeviceUUIDs.contains(deviceUUID)) {
+                diskDevicesChanged = true;
+                break;
+            }
+        }
+        // We shouldn't send the request if all of the devices from the request
+        // do not belong to the disk.
+        if (diskDevicesChanged) {
+            continue;
+        }
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Send cached AcquireDisk request DiskId=%s to node #%d, "
+            "AgentId=%s. Devices: [%s]",
+            TabletID(),
+            request.Request.GetDiskId().c_str(),
+            config.GetNodeId(),
+            config.GetAgentId().c_str(),
+            JoinSeq(", ", request.Request.GetDeviceUUIDs()).c_str());
+
+        auto requestEv =
+            std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
+        requestEv->Record = std::move(request.Request);
+
+        NCloud::Send(
+            ctx,
+            MakeDiskAgentServiceId(config.GetNodeId()),
+            std::move(requestEv),
+            config.GetNodeId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

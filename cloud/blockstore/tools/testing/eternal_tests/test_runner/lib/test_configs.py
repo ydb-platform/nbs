@@ -316,7 +316,8 @@ _LOAD_CONFIGS = {
     'eternal-279gb-ssd-local-different-size-requests': LoadConfig(True, False, 64, 50, 279, 4096),
 
     'eternal-367gb-ssd-local-v3': LoadConfig(False, False, 128, 50, 186, 4096),
-    'eternal-734gb-ssd-local-different-size-requests-v3': LoadConfig(True, False, 64, 50, 279, 4096),
+    'eternal-734gb-ssd-local-different-size-requests-v3': LoadConfig(
+        True, False, 64, 10, 279, 4096),
 
     'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),

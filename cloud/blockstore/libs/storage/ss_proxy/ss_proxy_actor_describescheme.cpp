@@ -70,9 +70,7 @@ TDescribeSchemeActor::TDescribeSchemeActor(
     , Config(std::move(config))
     , Path(std::move(path))
     , PathDescriptionBackup(std::move(pathDescriptionBackup))
-{
-    ActivityType = TBlockStoreActivities::SS_PROXY;
-}
+{}
 
 void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
 {
@@ -143,9 +141,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
 
         // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
         if (status == NKikimrScheme::StatusPathDoesNotExist) {
-            ui32 flags = error.GetFlags();
-            SetProtoFlag(flags, NProto::EF_SILENT);
-            error.SetFlags(flags);
+            SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
         }
     }
 

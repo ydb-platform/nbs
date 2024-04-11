@@ -155,7 +155,8 @@ NProto::TError AllocateMirroredDisk(
     TVector<NProto::TDeviceMigration>& migrations,
     TVector<TString>& deviceReplacementIds,
     TInstant now = TInstant::Seconds(100),
-    NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    NProto::EStorageMediaKind mediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR2,
+    ui32 logicalBlockSize = DefaultLogicalBlockSize);
 
 NProto::TError AllocateDisk(
     TDiskRegistryDatabase& db,
@@ -168,7 +169,8 @@ NProto::TError AllocateDisk(
     TInstant now = TInstant::Seconds(100),
     NProto::EStorageMediaKind mediaKind =
         NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-    TString poolName = "");
+    TString poolName = "",
+    ui32 logicalBlockSize = DefaultLogicalBlockSize);
 
 NProto::TError AllocateCheckpoint(
     TInstant now,
@@ -176,7 +178,7 @@ NProto::TError AllocateCheckpoint(
     TDiskRegistryState& state,
     const TString& sourceDiskId,
     const TString& checkpointId,
-    TString* checkpointDiskId,
+    TString* shadowDiskId,
     TVector<TDeviceConfig>* devices);
 
 NProto::TStorageServiceConfig CreateDefaultStorageConfigProto();
@@ -281,6 +283,9 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithPlacementGroups(
         TVector<NProto::TPlacementGroupConfig> groups);
+
+    TDiskRegistryStateBuilder& WithErrorNotifications(
+        TVector<TString> notifications);
 
     TDiskRegistryStateBuilder& AddDevicePoolConfig(
         TString name,

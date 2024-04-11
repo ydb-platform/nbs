@@ -5,44 +5,23 @@ import yatest.common as common
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
-from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig, CT_LOAD
-from cloud.blockstore.config.features_pb2 import TFeaturesConfig
+from cloud.blockstore.config.storage_pb2 import CT_LOAD
+from cloud.blockstore.tests.python.lib.config import storage_config_with_default_limits
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test, \
     get_restart_interval
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 
 def default_storage_config():
-    bw = 1 << 7     # 128 MB/s
-    iops = 1 << 16
-
-    storage = TStorageServiceConfig()
+    storage = storage_config_with_default_limits()
 
     storage.SSDCompactionType = CT_LOAD
     storage.HDDCompactionType = CT_LOAD
     storage.V1GarbageCompactionEnabled = True
-
-    storage.ThrottlingEnabled = True
-    storage.ThrottlingEnabledSSD = True
-
-    storage.SSDUnitReadBandwidth = bw
-    storage.SSDUnitWriteBandwidth = bw
-    storage.SSDMaxReadBandwidth = bw
-    storage.SSDMaxWriteBandwidth = bw
-    storage.SSDUnitReadIops = iops
-    storage.SSDUnitWriteIops = iops
-    storage.SSDMaxReadIops = iops
-    storage.SSDMaxWriteIops = iops
-
-    storage.HDDUnitReadBandwidth = bw
-    storage.HDDUnitWriteBandwidth = bw
-    storage.HDDMaxReadBandwidth = bw
-    storage.HDDMaxWriteBandwidth = bw
-    storage.HDDUnitReadIops = iops
-    storage.HDDUnitWriteIops = iops
-    storage.HDDMaxReadIops = iops
-    storage.HDDMaxWriteIops = iops
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
+    storage.CheckBlockChecksumsInBlobsUponRead = True
 
     return storage
 
@@ -67,6 +46,9 @@ def storage_config_with_incremental_batch_compaction():
 def storage_config_with_incremental_compaction_and_patching():
     storage = storage_config_with_incremental_compaction()
     storage.BlobPatchingEnabled = True
+    # checksums are currently not supported for patched blobs
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
+    storage.CheckBlockChecksumsInBlobsUponRead = False
 
     return storage
 
@@ -116,6 +98,9 @@ def storage_config_with_mixed_index_cache_enabled():
 def storage_config_with_adding_unconfirmed_blobs_enabled():
     storage = default_storage_config()
     storage.AddingUnconfirmedBlobsEnabled = True
+    # checksums are currently not supported for unconfirmed blobs
+    storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
+    storage.CheckBlockChecksumsInBlobsUponRead = False
 
     return storage
 

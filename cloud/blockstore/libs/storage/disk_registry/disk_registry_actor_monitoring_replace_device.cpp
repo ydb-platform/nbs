@@ -67,9 +67,7 @@ TReplaceActor::TReplaceActor(
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , DeviceId(std::move(deviceId))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TReplaceActor::Bootstrap(const TActorContext& ctx)
 {
@@ -201,7 +199,11 @@ void TDiskRegistryActor::HandleHttpInfo_ReplaceDevice(
         return;
     }
 
-    if (!Config->IsReplaceDeviceFeatureEnabled(info.CloudId, info.FolderId)) {
+    if (!Config->IsReplaceDeviceFeatureEnabled(
+            info.CloudId,
+            info.FolderId,
+            diskId))
+    {
         RejectHttpRequest(
             ctx,
             *requestInfo,

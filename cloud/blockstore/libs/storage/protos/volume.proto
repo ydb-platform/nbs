@@ -366,6 +366,8 @@ message TCachedPartStats
     uint64 GarbageQueueBytes = 10;
     uint64 ChannelHistorySize = 11;
     uint64 LogicalUsedBytesCount = 12;
+    uint32 UnconfirmedBlobCount = 13;
+    uint32 ConfirmedBlobCount = 14;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -603,7 +605,7 @@ message TChangeStorageConfigRequest
 
     // Label of volume to wait readiness of.
     string DiskId = 2;
-    
+
     // Storage config
     NProto.TStorageServiceConfig StorageConfig = 3;
 

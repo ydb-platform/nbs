@@ -24,6 +24,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 AvailableBlockSizes[] =
+    {4_KB, 8_KB, 16_KB, 32_KB, 64_KB, 128_KB};
+
 TDiskRegistryState MakeDiskRegistryState()
 {
     auto agentConfig1 = AgentConfig(
@@ -62,7 +65,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
     using TCreateDiskFunc = std::function<
         void(TDiskRegistryState & state, TDiskRegistryDatabase db)>;
 
-    void DoShouldCreateCheckpointForMirrorDisk(TCreateDiskFunc createDisk)
+    void DoShouldCreateCheckpointForDiskRegistryBasedDisk(
+        TCreateDiskFunc createDisk)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -74,7 +78,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                          { createDisk(state, std::move(db)); });
 
         // Create checkpoint
-        TString checkpointDiskId;
+        TString shadowDiskId;
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
@@ -85,14 +89,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
                 UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
-                UNIT_ASSERT_UNEQUAL("", checkpointDiskId);
+                UNIT_ASSERT_UNEQUAL("", shadowDiskId);
                 UNIT_ASSERT_EQUAL(
                     NProto::EDiskState::DISK_STATE_ONLINE,
-                    state.GetDiskState(checkpointDiskId));
+                    state.GetDiskState(shadowDiskId));
             });
 
         // Validate created checkpoint
@@ -102,7 +106,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             UNIT_ASSERT_SUCCESS(error);
 
             TDiskInfo checkpointDiskInfo;
-            error = state.GetDiskInfo(checkpointDiskId, checkpointDiskInfo);
+            error = state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
             UNIT_ASSERT_SUCCESS(error);
             UNIT_ASSERT_VALUES_EQUAL(
                 sourceDiskInfo.GetBlocksCount(),
@@ -133,14 +137,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_EQUAL(S_ALREADY, error.GetCode());
             });
@@ -148,25 +152,32 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
 
     Y_UNIT_TEST(ShouldCreateCheckpointForDiskRegistryBasedDisk)
     {
-        DoShouldCreateCheckpointForMirrorDisk(
-            [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
-            {
-                TVector<TDeviceConfig> devices;
-                auto error = AllocateDisk(
-                    db,
-                    state,
-                    "disk-1",
-                    "",   // placementGroupId
-                    0,    // placementPartitionIndex
-                    30_GB,
-                    devices);
-                UNIT_ASSERT_SUCCESS(error);
-            });
+        for (ui32 blockSize: AvailableBlockSizes) {
+            DoShouldCreateCheckpointForDiskRegistryBasedDisk(
+                [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
+                {
+                    TVector<TDeviceConfig> devices;
+                    auto error = AllocateDisk(
+                        db,
+                        state,
+                        "disk-1",
+                        "",   // placementGroupId
+                        0,    // placementPartitionIndex
+                        30_GB,
+                        devices,
+                        TInstant::Seconds(100),
+                        NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                        TString(),   // poolName
+                        blockSize);
+                    UNIT_ASSERT_SUCCESS(error);
+                });
+        }
     }
 
-    Y_UNIT_TEST(ShouldCreateCheckpointForMirrorDisk)
+    Y_UNIT_TEST(ShouldCreateCheckpointForMirrorDisk8192)
     {
-        DoShouldCreateCheckpointForMirrorDisk(
+        for (ui32 blockSize: AvailableBlockSizes) {
+        DoShouldCreateCheckpointForDiskRegistryBasedDisk(
             [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
@@ -182,12 +193,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     devices,
                     replicas,
                     migrations,
-                    deviceReplacementIds);
+                    deviceReplacementIds,
+                    TInstant::Seconds(100),
+                    NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                    blockSize);
                 UNIT_ASSERT_SUCCESS(error);
             });
+        }
     }
 
-    Y_UNIT_TEST(ShouldNotCreatWhenNotEnoughFreeSpace)
+    Y_UNIT_TEST(ShouldNotCreateWhenNotEnoughFreeSpace)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -218,14 +233,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_BS_DISK_ALLOCATION_FAILED,
@@ -233,7 +248,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             });
     }
 
-    Y_UNIT_TEST(ShouldCreatMultipleCheckpoints)
+    Y_UNIT_TEST(ShouldCreateMultipleCheckpoints)
     {
         TTestExecutor executor;
         executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
@@ -264,14 +279,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });
@@ -281,14 +296,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-2",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });
@@ -325,14 +340,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });
@@ -342,7 +357,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error =
                     state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
                 UNIT_ASSERT_SUCCESS(error);
@@ -353,7 +368,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error =
                     state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
                 UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
@@ -374,14 +389,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error = AllocateCheckpoint(
                     Now(),
                     db,
                     state,
                     "disk-1",
                     "checkpoint-2",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });
@@ -414,7 +429,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             });
 
         // create checkpoint #1
-        TString checkpointDiskId;
+        TString shadowDiskId;
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
@@ -425,14 +440,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });
         {
             TDiskInfo checkpointDiskInfo;
             auto error =
-                state.GetDiskInfo(checkpointDiskId, checkpointDiskInfo);
+                state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
             UNIT_ASSERT_SUCCESS(error);
         }
 
@@ -441,7 +456,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             [&](TDiskRegistryDatabase db)
             {
                 TVector<TDeviceConfig> devices;
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 auto error =
                     state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
                 UNIT_ASSERT_SUCCESS(error);
@@ -451,7 +466,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         {
             TDiskInfo checkpointDiskInfo;
             auto error =
-                state.GetDiskInfo(checkpointDiskId, checkpointDiskInfo);
+                state.GetDiskInfo(shadowDiskId, checkpointDiskInfo);
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
         }
     }
@@ -486,7 +501,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                TString checkpointDiskId;
+                TString shadowDiskId;
                 TVector<TDeviceConfig> devices;
                 auto error = AllocateCheckpoint(
                     Now(),
@@ -494,7 +509,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                     state,
                     "disk-1",
                     "checkpoint-1",
-                    &checkpointDiskId,
+                    &shadowDiskId,
                     &devices);
                 UNIT_ASSERT_SUCCESS(error);
             });

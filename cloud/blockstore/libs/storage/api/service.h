@@ -292,6 +292,9 @@ struct TEvService
         EvRunVolumesLivenessCheckRequest = EvBegin + 84,
         EvRunVolumesLivenessCheckResponse = EvBegin + 85,
 
+        EvGetCheckpointStatusRequest = EvBegin + 86,
+        EvGetCheckpointStatusResponse = EvBegin + 87,
+
         EvEnd
     };
 

@@ -251,6 +251,7 @@ struct TFixture
         ServerStats,
         Executor,
         LocalAgentId,
+        S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
         CreateFallbackListener(),
         CreateExternalEndpointFactory());
 

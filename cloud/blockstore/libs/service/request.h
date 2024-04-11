@@ -70,6 +70,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
     xxx(AlterVolume,                        __VA_ARGS__)                       \
     xxx(GetChangedBlocks,                   __VA_ARGS__)                       \
+    xxx(GetCheckpointStatus,                __VA_ARGS__)                       \
     xxx(DescribeVolume,                     __VA_ARGS__)                       \
     xxx(ListVolumes,                        __VA_ARGS__)                       \
     xxx(UploadClientMetrics,                __VA_ARGS__)                       \
@@ -160,6 +161,7 @@ enum class ESysRequestType
     WriteDeviceBlocks = 10006,
     ZeroDeviceBlocks = 10007,
     Resync = 10008,
+    ConfirmBlobs = 10009,
     MAX
 };
 

@@ -1,7 +1,7 @@
 #include "critical_events.h"
-
 #include "public.h"
 
+#include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/string/builder.h>
@@ -13,10 +13,16 @@ using namespace NMonitoring;
 namespace {
 
 NMonitoring::TDynamicCountersPtr CriticalEvents;
+TLog Log;
 
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void SetCriticalEventsLog(TLog log)
+{
+    Log = std::move(log);
+}
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
@@ -50,7 +56,15 @@ TString ReportCriticalEvent(
     fullMessage << "CRITICAL_EVENT:" << sensorName;
     if (message) {
         fullMessage << ":" << message;
-        Cerr << fullMessage << Endl;
+    }
+
+    if (Log.IsNotNullLog()) {
+        Log.AddLog("%s", fullMessage.c_str());
+    } else {
+        // Write message and \n in one call. This will reduce the chance of
+        // shuffling with writings of other threads.
+        Cerr << fullMessage + '\n';
+        Cerr.Flush();
     }
 
     return fullMessage;
@@ -73,5 +87,23 @@ TString ReportCriticalEvent(
 
     STORAGE_CRITICAL_EVENTS(STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE)
 #undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ReportPreconditionFailed(
+    TStringBuf file,
+    int line,
+    TStringBuf func,
+    TStringBuf expr)
+{
+    ReportCriticalEvent(
+        "PreconditionFailed",
+        TStringBuilder()
+            << file << ":" << line
+            << " " << func << "(): requirement " << expr
+            << " failed",
+        true    // verifyDebug
+    );
+}
 
 }   // namespace NCloud

@@ -124,8 +124,20 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 ECheckpointType::Normal,
                 "shadow-disk-6",
                 EShadowDiskState::Preparing,
-                512},
+                512,
+                TString()},
 
+            TCheckpointRequest{
+                14,
+                "checkpoint-7",
+                TInstant::Now(),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Completed,
+                ECheckpointType::Normal,
+                TString(),
+                EShadowDiskState::Error,
+                0,
+                "disk-error"},
         };
         TCheckpointStore store(
             TVector<TCheckpointRequest>{
@@ -140,27 +152,26 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(10, requestId);
         auto checkpoints = store.GetActiveCheckpoints();
-        UNIT_ASSERT_VALUES_EQUAL(4, checkpoints.size());
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            store.DoesCheckpointHaveData("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.DoesCheckpointHaveData("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.DoesCheckpointHaveData("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(5, checkpoints.size());
+        UNIT_ASSERT(checkpoints.contains("checkpoint-1"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-2"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-5"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-6"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-7"));
+        UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-1"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-2"));
+        UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-5"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-6"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-7"));
 
         // The checkpoint without the shadow disk has the correct state.
+        UNIT_ASSERT(!checkpoints["checkpoint-1"].IsShadowDiskBased());
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-1"].ShadowDiskState,
             EShadowDiskState::None);
 
         // Checkpoint with the shadow disk loads the state.
+        UNIT_ASSERT(checkpoints["checkpoint-6"].IsShadowDiskBased());
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ShadowDiskId,
             "shadow-disk-6");
@@ -170,6 +181,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ProcessedBlockCount,
             512);
+
+        // Checkpoint with disk error.
+        UNIT_ASSERT(checkpoints["checkpoint-7"].IsShadowDiskBased());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EShadowDiskState::Error,
+            checkpoints["checkpoint-7"].ShadowDiskState);
     }
 
     Y_UNIT_TEST(CreateFail)
@@ -283,15 +300,13 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::New);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 0);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 0);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->HasShadowActor, false);
 
         // Advance fill progress
         store.SetShadowDiskState(
             checkpointId,
             EShadowDiskState::Preparing,
-            512,
-            1024);
+            512);
 
         checkpoint = store.GetCheckpoint(checkpointId);
 
@@ -299,13 +314,11 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::Preparing);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 512);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 1024);
 
         // Finish fill progress
         store.SetShadowDiskState(
             checkpointId,
             EShadowDiskState::Ready,
-            1024,
             1024);
 
         checkpoint = store.GetCheckpoint(checkpointId);
@@ -314,7 +327,6 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::Ready);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 1024);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 1024);
 
         // Check actor created mark
         UNIT_ASSERT_VALUES_EQUAL(store.HasShadowActor(checkpointId), false);

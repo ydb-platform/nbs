@@ -87,9 +87,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TParentActor: public TActor<TParentActor>
+class TParentActor
+    : public TActor<TParentActor>
+    , IPoisonPillHelperOwner
 {
 private:
+    using TBase = TActor<TParentActor>;
     TPoisonPillHelper PoisonPillHelper;
     ui32 ChildCount;
 
@@ -99,6 +102,11 @@ public:
         , PoisonPillHelper(this)
         , ChildCount(childCount)
     {}
+
+    void Die(const NActors::TActorContext& ctx) override
+    {
+        TBase::Die(ctx);
+    }
 
 private:
     void Main(TAutoPtr<IEventHandle>& ev)
@@ -117,11 +125,20 @@ private:
     {
         Y_UNUSED(ev);
 
+        {   // We give ownership and take it away immediately.
+            auto childId = ctx.Register(new TChildActor());
+            PoisonPillHelper.TakeOwnership(ctx, childId);
+            ctx.Send(childId, std::make_unique<TEvents::TEvPoisonPill>());
+            PoisonPillHelper.ReleaseOwnership(ctx, childId);
+        }
+
+        // Give ownership for long time.
         for (ui32 i = 0; i < ChildCount; ++i) {
             PoisonPillHelper.TakeOwnership(
                 ctx,
                 ctx.Register(new TChildActor()));
         }
+
     }
 };
 

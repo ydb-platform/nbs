@@ -455,7 +455,8 @@ void TVolumeDatabase::UpdateCheckpointRequest(
     ui64 requestId,
     bool completed,
     const TString& shadowDiskId,
-    EShadowDiskState shadowDiskState)
+    EShadowDiskState shadowDiskState,
+    const TString& error)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
@@ -466,7 +467,8 @@ void TVolumeDatabase::UpdateCheckpointRequest(
         NIceDb::TUpdate<TTable::State>(static_cast<ui32>(state)),
         NIceDb::TUpdate<TTable::ShadowDiskId>(shadowDiskId),
         NIceDb::TUpdate<TTable::ShadowDiskState>(
-            static_cast<ui32>(shadowDiskState)));
+            static_cast<ui32>(shadowDiskState)),
+        NIceDb::TUpdate<TTable::CheckpointError>(error));
 }
 
 void TVolumeDatabase::UpdateShadowDiskState(
@@ -551,7 +553,8 @@ bool TVolumeDatabase::ReadCheckpointRequests(
                 it.GetValue<TTable::ShadowDiskId>(),
                 static_cast<EShadowDiskState>(
                     it.GetValue<TTable::ShadowDiskState>()),
-                it.GetValue<TTable::ShadowDiskProcessedBlockCount>());
+                it.GetValue<TTable::ShadowDiskProcessedBlockCount>(),
+                it.GetValue<TTable::CheckpointError>());
         }
 
         if (!it.Next()) {

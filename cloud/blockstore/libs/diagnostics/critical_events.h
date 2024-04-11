@@ -54,6 +54,8 @@ namespace NCloud::NBlockStore {
     xxx(ExternalEndpointUnexpectedExit)                                        \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
+    xxx(DiskAgentSecureEraseDuringIo)                                          \
+    xxx(DiskAgentIoDuringSecureErase)                                          \
     xxx(BlockDigestMismatchInBlob)                                             \
 // BLOCKSTORE_CRITICAL_EVENTS
 
@@ -80,6 +82,7 @@ namespace NCloud::NBlockStore {
     xxx(MonitoringSvgTemplatesNotFound)                                        \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
+    xxx(CancelRoutineIsNotSet)                                                 \
 // BLOCKSTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

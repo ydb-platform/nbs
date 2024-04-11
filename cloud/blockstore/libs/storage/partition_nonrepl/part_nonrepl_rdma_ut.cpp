@@ -101,7 +101,8 @@ struct TTestEnv
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
-            std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+            std::make_shared<NFeatures::TFeaturesConfig>(
+                NCloud::NProto::TFeaturesConfig())
         );
 
         auto nodeId = Runtime.GetNodeId(0);
@@ -714,7 +715,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         const auto blockRange = TBlockRange64::WithLength(1024, 3072);
 
-        {
+        {   // non-background WriteBlocksLocal should pass volume request id.
             TString data(DefaultBlockSize, 'A');
             client.SendRequest(
                 client.GetActorId(),
@@ -729,7 +730,22 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(10, writeRequestId);
         }
 
-        {
+        {   // background WriteBlocksLocal should NOT pass volume request id.
+            TString data(DefaultBlockSize, 'A');
+            auto request =
+                client.CreateWriteBlocksLocalRequest(blockRange, data);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+            client.SendRequest(client.GetActorId(), std::move(request), 10);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvWriteBlocksLocalResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+        }
+
+        {   // non-background WriteBlocks should pass volume request id.
             client.SendRequest(
                 client.GetActorId(),
                 client.CreateWriteBlocksRequest(blockRange, 'A'),
@@ -743,7 +759,20 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             UNIT_ASSERT_VALUES_EQUAL(20, writeRequestId);
         }
 
-        {
+        {   // background WriteBlocks should NOT pass volume request id.
+            auto request = client.CreateWriteBlocksRequest(blockRange, 'A');
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+            client.SendRequest(client.GetActorId(), std::move(request), 20);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, writeRequestId);
+        }
+
+        {   // non-background ZeroBlocks should pass volume request id.
             client.SendRequest(
                 client.GetActorId(),
                 client.CreateZeroBlocksRequest(blockRange),
@@ -756,7 +785,117 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 response->GetErrorReason());
             UNIT_ASSERT_VALUES_EQUAL(30, zeroRequestId);
         }
+
+        {   // background ZeroBlocks should NOT pass volume request id.
+            auto request = client.CreateZeroBlocksRequest(blockRange);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+            client.SendRequest(client.GetActorId(), std::move(request), 30);
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            auto response =
+                client.RecvResponse<TEvService::TEvZeroBlocksResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(0, zeroRequestId);
+        }
     }
+
+    Y_UNIT_TEST(ShouldSupportReadOnlyMode)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime, NProto::VOLUME_IO_ERROR_READ_ONLY);
+
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        TString zeroedBlockData(DefaultBlockSize, 0);
+
+        auto readBlocks = [&](const auto& expectedBlockData)
+        {
+            auto response = client.ReadBlocks(
+                TBlockRange64::WithLength(1024, 3072));
+            const auto& blocks = response->Record.GetBlocks();
+
+            UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(0));
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3071).size());
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(3071));
+        };
+
+        readBlocks(zeroedBlockData);
+
+        // write blocks requests are fobidden in read only mode
+        {
+            client.SendWriteBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                1);
+            auto response = client.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        }
+
+        readBlocks(zeroedBlockData);
+
+        // zero blocks requests are fobidden in read only mode
+        {
+            client.SendZeroBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            auto response = client.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        }
+
+        readBlocks(zeroedBlockData);
+
+        // background write requests are allowed
+        // background requests are requests that originate from
+        // blockstore-server itself e.g. NRD migration-related reads and writes.
+
+        TString modifiedBlockData(DefaultBlockSize, 'A');
+
+        {
+            auto request = client.CreateWriteBlocksLocalRequest(
+                TBlockRange64::WithLength(1024, 3072),
+                modifiedBlockData);
+            request->Record.MutableHeaders()->SetIsBackgroundRequest(true);
+            client.SendRequest(client.GetActorId(), std::move(request));
+            auto response = client.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        readBlocks(modifiedBlockData);
+    }
+
+    Y_UNIT_TEST(ShouldNotHandleRequestsWithRequiredCheckpointSupport)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime);
+
+        env.Rdma().InitAllEndpoints();
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        {
+            auto request = client.CreateReadBlocksRequest(
+                TBlockRange64::WithLength(1024, 3072));
+            request->Record.SetCheckpointId("abc");
+            client.SendRequest(client.GetActorId(), std::move(request));
+
+            runtime.DispatchEvents();
+
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "checkpoints not supported"));
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

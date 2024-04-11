@@ -97,6 +97,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(ReadData,                           __VA_ARGS__)                       \
     xxx(WriteData,                          __VA_ARGS__)                       \
+    xxx(AddData,                            __VA_ARGS__)                       \
     xxx(WriteBatch,                         __VA_ARGS__)                       \
     xxx(AllocateData,                       __VA_ARGS__)                       \
                                                                                \
@@ -1128,6 +1129,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
+        TMaybe<TByteRange> ReadAheadRange;
         TMaybe<TIndexTabletDatabase::TNode> Node;
         TVector<TBlockDataRef> Blocks;
         TVector<TBlockBytes> Bytes;
@@ -1160,10 +1162,16 @@ struct TTxIndexTablet
         {
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
+            ReadAheadRange.Clear();
             Node.Clear();
 
             std::fill(Blocks.begin(), Blocks.end(), TBlockDataRef());
             std::fill(Bytes.begin(), Bytes.end(), TBlockBytes());
+        }
+
+        const TByteRange& ActualRange() const
+        {
+            return ReadAheadRange.GetOrElse(AlignedByteRange);
         }
     };
 
@@ -1209,6 +1217,42 @@ struct TTxIndexTablet
             // skip fresh completely for large aligned writes
             return ByteRange.IsAligned()
                 && ByteRange.Length >= WriteBlobThreshold;
+        }
+    };
+
+    //
+    // AddData
+    //
+
+    struct TAddData : TSessionAware
+    {
+        const TRequestInfoPtr RequestInfo;
+        const ui64 Handle;
+        const TByteRange ByteRange;
+        TVector<NKikimr::TLogoBlobID> BlobIds;
+        ui64 CommitId;
+
+        ui64 NodeId = InvalidNodeId;
+        TMaybe<TIndexTabletDatabase::TNode> Node;
+
+        TAddData(
+                TRequestInfoPtr requestInfo,
+                const NProtoPrivate::TAddDataRequest& request,
+                TByteRange byteRange,
+                TVector<NKikimr::TLogoBlobID> blobIds,
+                ui64 commitId)
+            : TSessionAware(request)
+            , RequestInfo(std::move(requestInfo))
+            , Handle(request.GetHandle())
+            , ByteRange(byteRange)
+            , BlobIds(std::move(blobIds))
+            , CommitId(commitId)
+        {}
+
+        void Clear()
+        {
+            NodeId = InvalidNodeId;
+            Node.Clear();
         }
     };
 

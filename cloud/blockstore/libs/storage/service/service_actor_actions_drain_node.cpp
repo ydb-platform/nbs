@@ -64,9 +64,7 @@ TDrainNodeActionActor::TDrainNodeActionActor(
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
-{
-    ActivityType = TBlockStoreActivities::SERVICE;
-}
+{}
 
 void TDrainNodeActionActor::Bootstrap(const TActorContext& ctx)
 {

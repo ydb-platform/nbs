@@ -90,9 +90,7 @@ THttpReadBlockActor::THttpReadBlockActor(
     , CommitId(commitId)
     , Binary(binary)
     , BufferHolder(TString::Uninitialized(blockSize))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void THttpReadBlockActor::Bootstrap(const TActorContext& ctx)
 {
@@ -244,7 +242,7 @@ void THttpReadBlockActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 STFUNC(THttpReadBlockActor::StateWork)

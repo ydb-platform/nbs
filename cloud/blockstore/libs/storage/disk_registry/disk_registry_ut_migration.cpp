@@ -1546,9 +1546,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
 
-        RegisterAgents(*runtime, 1);
-        WaitForAgents(*runtime, 1);
-        WaitForSecureErase(*runtime, agents);
+        RegisterAndWaitForAgents(*runtime, agents);
 
         const TVector devices = [&] {
             auto response = diskRegistry.AllocateDisk("vol0", 20_GB);
@@ -1577,6 +1575,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
@@ -1591,6 +1590,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
@@ -1607,6 +1607,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
@@ -1622,6 +1623,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
@@ -1636,6 +1638,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
 
@@ -1668,8 +1671,79 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             const auto maxTime = TDuration::Seconds(maxMigrationTime->Val());
 
+            UNIT_ASSERT_LT_C(TDuration::Zero(), maxTime, maxTime);
             UNIT_ASSERT_LE_C(maxTime, UpdateCountersInterval + dt, maxTime);
         }
+    }
+
+    Y_UNIT_TEST(ShouldResetMigrationTime)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-1.2", "rack-1", 10_GB),
+            })
+        };
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        runtime->UpdateCurrentTime(TInstant::FromValue(1700000000000000));   // 2023-11-14T22:13:20
+        runtime->DispatchEvents({}, 10ms);
+
+        const auto uuid = diskRegistry.AllocateDisk("disk-1", 10_GB)
+            ->Record.GetDevices(0).GetDeviceUUID();
+
+        {
+            auto response = diskRegistry.BackupDiskRegistryState(true);
+            auto& backup = *response->Record.MutableBackup();
+            UNIT_ASSERT_VALUES_EQUAL(1, backup.DisksSize());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", backup.GetDisks(0).GetDiskId());
+
+            // set the migration start timestamp to a weird value
+            backup.MutableDisks(0)->SetMigrationStartTs(42);
+
+            diskRegistry.RestoreDiskRegistryState(
+                std::move(backup),
+                true    // force
+            );
+
+            diskRegistry.RebootTablet();
+            diskRegistry.WaitReady();
+            diskRegistry.SetWritableState(true);
+            RegisterAgent(*runtime, 0);
+        }
+
+        const auto actualMigrationStartTs = runtime->GetCurrentTime();
+        diskRegistry.ChangeDeviceState(uuid, NProto::DEVICE_STATE_WARNING);
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval * 2);
+        runtime->DispatchEvents({}, 10ms);
+
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 10_GB);
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.MigrationsSize());
+        }
+
+        const auto maxMigrationTime = runtime->GetAppData(0).Counters
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "disk_registry")
+            ->GetCounter("MaxMigrationTime")
+            ->Val();
+
+        UNIT_ASSERT_LT(0, maxMigrationTime);
+        UNIT_ASSERT_GE(
+            runtime->GetCurrentTime() - actualMigrationStartTs,
+            TDuration::MicroSeconds(maxMigrationTime)
+        );
     }
 }
 

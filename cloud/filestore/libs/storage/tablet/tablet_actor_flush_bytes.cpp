@@ -193,9 +193,7 @@ TFlushBytesActor::TFlushBytesActor(
     , SrcBlobOffsets(std::move(srcBlobOffsets))
     , DstBlobs(std::move(dstBlobs))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TFlushBytesActor::Bootstrap(const TActorContext& ctx)
 {
@@ -397,7 +395,7 @@ void TFlushBytesActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TFlushBytesActor::ReplyAndDie(
@@ -494,6 +492,12 @@ void TIndexTabletActor::HandleFlushBytes(
             BlobIndexOpState.Complete();
         }
 
+        // Flush may have been enqueued if FlushBytes was enqueued by the
+        // tablet (via EnqueueBlobIndexOpIfNeeded).
+        if (FlushState.GetOperationState() == EOperationState::Enqueued) {
+            FlushState.Complete();
+        }
+
         replyError(
             ctx,
             *ev,
@@ -575,7 +579,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     bool ready = true;
-    for (auto& bytes: args.Bytes) {
+    for (const auto& bytes: args.Bytes) {
         ui32 rangeId = GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
         if (!args.MixedBlocksRanges.count(rangeId)) {
             if (LoadMixedBlocks(db, rangeId)) {
@@ -596,7 +600,10 @@ void TIndexTabletActor::ExecuteTx_FlushBytes(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
-    Y_UNUSED(args);
+
+    for (const auto& bytes: args.Bytes) {
+        InvalidateReadAheadCache(bytes.NodeId);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_FlushBytes(
@@ -825,7 +832,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         FormatError(msg->GetError()).c_str());
 
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
-    ReleaseCollectBarrier(msg->CollectCommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
     WorkerActors.erase(ev->Sender);
 
     auto requestInfo = CreateRequestInfo(

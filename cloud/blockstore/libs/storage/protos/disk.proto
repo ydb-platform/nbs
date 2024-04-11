@@ -742,6 +742,7 @@ message TAcquireDiskResponse
     NCloud.NProto.TError Error = 1;
 
     // List of devices that make up the disk.
+    // Note. Contains only the devices located at available agents.
     repeated TDeviceConfig Devices = 2;
 
     // Migration configuration.
@@ -1515,7 +1516,7 @@ message TAllocateCheckpointResponse
     NCloud.NProto.TError Error = 1;
 
     // The name of the disk on which the replica for the checkpoint was created.
-    string CheckpointDiskId = 2;
+    string ShadowDiskId = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -39,7 +39,6 @@ PEERDIR(
     contrib/ydb/library/actors/util
 
     contrib/ydb/core/base
-    contrib/ydb/core/driver_lib/run
     contrib/ydb/core/load_test
     contrib/ydb/core/mind
     contrib/ydb/core/mon

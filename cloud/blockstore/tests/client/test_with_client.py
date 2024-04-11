@@ -20,6 +20,12 @@ from cloud.blockstore.public.api.protos.volume_pb2 import (
     TDescribeVolumeResponse,
     TListVolumesResponse,
 )
+from cloud.blockstore.public.api.protos.checkpoints_pb2 import (
+    TGetCheckpointStatusRequest,
+    TGetCheckpointStatusResponse,
+    ECheckpointStatus,
+)
+from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     enable_writable_state,
@@ -124,6 +130,20 @@ def list_volumes(env, run):
     run("listvolumes",
         "--proto")
     return file_parse(env.results_path, TListVolumesResponse())
+
+
+def get_checkpoint_status(env, run, disk_id, checkpoint_id):
+    clear_file(env.results_file)
+    req = TGetCheckpointStatusRequest()
+    req.DiskId = disk_id
+    req.CheckpointId = checkpoint_id
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".tmp")
+    tmp_file.write(text_format.MessageToString(req).encode("utf8"))
+    tmp_file.flush()
+    run("getcheckpointstatus",
+        "--input", tmp_file.name,
+        "--proto")
+    return file_parse(env.results_path, TGetCheckpointStatusResponse())
 
 
 def describe_placement_group(env, run, group_id):
@@ -786,6 +806,33 @@ def test_create_destroy_placementgroup():
 
     run("destroyplacementgroup",
         "--group-id", "group-0")
+
+
+def test_get_checkpoint_status():
+    env, run = setup(with_nrd=True, nrd_device_count=2, rack='')
+
+    run("createvolume",
+        "--disk-id", "vol1",
+        "--blocks-count", str(NRD_BLOCKS_COUNT),
+        "--storage-media-kind", "nonreplicated")
+    assert file_equal(env.results_path, 'OK\n')
+    clear_file(env.results_file)
+
+    run("createcheckpoint",
+        "--disk-id", "vol1",
+        "--checkpoint-id", "cp1")
+    assert file_equal(env.results_path, 'OK\n')
+    clear_file(env.results_file)
+
+    response = get_checkpoint_status(env, run, "vol1", "cp1")
+    assert response.CheckpointStatus == ECheckpointStatus.READY
+
+    response = get_checkpoint_status(env, run, "non-exists-volume", "cp1")
+    assert response.Error.Message == "Path not found"
+
+    response = get_checkpoint_status(env, run, "vol1", "non-exists-checkpoint")
+    assert response.Error.Code == EResult.E_NOT_FOUND.value
+    assert response.Error.Message == "Checkpoint not found"
 
 
 def test_disabled_configs_dispatcher():

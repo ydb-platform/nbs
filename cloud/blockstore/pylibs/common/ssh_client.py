@@ -131,7 +131,6 @@ class SshClient:
             self._key_path_cmd_argument = []
         else:
             self._key_path_cmd_argument = ['-i', str(self._ssh_key_path)]
-        self._key_path_cmd_argument = ['-i', str(self._ssh_key_path)]
         self._authorization_string = f'{self._username}@{self._host}'
         self._scp_authorization_string = self._authorization_string
         try:
@@ -148,6 +147,7 @@ class SshClient:
             'scp',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             f'{self._scp_authorization_string}:{remote_path}',
             local_path,
@@ -211,12 +211,13 @@ class SshClient:
         self._exec_command(
             ['truncate', '-s', f'{size}', remote_path], check=True)
 
-    @retry(tries=4, delay=20)
+    @retry(tries=10, delay=20)
     def upload_file(self, local_path: str, remote_path: str) -> None:
         command_line = [
             'scp',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            '-o', 'UserKnownHostsFile=/dev/null',
             *self._key_path_cmd_argument,
             local_path,
             f'{self._scp_authorization_string}:{remote_path}',
@@ -231,6 +232,7 @@ class SshClient:
             'ssh',
             '-o', 'ServerAliveInterval=60',
             '-o', 'StrictHostKeyChecking no',
+            "-o", "UserKnownHostsFile=/dev/null",
             *self._key_path_cmd_argument,
             '-T',  # Disable pseudo-terminal allocation.
             self._authorization_string,

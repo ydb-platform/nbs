@@ -12,4 +12,8 @@ SRCS(
     utils.cpp
 )
 
+PEERDIR(
+    cloud/storage/core/libs/common
+)
+
 END()

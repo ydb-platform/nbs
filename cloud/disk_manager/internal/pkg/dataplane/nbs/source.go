@@ -8,6 +8,7 @@ import (
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,6 +190,8 @@ func (s *diskSource) Read(
 	ctx context.Context,
 	chunk *dataplane_common.Chunk,
 ) error {
+
+	logging.Debug(ctx, "reading chunk %v", chunk.Index)
 
 	startIndex := uint64(chunk.Index) * s.blocksInChunk
 	// blockCount should be multiple of blocksInChunk.

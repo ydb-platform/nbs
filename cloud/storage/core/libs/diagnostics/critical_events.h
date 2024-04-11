@@ -15,6 +15,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 TString ReportCriticalEvent(
@@ -29,5 +30,22 @@ TString ReportCriticalEvent(
 
     STORAGE_CRITICAL_EVENTS(STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE)
 #undef STORAGE_DECLARE_CRITICAL_EVENT_ROUTINE
+
+void ReportPreconditionFailed(
+    TStringBuf file,
+    int line,
+    TStringBuf func,
+    TStringBuf expr);
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define STORAGE_CHECK_PRECONDITION(expr)                                             \
+    if (!(expr)) {                                                             \
+        ReportPreconditionFailed(                                              \
+            __SOURCE_FILE_IMPL__,                                              \
+            __LINE__,                                                          \
+            __FUNCTION__,                                                      \
+            #expr);                                                            \
+    }                                                                          \
 
 }   // namespace NCloud

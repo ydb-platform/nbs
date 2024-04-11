@@ -304,6 +304,8 @@ TTestEnv TTestEnvBuilder::Build()
     // }
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
+    Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT, NLog::PRI_INFO);
+
     Runtime.SetRegistrationObserverFunc(
         [] (auto& runtime, const auto& parentId, const auto& actorId)
     {
@@ -321,7 +323,8 @@ TTestEnv TTestEnvBuilder::Build()
         TDefaultAllocator::Instance(), 0, 0, 0);
     auto config = std::make_shared<TStorageConfig>(
         std::move(StorageServiceConfig),
-        std::make_shared<TFeaturesConfig>(NProto::TFeaturesConfig())
+        std::make_shared<NFeatures::TFeaturesConfig>(
+            NCloud::NProto::TFeaturesConfig())
     );
     auto agentConfig = std::make_shared<TDiskAgentConfig>(
         std::move(AgentConfigProto),
@@ -352,6 +355,7 @@ TTestEnv TTestEnvBuilder::Build()
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
+        nullptr,    // rdmaConfig
         Spdk,
         allocator,
         StorageProvider,

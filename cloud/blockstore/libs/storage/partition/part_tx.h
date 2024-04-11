@@ -9,12 +9,12 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/unconfirmed_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
@@ -109,7 +109,7 @@ struct TTxPartition
         TVector<TCleanupQueueItem> CleanupQueue;
         TVector<TPartialBlobId> NewBlobs;
         TVector<TPartialBlobId> GarbageBlobs;
-        TUnconfirmedBlobs UnconfirmedBlobs;
+        TCommitIdToBlobsToConfirm UnconfirmedBlobs;
 
         explicit TLoadState(ui64 blocksCount)
             : UsedBlocks(blocksCount)
@@ -781,7 +781,12 @@ struct TTxPartition
             ui16 blobOffset)
         {
             Y_DEBUG_ABORT_UNLESS(BlockRange.Contains(blockIndex));
-            BlockMarks.push_back({ blobId, commitId, blockIndex, blobOffset });
+            BlockMarks.push_back({
+                blobId,
+                commitId,
+                blockIndex,
+                blobOffset,
+            });
         }
     };
 
@@ -800,6 +805,7 @@ struct TTxPartition
             ui64 CommitId = 0;
             ui32 BlockIndex = 0;
             ui16 BlobOffset = 0;
+            ui32 Checksum = 0;
         };
 
         TVector<TBlockMark> BlockMarks;
@@ -816,9 +822,18 @@ struct TTxPartition
             BlockMarks.clear();
         }
 
-        void MarkBlock(ui32 blockIndex, ui64 commitId, ui16 blobOffset)
+        void MarkBlock(
+            ui32 blockIndex,
+            ui64 commitId,
+            ui16 blobOffset,
+            ui32 checksum)
         {
-            BlockMarks.push_back({ commitId, blockIndex, blobOffset });
+            BlockMarks.push_back({
+                commitId,
+                blockIndex,
+                blobOffset,
+                checksum,
+            });
         }
     };
 
@@ -891,6 +906,7 @@ struct TTxPartition
         const bool IgnoreBaseDisk;
 
         TVector<ui8> ChangedBlocks;
+        bool Interrupted = false;
 
         TGetChangedBlocks(
                 TRequestInfoPtr requestInfo,
@@ -979,6 +995,7 @@ struct TTxPartition
         };
 
         TVector<TBlockMark> Marks;
+        bool Interrupted = false;
 
         TDescribeBlocks(
                 TRequestInfoPtr requestInfo,
@@ -1098,12 +1115,12 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
         ui64 CommitId = 0;
-        TVector<TUnconfirmedBlob> Blobs;
+        TVector<TBlobToConfirm> Blobs;
 
         TAddUnconfirmedBlobs(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
-                TVector<TUnconfirmedBlob> blobs)
+                TVector<TBlobToConfirm> blobs)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , Blobs(std::move(blobs))
@@ -1122,10 +1139,14 @@ struct TTxPartition
     struct TConfirmBlobs
     {
         const TRequestInfoPtr RequestInfo;
+        const ui64 StartCycleCount;
         TVector<TPartialBlobId> UnrecoverableBlobs;
 
-        explicit TConfirmBlobs(TVector<TPartialBlobId> unrecoverableBlobs)
-            : UnrecoverableBlobs(std::move(unrecoverableBlobs))
+        TConfirmBlobs(
+                ui64 startCycleCount,
+                TVector<TPartialBlobId> unrecoverableBlobs)
+            : StartCycleCount(startCycleCount)
+            , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
 
         void Clear()

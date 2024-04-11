@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -23,7 +24,6 @@
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/probes.h>
@@ -42,6 +42,7 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -167,15 +168,9 @@ public:
     }
 };
 
-NRdma::TServerConfigPtr CreateRdmaServerConfig(
-    NStorage::TDiskAgentConfig& agent)
+NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
 {
-    const auto& target = agent.GetRdmaTarget();
-
-    if (target.HasServer()) {
-        return std::make_shared<NRdma::TServerConfig>(target.GetServer());
-    }
-    return std::make_shared<NRdma::TServerConfig>();
+    return std::make_shared<NRdma::TServerConfig>(config.GetServer());
 }
 
 }   // namespace
@@ -267,10 +262,10 @@ void TBootstrap::InitProfileLog()
     }
 }
 
-void TBootstrap::InitRdmaServer(NStorage::TDiskAgentConfig& config)
+void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
 {
     try {
-        if (config.HasRdmaTarget()) {
+        if (config.GetServerEnabled()) {
             RdmaServer = ServerModuleFactories->RdmaServerFactory(
                 Logging,
                 Monitoring,
@@ -321,6 +316,9 @@ void TBootstrap::InitKikimrService()
     }
 
     Configs->InitDiskAgentConfig();
+    // InitRdmaConfig should be called after InitDiskAgentConfig
+    // to backport legacy RDMA config
+    Configs->InitRdmaConfig();
 
     STORAGE_INFO("Configs initialized");
 
@@ -378,7 +376,9 @@ void TBootstrap::InitKikimrService()
                 break;
         }
 
-        InitRdmaServer(config);
+        if (Configs->RdmaConfig) {
+            InitRdmaServer(*Configs->RdmaConfig);
+        }
     }
 
     Allocator = CreateCachingAllocator(
@@ -409,6 +409,7 @@ void TBootstrap::InitKikimrService()
     args.AppConfig = Configs->KikimrConfig;
     args.StorageConfig = Configs->StorageConfig;
     args.DiskAgentConfig = Configs->DiskAgentConfig;
+    args.RdmaConfig = Configs->RdmaConfig;
     args.DiskRegistryProxyConfig = Configs->DiskRegistryProxyConfig;
     args.AsyncLogger = AsyncLogger;
     args.Spdk = Spdk;
@@ -522,8 +523,8 @@ void TBootstrap::Start()
     START_COMPONENT(TraceProcessor);
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
-    START_COMPONENT(ActorSystem);
     START_COMPONENT(FileIOService);
+    START_COMPONENT(ActorSystem);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -553,8 +554,11 @@ void TBootstrap::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMPONENT(Scheduler);
 
-    STOP_COMPONENT(FileIOService);
     STOP_COMPONENT(ActorSystem);
+    // stop FileIOService after ActorSystem to ensure that there are no
+    // in-flight I/O requests from TDiskAgentActor
+    STOP_COMPONENT(FileIOService);
+
     STOP_COMPONENT(Spdk);
     STOP_COMPONENT(RdmaServer);
     STOP_COMPONENT(TraceProcessor);

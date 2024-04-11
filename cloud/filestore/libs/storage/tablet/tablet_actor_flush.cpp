@@ -88,9 +88,7 @@ TFlushActor::TFlushActor(
     , ProfileLog(std::move(profileLog))
     , Blobs(std::move(blobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{
-    ActivityType = TFileStoreActivities::TABLET_WORKER;
-}
+{}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {
@@ -159,7 +157,7 @@ void TFlushActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
-    ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void TFlushActor::ReplyAndDie(
@@ -379,7 +377,7 @@ void TIndexTabletActor::HandleFlushCompleted(
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
-    ReleaseCollectBarrier(msg->CommitId);
+    TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     FlushState.Complete();
 
     WorkerActors.erase(ev->Sender);

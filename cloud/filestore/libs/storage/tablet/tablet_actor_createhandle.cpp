@@ -60,6 +60,8 @@ void TIndexTabletActor::HandleCreateHandle(
         ev->Cookie,
         msg->CallContext);
 
+    AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
+
     ExecuteTx<TCreateHandle>(
         ctx,
         std::move(requestInfo),
@@ -259,6 +261,8 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     const TActorContext& ctx,
     TTxIndexTablet::TCreateHandle& args)
 {
+    RemoveTransaction(*args.RequestInfo);
+
     auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);

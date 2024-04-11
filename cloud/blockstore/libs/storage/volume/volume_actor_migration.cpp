@@ -1,5 +1,6 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -43,6 +44,8 @@ void TVolumeActor::HandleUpdateMigrationState(
         ctx,
         std::move(requestInfo),
         msg->MigrationIndex);
+
+    State->SetBlockCountToMigrate(msg->BlockCountToMigrate);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,6 +90,47 @@ void TVolumeActor::CompleteUpdateMigrationState(
         ctx,
         *args.RequestInfo,
         std::make_unique<TEvVolume::TEvMigrationStateUpdated>());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeActor::HandlePreparePartitionMigration(
+    const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
+    if (!State->GetUseFastPath()) {
+        auto response =
+            std::make_unique<TEvVolume::TEvPreparePartitionMigrationResponse>(
+                true   // migration allowed
+            );
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
+    EndpointEventHandler
+        ->SwitchEndpointIfNeeded(State->GetDiskId(), "partition migration")
+        .Subscribe(
+            [actorSystem = ctx.ActorSystem(),
+             replyFrom = ctx.SelfID,
+             requestInfo = std::move(requestInfo)](const auto& future)
+            {
+                bool migrationAllowed = !HasError(future.GetValue());
+                auto response = std::make_unique<
+                    TEvVolume::TEvPreparePartitionMigrationResponse>(
+                    migrationAllowed);
+
+                actorSystem->Send(new IEventHandle(
+                    requestInfo->Sender,
+                    replyFrom,
+                    response.release(),
+                    0,   // flags
+                    requestInfo->Cookie));
+            });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

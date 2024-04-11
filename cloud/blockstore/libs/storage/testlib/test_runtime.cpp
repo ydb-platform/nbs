@@ -12,7 +12,7 @@ using namespace NKikimr;
 
 TStorageConfigPtr CreateTestStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NProto::TFeaturesConfig featuresConfig)
+    NCloud::NProto::TFeaturesConfig featuresConfig)
 {
     if (!storageServiceConfig.GetSchemeShardDir()) {
         storageServiceConfig.SetSchemeShardDir("/local/nbs");
@@ -40,7 +40,7 @@ TStorageConfigPtr CreateTestStorageConfig(
 
     return std::make_unique<TStorageConfig>(
         storageServiceConfig,
-        std::make_shared<TFeaturesConfig>(featuresConfig)
+        std::make_shared<NFeatures::TFeaturesConfig>(featuresConfig)
     );
 }
 

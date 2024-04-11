@@ -1,6 +1,7 @@
 #include "agent_list.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
 
@@ -238,9 +239,25 @@ void TAgentList::UpdateDevice(
     TInstant timestamp,
     const NProto::TDeviceConfig& oldConfig)
 {
-    device.SetState(oldConfig.GetState());
-    device.SetStateTs(oldConfig.GetStateTs());
-    device.SetStateMessage(oldConfig.GetStateMessage());
+    STORAGE_CHECK_PRECONDITION(
+        device.GetState() == NProto::DEVICE_STATE_ERROR ||
+        device.GetState() == NProto::DEVICE_STATE_ONLINE);
+
+    // If DA reports broken device we should keep the state and state message of
+    // the device. At the same time we shouldn't remove the 'error' state
+    // automatically.
+    if (oldConfig.GetState() != NProto::DEVICE_STATE_ERROR
+        && device.GetState() == NProto::DEVICE_STATE_ERROR)
+    {
+        device.SetStateTs(timestamp.MicroSeconds());
+    } else {
+        // Otherwise, we should keep the old state.
+
+        device.SetState(oldConfig.GetState());
+        device.SetStateTs(oldConfig.GetStateTs());
+        device.SetStateMessage(oldConfig.GetStateMessage());
+    }
+
     device.SetCmsTs(oldConfig.GetCmsTs());
     device.SetNodeId(agent.GetNodeId());
     device.SetAgentId(agent.GetAgentId());
@@ -249,10 +266,11 @@ void TAgentList::UpdateDevice(
         device.SetUnadjustedBlockCount(device.GetBlocksCount());
     }
 
-    if (device.GetBlockSize() == oldConfig.GetBlockSize() &&
-        device.GetUnadjustedBlockCount() == oldConfig.GetUnadjustedBlockCount())
-    {
-        // if the device hasn't changed, we can adjust BlocksCount
+    // Keep the old blocks count. The device may be used.
+    // Zero check is for tests only. Since a lot of them create new devices with
+    // disks and |TDiskRegistryState::AdjustDeviceIfNeeded| can't restore
+    // BlocksCount to a proper value.
+    if (oldConfig.GetBlocksCount()) {
         device.SetBlocksCount(oldConfig.GetBlocksCount());
     }
 

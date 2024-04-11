@@ -113,9 +113,7 @@ TCollectGarbageActor::TCollectGarbageActor(
     , GarbageBlobs(std::move(garbageBlobs))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
     , CleanupWholeHistory(cleanupWholeHistory)
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TCollectGarbageActor::Bootstrap(const TActorContext& ctx)
 {
@@ -366,7 +364,6 @@ TCollectGarbageHardActor::TCollectGarbageHardActor(
     , KnownBlobIds(std::move(knownBlobIds))
     , MixedAndMergedChannels(std::move(mixedAndMergedChannels))
 {
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
 }
 
 void TCollectGarbageHardActor::Bootstrap(const TActorContext& ctx)
@@ -565,7 +562,7 @@ void TPartitionActor::HandleCollectGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionPrivate::TCollectGarbageMethod>(
+    auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
@@ -615,7 +612,7 @@ void TPartitionActor::HandleCollectGarbage(
 
         State->SetCollectGarbageStatus(EOperationStatus::Started);
 
-        AddTransaction(*requestInfo);
+        AddTransaction<TEvPartitionPrivate::TCollectGarbageMethod>(*requestInfo);
 
         ExecuteTx<TCollectGarbage>(ctx, requestInfo, commitId);
         return;

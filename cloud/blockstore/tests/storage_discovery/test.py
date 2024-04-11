@@ -1,6 +1,7 @@
 import hashlib
 import os
 import pytest
+import time
 
 from copy import deepcopy
 
@@ -334,6 +335,14 @@ def test_config_comparison(
     assert crit is not None
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
 
+    if cmp == 'mismatch':
+        # Wait for duplicate event.
+        time.sleep(30)
+        crit = disk_agent.counters.find(
+            {'sensor': 'AppCriticalEvents/DiskAgentConfigMismatch'})
+        assert crit is not None
+        assert crit['value'] == 2
+
     disk_agent.kill()
 
 
@@ -394,6 +403,13 @@ def test_add_devices(
     ])
     assert len(r.ActionResults) == 10
     assert all(x.Result.Code == 0 for x in r.ActionResults)
+
+    # wait until the local devices are cleared
+    while True:
+        bkp = client.backup_disk_registry_state()["Backup"]
+        if bkp.get("DirtyDevices", 0) == 0:
+            break
+        time.sleep(1)
 
     storage = grpc_client.query_available_storage([agent_id])
     assert len(storage) == 1

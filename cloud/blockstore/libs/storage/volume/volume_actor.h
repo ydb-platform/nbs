@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -190,6 +191,7 @@ private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ITraceSerializerPtr TraceSerializer;
     const NRdma::IClientPtr RdmaClient;
+    NServer::IEndpointEventHandlerPtr EndpointEventHandler;
     const EVolumeStartMode StartMode;
     TVolumeThrottlerLogger ThrottlerLogger;
 
@@ -246,7 +248,6 @@ private:
 
     bool ShuttingDown = false;
 
-    EPublishingPolicy CountersPolicy = EPublishingPolicy::All;
     TVolumeSelfCountersPtr VolumeSelfCounters;
 
     struct TAcquireReleaseDiskRequest
@@ -322,6 +323,8 @@ private:
 
     ui32 MultipartitionWriteAndZeroRequestsInProgress = 0;
 
+    ui64 DiskRegistryTabletId = 0;
+
     // requests in progress
     THashSet<NActors::TActorId> Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
@@ -349,6 +352,7 @@ public:
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ITraceSerializerPtr traceSerializer,
         NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
         EVolumeStartMode startMode);
     ~TVolumeActor() override;
 
@@ -380,6 +384,9 @@ private:
     }
 
     void SendPartStatsToService(const NActors::TActorContext& ctx);
+    void DoSendPartStatsToService(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void SendSelfStatsToService(const NActors::TActorContext& ctx);
 
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
@@ -454,6 +461,7 @@ private:
     static TString GetVolumeStatusString(EStatus status);
     EStatus GetVolumeStatus() const;
 
+    NRdma::IClientPtr GetRdmaClient() const;
     ui64 GetBlocksCount() const;
 
     void ProcessNextPendingClientRequest(const NActors::TActorContext& ctx);
@@ -467,7 +475,13 @@ private:
     void ResetServicePipes(const NActors::TActorContext& ctx);
 
     void RegisterVolume(const NActors::TActorContext& ctx);
+    void DoRegisterVolume(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void UnregisterVolume(const NActors::TActorContext& ctx);
+    void DoUnregisterVolume(
+        const NActors::TActorContext& ctx,
+        const TString& diskId);
     void SendVolumeConfigUpdated(const NActors::TActorContext& ctx);
     void SendVolumeSelfCounters(const NActors::TActorContext& ctx);
 
@@ -639,6 +653,14 @@ private:
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
+    void HandleUpdateShadowDiskStateRequest(
+        const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDrTabletInfoResponse(
+        const TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleTabletStatus(
         const TEvBootstrapper::TEvStatus::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -751,6 +773,10 @@ private:
         const TEvVolume::TEvUpdateMigrationState::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandlePreparePartitionMigration(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleUpdateResyncState(
         const TEvVolume::TEvUpdateResyncState::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -774,11 +800,7 @@ private:
         ui64 traceTs);
 
     template <typename TMethod>
-    NProto::TError ProcessAndValidateReadRequest(
-        typename TMethod::TRequest::ProtoRecordType& record) const;
-
-    template <typename TMethod>
-    NProto::TError ProcessAndValidateRequest(
+    NProto::TError ProcessAndValidateReadFromCheckpoint(
         typename TMethod::TRequest::ProtoRecordType& record) const;
 
     template <typename TMethod>
@@ -875,6 +897,10 @@ private:
         const TEvVolume::TEvDeleteCheckpointDataResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleGetCheckpointStatusResponse(
+        const TEvService::TEvGetCheckpointStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleWriteBlocksLocalResponse(
         const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -909,6 +935,12 @@ private:
         const TEvPartitionCommonPrivate::TEvLongRunningOperation::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    NActors::TActorId WrapNonreplActorIfNeeded(
+        const NActors::TActorContext& ctx,
+        NActors::TActorId nonreplicatedActorId,
+        std::shared_ptr<TNonreplicatedPartitionConfig> srcConfig);
+
+    void RestartDiskRegistryBasedPartition(const NActors::TActorContext& ctx);
     void StartPartitionsImpl(const NActors::TActorContext& ctx);
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)

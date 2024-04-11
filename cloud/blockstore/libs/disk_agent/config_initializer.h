@@ -5,15 +5,18 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
+#include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/core/features_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
+#include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 
+#include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -31,7 +34,8 @@ struct TConfigInitializer
     NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
-    NStorage::TFeaturesConfigPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    NRdma::TRdmaConfigPtr RdmaConfig;
 
     TString Rack;
 
@@ -50,6 +54,7 @@ struct TConfigInitializer
     void InitServerConfig();
     void InitSpdkEnvConfig();
     void InitFeaturesConfig();
+    void InitRdmaConfig();
 
     NKikimrConfig::TLogConfig GetLogConfig() const;
     NKikimrConfig::TMonitoringConfig GetMonitoringConfig() const;

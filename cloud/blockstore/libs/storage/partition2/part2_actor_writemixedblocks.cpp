@@ -134,9 +134,7 @@ TWriteMixedBlocksActor::TWriteMixedBlocksActor(
     , CommitId(commitId)
     , Requests(std::move(requests))
     , WriteHandler(std::move(writeHandler))
-{
-    ActivityType = TBlockStoreActivities::PARTITION_WORKER;
-}
+{}
 
 void TWriteMixedBlocksActor::Bootstrap(const TActorContext& ctx)
 {
@@ -448,7 +446,7 @@ void TWriteMixedBlocksActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto error = MakeError(E_REJECTED, "Tablet is dead");
+    auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
     ReplyAllAndDie(ctx, error);
 }

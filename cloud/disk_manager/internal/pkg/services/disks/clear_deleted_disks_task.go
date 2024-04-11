@@ -45,7 +45,6 @@ func (t *clearDeletedDisksTask) Cancel(
 
 func (t *clearDeletedDisksTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil

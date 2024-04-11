@@ -1,7 +1,6 @@
 #include "tablet_state_impl.h"
 
 #include "profile_log_events.h"
-#include "rebase_logic.h"
 
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -44,7 +43,7 @@ bool TIndexTabletState::EnqueueWriteBatch(std::unique_ptr<TWriteRequest> request
 
 TWriteRequestList TIndexTabletState::DequeueWriteBatch()
 {
-    // TODO: deduplicate writes (https://st.yandex-team.ru/NBS-2161)
+    // TODO: deduplicate writes (NBS-2161)
     return std::move(Impl->WriteBatch);
 }
 
@@ -119,6 +118,8 @@ void TIndexTabletState::TruncateRange(
             // FIXME: do not allocate each time
             TString(headBound.Length, 0));
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::ZeroRange(
@@ -305,6 +306,8 @@ void TIndexTabletState::WriteFreshBytes(
         data);
 
     IncrementFreshBytesCount(db, data.Size());
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::WriteFreshBytesDeletionMarker(
@@ -325,6 +328,8 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
         commitId,
         offset,
         len);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes)
@@ -412,6 +417,8 @@ void TIndexTabletState::WriteFreshBlock(
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 
     IncrementFreshBlocksCount(db);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::MarkFreshBlocksDeleted(
@@ -434,6 +441,8 @@ void TIndexTabletState::MarkFreshBlocksDeleted(
             commitId,
             blockIndex);
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::DeleteFreshBlocks(
@@ -580,21 +589,7 @@ bool TIndexTabletState::WriteMixedBlocks(
         Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blocks);
     }
 
-    auto rebaseResult = RebaseMixedBlocks(
-        blocks,
-        GetCurrentCommitId(),
-        [=] (ui64 nodeId, ui64 commitId) {
-            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
-        },
-        [=] (ui64 nodeId, ui32 blockIndex) {
-            return IntersectsWithFresh(
-                Impl->FreshBytes,
-                Impl->FreshBlocks,
-                GetBlockSize(),
-                nodeId,
-                blockIndex
-            );
-        });
+    auto rebaseResult = RebaseMixedBlocks(blocks);
 
     if (!rebaseResult.LiveBlocks) {
         AddGarbageBlob(db, blobId);
@@ -676,9 +671,32 @@ void TIndexTabletState::DeleteMixedBlocks(
     DecrementMixedBlocksCount(db, blocks.size());
 }
 
+TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) const
+{
+    return RebaseBlocks(
+        blocks,
+        GetCurrentCommitId(),
+        [=] (ui64 nodeId, ui64 commitId) {
+            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
+        },
+        [=] (ui64 nodeId, ui32 blockIndex) {
+            return IntersectsWithFresh(
+                Impl->FreshBytes,
+                Impl->FreshBlocks,
+                GetBlockSize(),
+                nodeId,
+                blockIndex
+            );
+        });
+}
+
 TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) const
 {
-    return Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
+    auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
+    for (auto& blob: blobs) {
+        RebaseMixedBlocks(blob.Blocks);
+    }
+    return blobs;
 }
 
 TMixedBlobMeta TIndexTabletState::FindBlob(ui32 rangeId, TPartialBlobId blobId) const
@@ -722,6 +740,8 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
         stats.BlobsCount,
         stats.DeletionsCount + blocksCount
     );
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::UpdateBlockLists(
@@ -808,21 +828,7 @@ void TIndexTabletState::RewriteMixedBlocks(
 
     Impl->MixedBlocks.ApplyDeletionMarkers(GetRangeIdHasher(), blob.Blocks);
 
-    auto rebaseResult = RebaseMixedBlocks(
-        blob.Blocks,
-        GetCurrentCommitId(),
-        [=] (ui64 nodeId, ui64 commitId) {
-            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
-        },
-        [=] (ui64 nodeId, ui32 blockIndex) {
-            return IntersectsWithFresh(
-                Impl->FreshBytes,
-                Impl->FreshBlocks,
-                GetBlockSize(),
-                nodeId,
-                blockIndex
-            );
-        });
+    auto rebaseResult = RebaseMixedBlocks(blob.Blocks);
 
     if (!rebaseResult.LiveBlocks) {
         DeleteMixedBlocks(db, blob.BlobId, blob.Blocks);
@@ -927,9 +933,15 @@ void TIndexTabletState::AcquireCollectBarrier(ui64 commitId)
     Impl->GarbageQueue.AcquireCollectBarrier(commitId);
 }
 
-void TIndexTabletState::ReleaseCollectBarrier(ui64 commitId)
+// returns true if the barrier was present
+bool TIndexTabletState::TryReleaseCollectBarrier(ui64 commitId)
 {
-    Impl->GarbageQueue.ReleaseCollectBarrier(commitId);
+    return Impl->GarbageQueue.TryReleaseCollectBarrier(commitId);
+}
+
+bool TIndexTabletState::IsCollectBarrierAcquired(ui64 commitId) const
+{
+    return Impl->GarbageQueue.IsCollectBarrierAcquired(commitId);
 }
 
 ui64 TIndexTabletState::GetCollectCommitId() const
@@ -1088,6 +1100,37 @@ void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
     ForcedRangeOperationState.reset();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadAhead
+
+bool TIndexTabletState::TryFillDescribeResult(
+    ui64 nodeId,
+    const TByteRange& range,
+    NProtoPrivate::TDescribeDataResponse* response)
+{
+    return Impl->ReadAheadCache.TryFillResult(nodeId, range, response);
+}
+
+TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
+    ui64 nodeId,
+    const TByteRange inputRange)
+{
+    return Impl->ReadAheadCache.RegisterDescribe(nodeId, inputRange);
+}
+
+void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
+{
+    Impl->ReadAheadCache.InvalidateCache(nodeId);
+}
+
+void TIndexTabletState::RegisterReadAheadResult(
+    ui64 nodeId,
+    const TByteRange& range,
+    const NProtoPrivate::TDescribeDataResponse& result)
+{
+    Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -22,7 +22,6 @@
 #include <util/stream/printf.h>
 #include <util/system/datetime.h>
 #include <util/system/file.h>
-#include <util/system/sysstat.h>
 
 #include <atomic>
 #include <span>
@@ -154,8 +153,7 @@ void TServer::Start(const TOptions& options)
     Y_ABORT_UNLESS(Handler, "vhd_register_blockdev: Can't register device");
 
     if (!options.NoChmod) {
-        const int mode = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
-        if (int err = Chmod(SocketPath.c_str(), mode)) {
+        if (int err = Chmod(SocketPath.c_str(), options.SocketAccessMode)) {
             Y_ABORT(
                 "failed to chmod socket %s: %s",
                 SocketPath.c_str(),
@@ -180,14 +178,12 @@ void TServer::Stop()
 {
     STORAGE_INFO("Stopping the server");
 
-    {
-        auto promise = NewPromise();
-        vhd_unregister_blockdev(Handler, [] (void* opaque) {
-            static_cast<TPromise<void>*>(opaque)->SetValue();
-        }, &promise);
+    auto promise = NewPromise();
+    vhd_unregister_blockdev(Handler, [] (void* opaque) {
+        static_cast<TPromise<void>*>(opaque)->SetValue();
+    }, &promise);
 
-        promise.GetFuture().Wait();
-    }
+    promise.GetFuture().Wait();
 
     // 2. Stop request queues. For each do:
     // 2.1 Stop a request queue

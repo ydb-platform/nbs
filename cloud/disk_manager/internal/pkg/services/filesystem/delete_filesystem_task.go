@@ -103,7 +103,6 @@ func (t *deleteFilesystemTask) Cancel(
 
 func (t *deleteFilesystemTask) GetMetadata(
 	ctx context.Context,
-	taskID string,
 ) (proto.Message, error) {
 
 	return &disk_manager.DeleteFilesystemMetadata{
