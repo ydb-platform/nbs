@@ -420,7 +420,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         {
             auto response = Tablet->GenerateBlobIds(id, handle, 0, sz);
             TVector<NKikimr::TLogoBlobID> blobIds;
-            for (const auto& blobId : response->Record.GetBlobs()) {
+            for (const auto& blobId: response->Record.GetBlobs()) {
                 auto blob = NKikimr::LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
                 blobIds.push_back(blob);
             }
