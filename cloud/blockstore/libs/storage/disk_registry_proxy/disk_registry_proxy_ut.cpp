@@ -626,25 +626,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         auto runtime = builder.Build(false);
 
         int lookupSent = 0;
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        std::unique_ptr<IEventHandle> lookupResponseEvent;
+        auto baseFilter = runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
             {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLookupTabletRequest:
                         lookupSent++;
-                        return TTestActorRuntime::EEventAction::DROP;
+                        break;
+                    case TEvHiveProxy::EvLookupTabletResponse:
+                        UNIT_ASSERT_VALUES_EQUAL(1, lookupSent);
+                        lookupResponseEvent.reset(event.Release());
+                        return true;
                     default:
                         break;
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
-        UNIT_ASSERT_VALUES_EQUAL(0, lookupSent);
+        UNIT_ASSERT(!lookupResponseEvent);
         builder.InitializeDiskRegistryProxy(*runtime);
         // TEvHiveProxy::EvLookupTabletRequest should be sent on the start of
         // the actor.
         UNIT_ASSERT_VALUES_EQUAL(1, lookupSent);
+        UNIT_ASSERT(lookupResponseEvent);
 
         TDiskRegistryClient client(*runtime);
         auto subscriber = runtime->AllocateEdgeActor();
@@ -656,12 +662,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             UNIT_ASSERT(!response->Discovered);
         }
 
-        auto event = std::make_unique<IEventHandle>(
-            MakeDiskRegistryProxyServiceId(),
-            MakeHiveProxyServiceId(),
-            new TEvHiveProxy::TEvLookupTabletResponse(
-                TestDiskRegistryTabletId));
-        runtime->SendAsync(event.release());
+        runtime->SetEventFilter(baseFilter);
+        runtime->SendAsync(lookupResponseEvent.release());
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
