@@ -1,9 +1,9 @@
 #include "notify.h"
 
-#include "cloud/storage/core/libs/iam/iface/client.h"
-#include "cloud/storage/core/libs/iam/iface/public.h"
 #include "config.h"
 #include "https.h"
+#include <cloud/storage/core/libs/iam/iface/client.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -17,7 +17,6 @@ using namespace NThreading;
 
 namespace {
 
-static constexpr TDuration WaitTimeout = TDuration::MilliSeconds(100);
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
@@ -130,6 +129,33 @@ public:
     void Stop() override
     {}
 
+    auto GetIamToken(){
+        if (Config->GetVersion() == 2) {
+            if (!IamClient) {
+                STORAGE_WARN(
+                    "missing iam-client "
+                    << "Got error while requesting token: "
+                    << "IAM client is missing");
+            } else {
+                return IamClient->GetTokenAsync().Apply([this] (const auto& future) {
+                    auto tokenStr = future.GetValue().GetResult().Token;
+                    if (tokenStr.empty()){
+                        auto err = NProto::TError();
+                        err.SetMessage("empty iam token");
+                        STORAGE_WARN(
+                            "missing iam-token "
+                            << "Got error while requesting token: "
+                            << "iam token is empty");
+                        return TResultOrError<NIamClient::TTokenInfo>(err);
+                    }
+                    return future.GetValue();
+                });
+            }
+        }
+        return MakeFuture(TResultOrError<NIamClient::TTokenInfo>(NIamClient::TTokenInfo()));
+    }
+
+
     TFuture<NProto::TError> Notify(const TNotification& data) override
     {
         // TODO: Add Timestamp when time formatting will be supported
@@ -158,44 +184,27 @@ public:
             data.Event);
 
         auto p = NewPromise<NProto::TError>();
-        
-        std::optional<TString> iamTokenStr;
-        if (Config->GetVersion() == 2){
-            if (!IamClient) {
-                STORAGE_WARN("missing iam-client "
-                    <<"Got error while requesting token: " <<
-                        "IAM client is missing");
-            } else {
-                try {
-                    auto tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
-                    if (!HasError(tokenInfo)) {
-                        iamTokenStr = tokenInfo.GetResult().Token;
+
+        GetIamToken().Subscribe([this, p, event = data.Event, &v, &data] (TFuture<TResultOrError<NIamClient::TTokenInfo>> token) {
+            HttpsClient.Post(
+                Config->GetEndpoint(),
+                v.GetStringRobust(),
+                "application/json",
+                token.ExtractValue(),
+                [p, event = data.Event] (int code, const TString& message) mutable {
+                    const bool isSuccess = code >= 200 && code < 300;
+
+                    if (isSuccess) {
+                        p.SetValue(MakeError(S_OK, TStringBuilder()
+                            << "HTTP code: " << code));
+                        return;
                     }
-                } catch (...) {
-                    STORAGE_WARN("problems with iam-client "
-                    <<"Got error while requesting iam-token: " <<CurrentExceptionMessage());
-                }
-            }
-        }
 
-        HttpsClient.Post(
-            Config->GetEndpoint(),
-            v.GetStringRobust(),
-            "application/json",
-            iamTokenStr,
-            [p, event = data.Event] (int code, const TString& message) mutable {
-                const bool isSuccess = code >= 200 && code < 300;
-
-                if (isSuccess) {
-                    p.SetValue(MakeError(S_OK, TStringBuilder()
-                        << "HTTP code: " << code));
-                    return;
-                }
-
-                p.SetValue(MakeError(E_REJECTED, TStringBuilder()
-                    << "Couldn't send notification " << event
-                    << ". HTTP error: " << code << " " << message));
+                    p.SetValue(MakeError(E_REJECTED, TStringBuilder()
+                        << "Couldn't send notification " << event
+                        << ". HTTP error: " << code << " " << message));
             });
+        });
 
         return p.GetFuture();
     }

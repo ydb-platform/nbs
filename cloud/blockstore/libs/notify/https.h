@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
 #include <util/generic/string.h>
 
 #include <functional>
@@ -24,7 +26,7 @@ public:
         const TString& endpoint,
         const TString& data,
         const TString& contentType,
-        const std::optional<TString> iamToken,
+        const NCloud::TResultOrError<NCloud::NIamClient::TTokenInfo> iamToken,
         const THttpsCallback& callback);
 
 private:

@@ -939,13 +939,15 @@ void THttpsClient::Post(
     const TString& endpoint,
     const TString& data,
     const TString& contentType,
-    const std::optional<TString> iamToken,
+    const NCloud::TResultOrError<NCloud::NIamClient::TTokenInfo> iamToken,
     const THttpsCallback& callback)
 {
     THttpHeaders headers;
     headers.AddHeader(THttpInputHeader("Content-Type", contentType));
-    if (iamToken.has_value()){
-        headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + iamToken.value()));
+    
+    //empty if using notifyV1
+    if (!iamToken.GetResult().Token.Empty()){
+        headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + iamToken.GetResult().Token));
     }
     Impl->SendRequest(
         EHttpMethod::Post,
