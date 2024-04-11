@@ -54,7 +54,7 @@ public:
 
         Response = new TEvNodeBroker::TEvRegistrationResponse;
 
-        if (rec.HasPath() && ScopeId == NActors::TScopeId()) {
+        if (rec.GetPath() && ScopeId == NActors::TScopeId()) {
             return Error(TStatus::ERROR,
                          TStringBuilder() << "Cannot resolve scope id for path " << rec.GetPath(),
                          ctx);

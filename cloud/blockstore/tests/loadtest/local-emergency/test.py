@@ -1,5 +1,5 @@
-# import os
 import pytest
+import time
 
 import yatest.common as common
 
@@ -13,12 +13,15 @@ from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_
 
 def default_storage_config(cache_folder):
     storage = storage_config_with_default_limits()
+
     storage.HDDSystemChannelPoolKind = "rot"
     storage.SSDSystemChannelPoolKind = "rot"
     storage.HybridSystemChannelPoolKind = "rot"
+
     storage.HDDLogChannelPoolKind = "rot"
     storage.SSDLogChannelPoolKind = "rot"
     storage.HybridLogChannelPoolKind = "rot"
+
     storage.HDDIndexChannelPoolKind = "rot"
     storage.SSDIndexChannelPoolKind = "rot"
     storage.HybridIndexChannelPoolKind = "rot"
@@ -46,11 +49,10 @@ class TestCase(object):
 
 
 TESTS = [
-    # NBS-2025: temporarily disabled.
-    #    TestCase(
-    #        "default",
-    #        "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
-    #    ),
+    TestCase(
+        "default",
+        "cloud/blockstore/tests/loadtest/local-emergency/local-tablet-version-default.txt",
+    ),
 ]
 
 
@@ -61,17 +63,14 @@ def __run_test(test_case):
     )
     ensure_path_exists(cache_folder)
 
-    storage_config_patches = [
-        default_storage_config(cache_folder),
-        storage_config_with_emergency_mode(cache_folder),
-    ]
+    storage_config_patches = [default_storage_config(cache_folder)]
 
     env = LocalLoadTest(
         "",
         storage_config_patches=storage_config_patches,
         dynamic_pdisks=[dict(user_kind=1)],
         dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=1),
             dict(name="dynamic_storage_pool:2", kind="rot", pdisk_user_kind=1)
         ],
         bs_cache_file_path=cache_folder + "/bs_cache.txt",
@@ -85,17 +84,15 @@ def __run_test(test_case):
     session.write_blocks(0, [b'\1' * 4096])
     session.unmount_volume()
 
-    static_pdisk_paths = []
-    for info in env.pdisks_info:
-        if info["pdisk_user_kind"] == 0:
-            static_pdisk_paths += [info["pdisk_path"]]
-    assert len(static_pdisk_paths) == 1
+    time.sleep(10)
 
-    # Destroy static group in order to emulate emergency.
-    # TODO: survive outage of kikimr static tablets.
-    # os.remove(static_pdisk_paths[0])
-
+    env.kikimr_cluster.format_static_pdisks()
+    env.kikimr_cluster.spoil_bs_controller_config()
     env.kikimr_cluster.restart_nodes()
+
+    env.nbs.storage_config_patches = [
+        storage_config_with_emergency_mode(cache_folder),
+    ]
     env.nbs.restart()
 
     try:

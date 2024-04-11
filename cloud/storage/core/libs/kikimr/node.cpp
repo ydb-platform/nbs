@@ -106,7 +106,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
             hostName,
             location,
             false,
-            options.SchemeShardDir);
+            "");
 
         if (!result.IsSuccess()) {
             if (attempts == options.MaxAttempts) {
@@ -140,29 +140,6 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         }
 
         TMaybe<NKikimrConfig::TAppConfig> cmsConfig;
-
-        if (options.LoadCmsConfigs) {
-            auto configurator = kikimr.GetNodeConfigurator();
-            auto configResult = configurator.SyncGetNodeConfig(
-                result.GetNodeId(),
-                hostName,
-                options.SchemeShardDir,
-                options.NodeType,
-                options.Domain);
-
-            if (!configResult.IsSuccess()) {
-                ythrow TServiceError(E_FAIL)
-                    << "Unable to get config from " << nodeBrokerAddress.Quote()
-                    << ": " << configResult.GetErrorMessage();
-            }
-
-            cmsConfig = configResult.GetConfig();
-
-            if (cmsConfig->HasNameserviceConfig()) {
-                cmsConfig->MutableNameserviceConfig()
-                    ->SetSuppressVersionCheck(nsConfig.GetSuppressVersionCheck());
-            }
-        }
 
         return { result.GetNodeId(), result.GetScopeId(), std::move(cmsConfig) };
     }

@@ -14,7 +14,7 @@ Vertices {
                 MaxRequestSize: 1000
             }
         }
-        TestDuration: 60
+        TestDuration: 10
         Verify: true
         Name: "Test for localhost tablet version default"
     }

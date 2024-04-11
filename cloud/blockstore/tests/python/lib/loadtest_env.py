@@ -104,7 +104,7 @@ class LocalLoadTest:
             discovery_config=discovery_config,
             restart_interval=restart_interval,
             dynamic_storage_pools=dynamic_storage_pools,
-            load_configs_from_cms=run_kikimr,
+            load_configs_from_cms=False,
             features_config_patch=features_config_patch,
             grpc_trace=grpc_trace,
             rack=rack)

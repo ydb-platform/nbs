@@ -590,6 +590,7 @@ void TVolumeActor::HandleTabletStatus(
             break;
         case TEvBootstrapper::RACE:
             shouldRestart = true;
+            suggestOutdated = true;
             partition->RetryPolicy.Reset(ctx.Now());
             break;
         case TEvBootstrapper::SUGGEST_OUTDATED:

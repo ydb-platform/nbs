@@ -551,7 +551,7 @@ void TStartVolumeActor::HandleTabletDead(
 
     if (PendingRequest == EPendingRequest::START) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
-            "[%lu] Tablet boot failed during actor stopping",
+            "[%lu] Tablet boot failed during actor starting",
             VolumeTabletId);
 
         PendingRequest = EPendingRequest::NONE;
@@ -579,11 +579,12 @@ void TStartVolumeActor::HandleTabletDead(
         0,  // cookie
         error);
 
-    bool delay;
+    bool delay = true;
     switch (msg->Reason) {
         case TEvTablet::TEvTabletDead::ReasonBootRace:
             // Avoid unnecessary delays
             delay = false;
+            ++VolumeGeneration;
             break;
         case TEvTablet::TEvTabletDead::ReasonBootSuggestOutdated:
             // Avoid unnecessary delays
@@ -591,7 +592,6 @@ void TStartVolumeActor::HandleTabletDead(
             ++VolumeGeneration;
             break;
         default:
-            delay = true;
             break;
     }
 

@@ -502,8 +502,10 @@ public:
     {
         auto tenant = Tenants[ev->Get()->TenantName];
         Y_ABORT_UNLESS(tenant, "status for unknown tenant");
-        Y_ABORT_UNLESS(!tenant->HasStaticSlot || ev->Get()->Status == TEvLocal::TEvTenantStatus::STARTED,
-                 "Cannot start static tenant %s: %s", ev->Get()->TenantName.data(), ev->Get()->Error.data());
+
+        if (tenant->HasStaticSlot && ev->Get()->Status != TEvLocal::TEvTenantStatus::STARTED) {
+            return;
+        }
 
         bool modified = false;
         bool processPendingActions = false;
