@@ -136,6 +136,8 @@ private:
         TRequestMetrics ReadData;
         TRequestMetrics DescribeData;
         TRequestMetrics WriteData;
+        TRequestMetrics AddData;
+        TRequestMetrics GenerateBlobIds;
 
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};

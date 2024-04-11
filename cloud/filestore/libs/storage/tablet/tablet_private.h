@@ -256,7 +256,7 @@ struct TEvIndexTabletPrivate
     // AddData completion
     //
 
-    struct TAddDataCompleted
+    struct TAddDataCompleted: TDataOperationCompleted
     {
         ui64 CommitId = 0;
     };
