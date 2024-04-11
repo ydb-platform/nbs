@@ -10,7 +10,7 @@ namespace NCloud {
 
 void AppCreate();
 int AppMain(TProgramShouldContinue& shouldContinue);
-void AppStop(int exitCode);
+void AppStop();
 
 void ConfigureSignals();
 
