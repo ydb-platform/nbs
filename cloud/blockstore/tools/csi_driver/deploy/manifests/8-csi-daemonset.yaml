@@ -52,6 +52,7 @@ spec:
             - "--version=$(DRIVER_VERSION)"
             - "--node-id=$(KUBE_NODE_NAME)"
             - "--endpoint=/csi/csi.sock"
+            - "--vm-mode=true"
             - "--nbs-sockets-dir=/run/nbsd/sockets"
             - "--pod-sockets-dir=/nbsd-sockets"
             - "--nfs-vhost-port=0"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -40,6 +41,7 @@ type nodeService struct {
 
 	nodeID        string
 	clientID      string
+	vmMode        bool
 	nbsSocketsDir string
 	podSocketsDir string
 	nbsClient     nbsclient.ClientIface
@@ -51,6 +53,7 @@ type nodeService struct {
 func newNodeService(
 	nodeID string,
 	clientID string,
+	vmMode bool,
 	nbsSocketsDir string,
 	podSocketsDir string,
 	nbsClient nbsclient.ClientIface,
@@ -59,6 +62,7 @@ func newNodeService(
 	return &nodeService{
 		nodeID:        nodeID,
 		clientID:      clientID,
+		vmMode:        vmMode,
 		nbsSocketsDir: nbsSocketsDir,
 		podSocketsDir: podSocketsDir,
 		nbsClient:     nbsClient,
@@ -144,10 +148,19 @@ func (s *nodeService) NodePublishVolume(
 
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Mount:
-		if nfsBackend {
-			err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+		if s.vmMode {
+			if nfsBackend {
+				err = s.nodePublishFileStoreAsVhostSocket(ctx, req)
+			} else {
+				err = s.nodePublishDiskAsVhostSocket(ctx, req)
+			}
 		} else {
-			err = s.nodePublishDiskAsVhostSocket(ctx, req)
+			if nfsBackend {
+				err = status.Error(codes.InvalidArgument,
+					"FileStore can't be mounted to container as a filesystem")
+			} else {
+				err = s.nodePublishDiskAsFilesystem(ctx, req)
+			}
 		}
 	case *csi.VolumeCapability_Block:
 		if nfsBackend {
@@ -225,6 +238,45 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	}
 
 	return s.mountSocketDir(req)
+}
+
+func (s *nodeService) nodePublishDiskAsFilesystem(
+	ctx context.Context,
+	req *csi.NodePublishVolumeRequest) error {
+
+	resp, err := s.startNbsEndpoint(ctx, req, nbsapi.EClientIpcType_IPC_NBD)
+	if err != nil {
+		return status.Errorf(codes.Internal,
+			"Failed to start NBS endpoint: %+v", err)
+	}
+
+	if resp.NbdDeviceFile == "" {
+		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
+	}
+
+	log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
+
+	fsType := "ext4"
+	mnt := req.VolumeCapability.GetMount()
+	if mnt != nil && mnt.FsType != "" {
+		fsType = mnt.FsType
+	}
+
+	if err := makeFilesystemIfNeeded(resp.NbdDeviceFile, fsType); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(req.TargetPath, 0755); err != nil {
+		return fmt.Errorf("failed to create target directory: %v", err)
+	}
+
+	mountOptions := []string{}
+	if mnt != nil {
+		for _, flag := range mnt.MountFlags {
+			mountOptions = append(mountOptions, flag)
+		}
+	}
+	return s.mounter.Mount(resp.NbdDeviceFile, req.TargetPath, fsType, mountOptions)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -362,26 +414,18 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	}
 	file.Close()
 
-	err = os.MkdirAll(req.TargetPath, 0755)
-	if err != nil {
-		return err
+	if err := os.MkdirAll(req.TargetPath, 0755); err != nil {
+		return fmt.Errorf("failed to create target directory: %v", err)
 	}
 
-	fsType := "ext4"
 	mountOptions := []string{"bind"}
-
 	mnt := req.VolumeCapability.GetMount()
 	if mnt != nil {
 		for _, flag := range mnt.MountFlags {
 			mountOptions = append(mountOptions, flag)
 		}
-
-		if mnt.FsType != "" {
-			fsType = mnt.FsType
-		}
 	}
-
-	return s.mounter.Mount(endpointDir, req.TargetPath, fsType, mountOptions)
+	return s.mounter.Mount(endpointDir, req.TargetPath, "", mountOptions)
 }
 
 func (s *nodeService) mountBlockDevice(source string, target string) error {
@@ -398,4 +442,30 @@ func (s *nodeService) mountBlockDevice(source string, target string) error {
 
 	mountOptions := []string{"bind"}
 	return s.mounter.Mount(source, target, "", mountOptions)
+}
+
+func makeFilesystemIfNeeded(deviceName, fsType string) error {
+	if _, err := exec.LookPath("blkid"); err != nil {
+		return fmt.Errorf("failed to find 'blkid' tool: %v", err)
+	}
+
+	if _, err := os.Stat(deviceName); os.IsNotExist(err) {
+		return fmt.Errorf("failed to find device %q: %v", deviceName, err)
+	}
+
+	out, err := exec.Command("blkid", deviceName).CombinedOutput()
+	if err == nil && string(out) != "" {
+		log.Printf("filesystem exists: %q", string(out))
+		return nil
+	}
+
+	log.Printf("making filesystem %q on device %q", fsType, deviceName)
+
+	out, err = exec.Command("mkfs", "-t", fsType, deviceName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to make filesystem: %v, output %q", err, out)
+	}
+
+	log.Printf("succeeded making filesystem: %q", out)
+	return nil
 }
