@@ -29,6 +29,8 @@ private:
 
     bool MigrationConfigPrepared = false;
 
+    TNonreplicatedPartitionConfigPtr PartConfig;
+
 public:
     TMirrorPartitionState(
         TStorageConfigPtr config,
@@ -69,6 +71,10 @@ public:
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
         NActors::TActorId* actorId);
+
+    ui32 GetBlockSize() const;
+
+    ui64 GetBlockCount() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

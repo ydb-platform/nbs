@@ -49,6 +49,7 @@ SRCS(
     part_nonrepl_migration_actor.cpp
 
     part_nonrepl_migration_common_actor.cpp
+    part_nonrepl_migration_common_actor_checksumblocks.cpp
     part_nonrepl_migration_common_actor_migration.cpp
     part_nonrepl_migration_common_actor_mirror.cpp
     part_nonrepl_migration_common_actor_readblocks_local.cpp

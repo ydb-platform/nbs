@@ -14,8 +14,8 @@ namespace NCloud::NBlockStore::NStorage {
 class TChecksumRangeActorCompanion
 {
 private:
-    const TBlockRange64 Range;
-    const TVector<TReplicaDescriptor> Replicas;
+    TBlockRange64 Range;
+    TVector<TReplicaDescriptor> Replicas;
 
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
@@ -28,6 +28,8 @@ public:
     TChecksumRangeActorCompanion(
         TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas);
+
+    TChecksumRangeActorCompanion();
 
     void CalculateChecksums(const NActors::TActorContext& ctx);
 

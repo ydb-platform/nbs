@@ -20,6 +20,10 @@ TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
     Checksums.resize(Replicas.size());
 }
 
+TChecksumRangeActorCompanion::TChecksumRangeActorCompanion()
+{
+}
+
 bool TChecksumRangeActorCompanion::IsFinished() const
 {
     return Finished;

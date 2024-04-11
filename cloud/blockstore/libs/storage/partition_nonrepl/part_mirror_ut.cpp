@@ -1,8 +1,11 @@
 #include "part_mirror.h"
 #include "part_mirror_actor.h"
+#include "part_mirror_resync_util.h"
+#include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -37,6 +40,7 @@ struct TTestEnv
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
+    TVector<TActorId> ReplicaActors;
 
     static void AddDevice(
         ui32 nodeId,
@@ -180,22 +184,28 @@ struct TTestEnv
         }
 
         auto part = std::make_unique<TMirrorPartitionActor>(
-            std::move(config),
+            config,
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             "", // rwClientId
-            std::move(partConfig),
+            partConfig,
             std::move(migrations),
-            std::move(replicas),
+            replicas,
             nullptr, // rdmaClient
             VolumeActorId,
-            TActorId() // resyncActorId
+            TActorId(), // resyncActorId
+            true // dataScrubbingNeeded
         );
 
         Runtime.AddLocalService(
             ActorId,
             TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
         );
+
+        AddReplica(partConfig->Fork(partConfig->GetDevices()), config, "ZZZ");
+        for (size_t i = 0; i < replicas.size(); ++i) {
+            AddReplica(partConfig->Fork(replicas[i]), config, Sprintf("ZZZ%zu", i));
+        }
 
         auto volume = std::make_unique<TDummyActor>();
 
@@ -223,6 +233,42 @@ struct TTestEnv
         SetupTabletServices(Runtime);
     }
 
+    void AddReplica(
+        TNonreplicatedPartitionConfigPtr partConfig,
+        TStorageConfigPtr config,
+        TString name)
+    {
+        auto part = std::make_unique<TNonreplicatedPartitionActor>(
+            config,
+            partConfig,
+            TActorId() // do not send stats
+        );
+
+        TActorId actorId(0, name);
+        Runtime.AddLocalService(
+            actorId,
+            TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
+        );
+
+        ReplicaActors.push_back(actorId);
+    }
+
+    void WriteMirror(TBlockRange64 range, char fill)
+    {
+        WriteActor(ActorId, range, fill);
+    }
+
+    void WriteReplica(int idx, TBlockRange64 range, char fill)
+    {
+        WriteActor(ReplicaActors[idx], range, fill);
+    }
+
+    void WriteActor(TActorId actorId, TBlockRange64 range, char fill)
+    {
+        TPartitionClient client(Runtime, actorId);
+        client.WriteBlocks(range, fill);
+    }
+
     void SetupLogging()
     {
         Runtime.AppendToLogSettings(
@@ -231,7 +277,7 @@ struct TTestEnv
             GetComponentName);
 
         for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
-           Runtime.SetLogPriority(i, NLog::PRI_INFO);
+            Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
     }
@@ -1082,6 +1128,125 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             6 * 1024 * DefaultBlockSize,
             counters.BytesCount.Value);
+    }
+
+    Y_UNIT_TEST(ShouldFindChecksumMismatchInFirstRange)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(0, 2);
+        env.WriteMirror(range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+
+        runtime.DispatchEvents({}, ScrubbingNextRangeInterval);
+
+        auto mirroredDiskChecksumMismatch =
+            counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, mirroredDiskChecksumMismatch->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFindSeveralChecksumMismatches)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        TTestEnv env(runtime);
+
+        const auto rangeBlockCount = ResyncRangeSize / DefaultBlockSize;
+        const auto range = TBlockRange64::WithLength(rangeBlockCount, 5120);
+        env.WriteMirror(range, 'A');
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'B');
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto mirroredDiskChecksumMismatch =
+            counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+
+        UNIT_ASSERT(mirroredDiskChecksumMismatch->Val() > 1);
+    }
+
+    Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)
+    {
+        using namespace NMonitoring;
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        TTestBasicRuntime runtime;
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(1030, 200);
+
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'C');
+
+        ui32 rangeCount = 0;
+        TAutoPtr<IEventHandle> delayedRequest;
+        runtime.SetObserverFunc([&] (auto& event) {
+            if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
+                rangeCount++;
+                if (delayedRequest && rangeCount > 5) {
+                    runtime.Send(delayedRequest.Release());
+                }
+            }
+            if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
+                if (!delayedRequest) {
+                    delayedRequest = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+        env.WriteActor(env.ActorId, range, 'D');
+
+        auto mirroredDiskChecksumMismatch =
+            counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+
+        rangeCount = 0;
+        while (rangeCount < 5) {
+            runtime.DispatchEvents({}, ScrubbingNextRangeInterval);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
     }
 }
 

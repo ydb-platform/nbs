@@ -145,6 +145,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
+        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
+
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
@@ -196,6 +198,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);
         HFunc(TEvService::TEvZeroBlocksRequest, RejectZeroBlocks);
+
+        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
 
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);
