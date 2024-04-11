@@ -18,29 +18,35 @@ spec:
     metadata:
       labels:
         app: {{ $fullname }}
-    spec: {{ $configPath := "/etc/yc/disk-manager/server-config.txt"}}
+    spec: {{ $serverConfigName := "server-config.txt" }}
+      {{ $clientConfigName := "client-config.txt" }}
+      {{ $serverConfigPath := printf "/etc/yc/disk-manager/%s" $serverConfigName}}
+      {{ $clientConfigPath := printf "/etc/yc/disk-manager/%s" $clientConfigName}}
       volumes:
       - name: disk-manager-config
         configMap:
-          name: "disk-manager-config"
+          name: "disk-manager-config-{{ .Values.serviceKind }}"
       initContainers:
       - name: disk-manager-init
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: "{{ .Values.image.pullPolicy }}"
-        command: ["/usr/bin/yc-disk-manager-init-db", "--config={{ $configPath }}"]
+        command: ["/usr/bin/yc-disk-manager-init-db", "--config={{ $serverConfigPath }}"]
         volumeMounts:
         - name: disk-manager-config
-          mountPath: "{{ $configPath }}"
+          mountPath: "{{ $serverConfigPath }}"
           subPath: server-config.txt
 
       containers:
       - name: disk-manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        command: ["/usr/bin/yc-disk-manager", "--config={{ $configPath }}"]
+        command: ["/usr/bin/yc-disk-manager", "--config={{ $serverConfigPath }}"]
         imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         volumeMounts:
         - name: disk-manager-config
-          mountPath: "{{ $configPath }}"
-          subPath: server-config.txt
+          mountPath: "{{ $serverConfigPath }}"
+          subPath: "{{ $serverConfigName }}"
+        - name: disk-manager-config
+          mountPath: "{{ $clientConfigPath }}"
+          subPath: "{{ $clientConfigName }}"
         ports:
           - containerPort: {{ .Values.service.internalPort | int }}
