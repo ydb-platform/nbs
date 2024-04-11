@@ -10,6 +10,7 @@ find_bin_dir() {
 }
 
 BIN_DIR=`find_bin_dir`
+source ./prepare_binaries.sh || exit 1
 
 diskagentd \
     --domain             Root \
