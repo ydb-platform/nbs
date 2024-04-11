@@ -165,7 +165,7 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto r = service->Notify({
             .CloudId = "yc-nbs",
             .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{.DiskId = "nrd0"},
+            .Event = TDiskError{ .DiskId = "nrd0" },
         }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto r = service->Notify({
             .CloudId = "yc-nbs",
             .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{.DiskId = "nrd0"},
+            .Event = TDiskError{ .DiskId = "nrd0" },
         }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
