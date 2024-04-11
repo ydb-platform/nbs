@@ -33,8 +33,7 @@ public:
     NThreading::TFuture<TResultOrError<NIamClient::TTokenInfo>>
     GetTokenAsync() override
     {
-        return NThreading::MakeFuture(TResultOrError(
-            NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()}));
+        return NThreading::MakeFuture(TResultOrError(NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()}));
     }
 
     void Start() override
