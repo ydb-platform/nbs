@@ -125,7 +125,7 @@ void TReadAheadCache::RegisterResult(
 TReadAheadCache::TNodeState& TReadAheadCache::Access(ui64 nodeId)
 {
     // TODO: LRU eviction
-    if (NodeStates.size() > MaxNodes) {
+    if (NodeStates.size() >= MaxNodes && !NodeStates.contains(nodeId)) {
         NodeStates.clear();
     }
 

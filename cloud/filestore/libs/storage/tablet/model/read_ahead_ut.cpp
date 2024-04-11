@@ -13,11 +13,43 @@ namespace {
 
 struct TDefaultCache: TReadAheadCache
 {
+    static constexpr ui32 MaxNodes = 1024;
+    static constexpr ui32 MaxResultsPerNode = 32;
+    static constexpr ui32 RangeSize = 1_MB;
+    static constexpr ui32 MaxGap = 20;
+
     TDefaultCache()
         : TReadAheadCache(TDefaultAllocator::Instance())
     {
-        Reset(1024, 32, 1_MB, 20);
+        Reset(MaxNodes, MaxResultsPerNode, RangeSize, MaxGap);
     }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TByteRange MakeRange(ui64 offset, ui32 len)
+{
+    return TByteRange(offset, len, 4_KB);
+}
+
+void RegisterResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+{
+    NProtoPrivate::TDescribeDataResponse result;
+    auto* f = result.AddFreshDataRanges();
+    f->SetContent(Sprintf("n=%lu,o=%lu,l=%u", nodeId, offset, len));
+
+    cache.RegisterResult(nodeId, MakeRange(offset, len), result);
+};
+
+TString FillResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+{
+    NProtoPrivate::TDescribeDataResponse result;
+    if (cache.TryFillResult(nodeId, MakeRange(offset, len), &result)) {
+        const auto& fdr = result.GetFreshDataRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, fdr.size());
+        return fdr[0].GetContent();
+    }
+    return {};
 };
 
 }   // namespace
@@ -98,67 +130,123 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
     {
         TDefaultCache cache;
 
-        auto makeRange = [] (ui64 offset, ui32 len) {
-            return TByteRange(offset, len, 4_KB);
-        };
-        auto registerResult = [&] (ui64 nodeId, ui64 offset, ui32 len) {
-            NProtoPrivate::TDescribeDataResponse result;
-            auto* f = result.AddFreshDataRanges();
-            f->SetContent(Sprintf("n=%lu,o=%lu,l=%u", nodeId, offset, len));
+        RegisterResult(cache, 111, 0, 1_MB);
+        RegisterResult(cache, 111, 1_MB, 1_MB);
+        RegisterResult(cache, 111, 2_MB, 1_MB);
+        RegisterResult(cache, 222, 100_MB, 1_MB);
+        RegisterResult(cache, 222, 105_MB, 1_MB);
 
-            cache.RegisterResult(nodeId, makeRange(offset, len), result);
-        };
-        auto fillResult = [&] (ui64 nodeId, ui64 offset, ui32 len) {
-            NProtoPrivate::TDescribeDataResponse result;
-            if (cache.TryFillResult(nodeId, makeRange(offset, len), &result)) {
-                const auto& fdr = result.GetFreshDataRanges();
-                UNIT_ASSERT_VALUES_EQUAL(1, fdr.size());
-                return fdr[0].GetContent();
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, 333, 0, 1_MB));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=0,l=1048576",
+            FillResult(cache, 111, 0, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=0,l=1048576",
+            FillResult(cache, 111, 1_MB - 128_KB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=1048576,l=1048576",
+            FillResult(cache, 111, 1_MB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=1048576,l=1048576",
+            FillResult(cache, 111, 2_MB - 128_KB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=2097152,l=1048576",
+            FillResult(cache, 111, 2_MB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=111,o=2097152,l=1048576",
+            FillResult(cache, 111, 3_MB - 128_KB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, 111, 3_MB, 128_KB));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=222,o=104857600,l=1048576",
+            FillResult(cache, 222, 100_MB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=222,o=104857600,l=1048576",
+            FillResult(cache, 222, 101_MB - 128_KB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, 222, 101_MB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 222, 105_MB - 128_KB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=222,o=110100480,l=1048576",
+            FillResult(cache, 222, 105_MB, 128_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "n=222,o=110100480,l=1048576",
+            FillResult(cache, 222, 106_MB - 128_KB, 128_KB));
+    }
+
+    Y_UNIT_TEST(ShouldEvictNodesAndResults)
+    {
+        TDefaultCache cache;
+
+        ui64 nodeId = 1;
+        while (nodeId < TDefaultCache::MaxNodes + 1) {
+            for (ui32 rangeId = 0;
+                    rangeId < 2 * TDefaultCache::MaxResultsPerNode; ++rangeId) {
+                RegisterResult(cache, nodeId, rangeId * 1_MB, 1_MB);
             }
-            return TString();
+
+            ++nodeId;
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(TDefaultCache::MaxNodes, cache.CacheSize());
+
+        while (nodeId < 2 * TDefaultCache::MaxNodes + 1) {
+            for (ui32 rangeId = 0;
+                    rangeId < 2 * TDefaultCache::MaxResultsPerNode; ++rangeId) {
+                RegisterResult(cache, nodeId, rangeId * 1_MB, 1_MB);
+            }
+
+            ++nodeId;
+        }
+
+        const ui64 firstNodeId = nodeId - TDefaultCache::MaxNodes;
+        const ui64 lastNodeId = nodeId - 1;
+        const ui64 firstOffset = TDefaultCache::MaxResultsPerNode * 1_MB;
+        const ui64 lastOffset =
+            (2 * TDefaultCache::MaxResultsPerNode - 1) * 1_MB;
+
+        // nothing should be cached for the nodes with id < firstNodeId
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 1, lastOffset, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, firstNodeId - 1, lastOffset, 1_MB));
+
+        // nothing should be cached for the ranges with offsets < firstOffset
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, firstNodeId, 0, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(
+            cache,
+            firstNodeId,
+            (firstOffset - 1_MB),
+            1_MB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(cache, lastNodeId, 0, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL("", FillResult(
+            cache,
+            lastNodeId,
+            (firstOffset - 1_MB),
+            1_MB));
+
+        // ranges with offsets >= firstOffsets for the nodes with
+        // id >= firstNodeId should be cached
+        const auto expected = [] (const ui64 nodeId, const ui64 offset) {
+            return Sprintf("n=%lu,o=%lu,l=1048576", nodeId, offset);
         };
-        registerResult(111, 0, 1_MB);
-        registerResult(111, 1_MB, 1_MB);
-        registerResult(111, 2_MB, 1_MB);
-        registerResult(222, 100_MB, 1_MB);
-        registerResult(222, 105_MB, 1_MB);
-
-        UNIT_ASSERT_VALUES_EQUAL("", fillResult(333, 0, 1_MB));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=0,l=1048576",
-            fillResult(111, 0, 128_KB));
+            expected(firstNodeId, firstOffset),
+            FillResult(cache, firstNodeId, firstOffset, 1_MB));
         UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=0,l=1048576",
-            fillResult(111, 1_MB - 128_KB, 128_KB));
+            expected(firstNodeId, lastOffset),
+            FillResult(cache, firstNodeId, lastOffset, 1_MB));
         UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=1048576,l=1048576",
-            fillResult(111, 1_MB, 128_KB));
+            expected(lastNodeId, firstOffset),
+            FillResult(cache, lastNodeId, firstOffset, 1_MB));
         UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=1048576,l=1048576",
-            fillResult(111, 2_MB - 128_KB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=2097152,l=1048576",
-            fillResult(111, 2_MB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=111,o=2097152,l=1048576",
-            fillResult(111, 3_MB - 128_KB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL("", fillResult(111, 3_MB, 128_KB));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=222,o=104857600,l=1048576",
-            fillResult(222, 100_MB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=222,o=104857600,l=1048576",
-            fillResult(222, 101_MB - 128_KB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL("", fillResult(222, 101_MB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL("", fillResult(222, 105_MB - 128_KB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=222,o=110100480,l=1048576",
-            fillResult(222, 105_MB, 128_KB));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "n=222,o=110100480,l=1048576",
-            fillResult(222, 106_MB - 128_KB, 128_KB));
+            expected(lastNodeId, lastOffset),
+            FillResult(cache, lastNodeId, lastOffset, 1_MB));
     }
 }
 

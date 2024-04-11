@@ -105,6 +105,11 @@ public:
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
 
+    ui32 CacheSize() const
+    {
+        return NodeStates.size();
+    }
+
 private:
     TNodeState& Access(ui64 nodeId);
 };
