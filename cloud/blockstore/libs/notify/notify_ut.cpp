@@ -94,16 +94,14 @@ void ShouldNotifyDiskErrorImpl(int version)
     service->Start();
 
     auto r =
-        service
-            ->Notify({
-                .CloudId = "yc-nbs",
-                .FolderId = "yc-nbs.folder",
-                .Timestamp = TInstant::ParseIso8601("2024-04-01T00:00:01Z"),
-                .Event =
-                    TDiskError{
-                        .DiskId = "ShouldNotifyDiskErrorV" + ToString(version)},
-            })
-            .GetValue(WaitTimeout);
+        service->Notify({
+            .CloudId = "yc-nbs",
+            .FolderId = "yc-nbs.folder",
+            .Timestamp = TInstant::ParseIso8601("2024-04-01T00:00:01Z"),
+            .Event =
+                TDiskError{
+                    .DiskId = "ShouldNotifyDiskErrorV" + ToString(version)},
+        }).GetValue(WaitTimeout);
 
     UNIT_ASSERT_C(!HasError(r), r);
 
@@ -116,14 +114,12 @@ void ShouldNotifyDiskBackOnlineImpl(int version)
     service->Start();
 
     auto r =
-        service
-            ->Notify({
-                .CloudId = "yc-nbs",
-                .FolderId = "yc-nbs.folder",
-                .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
-                .Event = TDiskBackOnline{.DiskId = "nrd0"},
-            })
-            .GetValue(WaitTimeout);
+        service->Notify({
+            .CloudId = "yc-nbs",
+            .FolderId = "yc-nbs.folder",
+            .Timestamp = TInstant::ParseIso8601("2023-01-01T00:00:01Z"),
+            .Event = TDiskBackOnline{.DiskId = "nrd0"},
+        }).GetValue(WaitTimeout);
 
     UNIT_ASSERT_C(!HasError(r), r);
 
@@ -166,13 +162,11 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateNullService(logging);
         service->Start();
 
-        auto r = service
-                     ->Notify({
-                         .CloudId = "yc-nbs",
-                         .FolderId = "yc-nbs.folder",
-                         .Event = TDiskError{.DiskId = "nrd0"},
-                     })
-                     .GetValue(WaitTimeout);
+        auto r = service->Notify({
+            .CloudId = "yc-nbs",
+            .FolderId = "yc-nbs.folder",
+            .Event = TDiskError{.DiskId = "nrd0"},
+        }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
 
@@ -184,13 +178,11 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateServiceStub();
         service->Start();
 
-        auto r = service
-                     ->Notify({
-                         .CloudId = "yc-nbs",
-                         .FolderId = "yc-nbs.folder",
-                         .Event = TDiskError{.DiskId = "nrd0"},
-                     })
-                     .GetValue(WaitTimeout);
+        auto r = service->Notify({
+            .CloudId = "yc-nbs",
+            .FolderId = "yc-nbs.folder",
+            .Event = TDiskError{.DiskId = "nrd0"},
+        }).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
 
