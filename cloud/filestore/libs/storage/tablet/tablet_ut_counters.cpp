@@ -417,6 +417,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
         }
 
+        {
+            auto response = Tablet->GenerateBlobIds(id, handle, 0, sz);
+            TVector<NKikimr::TLogoBlobID> blobIds;
+            for (const auto& blobId: response->Record.GetBlobs()) {
+                auto blob = NKikimr::LogoBlobIDFromLogoBlobID(blobId.GetBlobId());
+                blobIds.push_back(blob);
+            }
+            Tablet->AddData(id, handle, 0, sz, blobIds, response->Record.GetCommitId());
+        }
+
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -439,6 +449,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"histogram", "Time"},
                 {"filesystem", "test"},
                 {"request", "DescribeData"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "GenerateBlobIds"}}, 0},
+            {{
+                {"histogram", "Time"},
+                {"filesystem", "test"},
+                {"request", "AddData"}}, 0},
         }, false);
         Visitor.ValidateExpectedHistogram({
             {{
@@ -465,6 +483,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{
                 {"sensor", "DescribeData.Count"},
                 {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "GenerateBlobIds.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "AddData.Count"},
+                {"filesystem", "test"}}, 1},
         });
         Visitor.ValidateExpectedCounters({
             {{
@@ -484,6 +508,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 {"filesystem", "test"}}, sz},
             {{
                 {"sensor", "DescribeData.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "GenerateBlobIds.RequestBytes"},
+                {"filesystem", "test"}}, sz},
+            {{
+                {"sensor", "AddData.RequestBytes"},
                 {"filesystem", "test"}}, sz},
         });
 

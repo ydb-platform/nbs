@@ -196,6 +196,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     const TEvIndexTablet::TEvGenerateBlobIdsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto startedTs = ctx.Now();
+
     auto* msg = ev->Get();
 
     LOG_DEBUG(
@@ -269,6 +271,12 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     // TODO(debnatkh): Throttling
 
     response->Record.SetCommitId(commitId);
+
+    Metrics.GenerateBlobIds.Count.fetch_add(1, std::memory_order_relaxed);
+    Metrics.GenerateBlobIds.RequestBytes.fetch_add(
+        msg->Record.GetLength(),
+        std::memory_order_relaxed);
+    Metrics.GenerateBlobIds.Time.Record(ctx.Now() - startedTs);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -387,6 +395,12 @@ void TIndexTabletActor::HandleAddDataCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.AddData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
+    Metrics.AddData.RequestBytes.fetch_add(
+        msg->Size,
+        std::memory_order_relaxed);
+    Metrics.AddData.Time.Record(msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
