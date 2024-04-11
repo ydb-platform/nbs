@@ -19,6 +19,7 @@
 namespace NCloud::NBlockStore::NLogbroker {
 
 using namespace NThreading;
+using namespace NYdb::NTopic;
 
 namespace {
 
@@ -56,59 +57,16 @@ struct TBatch
 {
     TVector<TMessage> Messages;
     TInstant Timestamp;
-    std::shared_ptr<NYdb::NTopic::IWriteSession> Session;
 
-    size_t Next = 0;   // index of the next message to be written
     size_t Written = 0;
+    size_t Acknowledged = 0;
 
     TPromise<NProto::TError> Promise = NewPromise<NProto::TError>();
 
-    void AcksHandler(NYdb::NTopic::TWriteSessionEvent::TAcksEvent& event)
-    {
-        Written += event.Acks.size();
-
-        if (Written < Messages.size()) {
-            return;
-        }
-
-        Session->Close(TDuration {});
-    }
-
-    void ReadyToAcceptHander(
-        NYdb::NTopic::TWriteSessionEvent::TReadyToAcceptEvent& event)
-    {
-        if (Next == Messages.size()) {
-            return;
-        }
-
-        auto& message = Messages[Next++];
-
-        Session->Write(
-            std::move(event.ContinuationToken),
-            message.Payload,
-            message.SeqNo,
-            Timestamp);
-    }
-
-    void SessionClosedHandler(const NYdb::NTopic::TSessionClosedEvent& event)
-    {
-        if (Written != Messages.size()) {
-            auto error = MakeError(
-                TranslateErrorCode(event.GetStatus()),
-                event.DebugString());
-
-            if (!HasError(error)) {
-                // just in case
-                error = MakeError(
-                    E_FAIL,
-                    "unexpected success: " + event.DebugString());
-            }
-
-            Promise.TrySetValue(std::move(error));
-        } else {
-            Promise.TrySetValue({});
-        }
-    }
+    TBatch(TVector<TMessage> messages, TInstant timestamp)
+        : Messages(std::move(messages))
+        , Timestamp(timestamp)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,8 +80,13 @@ private:
     const ILoggingServicePtr Logging;
     TLog Log;
 
-    std::optional<NYdb::TDriver> Driver;
+    std::unique_ptr<NYdb::TDriver> Driver;
     std::mutex DriverMutex;
+
+    std::atomic_flag WriteInProgress = false;
+    std::shared_ptr<IWriteSession> Session;
+    std::unique_ptr<TBatch> Batch;
+    std::optional<TContinuationToken> ContinuationToken;
 
 public:
     TService(
@@ -133,22 +96,42 @@ public:
         , Logging(std::move(logging))
     {}
 
-    TFuture<NProto::TError> Write(TVector<TMessage> messages, TInstant now) override
+    TFuture<NProto::TError>
+    Write(TVector<TMessage> messages, TInstant now) override
     {
-        NYdb::NTopic::TTopicClient client {GetDriver()};
+        if (messages.empty()) {
+            return MakeFuture(MakeError(S_OK));
+        }
 
-        auto batch = std::make_shared<TBatch>();
-        batch->Messages = std::move(messages);
-        batch->Timestamp = now;
-        batch->Session = client.CreateWriteSession(NYdb::NTopic::TWriteSessionSettings()
-            .Path(Config->GetTopic())
-            .ProducerId(Config->GetSourceId())
-            .MessageGroupId(Config->GetSourceId())
-            .RetryPolicy(NYdb::NTopic::IRetryPolicy::GetNoRetryPolicy()));
+        if (WriteInProgress.test_and_set()) {
+            return MakeFuture(MakeError(E_REJECTED, "Write in progress"));
+        }
 
-        WaitEvent(batch);
+        Y_DEBUG_ABORT_UNLESS(!Batch);
+        Batch = std::make_unique<TBatch>(std::move(messages), now);
 
-        return batch->Promise;
+        if (!Session) {
+            TTopicClient client{GetDriver()};
+
+            Session = client.CreateWriteSession(
+                TWriteSessionSettings()
+                    .Path(Config->GetTopic())
+                    .ProducerId(Config->GetSourceId())
+                    .MessageGroupId(Config->GetSourceId())
+                    .RetryPolicy(
+                        NYdb::NTopic::IRetryPolicy::GetNoRetryPolicy()));
+        } else if (ContinuationToken.has_value()) {
+            TContinuationToken token{std::move(ContinuationToken.value())};
+            ContinuationToken.reset();
+
+            WriteNext(*Batch, std::move(token));
+        }
+
+        auto future = Batch->Promise.GetFuture();
+
+        WaitEvent();
+
+        return future;
     }
 
     void Start() override
@@ -159,6 +142,7 @@ public:
     void Stop() override
     {
         std::unique_lock lock {DriverMutex};
+
         if (Driver) {
             Driver->Stop(false);
             Driver.reset();
@@ -166,46 +150,121 @@ public:
     }
 
 private:
-    void WaitEvent(std::shared_ptr<TBatch> batch)
+    void WaitEvent()
     {
+        STORAGE_INFO("Wait event");
+
         auto self = shared_from_this();
-        batch->Session->WaitEvent()
-            .Subscribe([self, batch] (const auto& future) {
+        Session->WaitEvent().Subscribe(
+            [self](const auto& future)
+            {
                 Y_UNUSED(future);
-                self->ProcessEvents(batch);
+                self->ProcessEvents();
             });
     }
 
-    void ProcessEvents(std::shared_ptr<TBatch> batch)
+    bool AcksHandler(TBatch& batch, TWriteSessionEvent::TAcksEvent& event)
     {
-        using namespace NYdb::NTopic;
+        STORAGE_DEBUG("Process " << event.DebugString());
 
-        bool sessionClosed = false;
+        batch.Acknowledged += event.Acks.size();
 
-        while (TVector events = batch->Session->GetEvents()) {
+        return batch.Acknowledged == batch.Messages.size();
+    }
+
+    void ReadyToAcceptHander(
+        TBatch& batch,
+        TWriteSessionEvent::TReadyToAcceptEvent& event)
+    {
+        STORAGE_DEBUG("Process " << event.DebugString());
+
+        if (batch.Written < batch.Messages.size()) {
+            WriteNext(batch, std::move(event.ContinuationToken));
+        } else {
+            ContinuationToken = std::move(event.ContinuationToken);
+        }
+    }
+
+    void WriteNext(TBatch& batch, TContinuationToken token)
+    {
+        STORAGE_INFO("Write next message");
+
+        auto& message = batch.Messages[batch.Written++];
+
+        Session->Write(
+            std::move(token),
+            message.Payload,
+            message.SeqNo,
+            batch.Timestamp);
+    }
+
+    NProto::TError SessionClosedHandler(const TSessionClosedEvent& event)
+    {
+        STORAGE_INFO("Process " << event.DebugString());
+
+        auto error = MakeError(
+            TranslateErrorCode(event.GetStatus()),
+            event.DebugString());
+
+        if (!HasError(error)) {
+            // just in case
+            error =
+                MakeError(E_FAIL, "unexpected success: " + event.DebugString());
+        }
+
+        return error;
+    }
+
+    void ProcessEvents()
+    {
+        Y_DEBUG_ABORT_UNLESS(Batch);
+
+        std::optional<NProto::TError> error;
+
+        while (TVector events = Session->GetEvents()) {
             for (TWriteSessionEvent::TEvent& event: events) {
                 std::visit(TOverloaded {
                     [&] (TWriteSessionEvent::TReadyToAcceptEvent& e) {
-                        batch->ReadyToAcceptHander(e);
+                        ReadyToAcceptHander(*Batch, e);
                     },
                     [&] (TWriteSessionEvent::TAcksEvent& e) {
-                        batch->AcksHandler(e);
+                        if (AcksHandler(*Batch, e)) {
+                            error.emplace();
+                        }
                     },
                     [&] (const TSessionClosedEvent& e) {
-                        batch->SessionClosedHandler(e);
-                        sessionClosed = true;
+                        error = SessionClosedHandler(e);
                     },
                 }, event);
             }
 
-            if (sessionClosed) {
+            if (error.has_value()) {
                 break;
             }
         }
 
-        if (!sessionClosed) {
-            WaitEvent(std::move(batch));
+        if (error.has_value()) {
+            STORAGE_INFO("Write is done: " << FormatError(error.value()));
+
+            auto promise = std::move(Batch->Promise);
+            Batch.reset();
+            WriteInProgress.clear();
+            promise.SetValue(std::move(error.value()));
+
+            return;
         }
+
+        WaitEvent();
+    }
+
+    NYdb::TDriver& GetDriver()
+    {
+        std::unique_lock lock{DriverMutex};
+        if (!Driver) {
+            Driver = std::make_unique<NYdb::TDriver>(CreateDriverConfig());
+        }
+
+        return *Driver;
     }
 
     NYdb::TDriverConfig CreateDriverConfig() const
@@ -236,17 +295,6 @@ private:
         }
 
         return cfg;
-    }
-
-    NYdb::TDriver GetDriver()
-    {
-        std::unique_lock lock {DriverMutex};
-
-        if (!Driver) {
-            Driver.emplace(CreateDriverConfig());
-        }
-
-        return *Driver;
     }
 };
 

@@ -28,10 +28,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TString TestConsumer = "test-consumer";
-static const TString TestTopic = "test-topic";
-static const TString TestSource = "test-source";
-static const TString Database = "/Root";
+const TString TestConsumer = "test-consumer";
+const TString TestTopic = "test-topic";
+const TString TestSource = "test-source";
+const TString Database = "/Root";
+const TDuration WaitTimeout = 15s;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -163,53 +164,61 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TLogbrokerTest)
 {
-    //Y_UNIT_TEST_F(ShouldWriteData, TFixture)
-    //{
-    //    NProto::TLogbrokerConfig config;
+    Y_UNIT_TEST_F(ShouldWriteData, TFixture)
+    {
+        NProto::TLogbrokerConfig config;
 
-    //    config.SetAddress("localhost");
-    //    config.SetPort(Server->GrpcPort);
-    //    config.SetDatabase(Database);
-    //    config.SetTopic(TestTopic);
-    //    config.SetSourceId(TestSource);
+        config.SetAddress("localhost");
+        config.SetPort(Server->GrpcPort);
+        config.SetDatabase(Database);
+        config.SetTopic(TestTopic);
+        config.SetSourceId(TestSource);
 
-    //    auto service = CreateTopicAPIService(
-    //        std::make_shared<TLogbrokerConfig>(config),
-    //        Logging);
+        auto service = CreateTopicAPIService(
+            std::make_shared<TLogbrokerConfig>(config),
+            Logging);
 
-    //    service->Start();
+        service->Start();
 
-    //    const TVector<TMessage> expectedData {
-    //        { "hello", 42 },
-    //        { "world", 888 },
-    //        { "foo", 1000 },
-    //        { "bar", 1001 },
-    //    };
+        const TVector<TMessage> expectedData{
+            {"hello", 42},
+            {"world", 888},
+            {"foo", 1000},
+            {"bar", 1001},
+        };
 
-    //    {
-    //        auto error = service->Write({ expectedData[0], expectedData[1] }, Now())
-    //            .GetValueSync();
+        {
+            auto future =
+                service->Write({expectedData[0], expectedData[1]}, Now());
 
-    //        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-    //    }
+            UNIT_ASSERT(future.Wait(WaitTimeout));
 
-    //    {
-    //        auto error = service->Write({ expectedData[2], expectedData[3] }, Now())
-    //            .GetValueSync();
+            const auto& error = future.GetValue();
 
-    //        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-    //    }
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
 
-    //    auto data = Read(expectedData.size());
+        {
+            auto future =
+                service->Write({expectedData[2], expectedData[3]}, Now());
 
-    //    UNIT_ASSERT_VALUES_EQUAL(expectedData.size(), data.size());
-    //    for (size_t i = 0; i != expectedData.size(); ++i) {
-    //        UNIT_ASSERT_VALUES_EQUAL(expectedData[i].Payload, data[i].Payload);
-    //        UNIT_ASSERT_VALUES_EQUAL(expectedData[i].SeqNo, data[i].SeqNo);
-    //    }
+            UNIT_ASSERT(future.Wait(WaitTimeout));
 
-    //    service->Stop();
-    //}
+            const auto& error = future.GetValue();
+
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        auto data = Read(expectedData.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(expectedData.size(), data.size());
+        for (size_t i = 0; i != expectedData.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(expectedData[i].Payload, data[i].Payload);
+            UNIT_ASSERT_VALUES_EQUAL(expectedData[i].SeqNo, data[i].SeqNo);
+        }
+
+        service->Stop();
+    }
 
     void ShouldHandleErrorImpl(TLogbrokerConfigPtr config)
     {
@@ -220,9 +229,12 @@ Y_UNIT_TEST_SUITE(TLogbrokerTest)
         auto service = CreateTopicAPIService(config, logging);
         service->Start();
 
-        auto r = service->Write({TMessage { "hello", 42 }}, Now())
-            .GetValueSync();
-        UNIT_ASSERT(HasError(r));
+        auto future = service->Write({TMessage{"hello", 42}}, Now());
+
+        UNIT_ASSERT(future.Wait(WaitTimeout));
+
+        const auto& error = future.GetValue();
+        UNIT_ASSERT(HasError(error));
 
         service->Stop();
     }
