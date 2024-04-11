@@ -197,7 +197,7 @@ void TDiskRegistryProxyActor::HandleConnected(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Connection to Disk Registry ready. TabletId: " << msg->TabletId
             << " Status: " << NKikimrProto::EReplyStatus_Name(msg->Status)
             << " ClientId: " << msg->ClientId
@@ -434,10 +434,11 @@ void TDiskRegistryProxyActor::HandleSubscribe(
         error.SetCode(S_ALREADY);
     }
 
-    const bool connected = !!TabletClientId;
-
-    auto response = std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
-        std::move(error), connected);
+    const bool connected = !!DiskRegistryTabletId;
+    auto response =
+        std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
+            std::move(error),
+            connected);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
