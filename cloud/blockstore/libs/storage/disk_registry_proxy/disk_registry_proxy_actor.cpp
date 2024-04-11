@@ -434,11 +434,11 @@ void TDiskRegistryProxyActor::HandleSubscribe(
         error.SetCode(S_ALREADY);
     }
 
-    const bool connected = !!DiskRegistryTabletId;
+    const bool discovered = !!DiskRegistryTabletId;
     auto response =
         std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
             std::move(error),
-            connected);
+            discovered);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

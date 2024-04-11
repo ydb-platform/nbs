@@ -164,7 +164,7 @@ void TDiskAgentActor::HandleSubscribeResponse(
 {
     auto* msg = ev->Get();
 
-    if (FAILED(msg->GetStatus()) || msg->Connected)
+    if (FAILED(msg->GetStatus()) || msg->Discovered)
     {
         SendRegisterRequest(ctx);
     }
