@@ -31,6 +31,10 @@ func TestParseMemoryItems(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, testCase.itemExpected, *item)
 	}
+
+	_, err := parseMemRange("02443000-02444000 r--p 02242000 fd:11")
+	require.Error(t, err)
+
 }
 
 func TestShouldLockRange(t *testing.T) {
@@ -41,11 +45,11 @@ func TestShouldLockRange(t *testing.T) {
 	cases := []testCase{
 		testCase{
 			"00200000-02443000 r-xp 00000000 fd:11 3016                               /usr/bin/yc-disk-manager",
-			false,
+			true,
 		},
 		testCase{
 			"02443000-02444000 r--p 02242000 fd:11 3016                               /usr/bin/yc-disk-manager",
-			false,
+			true,
 		},
 		testCase{
 			"02563000-025b3000 rw-p 00000000 00:00 0 ",
@@ -61,7 +65,7 @@ func TestShouldLockRange(t *testing.T) {
 		},
 		testCase{
 			"7fe4f3149000-7fe4f3251000 r-xp 00000000 fd:11 21683                      /lib/x86_64-linux-gnu/libm-2.23.so",
-			false,
+			true,
 		},
 		testCase{
 			"7fe4f3251000-7fe4f3450000 ---p 00108000 fd:11 21683                      /lib/x86_64-linux-gnu/libm-2.23.so",
@@ -69,11 +73,11 @@ func TestShouldLockRange(t *testing.T) {
 		},
 		testCase{
 			"7fe4f3450000-7fe4f3451000 r--p 00107000 fd:11 21683                      /lib/x86_64-linux-gnu/libm-2.23.so",
-			false,
+			true,
 		},
 		testCase{
 			"7fe4f3451000-7fe4f3452000 rw-p 00108000 fd:11 21683                      /lib/x86_64-linux-gnu/libm-2.23.so",
-			false,
+			true,
 		},
 		testCase{
 			"ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]",

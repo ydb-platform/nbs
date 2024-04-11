@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"syscall"
 
@@ -25,7 +26,7 @@ type memItem struct {
 
 func parseMemRange(line string) (*memItem, error) {
 	var item memItem
-	_, err := fmt.Sscanf(
+	n, err := fmt.Sscanf(
 		line,
 		"%x-%x %s %x %s %d %s",
 		&item.memoryRange.start,
@@ -36,7 +37,10 @@ func parseMemRange(line string) (*memItem, error) {
 		&item.inode,
 		&item.pathname,
 	)
-	return &item, err
+	if err != nil && (err != io.EOF || n < 6) {
+		return nil, err
+	}
+	return &item, nil
 }
 
 func mlock(memoryRange memRange) error {
