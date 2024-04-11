@@ -240,7 +240,7 @@ DataplaneConfig: {
         ChunkMapTableShardCount: {{ .Values.ChunkMapTableShardCount }}
 {{- end }}
 {{- if .Values.ExternalBlobsMediaKind }}
-        ExternalBlobsMediaKind: {{ .Values.ExternalBlobsMediaKind }}
+        ExternalBlobsMediaKind: "{{ .Values.ExternalBlobsMediaKind }}"
 {{- end }}
 {{- if .Values.DeleteWorkerCount }}
         DeleteWorkerCount: {{ .Values.DeleteWorkerCount }}
