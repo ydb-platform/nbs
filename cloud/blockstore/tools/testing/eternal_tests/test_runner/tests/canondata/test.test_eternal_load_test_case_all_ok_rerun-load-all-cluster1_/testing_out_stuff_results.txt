@@ -75,7 +75,7 @@ SFTP FILE 1:1:1:1:1:1:1:1//tmp/load-config.json f=w
 SFTP WRITE FILE 1:1:1:1:1:1:1:1SFTP FLUSH FILE 1:1:1:1:1:1:1:1Execute command nohup sh -c "/usr/bin/eternal-load --config-type file --restore-config-path /tmp/load-config.json --file /dev/disk/by-id/virtio-nvme-disk-0 --dump-config-path /tmp/load-config.json  >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*virtio-nvme-disk-0"
-Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 4096 --file /dev/disk/by-id/virtio-nvme-disk-0 --filesize 186 --iodepth 128 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
+Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 4096 --file /dev/disk/by-id/virtio-nvme-disk-0 --filesize 366 --iodepth 128 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*virtio-nvme-disk-0"
 SFTP FILE 1:1:1:1:1:1:1:1//tmp/load-config.json f=w

@@ -42,7 +42,8 @@ class DiskCreateConfig(ITestCreateConfig):
             placement_group_partition_count=None,
             image_name=None,
             initial_size=None,
-            block_count=None):
+            block_count=None,
+            preferred_platform_id=None):
 
         self.block_count = block_count
         if block_count is None:
@@ -57,6 +58,7 @@ class DiskCreateConfig(ITestCreateConfig):
         self.placement_group_partition_count = placement_group_partition_count
         self.image_name = image_name
         self.initial_size = initial_size or size
+        self.preferred_platform_id = preferred_platform_id
 
 
 @dataclass
@@ -239,9 +241,12 @@ _DISK_CONFIGS = {
     'eternal-279gb-ssd-local-different-size-requests':
         DiskCreateConfig(size=279, bs=4096, type='local'),
 
-    'eternal-367gb-ssd-local-v3': DiskCreateConfig(size=0, block_count=769652736, bs=512, type='local'),
+    'eternal-367gb-ssd-local-v3':
+        DiskCreateConfig(size=0, block_count=769652736, bs=512,
+                         type='local', preferred_platform_id='standard-v3'),
     'eternal-734gb-ssd-local-different-size-requests-v3':
-        DiskCreateConfig(size=0, block_count=769652736*2, bs=512, type='local'),
+        DiskCreateConfig(size=0, block_count=769652736*2, bs=512,
+                         type='local', preferred_platform_id='standard-v3'),
 
     'eternal-320gb-encrypted': DiskCreateConfig(320, 4096, 'network-ssd', encrypted=True),
     'eternal-1023gb-nonrepl-encrypted':
@@ -315,9 +320,9 @@ _LOAD_CONFIGS = {
     'eternal-186gb-ssd-local': LoadConfig(False, False, 128, 50, 186, 4096),
     'eternal-279gb-ssd-local-different-size-requests': LoadConfig(True, False, 64, 50, 279, 4096),
 
-    'eternal-367gb-ssd-local-v3': LoadConfig(False, False, 128, 50, 186, 4096),
+    'eternal-367gb-ssd-local-v3': LoadConfig(False, False, 128, 50, 366, 4096),
     'eternal-734gb-ssd-local-different-size-requests-v3': LoadConfig(
-        True, False, 64, 10, 279, 4096),
+        True, False, 64, 10, 732, 4096),
 
     'eternal-320gb-encrypted': LoadConfig(False, True, 32, 50, 320, 4096),
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),
@@ -498,6 +503,12 @@ def generate_test_config(args: Args, test_case: str) -> ITestConfig:
             load_configs = [load_configs]
 
         assert len(disk_configs) == len(load_configs)
+
+        preferred_platform_id = None
+        if len(disk_configs) == 1:
+            preferred_platform_id = disk_configs[0].preferred_platform_id
+        if preferred_platform_id is not None:
+            ycp_config.folder.platform_id = preferred_platform_id
 
         disk_tests = []
         file_path_generator = get_file_path_generator()
