@@ -155,7 +155,6 @@ public:
         return MakeFuture(TResultOrError<NIamClient::TTokenInfo>(NIamClient::TTokenInfo()));
     }
 
-
     TFuture<NProto::TError> Notify(const TNotification& data) override
     {
         // TODO: Add Timestamp when time formatting will be supported
