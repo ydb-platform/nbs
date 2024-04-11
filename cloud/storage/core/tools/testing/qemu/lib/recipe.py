@@ -56,7 +56,7 @@ def start(argv):
         try:
             logger.info("Trying to stop qemu")
             stop(argv)
-        except err:
+        except Exception:
             logger.exception("Failed to stop qemu")
         raise e
 
