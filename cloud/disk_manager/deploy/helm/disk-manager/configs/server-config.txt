@@ -13,7 +13,7 @@ GrpcConfig: {
     }
   ]
   {{- else }}
-  insecure: true
+  Insecure: true
   {{- end }}
   KeepAlive: {}
 }
