@@ -364,13 +364,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
 
-        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
-            | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
+        DiskRegistry->UpdateConfig(
+            CreateRegistryConfig(0, Agents) |
+            WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
         RegisterAgents(*Runtime, Agents.size());
 
         int nrdDevices = 0;
-        for (const auto& agent : Agents) {
-            for (auto& device : agent.GetDevices()) {
+        for (const auto& agent: Agents) {
+            for (auto& device: agent.GetDevices()) {
                 if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_DEFAULT) {
                     nrdDevices++;
                 }
