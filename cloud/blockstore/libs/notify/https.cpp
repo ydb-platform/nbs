@@ -945,8 +945,8 @@ void THttpsClient::Post(
     THttpHeaders headers;
     headers.AddHeader(THttpInputHeader("Content-Type", contentType));
     
-    //empty if using notifyV1
-    if (!iamToken.GetResult().Token.Empty()){
+    //empty if using notifyV1, has an error if using v2 and has problems with iam client
+    if (!iamToken.GetResult().Token.Empty() or iamToken.HasError()){
         headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + iamToken.GetResult().Token));
     }
     Impl->SendRequest(
