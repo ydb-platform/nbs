@@ -15,8 +15,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const constexpr int v1 = 1;
-const constexpr int v2 = 2;
+const constexpr int V1 = 1;
+const constexpr int V2 = 2;
 
 static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 
@@ -189,17 +189,17 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
 
     Y_UNIT_TEST(ShouldNotifyDiskError)
     {
-        ShouldNotifyDiskErrorImpl(v1);
+        ShouldNotifyDiskErrorImpl(V1);
     }
 
     Y_UNIT_TEST(ShouldNotifyDiskBackOnline)
     {
-        ShouldNotifyDiskBackOnlineImpl(v1);
+        ShouldNotifyDiskBackOnlineImpl(V1);
     }
 
     Y_UNIT_TEST(ShouldNotifyAboutLotsOfDiskErrors)
     {
-        ShouldNotifyAboutLotsOfDiskErrorsImpl(v1);
+        ShouldNotifyAboutLotsOfDiskErrorsImpl(V1);
     }
 }
 
@@ -207,17 +207,17 @@ Y_UNIT_TEST_SUITE(TNotifyTestV2)
 {
     Y_UNIT_TEST(ShouldNotifyDiskErrorV2)
     {
-        ShouldNotifyDiskErrorImpl(v2);
+        ShouldNotifyDiskErrorImpl(V2);
     }
 
     Y_UNIT_TEST(ShouldNotifyDiskBackOnlineV2)
     {
-        ShouldNotifyDiskBackOnlineImpl(v2);
+        ShouldNotifyDiskBackOnlineImpl(V2);
     }
 
     Y_UNIT_TEST(ShouldNotifyAboutLotsOfDiskErrorsV2)
     {
-        ShouldNotifyAboutLotsOfDiskErrorsImpl(v2);
+        ShouldNotifyAboutLotsOfDiskErrorsImpl(V2);
     }
 }
 
