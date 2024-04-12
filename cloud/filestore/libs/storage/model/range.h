@@ -139,6 +139,11 @@ struct TByteRange
         return Intersect(other).Length > 0;
     }
 
+    bool Contains(TByteRange other) const
+    {
+        return Intersect(other).Length == other.Length;
+    }
+
     TString Describe() const
     {
         return TStringBuilder() << "[" << Offset << ", " << End() << ")";
