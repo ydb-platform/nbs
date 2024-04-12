@@ -493,6 +493,8 @@ TVolumeState::TAddClientResult TVolumeState::AddClient(
     }
 
     if (readWriteAccess) {
+        res.ForceTabletRestart = clientId != ReadWriteAccessClientId ||
+                                 ShouldForceTabletRestart(info);
         ReadWriteAccessClientId = clientId;
         MountSeqNumber = info.GetMountSeqNumber();
     }
@@ -760,6 +762,13 @@ bool TVolumeState::CanAcceptClient(
     }
 
     return newFillSeqNumber >= Meta.GetFillSeqNumber();
+}
+
+bool TVolumeState::ShouldForceTabletRestart(
+    const NProto::TVolumeClientInfo& info) const
+{
+    return info.GetMountSeqNumber() != MountSeqNumber ||
+           info.GetFillSeqNumber() != Meta.GetFillSeqNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

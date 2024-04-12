@@ -180,6 +180,7 @@ private:
 
     bool IsTabletAcquired = false;
     bool VolumeSessionRestartRequired = false;
+    bool IsVolumeRestarting = false;
 
 public:
     TMountRequestActor(
@@ -637,6 +638,15 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
 
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
+
+        if (msg->Record.GetForceTabletRestart() &&
+            MountMode == NProto::VOLUME_MOUNT_LOCAL)
+        {
+            IsVolumeRestarting = true;
+            RequestVolumeStop(ctx);
+            return;
+        }
+
         if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
             RequestVolumeStart(ctx);
             return;
@@ -688,7 +698,6 @@ void TMountRequestActor::HandleWaitReadyResponse(
     const TActorContext& ctx)
 {
     Error = ev->Get()->Record.GetError();
-
     NotifyAndDie(ctx);
 }
 
@@ -744,6 +753,8 @@ void TMountRequestActor::HandleStartVolumeResponse(
     const auto& error = msg->GetError();
     const auto& mountMode = Request.GetVolumeMountMode();
 
+    IsVolumeRestarting = false;
+
     if (!AddClientRequestCompleted) {
         Volume = msg->VolumeInfo;
     }
@@ -777,6 +788,10 @@ void TMountRequestActor::HandleStopVolumeResponse(
     IsTabletAcquired = false;
 
     if (!FAILED(Error.GetCode())) {
+        if (IsVolumeRestarting) {
+            RequestVolumeStart(ctx);
+            return;
+        }
         WaitForVolume(ctx, Config->GetLocalStartAddClientTimeout());
         return;
     }
@@ -856,6 +871,8 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     const auto& mountMode = msg->Record.GetVolumeMountMode();
     const auto& mountSeqNumber = msg->Record.GetMountSeqNumber();
     const auto& encryptionKeyHash = msg->Record.GetEncryptionSpec().GetKeyHash();
+    const auto& fillSeqNumber = msg->Record.GetFillSeqNumber();
+    const auto& fillGeneration = msg->Record.GetFillGeneration();
 
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
     if (!clientInfo) {
@@ -920,8 +937,12 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         return {{}, false};
     }
 
-    if (mountSeqNumber != clientInfo->MountSeqNumber) {
-        // If mountSeqNumber has changed in MountVolumeRequest from client
+    if (mountSeqNumber != clientInfo->MountSeqNumber ||
+        fillSeqNumber != clientInfo->FillSeqNumber ||
+        fillGeneration != clientInfo->FillGeneration)
+    {
+        // If mountSeqNumber, fillSeqNumber or fillGeneration
+        // has changed in MountVolumeRequest from client
         // then let volume know about this
         return {{}, false};
     }
@@ -967,6 +988,8 @@ void TVolumeSessionActor::AddClientToVolume(
     clientInfo->LastMountTick = mountTick;
     clientInfo->ClientVersionInfo = std::move(mountRequest.GetClientVersionInfo());
     clientInfo->MountSeqNumber = mountRequest.GetMountSeqNumber();
+    clientInfo->FillSeqNumber = mountRequest.GetFillSeqNumber();
+    clientInfo->FillGeneration = mountRequest.GetFillGeneration();
 }
 
 void TVolumeSessionActor::HandleInternalMountVolume(
