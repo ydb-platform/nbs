@@ -93,6 +93,14 @@ def generate_cloud_init_script(
     version: str,
     label: str,
 ):
+    if os.environ.get("GITHUB_REPOSITORY"):
+        label += (
+            f",GITHUB_REPOSITORY_{os.environ['GITHUB_REPOSITORY'].replace('/', '_')}"
+        )
+
+    for item in ["GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_NUMBER"]:
+        if os.environ.get(item):
+            label += f",{item}_{os.environ[item]}"
 
     script = [
         "#!/bin/bash",
