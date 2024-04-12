@@ -115,8 +115,8 @@ def _test_every_method_impl(sync):
         },
         "query_available_storage": {
             "agent_ids": ["DefaultAgemtId"],
-            "pool_name": "DefaulPoolName",
-            "pool_kind": protos.EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"),
+            "storage_pool_name": "DefaulPoolName",
+            "storage_pool_kind": protos.EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"),
         },
         "resume_device": {
             "agent_id": "DefaultAgemtId",

@@ -140,9 +140,9 @@ def test_query_available_storage():
     with NbsServer() as nbs:
         client = CreateDiscoveryClient([nbs.endpoint])
 
-        storage = client.query_available_storage(
-            [f'myt1-ct5-{i + 1}.cloud.yandex.net' for i in range(3)],
-            "", protos.EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+        storage = client.query_available_storage([
+            f'myt1-ct5-{i + 1}.cloud.yandex.net' for i in range(3)
+        ])
 
         assert len(storage) == 3
         for i, info in enumerate(storage):

@@ -765,8 +765,8 @@ class _SafeClient(object):
     def query_available_storage_async(
             self,
             agent_ids,
-            pool_name,
-            pool_kind,
+            storage_pool_name=None,
+            storage_pool_kind=None,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -774,8 +774,8 @@ class _SafeClient(object):
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
-            StoragePoolName=pool_name,
-            StoragePoolKind=pool_kind,
+            StoragePoolName=storage_pool_name,
+            StoragePoolKind=storage_pool_kind,
         )
 
         future = futures.Future()
@@ -800,8 +800,8 @@ class _SafeClient(object):
     def query_available_storage(
             self,
             agent_ids,
-            pool_name,
-            pool_kind,
+            storage_pool_name=None,
+            storage_pool_kind=None,
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
@@ -809,8 +809,8 @@ class _SafeClient(object):
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
-            StoragePoolName=pool_name,
-            StoragePoolKind=pool_kind,
+            StoragePoolName=storage_pool_name,
+            StoragePoolKind=storage_pool_kind,
         )
         return self.__impl.query_available_storage(
             request,

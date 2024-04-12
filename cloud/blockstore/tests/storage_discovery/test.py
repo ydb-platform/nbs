@@ -6,7 +6,9 @@ import time
 from copy import deepcopy
 
 from cloud.blockstore.public.sdk.python.client import CreateClient
-from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, TAction, EStoragePoolKind
+from cloud.blockstore.public.sdk.python.protos import TCmsActionRequest, \
+    TAction, STORAGE_POOL_KIND_LOCAL, STORAGE_POOL_KIND_DEFAULT, \
+    STORAGE_POOL_KIND_GLOBAL
 
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
@@ -380,9 +382,9 @@ def test_add_devices(
     grpc_client = CreateClient(f"localhost:{nbs.port}")
 
     default_storage = grpc_client.query_available_storage(
-        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+        [agent_id], "", STORAGE_POOL_KIND_DEFAULT)
     local_storage = grpc_client.query_available_storage(
-        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+        [agent_id], "local", STORAGE_POOL_KIND_LOCAL)
     assert len(default_storage) == 1
     assert len(local_storage) == 1
     assert default_storage[0].AgentId == agent_id
@@ -400,7 +402,7 @@ def test_add_devices(
     _wait_for_devices_to_be_cleared(client)
 
     default_storage = grpc_client.query_available_storage(
-        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+        [agent_id], "", STORAGE_POOL_KIND_DEFAULT)
     assert len(default_storage) == 1
     assert default_storage[0].AgentId == agent_id
     # now we see one chunk
@@ -426,9 +428,9 @@ def test_add_devices(
     _wait_for_devices_to_be_cleared(client, 4)
 
     default_storage = grpc_client.query_available_storage(
-        [agent_id], "", EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"))
+        [agent_id], "", STORAGE_POOL_KIND_DEFAULT)
     local_storage = grpc_client.query_available_storage(
-        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+        [agent_id], "local", STORAGE_POOL_KIND_LOCAL)
     assert len(default_storage) == 1
     assert len(local_storage) == 1
     assert default_storage[0].AgentId == agent_id
@@ -448,7 +450,7 @@ def test_add_devices(
     _wait_for_devices_to_be_cleared(client)
 
     local_storage = grpc_client.query_available_storage(
-        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+        [agent_id], "local", STORAGE_POOL_KIND_LOCAL)
     assert len(local_storage) == 1
     assert local_storage[0].AgentId == agent_id
     # local devices are ready
@@ -462,7 +464,7 @@ def test_add_devices(
 
     # Check that there is no rot devices
     rot_storage = grpc_client.query_available_storage(
-        [agent_id], "rot", EStoragePoolKind.Value("STORAGE_POOL_KIND_GLOBAL"))
+        [agent_id], "rot", STORAGE_POOL_KIND_GLOBAL)
     assert len(rot_storage) == 1
     assert rot_storage[0].AgentId == agent_id
     assert rot_storage[0].ChunkCount == 0
@@ -482,7 +484,7 @@ def test_add_devices(
     _check_disk_agent_config(bkp["Agents"][0], agent_id, data_path)
 
     local_storage = grpc_client.query_available_storage(
-        [agent_id], "local", EStoragePoolKind.Value("STORAGE_POOL_KIND_LOCAL"))
+        [agent_id], "local", STORAGE_POOL_KIND_LOCAL)
     assert len(local_storage) == 1
     assert local_storage[0].AgentId == agent_id
     # we still see all the local devices
@@ -490,7 +492,7 @@ def test_add_devices(
     assert local_storage[0].ChunkSize == DEVICE_SIZE
 
     rot_storage = grpc_client.query_available_storage(
-        [agent_id], "rot", EStoragePoolKind.Value("STORAGE_POOL_KIND_GLOBAL"))
+        [agent_id], "rot", STORAGE_POOL_KIND_GLOBAL)
     assert len(rot_storage) == 1
     assert rot_storage[0].AgentId == agent_id
     # we see the rot devices
