@@ -149,30 +149,8 @@ ImagesConfig: {
         }{{- if lt $i (sub $length 1) }},{{- end}}
     {{- end }}
     ]
-{{- if .Values.imagesUseS3ForFolder }}
-    imagesUseS3ForFolder: [
-    {{- $length := len .Values.imagesUseS3ForFolder }}
-    {{- range $i, $folder := .Values.imagesUseS3ForFolder }}
-        "{{ $folder }}"{{- if lt $i (sub $length 1) }},{{- end}}
-    {{- end }}
-    ]
-{{- end }}
-{{- if .Values.imagesUseS3Percentage }}
-    UseS3Percentage: {{ .Values.imagesUseS3Percentage }}
-{{- end }}
 }
 SnapshotsConfig: {
-{{- if .Values.snapshotsUseS3ForFolder }}
-    UseS3ForFolder: [
-    {{- $length := len .Values.snapshotsUseS3ForFolder }}
-    {{- range $i, $folder := .Values.snapshotsUseS3ForFolder }}
-        "{{ $folder }}"{{- if lt $i (sub $length 1) }},{{- end}}
-    {{- end }}
-    ]
-{{- end }}
-{{- if .Values.snapshotsUseS3Percentage }}
-    UseS3Percentage: {{ .Values.snapshotsUseS3Percentage }}
-{{- end }}
 {{- if .Values.snapshotsUseProxyOverlayDisk }}
     UseProxyOverlayDisk: {{ .Values.snapshotsUseProxyOverlayDisk }}
 {{- end }}
@@ -225,13 +203,6 @@ DataplaneConfig: {
 {{- if .Values.ydb.snapshot.RootPath }}
             RootPath: "{{ .Values.ydb.snapshot.RootPath }}"
 {{- end }}
-{{- if .Values.S3Endpoint }}
-            S3Config: {
-                Endpoint: "{{ .Values.S3Endpoint }}"
-                Region: "ru-central1"
-                CredentialsFilePath: "/etc/yc/disk-manager-external/disk-manager-s3-credentials.json"
-            }
-{{- end }}
         }
 {{- if .Values.ChunkBlobsTableShardCount }}
         ChunkBlobsTableShardCount: {{ .Values.ChunkBlobsTableShardCount }}
@@ -251,12 +222,6 @@ DataplaneConfig: {
 {{- if .Values.ShallowCopyInflightLimit }}
         ShallowCopyInflightLimit: {{ .Values.ShallowCopyInflightLimit }}
 {{- end }}
-{{- if .Values.S3Bucket }}
-        S3Bucket: "{{ .Values.S3Bucket }}"
-{{- end }}
-{{- if .Values.ChunkBlobsS3KeyPrefix }}
-        ChunkBlobsS3KeyPrefix: "{{ .Values.ChunkBlobsS3KeyPrefix }}"
-{{-   end }}
 {{- if .Values.probeCompressionPercentage }}
 {{- range $codec, $percentage := .Values.probeCompressionPercentage }}
 ProbeCompressionPercentage: {
