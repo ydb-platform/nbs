@@ -234,11 +234,11 @@ private:
             "TEvPutResult response received: %s",
             msg->ToString().c_str());
 
-        auto blobIdx = msg->Id.Cookie();
+        ui64 blobIdx = msg->Id.Cookie();
         // It is implicitly expected that cookies are generated in increasing
         // order starting from 0.
         TABLET_VERIFY(
-            0 <= blobIdx && blobIdx < InFlightBSRequests.size() &&
+            blobIdx < InFlightBSRequests.size() &&
             InFlightBSRequests[blobIdx] &&
             !InFlightBSRequests[blobIdx]->IsCompleted());
         InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});

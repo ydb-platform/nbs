@@ -386,10 +386,9 @@ void TReadDataActor::HandleReadBlobResponse(
     TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
-    uint64_t blobIdx = ev->Cookie;
+    ui64 blobIdx = ev->Cookie;
     TABLET_VERIFY(
-        0 <= blobIdx && blobIdx < InFlightBSRequests.size() &&
-        InFlightBSRequests[blobIdx] &&
+        blobIdx < InFlightBSRequests.size() && InFlightBSRequests[blobIdx] &&
         !InFlightBSRequests[blobIdx]->IsCompleted());
     InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
 
