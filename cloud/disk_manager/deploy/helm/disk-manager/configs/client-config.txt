@@ -1,6 +1,9 @@
-{{- if .Values.Insecure -}}
+{{- if .Values.service.internalPort }}
+Port: {{ .Values.service.internalPort }}
+{{- end }}
+{{- if .Values.insecure }}
 Insecure: true
-{{ end -}}
+{{- end }}
 LoggingConfig: {
     LoggingStderr: {}
     Level: {{ .Values.logLevel }}
