@@ -23,6 +23,7 @@ type Config struct {
 	Endpoint      string
 	NodeID        string
 	VendorVersion string
+	VMMode        bool
 	NbsPort       uint
 	NfsServerPort uint
 	NfsVhostPort  uint
@@ -100,6 +101,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 		newNodeService(
 			cfg.NodeID,
 			nbsClientID,
+			cfg.VMMode,
 			cfg.NbsSocketsDir,
 			cfg.PodSocketsDir,
 			nbsClient,
