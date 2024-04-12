@@ -109,6 +109,8 @@ def _run_test_case(
             logger.info(f'{"".join(stdout.readlines())}')
 
     if results_processor is not None:
+        if exception is not None:
+            logger.error(exception)
         results_processor.publish_test_report_base(
             instance.compute_node,
             instance.id,

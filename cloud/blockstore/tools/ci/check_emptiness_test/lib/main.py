@@ -183,6 +183,8 @@ def _scan_disk(
                                           f' disk <id={disk.id}>\n{stdout_str}>')
 
                     if results_processor is not None:
+                        if exception is not None:
+                            logger.error(exception)
                         results_processor.publish_test_report_base(
                             instance.compute_node,
                             instance.id,
