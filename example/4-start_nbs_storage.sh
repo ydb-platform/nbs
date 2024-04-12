@@ -37,7 +37,7 @@ start_nbs_agent() {
     LOCATION_FILE=$BIN_DIR/nbs/nbs-location-$1.txt \
     DISK_AGENT_FILE=$BIN_DIR/nbs/nbs-disk-agent-$1.txt \
     ./disk-agent.sh \
-        --load-configs-from-cms
+        --load-configs-from-cms >logs/remote-da$1.log 2>&1 &
 }
 
 start_nbs_agent 1
