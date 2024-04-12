@@ -6,10 +6,10 @@ GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8769}
 
 find_bin_dir() {
-    readlink -e $(dirname $0)
+    readlink -e `dirname $0`
 }
 
-BIN_DIR=$(find_bin_dir)
+BIN_DIR=`find_bin_dir`
 source ./prepare_binaries.sh || exit 1
 
 blockstore-client ExecuteAction --action DiskRegistrySetWritableState --verbose error --input-bytes '{"State":true}'

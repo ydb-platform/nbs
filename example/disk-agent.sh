@@ -8,10 +8,10 @@ GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8769}
 
 find_bin_dir() {
-    readlink -e $(dirname $0)
+    readlink -e `dirname $0`
 }
 
-BIN_DIR=$(find_bin_dir)
+BIN_DIR=`find_bin_dir`
 
 DOMAINS_FILE=${DOMAINS_FILE:-$BIN_DIR/nbs/nbs-domains.txt}
 IC_FILE=${IC_FILE:-$BIN_DIR/nbs/nbs-ic.txt}
