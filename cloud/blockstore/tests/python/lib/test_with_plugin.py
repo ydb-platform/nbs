@@ -9,10 +9,10 @@ from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig, TLogConfig
 from cloud.blockstore.config.plugin_pb2 import TPluginConfig
-from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TLocalServiceConfig
 from cloud.blockstore.public.sdk.python import protos
-from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.test_base import thread_count
+from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
+from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
 
 def __convert_to_proto(ipc_type):
@@ -49,6 +49,8 @@ def run_plugin_test(
     endpoint_storage_dir = common.output_path() + '/endpoints-' + str(uuid.uuid4())
 
     server = TServerAppConfig()
+    server.LocalServiceConfig.CopyFrom(TLocalServiceConfig())
+    server.LocalServiceConfig.DataDir = tempfile.gettempdir()
     server.ServerConfig.CopyFrom(TServerConfig())
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
@@ -56,13 +58,17 @@ def run_plugin_test(
     server.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
     server.ServerConfig.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     server.ServerConfig.EndpointStorageDir = endpoint_storage_dir
-    server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    env = LocalLoadTest(
-        "",
+    nbs_binary_path = common.binary_path(
+        "cloud/blockstore/apps/server_lightweight/nbsd-lightweight")
+
+    nbs = LocalNbs(
+        0,
         server_app_config=server,
-        use_in_memory_pdisks=True,
+        nbs_binary_path=nbs_binary_path,
         restart_interval=restart_interval)
+    nbs.start()
+    wait_for_nbs_server(nbs.nbs_port)
 
     client_binary_path = common.binary_path(
         "cloud/blockstore/apps/client/blockstore-client")
@@ -72,7 +78,7 @@ def run_plugin_test(
         "--disk-id", disk_id,
         "--blocks-count", "100000",
         "--host", "localhost",
-        "--port", str(env.nbs_port),
+        "--port", str(nbs.nbs_port),
     ], stderr=stderr_file)
     assert result == 0
 
@@ -90,7 +96,7 @@ def run_plugin_test(
             "--ipc-type", server_ipc_type,
             "--client-id", client_id,
             "--host", "localhost",
-            "--port", str(env.nbs_port),
+            "--port", str(nbs.nbs_port),
             "--persistent",
         ], stderr=stderr_file)
         assert result == 0
@@ -103,7 +109,7 @@ def run_plugin_test(
         client.LogConfig.LogLevel = 7   # debug
         client.ClientConfig.CopyFrom(TClientConfig())
         client.ClientConfig.Host = "localhost"
-        client.ClientConfig.Port = env.nbs_data_port
+        client.ClientConfig.Port = nbs.nbs_data_port
         client.ClientConfig.IpcType = __convert_to_proto(client_ipc_type)
         client.ClientConfig.NbdSocketSuffix = nbd_socket_suffix
         cc.write(str(client))
@@ -143,5 +149,5 @@ def run_plugin_test(
         assert result == 0
 
     ret = common.canonical_file(results_path, local=True)
-    env.tear_down()
+    nbs.stop()
     return ret
