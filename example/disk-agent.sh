@@ -15,8 +15,8 @@ source ./prepare_binaries.sh || exit 1
 diskagentd \
     --domain             Root \
     --node-broker        localhost:$GRPC_PORT \
-    --ic-port            $(( $IC_PORT + $1 * 100 )) \
-    --mon-port           $(( $MON_PORT + $1 * 100 )) \
+    --ic-port            $IC_PORT \
+    --mon-port           $MON_PORT \
     --domains-file       $BIN_DIR/nbs/nbs-domains.txt \
     --ic-file            $BIN_DIR/nbs/nbs-ic.txt \
     --log-file           $BIN_DIR/nbs/nbs-log.txt \
