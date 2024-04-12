@@ -15,8 +15,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const int v1 = 1;
-const int v2 = 2;
+const constexpr int v1 = 1;
+const constexpr int v2 = 2;
 
 static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 
