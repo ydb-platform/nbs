@@ -5,3 +5,4 @@ metadata:
   name: nbs.csi.nebius.ai
 spec:
   attachRequired: false
+  podInfoOnMount: true
