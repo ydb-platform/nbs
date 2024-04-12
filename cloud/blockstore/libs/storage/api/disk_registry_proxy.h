@@ -37,12 +37,12 @@ struct TEvDiskRegistryProxy
 
     struct TSubscribeResponse
     {
-        const bool Connected = false;
+        const bool Discovered = false;
 
         TSubscribeResponse() = default;
 
-        explicit TSubscribeResponse(bool connected)
-            : Connected(connected)
+        explicit TSubscribeResponse(bool discovered)
+            : Discovered(discovered)
         {}
     };
 
