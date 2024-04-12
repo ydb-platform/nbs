@@ -1,0 +1,102 @@
+name: Check for correct approvals
+on:
+    pull_request_review:
+        types: [submitted, edited, dismissed]
+    issue_comment:
+        types: [created]
+
+jobs:
+    approval-check:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Check approvals from left and right teams
+          uses: actions/github-script@v7
+          with:
+            github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+            script: |
+                var org = 'ydb-platform';
+                var nebiusTeamSlug = 'nbs_nebius';
+                var yandexTeamSlug = 'nbs_yandex';
+                const leftUsersData = await github.paginate(
+                    github.rest.teams.listMembersInOrg,
+                    {
+                      org,
+                      team_slug: nebiusTeamSlug,
+                    }
+                );
+                const rightUsersData = await github.paginate(
+                    github.rest.teams.listMembersInOrg,
+                    {
+                      org,
+                      team_slug: yandexTeamSlug,
+                    }
+                );
+                const leftUsers = leftUsersData.map(user => user.login);
+                const rightUsers = rightUsersData.map(user => user.login);
+                console.log("Left team members: " + leftUsers.join(', '));
+                console.log("Right team members: " + rightUsers.join(', '));
+                // users that can approve PRs without any restrictions by commenting /approve
+                const superUsers = ['qkrorlqr', 'EvgeniyKozev'];
+                const prNumber = context.issue.number;
+                const owner = context.repo.owner;
+                const repo = context.repo.repo;
+
+                // Function to check if user is in list
+                const isInList = (username, list) => list.includes(username);
+
+                let approvalState = false;
+                console.log("Checking approvals for PR #" + prNumber);
+                console.log("Event name: " + context.eventName);
+                console.log("Actor: " + context.actor);
+                if (context.eventName === 'issue_comment') {
+                    console.log("Comment: " + context.payload.comment.body);
+                }
+                if (
+                    context.eventName === 'issue_comment'
+                    && isInList(context.actor, superUsers)
+                    && context.payload.comment.body.trim() === '/approve'
+                ) {
+                    console.log("Approval bypassed by super user.");
+                    approvalState = true;
+                } else if (context.eventName === 'pull_request_review') {
+                    // Fetch PR reviews
+                    const reviews = await github.rest.pulls.listReviews({
+                        owner,
+                        repo,
+                        pull_number: prNumber
+                    });
+
+                    // Track unique approvers
+                    let leftApprovals = new Set();
+                    let rightApprovals = new Set();
+
+                    for (const review of reviews.data) {
+                        console.log("Review by " + review.user.login + ": " + review.state);
+                        if (review.state === 'APPROVED') {
+                            if (isInList(review.user.login, leftUsers)) {
+                                leftApprovals.add(review.user.login);
+                            } else if (isInList(review.user.login, rightUsers)) {
+                                rightApprovals.add(review.user.login);
+                            } else {
+                                console.log("User " + review.user.login + " is not in any list.");
+                            }
+                        } else if (review.state === 'DISMISSED') {
+                            leftApprovals.delete(review.user.login);
+                            rightApprovals.delete(review.user.login);
+                        }
+                    }
+
+                    // Check if there is at least one approval from each list
+                    if (leftApprovals.size >= 1 && rightApprovals.size >= 1) {
+                        console.log("PR has the required approvals from both lists.");
+                        approvalState = true;
+                    } else {
+                        console.log("PR does not have the required approvals from both lists.");
+                        console.log("Left approvals: " + Array.from(leftApprovals).join(', '));
+                        console.log("Right approvals: " + Array.from(rightApprovals).join(', '));
+                        core.setFailed("PR does not meet approval requirements.");
+                    }
+                } else {
+                    console.log("Not enough approvals");
+                    core.setFailed("Not enough approvals");
+                }

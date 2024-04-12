@@ -171,3 +171,41 @@ jobs:
       cache_update_tests: false
       sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
     secrets: inherit
+  build_and_test_asan:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'asan')
+    name: Build and test (asan)
+    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_preset: release-asan
+      vm_name_suffix: "-asan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      run_tests: true
+      cache_update_build: false
+      cache_update_tests: false
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit
+  build_and_test_tsan:
+    needs:
+      - check-running-allowed
+      - create-build-and-test-target-var
+    if: needs.check-running-allowed.outputs.result == 'true' && contains(github.event.pull_request.labels.*.name, 'tsan')
+    name: Build and test (tsan)
+    uses: ./.github/workflows/build_and_test_on_demand.yaml
+    with:
+      build_target: ${{ needs.create-build-and-test-target-var.outputs.build_target }}
+      test_target: ${{ needs.create-build-and-test-target-var.outputs.test_target }}
+      build_preset: release-tsan
+      vm_name_suffix: "-tsan"
+      test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      run_tests: true
+      cache_update_build: false
+      cache_update_tests: false
+      sleep_after_tests: ${{ contains(github.event.pull_request.labels.*.name, 'sleep') && '7200' || '1' }}
+    secrets: inherit

@@ -7,7 +7,9 @@ import logging
 import argparse
 import yaml
 import random
+import time
 import string
+from typing import Optional
 from github import Github, Auth as GithubAuth
 from yandexcloud import SDK, RetryInterceptor, backoff_linear_with_jitter
 from yandex.cloud.compute.v1.instance_service_pb2_grpc import InstanceServiceStub
@@ -32,14 +34,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def github_output(key, value, secret=False):
+def github_output(key: str, value: str, is_secret: bool = False):
     GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
 
     if GITHUB_OUTPUT:
         with open(GITHUB_OUTPUT, "a") as fp:
             fp.write(f"{key}={value}\n")
 
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if secret else value)
+    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
 
 
 def generate_github_label():
@@ -59,7 +61,7 @@ class KeyValueAction(argparse.Action):
         setattr(namespace, self.dest, kv_dict)
 
 
-def fetch_github_team_public_keys(gh, github_org, team_slug):
+def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
     org = gh.get_organization(github_org)
     team = org.get_team_by_slug(team_slug)
     members = [member for member in team.get_members()]
@@ -82,7 +84,23 @@ def fetch_github_team_public_keys(gh, github_org, team_slug):
     return ssh_keys
 
 
-def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, label):
+def generate_cloud_init_script(
+    user: str,
+    ssh_keys: list[str],
+    owner: str,
+    repo: str,
+    token: str,
+    version: str,
+    label: str,
+):
+    if os.environ.get("GITHUB_REPOSITORY"):
+        label += (
+            f",GITHUB_REPOSITORY_{os.environ['GITHUB_REPOSITORY'].replace('/', '_')}"
+        )
+
+    for item in ["GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_NUMBER"]:
+        if os.environ.get(item):
+            label += f",{item}_{os.environ[item]}"
 
     script = [
         "#!/bin/bash",
@@ -124,7 +142,9 @@ def generate_cloud_init_script(user, ssh_keys, owner, repo, token, version, labe
     )
 
 
-def get_runner_token(github_repo_owner, github_repo, github_token):
+def get_runner_token(
+    github_repo_owner: str, github_repo: str, github_token: str
+) -> str:
     result = requests.post(
         f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/registration-token",
         headers={
@@ -144,7 +164,52 @@ def get_runner_token(github_repo_owner, github_repo, github_token):
         raise ValueError(f"Failed to get runner registration token: {result}")
 
 
-def create_vm(sdk, args):
+def wait_for_runner_registration(
+    client: Github,
+    vm_id: str,
+    github_repo_owner: str,
+    github_repo: str,
+    timeout_sec: int = 10,
+    retries: int = 60,
+) -> Optional[str]:
+    logger.info(
+        "Waiting for runner registration every %d seconds x %d times",
+        timeout_sec,
+        retries,
+    )
+
+    for i in range(retries):
+        runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+        if runner_id is not None:
+            return runner_id
+        else:
+            time.sleep(timeout_sec)
+
+    return None
+
+
+def find_runner_by_name(
+    client: Github, github_repo_owner: str, github_repo: str, vm_id: str
+) -> Optional[str]:
+    runners = client.get_repo(
+        f"{github_repo_owner}/{github_repo}"
+    ).get_self_hosted_runners()
+
+    runner_id = None
+    for runner in runners:
+        if runner.name == vm_id:
+            runner_id = runner.id
+            break
+
+    if runner_id is None:
+        logger.info("Runner with name %s not found", vm_id)
+        return None
+
+    logger.info("Runner with name %s found", vm_id)
+    return runner_id
+
+
+def create_vm(sdk: SDK, args: argparse.Namespace):
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
@@ -253,6 +318,16 @@ def create_vm(sdk, args):
             github_output("local-ipv4", local_ipv4)
             if external_ipv4:
                 github_output("external-ipv4", external_ipv4)
+
+            logger.info("Waiting for VM to be registered as Github Runner")
+            runner_id = wait_for_runner_registration(
+                gh, instance_id, args.github_repo_owner, args.github_repo, 10, 60
+            )
+            if runner_id is not None:
+                logger.info("VM registered as Github Runner %s", runner_id)
+            else:
+                logger.error("Failed to register VM as Github Runner")
+                raise ValueError("Failed to register VM as Github Runner")
         else:
             logger.error("Failed to create VM with request: %s", request)
             logger.error("Response: %s", result)
@@ -260,23 +335,20 @@ def create_vm(sdk, args):
         logger.info("Would create VM with request: %s", request)
 
 
-def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
+def remove_runner_from_github(
+    github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
+):
     github_token = os.environ["GITHUB_TOKEN"]
 
     gh = Github(auth=GithubAuth.Token(github_token))
-    runners = gh.get_repo(
-        f"{github_repo_owner}/{github_repo}"
-    ).get_self_hosted_runners()
 
-    runner_id = None
-    for runner in runners:
-        if runner.name == str(vm_id):
-            runner_id = runner.id
-            break
+    runner_id = find_runner_by_name(gh, github_repo_owner, github_repo, vm_id)
 
     if runner_id is None:
-        logger.info("Runner with name %s not found", vm_id)
-        raise ValueError("Runner with name %s not found", vm_id)
+        # this is not critical error, just log it and be done with it,
+        # removing the VM is more important
+        logger.info("Runner with name %s not found, skipping", vm_id)
+        return
 
     if apply:
         delete_status_code = requests.delete(
@@ -290,11 +362,13 @@ def remove_runner_from_github(github_repo_owner, github_repo, vm_id, apply):
 
         if delete_status_code != 204:
             raise ValueError("Failed to remove runner with name %s", vm_id)
+
+        logger.info("Removed runner with name %s and id %s", vm_id, runner_id)
     else:
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
 
 
-def remove_vm(sdk, args):
+def remove_vm(sdk: SDK, args: argparse.Namespace):
     remove_runner_from_github(
         args.github_repo_owner, args.github_repo, args.id, args.apply
     )
