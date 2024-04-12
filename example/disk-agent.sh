@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-CLUSTER=${CLUSTER:-local}
 DOMAIN=${DOMAIN:-Root}
 IC_PORT=${IC_PORT:-29012}
 GRPC_HOST=${GRPC_HOST:-localhost}

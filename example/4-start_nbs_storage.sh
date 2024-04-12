@@ -30,9 +30,7 @@ start_nbs_agent() {
         exit 1
     fi
 
-    CLUSTER=$CLUSTER \
     IC_PORT=$(($IC_PORT + $1 * 100)) \
-    GRPC_PORT=$GRPC_PORT \
     MON_PORT=$(($MON_PORT + $1 * 100)) \
     LOCATION_FILE=$BIN_DIR/nbs/nbs-location-$1.txt \
     DISK_AGENT_FILE=$BIN_DIR/nbs/nbs-disk-agent-$1.txt \
