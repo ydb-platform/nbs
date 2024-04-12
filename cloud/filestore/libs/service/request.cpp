@@ -118,6 +118,8 @@ static const TString RequestNames[] = {
     "DescribeData",
     "GenerateBlobIds",
     "AddData",
+    "ReadBlob",
+    "WriteBlob",
 };
 
 static_assert(

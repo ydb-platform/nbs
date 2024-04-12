@@ -159,6 +159,8 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(51, DescribeData);
         TEST_REQUEST_TYPE(52, GenerateBlobIds);
         TEST_REQUEST_TYPE(53, AddData);
+        TEST_REQUEST_TYPE(54, ReadBlob);
+        TEST_REQUEST_TYPE(55, WriteBlob);
 
         // Fuse
         TEST_REQUEST_TYPE(1001, Flush);

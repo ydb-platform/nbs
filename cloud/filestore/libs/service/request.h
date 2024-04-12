@@ -130,6 +130,8 @@ enum class EFileStoreRequest
     DescribeData,
     GenerateBlobIds,
     AddData,
+    ReadBlob,
+    WriteBlob,
     MAX
 };
 

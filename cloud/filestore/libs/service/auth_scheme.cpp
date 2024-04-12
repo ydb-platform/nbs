@@ -42,6 +42,8 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::TestLock:
         case EFileStoreRequest::DescribeData:
         case EFileStoreRequest::GenerateBlobIds:
+        case EFileStoreRequest::ReadBlob:
+        case EFileStoreRequest::WriteBlob:
         case EFileStoreRequest::AddData:
             return CreatePermissionList({});
 
