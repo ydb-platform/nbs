@@ -171,6 +171,14 @@ bool TNonreplicatedPartitionActor::InitRequests(
     request->Timeout = GetMinRequestTimeout();
     for (const auto& dr: *deviceRequests) {
         const auto& deviceStat = DeviceStats[dr.DeviceIdx];
+
+        LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION,
+                "InitRequests: DeviceIndex=" << dr.DeviceIdx
+                << ", ExpectedClientBackoff=" << deviceStat.ExpectedClientBackoff
+                << ", TimedOutStateDuration=" << deviceStat.TimedOutStateDuration
+                << ", CurrentTimeout=" << deviceStat.CurrentTimeout
+                << ", LastTimeoutTs=" << deviceStat.LastTimeoutTs);
+
         auto maxTimedOutDeviceStateDuration =
             PartConfig->GetMaxTimedOutDeviceStateDuration();
         if (!maxTimedOutDeviceStateDuration) {
@@ -189,9 +197,11 @@ bool TNonreplicatedPartitionActor::InitRequests(
                 BrokenTransitionTs = ctx.Now();
             }
             cooldownPassed = IOErrorCooldownPassed(ctx.Now());
+            LOG_WARN(ctx, TBlockStoreComponents::PARTITION, "broken device requested");
         } else if (dr.Device.GetNodeId() == 0) {
             errorMessage = TStringBuilder() << "unavailable device requested: "
                 << dr.Device.GetDeviceUUID();
+            LOG_WARN(ctx, TBlockStoreComponents::PARTITION, "unavailable device requested");
         }
 
         if (errorMessage) {
@@ -326,16 +336,9 @@ void TNonreplicatedPartitionActor::HandleWakeup(
             if (!deviceStat.CurrentTimeout.GetValue()) {
                 deviceStat.CurrentTimeout = GetMinRequestTimeout();
             }
-            deviceStat.CurrentTimeout = Min(
-                GetMaxRequestTimeout(),
-                deviceStat.CurrentTimeout + Min(
-                    request.Timeout,
-                    now - deviceStat.LastTimeoutTs
-                )
-            );
             deviceStat.LastTimeoutTs = now;
 
-            LOG_DEBUG_S(ctx, TBlockStoreComponents::PARTITION,
+            LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
                 "Updated deviceStat: DeviceIndex=" << i
                 << ", ExpectedClientBackoff=" << deviceStat.ExpectedClientBackoff
                 << ", TimedOutStateDuration=" << deviceStat.TimedOutStateDuration
