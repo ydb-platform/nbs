@@ -22,7 +22,8 @@ import (
 
 const topologyKeyNode = "topology.nbs.csi/node"
 
-const socketName = "nbs-volume.sock"
+const nbsSocketName = "nbs.sock"
+const nfsSocketName = "nfs.sock"
 
 var capabilities = []*csi.NodeServiceCapability{
 	&csi.NodeServiceCapability{
@@ -307,7 +308,7 @@ func (s *nodeService) startNbsEndpoint(
 		return nil, err
 	}
 
-	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
+	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, nbsSocketName)
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
@@ -341,7 +342,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return status.Errorf(codes.Internal, "NFS client wasn't created")
 	}
 
-	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
+	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, nfsSocketName)
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       socketPath,
@@ -367,22 +368,24 @@ func (s *nodeService) nodeUnpublishVolume(
 		return err
 	}
 
-	// Trying to stop both NBS and NFS endpoints,
-	// because the endpoint's backend service is unknown here.
-	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+	podSocketDir := filepath.Join(s.podSocketsDir, req.VolumeId)
+	nodeSocketDir := filepath.Join(s.nbsSocketsDir, req.VolumeId)
 
-	socketPath := filepath.Join(s.nbsSocketsDir, req.VolumeId, socketName)
-	_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-		UnixSocketPath: socketPath,
-	})
-	if err != nil {
-		return status.Errorf(codes.Internal,
-			"Failed to stop nbs endpoint: %+v", err)
+	_, err := os.Stat(filepath.Join(podSocketDir, nbsSocketName))
+	if os.IsExist(err) {
+		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(nodeSocketDir, nbsSocketName),
+		})
+		if err != nil {
+			return status.Errorf(codes.Internal,
+				"Failed to stop nbs endpoint: %+v", err)
+		}
 	}
 
-	if s.nfsClient != nil {
+	_, err = os.Stat(filepath.Join(podSocketDir, nfsSocketName))
+	if os.IsExist(err) {
 		_, err = s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: socketPath,
+			SocketPath: filepath.Join(nodeSocketDir, nfsSocketName),
 		})
 		if err != nil {
 			return status.Errorf(codes.Internal,
@@ -390,8 +393,7 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
-	return os.RemoveAll(endpointDir)
+	return os.RemoveAll(podSocketDir)
 }
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
