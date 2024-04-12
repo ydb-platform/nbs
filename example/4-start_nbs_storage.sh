@@ -29,12 +29,13 @@ start_nbs_agent() {
         exit 1
     fi
 
+    source ./prepare_disk-agent.sh || exit 1
+
     IC_PORT=$(($IC_PORT + $1 * 100)) \
     MON_PORT=$(($MON_PORT + $1 * 100)) \
-    LOCATION_FILE=$BIN_DIR/nbs/nbs-location-$1.txt \
-    DISK_AGENT_FILE=$BIN_DIR/nbs/nbs-disk-agent-$1.txt \
-    ./disk-agent.sh \
-        --load-configs-from-cms >logs/remote-da$1.log 2>&1 &
+    ./start_disk-agent \
+        --location-file $BIN_DIR/nbs/nbs-location-$1.txt \
+        --disk-agent-file $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &
 }
 
 start_nbs_agent 1
