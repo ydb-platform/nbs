@@ -45,8 +45,10 @@ spec:
         - name: disk-manager-config
           mountPath: "{{ $serverConfigPath }}"
           subPath: "{{ $serverConfigName }}"
+        {{- if eq .Values.serviceKind "controlplane" }}
         - name: disk-manager-config
           mountPath: "{{ $clientConfigPath }}"
           subPath: "{{ $clientConfigName }}"
+        {{- end }}
         ports:
           - containerPort: {{ .Values.service.internalPort | int }}
