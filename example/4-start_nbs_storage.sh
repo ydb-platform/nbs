@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 IC_PORT=${IC_PORT:-29012}
-GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8769}
 
 find_bin_dir() {
