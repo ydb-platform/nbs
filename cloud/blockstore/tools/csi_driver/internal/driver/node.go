@@ -398,11 +398,6 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
 	endpointDir := filepath.Join(s.podSocketsDir, req.VolumeId)
 
-	podSocketPath := filepath.Join(endpointDir, socketName)
-	if err := os.Chmod(podSocketPath, 0666); err != nil {
-		return err
-	}
-
 	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
 	// "If the disk.img image file has not been created manually before starting a VM
 	// then it will be created automatically with the PersistentVolumeClaim size."
