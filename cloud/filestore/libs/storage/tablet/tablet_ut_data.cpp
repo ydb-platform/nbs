@@ -4193,6 +4193,48 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             response->GetErrorReason());
     }
 
+    TABLET_TEST_16K(ShouldDescribeDataUsingReadAhead)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetReadAheadCacheRangeSize(1_MB);
+        storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        ui64 handle = CreateHandle(tablet, id);
+        for (ui32 i = 0; i < 32; ++i) {
+            tablet.WriteData(handle, i * 1_MB, 1_MB, '0');
+        }
+
+        for (ui32 i = 0; i < 32 * 8; ++i) {
+            const ui64 len = 128_KB;
+            const ui64 offset = i * len;
+            auto response = tablet.DescribeData(handle, offset, len);
+            UNIT_ASSERT_VALUES_EQUAL(
+                32_MB,
+                response->Record.GetFileSize());
+
+            const auto& blobPieces = response->Record.GetBlobPieces();
+            for (const auto& p: blobPieces) {
+                UNIT_ASSERT_VALUES_EQUAL(1, p.RangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(offset, p.GetRanges(0).GetOffset());
+                UNIT_ASSERT_VALUES_EQUAL(len, p.GetRanges(0).GetLength());
+            }
+        }
+    }
+
     void DoTestWriteRequestCancellationOnTabletReboot(
         bool writeBatchEnabled,
         const TFileSystemConfig& tabletConfig)

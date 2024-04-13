@@ -64,12 +64,13 @@ void FillDescribeDataResponse(
     const TTabletStorageInfo& info,
     const ui64 tabletId,
     const ui32 blockSize,
-    TTxIndexTablet::TReadData& args,
-    NProtoPrivate::TDescribeDataResponse& record)
+    const TByteRange& responseRange,
+    const TTxIndexTablet::TReadData& args,
+    NProtoPrivate::TDescribeDataResponse* record)
 {
     // metadata
 
-    record.SetFileSize(args.Node->Attrs.GetSize());
+    record->SetFileSize(args.Node->Attrs.GetSize());
 
     // data
 
@@ -79,8 +80,13 @@ void FillDescribeDataResponse(
     NProtoPrivate::TFreshDataRange freshRange;
     for (ui64 i = 0; i < args.Blocks.size(); ++i) {
         const auto& block = args.Blocks[i];
-        const auto& bytes = args.Bytes[i];
         const ui64 curOffset = args.ActualRange().Offset + i * blockSize;
+        const TByteRange blockByteRange(curOffset, blockSize, blockSize);
+        if (!responseRange.Overlaps(blockByteRange)) {
+            continue;
+        }
+
+        const auto& bytes = args.Bytes[i];
 
         if (!block.BlobId && block.MinCommitId) {
             // it's a fresh block
@@ -88,7 +94,7 @@ void FillDescribeDataResponse(
                 ui64 endOffset =
                     freshRange.GetOffset() + freshRange.GetContent().size();
                 if (endOffset < curOffset) {
-                    *record.AddFreshDataRanges() = std::move(freshRange);
+                    *record->AddFreshDataRanges() = std::move(freshRange);
                     freshRange.Clear();
                 }
             }
@@ -108,7 +114,7 @@ void FillDescribeDataResponse(
 
         if (freshRange.GetContent()) {
             // adding our current fresh range to the response
-            *record.AddFreshDataRanges() = std::move(freshRange);
+            *record->AddFreshDataRanges() = std::move(freshRange);
             freshRange.Clear();
         }
 
@@ -119,20 +125,20 @@ void FillDescribeDataResponse(
 
         // adding all fresh byte ranges that intersect with our current
         // block to the response
-        for (auto& interval: bytes.Intervals) {
-            auto& byteRange = *record.AddFreshDataRanges();
+        for (const auto& interval: bytes.Intervals) {
+            auto& byteRange = *record->AddFreshDataRanges();
             byteRange.SetOffset(curOffset + interval.OffsetInBlock);
-            byteRange.SetContent(std::move(interval.Data));
+            byteRange.SetContent(interval.Data);
         }
     }
 
     if (freshRange.GetContent()) {
-        *record.AddFreshDataRanges() = std::move(freshRange);
+        *record->AddFreshDataRanges() = std::move(freshRange);
         freshRange.Clear();
     }
 
     for (const auto& x: blobBlocks) {
-        auto& piece = *record.AddBlobPieces();
+        auto& piece = *record->AddBlobPieces();
         LogoBlobIDFromLogoBlobID(
             MakeBlobId(tabletId, x.first),
             piece.MutableBlobId());
@@ -607,6 +613,7 @@ void TIndexTabletActor::HandleDescribeData(
     const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
     NProtoPrivate::TDescribeDataResponse result;
     if (TryFillDescribeResult(nodeId, byteRange, &result)) {
+        // TODO: cache hit metric
         RegisterDescribe(nodeId, byteRange);
 
         auto response =
@@ -685,6 +692,9 @@ bool TIndexTabletActor::PrepareTx_ReadData(
             args.AlignedByteRange);
         if (readAheadRange.Defined()) {
             args.ReadAheadRange.ConstructInPlace(*readAheadRange);
+            args.Blocks.resize(args.ActualRange().BlockCount());
+            args.Bytes.resize(args.ActualRange().BlockCount());
+            args.Buffer = CreateLazyBlockBuffer(args.ActualRange());
         }
     }
 
@@ -785,6 +795,18 @@ void TIndexTabletActor::CompleteTx_ReadData(
     RemoveTransaction(*args.RequestInfo);
 
     if (args.DescribeOnly && !HasError(args.Error)) {
+        if (args.ReadAheadRange) {
+            NProtoPrivate::TDescribeDataResponse record;
+            FillDescribeDataResponse(
+                *Info(),
+                TabletID(),
+                GetBlockSize(),
+                *args.ReadAheadRange,
+                args,
+                &record);
+            RegisterReadAheadResult(args.NodeId, *args.ReadAheadRange, record);
+        }
+
         auto response =
             std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
         auto& record = response->Record;
@@ -792,13 +814,9 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *Info(),
             TabletID(),
             GetBlockSize(),
+            args.AlignedByteRange,
             args,
-            record);
-
-        if (args.ReadAheadRange) {
-            RegisterReadAheadResult(args.NodeId, *args.ReadAheadRange, record);
-            // TODO: cut extra data from the response returned to the client
-        }
+            &record);
 
         CompleteResponse<TEvIndexTablet::TDescribeDataMethod>(
             response->Record,
