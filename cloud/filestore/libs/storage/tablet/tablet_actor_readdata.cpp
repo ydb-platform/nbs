@@ -80,14 +80,13 @@ void FillDescribeDataResponse(
     NProtoPrivate::TFreshDataRange freshRange;
     for (ui64 i = 0; i < args.Blocks.size(); ++i) {
         const auto& block = args.Blocks[i];
-        const auto blockByteRange =
-            TByteRange::BlockRange(block.BlockIndex, blockSize);
+        const ui64 curOffset = args.ActualRange().Offset + i * blockSize;
+        const TByteRange blockByteRange(curOffset, blockSize, blockSize);
         if (!responseRange.Overlaps(blockByteRange)) {
             continue;
         }
 
         const auto& bytes = args.Bytes[i];
-        const ui64 curOffset = args.ActualRange().Offset + i * blockSize;
 
         if (!block.BlobId && block.MinCommitId) {
             // it's a fresh block
