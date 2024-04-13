@@ -81,8 +81,8 @@ bool TReadAheadCache::TryFillResult(
 
     for (ui32 i = 0; i < nodeState->DescribeResults.Size(); ++i) {
         const auto& result = nodeState->DescribeResults.Back(i);
-        if (result.Range.Overlaps(range)) {
-            *response = result.Response;
+        if (result.Range.Contains(range)) {
+            FilterResult(range, result.Response, response);
             return true;
         }
     }
@@ -125,7 +125,7 @@ void TReadAheadCache::RegisterResult(
 TReadAheadCache::TNodeState& TReadAheadCache::Access(ui64 nodeId)
 {
     // TODO: LRU eviction
-    if (NodeStates.size() > MaxNodes) {
+    if (NodeStates.size() >= MaxNodes && !NodeStates.contains(nodeId)) {
         NodeStates.clear();
     }
 
@@ -135,6 +135,60 @@ TReadAheadCache::TNodeState& TReadAheadCache::Access(ui64 nodeId)
     }
 
     return nodeState;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void FilterResult(
+    const TByteRange& range,
+    const NProtoPrivate::TDescribeDataResponse& src,
+    NProtoPrivate::TDescribeDataResponse* dst)
+{
+    dst->SetFileSize(src.GetFileSize());
+    for (const auto& freshRange: src.GetFreshDataRanges()) {
+        const TByteRange freshByteRange(
+            freshRange.GetOffset(),
+            freshRange.GetContent().size(),
+            range.BlockSize);
+
+        auto intersection = range.Intersect(freshByteRange);
+        if (!intersection.Length) {
+            continue;
+        }
+
+        auto* dstRange = dst->AddFreshDataRanges();
+        dstRange->SetOffset(intersection.Offset);
+        const ui64 offsetDiff = intersection.Offset - freshByteRange.Offset;
+        *dstRange->MutableContent() =
+            freshRange.GetContent().substr(offsetDiff, intersection.Length);
+    }
+
+    for (const auto& blobPiece: src.GetBlobPieces()) {
+        NProtoPrivate::TBlobPiece dstPiece;
+        for (const auto& blobRange: blobPiece.GetRanges()) {
+            const TByteRange blobByteRange(
+                blobRange.GetOffset(),
+                blobRange.GetLength(),
+                range.BlockSize);
+
+            auto intersection = range.Intersect(blobByteRange);
+            if (!intersection.Length) {
+                continue;
+            }
+
+            auto* dstRange = dstPiece.AddRanges();
+            dstRange->SetOffset(intersection.Offset);
+            dstRange->SetLength(intersection.Length);
+            const ui64 offsetDiff = intersection.Offset - blobByteRange.Offset;
+            dstRange->SetBlobOffset(blobRange.GetBlobOffset() + offsetDiff);
+        }
+
+        if (dstPiece.RangesSize()) {
+            *dstPiece.MutableBlobId() = blobPiece.GetBlobId();
+            dstPiece.SetBSGroupId(blobPiece.GetBSGroupId());
+            *dst->AddBlobPieces() = std::move(dstPiece);
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

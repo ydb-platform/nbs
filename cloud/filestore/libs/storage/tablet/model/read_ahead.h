@@ -37,12 +37,12 @@ public:
             return Offset + Length;
         }
 
-        [[nodiscard]] bool Overlaps(const TByteRange& byteRange) const
+        [[nodiscard]] bool Contains(const TByteRange& byteRange) const
         {
             return TByteRange(
                 Offset,
                 Length,
-                byteRange.BlockSize).Overlaps(byteRange);
+                byteRange.BlockSize).Contains(byteRange);
         }
     };
 
@@ -105,8 +105,20 @@ public:
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
 
+    ui32 CacheSize() const
+    {
+        return NodeStates.size();
+    }
+
 private:
     TNodeState& Access(ui64 nodeId);
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+void FilterResult(
+    const TByteRange& range,
+    const NProtoPrivate::TDescribeDataResponse& src,
+    NProtoPrivate::TDescribeDataResponse* dst);
 
 }   // namespace NCloud::NFileStore::NStorage
