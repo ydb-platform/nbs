@@ -442,6 +442,7 @@ class FioTestsRunnerNbs(FioTestsRunner):
                             ycp,
                             instance)
                 except Exception as e:
+                    self._logger.error(e)
                     self._results_processor.publish_test_report(
                         instance.compute_node,
                         disk.id,
@@ -626,6 +627,7 @@ class FioTestsRunnerNfs(FioTestsRunner):
 
                         self._unmount_fs(ycp, instance.ip)
                 except Exception as e:
+                    self._logger.error(e)
                     self._results_processor.publish_test_report(
                         instance.compute_node,
                         fs.id,
