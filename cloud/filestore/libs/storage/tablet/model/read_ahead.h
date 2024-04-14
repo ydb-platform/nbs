@@ -16,6 +16,13 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TReadAheadCacheStats
+{
+    ui64 NodeCount = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadAheadCache
 {
 public:
@@ -105,9 +112,9 @@ public:
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
 
-    ui32 CacheSize() const
+    [[nodiscard]] TReadAheadCacheStats GetStats() const
     {
-        return NodeStates.size();
+        return {.NodeCount = NodeStates.size()};
     }
 
 private:

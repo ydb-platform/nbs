@@ -363,6 +363,11 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
     }
 
+    auto CreateUpdateCounters()
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvUpdateCounters>();
+    }
+
     //
     // TEvService
     //
