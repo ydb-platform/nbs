@@ -813,7 +813,7 @@ private:
         case EEndpointType::Rdma: {
             DevicePath path(
                 "rdma",
-                device.GetRdmaEndpoint().GetHost(),
+                "192.168.1.36",
                 device.GetRdmaEndpoint().GetPort(),
                 device.GetDeviceUUID());
             return path.Serialize();

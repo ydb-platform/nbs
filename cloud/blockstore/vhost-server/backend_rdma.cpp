@@ -166,7 +166,9 @@ TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
 
 vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 {
-    STORAGE_INFO("Initializing RDMA backend");
+    STORAGE_INFO(
+        "Initializing RDMA backend, "
+        << "thread=" << options.RdmaClient.Thread);
 
     Scheduler = CreateScheduler();
     Timer = CreateWallClockTimer();
@@ -195,7 +197,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     StorageProvider = NStorage::CreateRdmaStorageProvider(
         CreateServerStatsStub(),
         RdmaClient,
-        NStorage::ERdmaTaskQueueOpt::DontUse);
+        options.RdmaClient.Thread ? NStorage::ERdmaTaskQueueOpt::Use : NStorage::ERdmaTaskQueueOpt::DontUse);
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     Volume.SetBlockSize(BlockSize);

@@ -164,6 +164,7 @@ NProto::TError TVolumeActor::Throttle(
     const typename TMethod::TRequest::TPtr& ev,
     bool throttlingDisabled)
 {
+    return MakeError(S_OK); // no throttling
     static const auto ok = MakeError(S_OK);
     static const auto err
         = MakeError(E_REJECTED, "Throttled");  // TODO: E_BS_THROTTLED;

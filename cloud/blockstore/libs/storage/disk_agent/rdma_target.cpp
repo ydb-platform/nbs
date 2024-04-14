@@ -953,7 +953,7 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
         auto endpoint = Server->StartEndpoint(
-            Config.GetHost(),
+            "192.168.1.36",
             Config.GetPort(),
             Handler);
 

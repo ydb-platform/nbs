@@ -120,6 +120,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResultDef(&RdmaClient.MaxBufferSize);
 
+    opts.AddLongOption("rdma-thread", "use extra thread")
+        .NoArgument()
+        .SetFlag(&RdmaClient.Thread);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {

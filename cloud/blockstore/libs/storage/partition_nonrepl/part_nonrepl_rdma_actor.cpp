@@ -56,7 +56,7 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
         }
 
         ep = RdmaClient->StartEndpoint(
-            d.GetAgentId(),
+            "192.168.1.36",
             Config->GetRdmaTargetPort());
     }
 
