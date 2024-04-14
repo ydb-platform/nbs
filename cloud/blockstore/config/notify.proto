@@ -16,5 +16,5 @@ message TNotifyConfig
     optional string CaCertFilename = 3;
     
     // Version number.
-    optional int32 Version = 4;
+    optional uint32 Version = 4;
 }

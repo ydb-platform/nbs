@@ -11,7 +11,7 @@ namespace {
 #define BLOCKSTORE_NOTIFY_CONFIG(xxx)                                           \
     xxx(Endpoint,       TString,            "")                                 \
     xxx(CaCertFilename, TString,            "")                                 \
-    xxx(Version,        NProtoBuf::int32,   1 )                                 \
+    xxx(Version,        ui32,               1 )                                 \
 
 // BLOCKSTORE_NOTIFY_CONFIG
 
