@@ -545,7 +545,10 @@ void TIndexTabletState::WriteMixedBlocks(
 {
     ui32 rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex, blocksCount);
 
-    auto blockList = TBlockList::EncodeBlocks(block, blocksCount, GetAllocator(EAllocatorTag::BlockList));
+    auto blockList = TBlockList::EncodeBlocks(
+        block,
+        blocksCount,
+        GetAllocator(EAllocatorTag::BlockList));
     db.WriteMixedBlocks(rangeId, blobId, blockList, 0, 0);
 
     IncrementMixedBlobsCount(db);
@@ -560,6 +563,8 @@ void TIndexTabletState::WriteMixedBlocks(
     }
 
     AddNewBlob(db, blobId);
+
+    InvalidateReadAheadCache(block.NodeId);
 }
 
 bool TIndexTabletState::WriteMixedBlocks(
@@ -608,7 +613,9 @@ bool TIndexTabletState::WriteMixedBlocks(
         AddCheckpointBlob(db, checkpointId, rangeId, blobId);
     }
 
-    auto blockList = TBlockList::EncodeBlocks(blocks, GetAllocator(EAllocatorTag::BlockList));
+    auto blockList = TBlockList::EncodeBlocks(
+        blocks,
+        GetAllocator(EAllocatorTag::BlockList));
 
     db.WriteMixedBlocks(
         rangeId,
@@ -631,6 +638,8 @@ bool TIndexTabletState::WriteMixedBlocks(
             });
         TABLET_VERIFY(added);
     }
+
+    InvalidateReadAheadCache(blocks[0].NodeId);
 
     return true;
 }
@@ -1131,6 +1140,11 @@ void TIndexTabletState::RegisterReadAheadResult(
     const NProtoPrivate::TDescribeDataResponse& result)
 {
     Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
+}
+
+TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
+{
+    return Impl->ReadAheadCache.GetStats();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

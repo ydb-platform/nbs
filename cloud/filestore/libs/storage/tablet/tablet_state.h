@@ -19,6 +19,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
+#include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
@@ -1001,6 +1002,7 @@ public:
         ui64 nodeId,
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
+    TReadAheadCacheStats CalculateReadAheadCacheStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -613,7 +613,6 @@ void TIndexTabletActor::HandleDescribeData(
     const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
     NProtoPrivate::TDescribeDataResponse result;
     if (TryFillDescribeResult(nodeId, byteRange, &result)) {
-        // TODO: cache hit metric
         RegisterDescribe(nodeId, byteRange);
 
         auto response =
@@ -627,6 +626,7 @@ void TIndexTabletActor::HandleDescribeData(
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
+        Metrics.ReadAheadCacheHitCount.fetch_add(1, std::memory_order_relaxed);
         Metrics.DescribeData.Count.fetch_add(1, std::memory_order_relaxed);
         Metrics.DescribeData.RequestBytes.fetch_add(
             byteRange.Length,

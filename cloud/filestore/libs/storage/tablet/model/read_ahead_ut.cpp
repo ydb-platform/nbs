@@ -234,7 +234,9 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
             ++nodeId;
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(TDefaultCache::MaxNodes, cache.CacheSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDefaultCache::MaxNodes,
+            cache.GetStats().NodeCount);
 
         while (nodeId < 2 * TDefaultCache::MaxNodes + 1) {
             for (ui32 rangeId = 0;

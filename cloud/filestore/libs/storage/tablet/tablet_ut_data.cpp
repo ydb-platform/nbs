@@ -4200,6 +4200,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetReadAheadCacheMaxResultsPerNode(32);
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
@@ -4214,16 +4215,17 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
 
         ui64 handle = CreateHandle(tablet, id);
-        for (ui32 i = 0; i < 32; ++i) {
+        ui32 mbs = 32;
+        for (ui32 i = 0; i < mbs; ++i) {
             tablet.WriteData(handle, i * 1_MB, 1_MB, '0');
         }
 
-        for (ui32 i = 0; i < 32 * 8; ++i) {
+        for (ui32 i = 0; i < mbs * 8; ++i) {
             const ui64 len = 128_KB;
             const ui64 offset = i * len;
             auto response = tablet.DescribeData(handle, offset, len);
             UNIT_ASSERT_VALUES_EQUAL(
-                32_MB,
+                1_MB * mbs,
                 response->Record.GetFileSize());
 
             const auto& blobPieces = response->Record.GetBlobPieces();
@@ -4232,6 +4234,47 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 UNIT_ASSERT_VALUES_EQUAL(offset, p.GetRanges(0).GetOffset());
                 UNIT_ASSERT_VALUES_EQUAL(len, p.GetRanges(0).GetLength());
             }
+        }
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            TTestRegistryVisitor visitor;
+            // clang-format off
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "ReadAheadCacheHitCount"},
+                    {"filesystem", "test"}
+                // first MB not in cache, first 128_KB of each of the next MBs not
+                // in cache as well
+                }, (mbs - 1) * 7},
+                {{
+                    {"sensor", "ReadAheadCacheNodeCount"},
+                    {"filesystem", "test"}
+                }, 1},
+            });
+            // clang-format on
+        }
+
+        // cache invalidation
+        tablet.WriteData(handle, 32_MB, 1_MB, '0');
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            TTestRegistryVisitor visitor;
+            // clang-format off
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "ReadAheadCacheNodeCount"},
+                    {"filesystem", "test"}
+                }, 0},
+            });
+            // clang-format on
         }
     }
 

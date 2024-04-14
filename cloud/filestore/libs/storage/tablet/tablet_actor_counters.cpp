@@ -101,6 +101,13 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UnwritableChannelCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(ChannelsToMoveCount, EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        ReadAheadCacheHitCount,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        ReadAheadCacheNodeCount,
+        EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
@@ -224,7 +231,8 @@ void TIndexTabletActor::TMetrics::Update(
     const NProto::TFileStorePerformanceProfile& performanceProfile,
     const TCompactionMapStats& compactionStats,
     const TSessionsStats& sessionsStats,
-    const TChannelsStats& channelsStats)
+    const TChannelsStats& channelsStats,
+    const TReadAheadCacheStats& readAheadStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -276,6 +284,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(WritableChannelCount, channelsStats.WritableChannelCount);
     Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
+    Store(ReadAheadCacheNodeCount, readAheadStats.NodeCount);
 
     BusyIdleCalc.OnUpdateStats();
 }
@@ -322,7 +331,8 @@ void TIndexTabletActor::RegisterStatCounters()
         GetPerformanceProfile(),
         GetCompactionMapStats(1),
         CalculateSessionsStats(),
-        CalculateChannelsStats());
+        CalculateChannelsStats(),
+        CalculateReadAheadCacheStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -355,7 +365,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetPerformanceProfile(),
         GetCompactionMapStats(1),
         CalculateSessionsStats(),
-        CalculateChannelsStats());
+        CalculateChannelsStats(),
+        CalculateReadAheadCacheStats());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
