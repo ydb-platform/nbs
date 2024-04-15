@@ -7,6 +7,125 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TResumeDeviceActor final: public TActorBootstrapped<TResumeDeviceActor>
+{
+private:
+    const TActorId Owner;
+    const TRequestInfoPtr RequestInfo;
+    NProto::TResumeDeviceRequest Request;
+
+public:
+    TResumeDeviceActor(
+        const TActorId& owner,
+        TRequestInfoPtr requestInfo,
+        NProto::TResumeDeviceRequest request);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    void ReplyAndDie(const TActorContext& ctx, NProto::TError error = {});
+
+private:
+    STFUNC(StateWork);
+
+    void HandleResponse(
+        const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr&
+            response,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResumeDeviceActor::TResumeDeviceActor(
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    NProto::TResumeDeviceRequest request)
+    : Owner(owner)
+    , RequestInfo(std::move(requestInfo))
+    , Request(std::move(request))
+{}
+
+void TResumeDeviceActor::Bootstrap(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
+
+    auto request = std::make_unique<
+        TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateRequest>(
+        Request.GetAgentId(),
+        Request.GetPath(),
+        NProto::EDeviceState::DEVICE_STATE_ONLINE,
+        /*shouldResumeDevice=*/true,
+        Request.GetDryRun());
+
+    NCloud::Send(ctx, Owner, std::move(request));
+}
+
+void TResumeDeviceActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
+{
+    auto response =
+        std::make_unique<TEvService::TEvResumeDeviceResponse>(std::move(error));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
+}
+
+void TResumeDeviceActor::HandleResponse(
+    const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>();
+    *response->Record.MutableError() = msg->GetError();
+    if (HasError(msg->GetError()) && !Request.GetDryRun()) {
+        ReportDiskRegistryResumeDeviceFailed(
+            TStringBuilder() << "AgentId: " << Request.GetAgentId()
+                             << "; Path: " << Request.GetPath()
+                             << "; Error: " << msg->GetErrorReason());
+    }
+
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
+}
+
+void TResumeDeviceActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "Tablet is dead"));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TResumeDeviceActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse,
+            HandleResponse);
+
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::DISK_REGISTRY_WORKER);
+            break;
+    }
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleResumeDevice(
@@ -16,71 +135,29 @@ void TDiskRegistryActor::HandleResumeDevice(
     const auto* msg = ev->Get();
     const TString& agentId = msg->Record.GetAgentId();
     const TString& path = msg->Record.GetPath();
+    bool dryRun = msg->Record.GetDryRun();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ResumeDevice request: AgentId=%s Path=%s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "[%lu] Received ResumeDevice request: AgentId=%s Path=%s DryRun=%d",
         TabletID(),
         agentId.c_str(),
-        path.c_str());
-
-    auto deviceIds = State->GetDeviceIds(agentId, path);
-
-    if (deviceIds.empty()) {
-        auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>(
-            MakeError(E_NOT_FOUND, TStringBuilder() <<
-                "devices not found: " << agentId << ":" << path));
-
-        NCloud::Reply(ctx, *ev, std::move(response));
-
-        return;
-    }
+        path.c_str(),
+        dryRun);
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
-        msg->CallContext);
+        MakeIntrusive<TCallContext>());
 
-    ExecuteTx<TResumeDevices>(
+    auto actor = NCloud::Register<TResumeDeviceActor>(
         ctx,
+        SelfId(),
         std::move(requestInfo),
-        std::move(deviceIds));
-}
+        ev->Get()->Record);
 
-bool TDiskRegistryActor::PrepareResumeDevices(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TResumeDevices& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
-
-    return true;
-}
-
-void TDiskRegistryActor::ExecuteResumeDevices(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxDiskRegistry::TResumeDevices& args)
-{
-    Y_UNUSED(ctx);
-
-    TDiskRegistryDatabase db(tx.DB);
-
-    State->ResumeDevices(ctx.Now(), db, args.DeviceIds);
-}
-
-void TDiskRegistryActor::CompleteResumeDevices(
-    const TActorContext& ctx,
-    TTxDiskRegistry::TResumeDevices& args)
-{
-    auto response = std::make_unique<TEvService::TEvResumeDeviceResponse>();
-
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    SecureErase(ctx);
-
-    StartMigration(ctx);
+    Actors.insert(actor);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

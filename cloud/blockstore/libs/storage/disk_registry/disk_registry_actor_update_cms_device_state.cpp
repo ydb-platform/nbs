@@ -37,6 +37,7 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
         std::move(msg->Host),
         std::move(msg->Path),
         msg->State,
+        msg->ShouldResumeDevice,
         msg->DryRun);
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,6 +69,7 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostDeviceState(
         args.Path,
         args.State,
         args.TxTs,
+        args.ShouldResumeDevice,
         args.DryRun);
 
     args.Error = std::move(result.Error);

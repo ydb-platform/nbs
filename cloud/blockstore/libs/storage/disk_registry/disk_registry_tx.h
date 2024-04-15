@@ -619,6 +619,7 @@ struct TTxDiskRegistry
         const TString Host;
         const TString Path;
         const NProto::EDeviceState State;
+        const bool ShouldResumeDevice;
         const bool DryRun;
 
         NProto::TError Error;
@@ -631,11 +632,13 @@ struct TTxDiskRegistry
                 TString host,
                 TString path,
                 NProto::EDeviceState state,
+                bool shouldResumeDevice,
                 bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , Path(std::move(path))
             , State(state)
+            , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)
         {}
 

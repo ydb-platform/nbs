@@ -19,6 +19,7 @@ class TResumeDeviceCommand final
 private:
     TString AgentId;
     TString Path;
+    bool DryRun = false;
 
 public:
     TResumeDeviceCommand(IBlockStorePtr client)
@@ -31,6 +32,10 @@ public:
         Opts.AddLongOption("path", "device path")
             .RequiredArgument("STR")
             .StoreResult(&Path);
+
+        Opts.AddLongOption("dry-run", "dry run")
+            .NoArgument()
+            .SetFlag(&DryRun);
     }
 
 protected:
@@ -46,6 +51,7 @@ protected:
         } else {
             request->SetAgentId(AgentId);
             request->SetPath(Path);
+            request->SetDryRun(DryRun);
         }
 
         STORAGE_DEBUG("Sending ResumeDevice request");

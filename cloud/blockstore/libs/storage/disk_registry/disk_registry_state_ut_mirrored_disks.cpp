@@ -1173,6 +1173,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 "dev-3",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
@@ -2164,6 +2165,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
                     changeStateTs,
+                    false,  // shouldResumeDevice
                     false); // dryRun
 
                 error = result.Error;
@@ -2279,6 +2281,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                     "dev-1",
                     NProto::DEVICE_STATE_WARNING,
                     changeStateTs,
+                    false,  // shouldResumeDevice
                     false); // dryRun
 
                 error = result.Error;

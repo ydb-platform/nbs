@@ -232,11 +232,13 @@ func (client *safeClient) ResumeDevice(
 	ctx context.Context,
 	agentId string,
 	path string,
+	dryRun bool,
 ) error {
 
 	req := &protos.TResumeDeviceRequest{
 		AgentId: agentId,
 		Path:    path,
+		DryRun:  dryRun,
 	}
 
 	_, err := client.Impl.ResumeDevice(ctx, req)
