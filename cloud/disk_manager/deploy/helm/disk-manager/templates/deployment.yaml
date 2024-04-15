@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
   name: {{ $fullname }}
-  namespace: {{ .Values.namespace | default "disk-manager" }}
   labels:
     app: {{ $fullname }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
