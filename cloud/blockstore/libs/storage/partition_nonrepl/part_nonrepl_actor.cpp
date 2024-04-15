@@ -335,7 +335,7 @@ void TNonreplicatedPartitionActor::HandleWakeup(
             );
             deviceStat.LastTimeoutTs = now;
 
-            LOG_DEBUG_S(ctx, TBlockStoreComponents::PARTITION,
+            LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
                 "Updated deviceStat: DeviceIndex=" << i
                 << ", ExpectedClientBackoff=" << deviceStat.ExpectedClientBackoff
                 << ", TimedOutStateDuration=" << deviceStat.TimedOutStateDuration
