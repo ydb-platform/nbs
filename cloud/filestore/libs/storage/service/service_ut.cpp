@@ -1816,6 +1816,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 4,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            // 1MB = 4 blobs of 256KB. Read is performed twice.
+            UNIT_ASSERT_VALUES_EQUAL(
+                8,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
@@ -2154,6 +2162,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.AssertWriteDataFailed(headers, fs, nodeId, handle, DefaultBlockSize * 641, data);
         auto error = STATUS_FROM_CODE(response->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL((ui32)NProto::E_FS_NOSPC, error);
+
+        auto counters = env.GetCounters()
+                            ->FindSubgroup("component", "service_fs")
+                            ->FindSubgroup("host", "cluster")
+                            ->FindSubgroup("filesystem", fs)
+                            ->FindSubgroup("client", "client");
+        {
+            auto subgroup = counters->FindSubgroup("request", "GenerateBlobIds");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                7,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "AddData");
+            UNIT_ASSERT(subgroup);
+            // Out of 7 writes, only the last one must have failed
+            UNIT_ASSERT_VALUES_EQUAL(
+                6,
+                subgroup->GetCounter("Count")->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Errors")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                7,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteBlob");
+            UNIT_ASSERT(subgroup);
+            // Total number of put requests should have been 1 + 1 + 1 + 2 + 11
+            // + 3 + ceil(360 / 64) = 25
+            UNIT_ASSERT_VALUES_EQUAL(
+                25,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)

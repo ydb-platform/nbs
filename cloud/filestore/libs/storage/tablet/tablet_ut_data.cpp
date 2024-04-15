@@ -4326,6 +4326,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(blob.BlobSize(), expectedSizes[i]);     \
             UNIT_ASSERT_VALUES_EQUAL(blob.Generation(), generation);         \
             UNIT_ASSERT_VALUES_EQUAL(blob.Step(), step);                     \
+            UNIT_ASSERT_VALUES_EQUAL(blob.Cookie(), i);                      \
             UNIT_ASSERT_VALUES_EQUAL(                                        \
                 generatedBlob.GetOffset(),                                   \
                 currentOffset);                                              \

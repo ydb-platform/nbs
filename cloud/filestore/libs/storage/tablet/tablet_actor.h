@@ -136,6 +136,8 @@ private:
         TRequestMetrics ReadData;
         TRequestMetrics DescribeData;
         TRequestMetrics WriteData;
+        TRequestMetrics AddData;
+        TRequestMetrics GenerateBlobIds;
 
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
@@ -429,7 +431,7 @@ private:
     bool IgnoreCompletions(STFUNC_SIG);
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTablet)
-    FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_IMPLEMENT_REQUEST, TEvService)
+    FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_REQUEST, TEvService)
 
     FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_IMPLEMENT_REQUEST, TEvIndexTabletPrivate)
     FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_IMPLEMENT_ASYNC_REQUEST, TEvIndexTabletPrivate)

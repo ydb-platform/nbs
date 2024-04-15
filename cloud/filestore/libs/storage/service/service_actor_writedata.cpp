@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/iterator/enumerate.h>
@@ -29,18 +30,40 @@ private:
     NProto::TWriteDataRequest WriteRequest;
     const TRequestInfoPtr RequestInfo;
 
+    // Filesystem-specific params
+    const TString LogTag;
+
     // generated blob id and associated data
     NProtoPrivate::TGenerateBlobIdsResponse GenerateBlobIdsResponse;
 
     // WriteData state
     ui32 RemainingBlobsToWrite = 0;
+    bool WriteDataFallbackEnabled = false;
+
+    // Stats for reporting
+    IRequestStatsPtr RequestStats;
+    IProfileLogPtr ProfileLog;
+    // Refers to GenerateBlobIds or AddData request, depending on which one is
+    // in flight
+    TMaybe<TInFlightRequest> InFlightRequest;
+    TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
+    const NCloud::NProto::EStorageMediaKind MediaKind;
+
 
 public:
     TWriteDataActor(
             NProto::TWriteDataRequest request,
-            TRequestInfoPtr requestInfo)
+            TRequestInfoPtr requestInfo,
+            TString logTag,
+            IRequestStatsPtr requestStats,
+            IProfileLogPtr profileLog,
+            NCloud::NProto::EStorageMediaKind mediaKind)
         : WriteRequest(std::move(request))
         , RequestInfo(std::move(requestInfo))
+        , LogTag(std::move(logTag))
+        , RequestStats(std::move(requestStats))
+        , ProfileLog(std::move(profileLog))
+        , MediaKind(mediaKind)
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -54,6 +77,20 @@ public:
         request->Record.SetHandle(WriteRequest.GetHandle());
         request->Record.SetOffset(WriteRequest.GetOffset());
         request->Record.SetLength(WriteRequest.GetBuffer().size());
+
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::GenerateBlobIds;
+        InFlightRequest.ConstructInPlace(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                RequestInfo->CallContext),
+            ProfileLog,
+            MediaKind,
+            RequestStats);
+        InFlightRequest->Start(ctx.Now());
+        InitProfileLogRequestInfo(
+            InFlightRequest->ProfileLogRequest,
+            request->Record);
 
         LOG_DEBUG(
             ctx,
@@ -95,6 +132,16 @@ private:
     {
         const auto* msg = ev->Get();
 
+        TABLET_VERIFY(InFlightRequest);
+
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
+        FinalizeProfileLogRequestInfo(
+            InFlightRequest->ProfileLogRequest,
+            msg->Record);
+        // After the GenerateBlobIds response is received, we continue to consider the
+        // request as a WriteData request
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
+
         if (HasError(msg->GetError())) {
             WriteData(ctx, msg->GetError());
             return;
@@ -116,9 +163,21 @@ private:
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = 0;
 
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteBlob;
+        InFlightBSRequests.reserve(RemainingBlobsToWrite);
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
+            InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
+                TRequestInfo(
+                    RequestInfo->Sender,
+                    RequestInfo->Cookie,
+                    RequestInfo->CallContext),
+                ProfileLog,
+                MediaKind,
+                RequestStats));
+            InFlightBSRequests.back()->Start(ctx.Now());
+
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
             if (GenerateBlobIdsResponse.BlobsSize() == 1) {
                 // do not copy the buffer if there is only one blob
@@ -151,6 +210,9 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (WriteDataFallbackEnabled) {
+            return;
+        }
         const auto* msg = ev->Get();
 
         if (msg->Status != NKikimrProto::OK) {
@@ -163,7 +225,6 @@ private:
                 msg->ErrorReason.Quote().c_str());
             // We still may receive some responses, but we do not want to
             // process them
-            RemainingBlobsToWrite = std::numeric_limits<ui32>::max();
             return WriteData(ctx, error);
         }
 
@@ -173,8 +234,19 @@ private:
             "TEvPutResult response received: %s",
             msg->ToString().c_str());
 
+        ui64 blobIdx = msg->Id.Cookie();
+        // It is implicitly expected that cookies are generated in increasing
+        // order starting from 0.
+        TABLET_VERIFY(
+            blobIdx < InFlightBSRequests.size() &&
+            InFlightBSRequests[blobIdx] &&
+            !InFlightBSRequests[blobIdx]->IsCompleted());
+        InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
+
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
+            RequestInfo->CallContext->RequestType =
+                EFileStoreRequest::WriteData;
             AddData(ctx);
         }
     }
@@ -194,6 +266,20 @@ private:
         }
         request->Record.SetCommitId(GenerateBlobIdsResponse.GetCommitId());
 
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::AddData;
+        InFlightRequest.ConstructInPlace(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                RequestInfo->CallContext),
+            ProfileLog,
+            MediaKind,
+            RequestStats);
+        InFlightRequest->Start(ctx.Now());
+        InitProfileLogRequestInfo(
+            InFlightRequest->ProfileLogRequest,
+            request->Record);
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -208,6 +294,13 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
+
+        TABLET_VERIFY(InFlightRequest);
+        InFlightRequest->Complete(ctx.Now(), msg->GetError());
+        FinalizeProfileLogRequestInfo(
+            InFlightRequest->ProfileLogRequest,
+            msg->Record);
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
 
         if (HasError(msg->GetError())) {
             return WriteData(ctx, msg->GetError());
@@ -224,6 +317,9 @@ private:
      */
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
+        WriteDataFallbackEnabled = true;
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
+
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -316,14 +412,6 @@ void TStorageServiceActor::HandleWriteData(
         return;
     }
 
-    auto [cookie, inflight] = CreateInFlightRequest(
-        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        session->MediaKind,
-        session->RequestStats,
-        ctx.Now());
-
-    InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
-
     ui32 blockSize = filestore.GetBlockSize();
 
     // TODO(debnatkh): Consider supporting unaligned writes
@@ -339,12 +427,24 @@ void TStorageServiceActor::HandleWriteData(
             "Using three-stage write for request, size: %lu",
             msg->Record.GetBuffer().Size());
 
+        auto [cookie, inflight] = CreateInFlightRequest(
+            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            session->MediaKind,
+            session->RequestStats,
+            ctx.Now());
+
+        InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
+
         auto requestInfo =
             CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
         auto actor = std::make_unique<TWriteDataActor>(
             std::move(msg->Record),
-            std::move(requestInfo));
+            std::move(requestInfo),
+            filestore.GetFileSystemId(),
+            session->RequestStats,
+            ProfileLog,
+            session->MediaKind);
         NCloud::Register(ctx, std::move(actor));
     } else {
         LOG_DEBUG(

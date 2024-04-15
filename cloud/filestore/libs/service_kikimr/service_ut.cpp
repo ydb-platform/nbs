@@ -54,7 +54,6 @@ struct TTestServiceActor final
 // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
-    FILESTORE_SERVICE_REQUESTS(FILESTORE_IMPLEMENT_METHOD, TEvService)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -62,7 +61,6 @@ struct TTestServiceActor final
     {
         switch (ev->GetTypeRewrite()) {
             FILESTORE_SERVICE(FILESTORE_HANDLE_REQUEST, TEvService)
-            FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_REQUEST, TEvService)
         }
     }
 };

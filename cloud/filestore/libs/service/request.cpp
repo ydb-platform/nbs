@@ -116,6 +116,10 @@ ui64 CreateRequestId()
 static const TString RequestNames[] = {
     FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
     "DescribeData",
+    "GenerateBlobIds",
+    "AddData",
+    "ReadBlob",
+    "WriteBlob",
 };
 
 static_assert(

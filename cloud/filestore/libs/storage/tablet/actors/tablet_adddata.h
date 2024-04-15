@@ -27,6 +27,7 @@ private:
     const ui64 CommitId;
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
+    ui32 BlobsSize = 0;
 
 public:
     TAddDataActor(
