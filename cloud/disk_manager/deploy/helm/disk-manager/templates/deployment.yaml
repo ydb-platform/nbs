@@ -12,7 +12,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $fullname }}
-  replicas: {{ default 9 .Values.replicaCount | int }}
+  replicas: {{ .Values.replicaCount }}
   template:
     metadata:
       labels:
