@@ -118,6 +118,8 @@ void TIndexTabletState::TruncateRange(
             // FIXME: do not allocate each time
             TString(headBound.Length, 0));
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::ZeroRange(
@@ -304,6 +306,8 @@ void TIndexTabletState::WriteFreshBytes(
         data);
 
     IncrementFreshBytesCount(db, data.Size());
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::WriteFreshBytesDeletionMarker(
@@ -324,6 +328,8 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
         commitId,
         offset,
         len);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes)
@@ -411,6 +417,8 @@ void TIndexTabletState::WriteFreshBlock(
     db.WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 
     IncrementFreshBlocksCount(db);
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::MarkFreshBlocksDeleted(
@@ -433,6 +441,8 @@ void TIndexTabletState::MarkFreshBlocksDeleted(
             commitId,
             blockIndex);
     }
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::DeleteFreshBlocks(
@@ -535,7 +545,10 @@ void TIndexTabletState::WriteMixedBlocks(
 {
     ui32 rangeId = GetMixedRangeIndex(block.NodeId, block.BlockIndex, blocksCount);
 
-    auto blockList = TBlockList::EncodeBlocks(block, blocksCount, GetAllocator(EAllocatorTag::BlockList));
+    auto blockList = TBlockList::EncodeBlocks(
+        block,
+        blocksCount,
+        GetAllocator(EAllocatorTag::BlockList));
     db.WriteMixedBlocks(rangeId, blobId, blockList, 0, 0);
 
     IncrementMixedBlobsCount(db);
@@ -550,6 +563,8 @@ void TIndexTabletState::WriteMixedBlocks(
     }
 
     AddNewBlob(db, blobId);
+
+    InvalidateReadAheadCache(block.NodeId);
 }
 
 bool TIndexTabletState::WriteMixedBlocks(
@@ -598,7 +613,9 @@ bool TIndexTabletState::WriteMixedBlocks(
         AddCheckpointBlob(db, checkpointId, rangeId, blobId);
     }
 
-    auto blockList = TBlockList::EncodeBlocks(blocks, GetAllocator(EAllocatorTag::BlockList));
+    auto blockList = TBlockList::EncodeBlocks(
+        blocks,
+        GetAllocator(EAllocatorTag::BlockList));
 
     db.WriteMixedBlocks(
         rangeId,
@@ -621,6 +638,8 @@ bool TIndexTabletState::WriteMixedBlocks(
             });
         TABLET_VERIFY(added);
     }
+
+    InvalidateReadAheadCache(blocks[0].NodeId);
 
     return true;
 }
@@ -730,6 +749,8 @@ void TIndexTabletState::MarkMixedBlocksDeleted(
         stats.BlobsCount,
         stats.DeletionsCount + blocksCount
     );
+
+    InvalidateReadAheadCache(nodeId);
 }
 
 void TIndexTabletState::UpdateBlockLists(
@@ -1088,6 +1109,42 @@ void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
     ForcedRangeOperationState.reset();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ReadAhead
+
+bool TIndexTabletState::TryFillDescribeResult(
+    ui64 nodeId,
+    const TByteRange& range,
+    NProtoPrivate::TDescribeDataResponse* response)
+{
+    return Impl->ReadAheadCache.TryFillResult(nodeId, range, response);
+}
+
+TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
+    ui64 nodeId,
+    const TByteRange inputRange)
+{
+    return Impl->ReadAheadCache.RegisterDescribe(nodeId, inputRange);
+}
+
+void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
+{
+    Impl->ReadAheadCache.InvalidateCache(nodeId);
+}
+
+void TIndexTabletState::RegisterReadAheadResult(
+    ui64 nodeId,
+    const TByteRange& range,
+    const NProtoPrivate::TDescribeDataResponse& result)
+{
+    Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
+}
+
+TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
+{
+    return Impl->ReadAheadCache.GetStats();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

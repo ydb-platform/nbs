@@ -28,6 +28,7 @@ target_link_libraries(storage-tablet-model PUBLIC
   tools-enum_parser-enum_serialization_runtime
   filestore-libs-storage-api
   filestore-libs-storage-model
+  filestore-private-api-protos
   core-libs-common
   libs-tablet-model
   core-libs-throttling
@@ -57,6 +58,7 @@ target_sources(storage-tablet-model PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/operation.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/range_locks.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/read_ahead.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/split_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/throttler_logger.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/libs/storage/tablet/model/throttling_policy.cpp

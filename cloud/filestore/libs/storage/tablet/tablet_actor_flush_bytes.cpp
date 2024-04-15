@@ -579,7 +579,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
     InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     bool ready = true;
-    for (auto& bytes: args.Bytes) {
+    for (const auto& bytes: args.Bytes) {
         ui32 rangeId = GetMixedRangeIndex(bytes.NodeId, bytes.Offset / GetBlockSize());
         if (!args.MixedBlocksRanges.count(rangeId)) {
             if (LoadMixedBlocks(db, rangeId)) {
@@ -600,7 +600,10 @@ void TIndexTabletActor::ExecuteTx_FlushBytes(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
-    Y_UNUSED(args);
+
+    for (const auto& bytes: args.Bytes) {
+        InvalidateReadAheadCache(bytes.NodeId);
+    }
 }
 
 void TIndexTabletActor::CompleteTx_FlushBytes(

@@ -19,6 +19,12 @@ public:
         , Buffer(capacity)
     {}
 
+    void Reset(size_t capacity)
+    {
+        Buffer = TVector<T>(capacity);
+        Clear();
+    }
+
     std::optional<T> PopFront()
     {
         if (IsEmpty()) {

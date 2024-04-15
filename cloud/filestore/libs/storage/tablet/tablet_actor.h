@@ -94,6 +94,9 @@ private:
         std::atomic<i64> UnwritableChannelCount{0};
         std::atomic<i64> ChannelsToMoveCount{0};
 
+        std::atomic<i64> ReadAheadCacheHitCount{0};
+        std::atomic<i64> ReadAheadCacheNodeCount{0};
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> MixedBytesCount{0};
@@ -158,7 +161,8 @@ private:
             const NProto::TFileStorePerformanceProfile& performanceProfile,
             const TCompactionMapStats& compactionStats,
             const TSessionsStats& sessionsStats,
-            const TChannelsStats& channelsStats);
+            const TChannelsStats& channelsStats,
+            const TReadAheadCacheStats& readAheadStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;
