@@ -2859,7 +2859,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         int connectionEstablished = 0;
         TTestBasicRuntime runtime;
         runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistryProxy::EvSubscribeRequest: {
@@ -2887,7 +2887,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
         auto env = TTestEnvBuilder(runtime)
