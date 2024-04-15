@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/shema#",
+  "type": "object",
+  "properties": {
+    "serviceKind": {
+      "type": "string",
+      "enum": ["controlplane", "dataplane"],
+      "title": "Kind of service, controlplane (disk-manager) or dataplane (snapshot)"
+    },
+    "insecure": {
+      "type": "boolean",
+      "title": "Do not use https for Disk-Manager GRPC API"
+    },
+    "replicaCount": {
+      "type": "integer",
+      "title": "K8s replica count for Disk-Manager pod"
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": [
+        "LEVEL_TRACE",
+        "LEVEL_DEBUG",
+        "LEVEL_INFO",
+        "LEVEL_WARN",
+        "LEVEL_ERROR",
+        "LEVEL_FATAL"
+      ],
+      "title": "Logging level for disk manager"
+    },
+    "monitoringPort": {
+      "type": "integer",
+      "title": "Port for monitoring in prometheus format"
+    },
+    "auth_config": {
+      "type": "object",
+      "properties": {
+        "DisableAuthorization": {
+          "type": "boolean",
+          "title": "Disable authorisation for disk manager"
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "K8s service type for the disk manager"
+        },
+        "externalPort": {
+          "type": "integer",
+          "title": "Disk manager GRPC api external port"
+        },
+        "internalPort": {
+          "type": "integer",
+          "title": "Port disk manager listens to on a pod"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "form": true,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "title": "Path to Disk-Manager docker image in the repository"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["IfNotPresent", "Always"],
+          "title": "K8s image pull policy for disk manager image"
+        },
+        "tag": {
+          "type": "string",
+          "title": "Disk-Manager docker image tag to deploy"
+        }
+      }
+    },
+    "tasksConfig": {
+      "type": "object",
+      "properties": {
+        "runnersCount": {
+          "type": "integer",
+          "title": "Number of runners of tasks processing"
+        },
+        "stalkingRunnersCount": {
+          "type": "integer",
+          "title": "Number of stalking runners of tasks processing"
+        }
+      }
+    },
+    "zones": {
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "nbsSvms": {
+              "type": "array",
+              "title": "List of NBS server hosts",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nbsPort": {
+              "type": "integer",
+              "title": "Port of NBS server (NBS servers are expected to run on the same port)"
+            }
+          }
+        }
+      }
+    },
+    "nbs": {
+      "type": "object",
+      "properties": {
+        "nbsControl": {
+          "type": "object",
+          "properties": {
+            "Insecure": {
+              "type": "boolean",
+              "title": "Use insecure NBS server GRPC API"
+            },
+            "EnableThrottlingForMediaKinds": {
+              "type": "array",
+              "title": "List of media kinds to enable throttling for",
+              "items": {
+                "type": "string"
+              }
+            },
+            "UseGZIPCompression": {
+              "type": "boolean",
+              "title": "Use GZIP compression in NBS"
+            }
+          }
+        }
+      }
+    },
+    "nfs": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "title": "NFS file storage enabled"
+        },
+        "insecure": {
+          "type": "boolean",
+          "title": "Do not use TLS for connecting to the NFS API"
+        },
+        "disableAuthentication": {
+          "type": "boolean",
+          "title": "Disable authentication for NFS file share"
+        }
+      }
+    },
+    "ydb": {
+      "type": "object",
+      "properties": {
+        "Secure": {
+          "type": "boolean"
+        },
+        "Endpoint": {
+          "type": "string"
+        },
+        "Port": {
+          "type": "integer"
+        },
+        "Database": {
+          "type": "string"
+        },
+        "RootPath": {
+          "type": "string"
+        },
+        "disableAuthentication": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "Endpoint": {
+              "type": "string"
+            },
+            "Port": {
+              "type": "integer"
+            },
+            "Database": {
+              "type": "string"
+            },
+            "RootPath": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "ChunkBlobsTableShardCount": {
+      "type": "integer"
+    },
+    "ChunkMapTableShardCount": {
+      "type": "integer"
+    },
+    "DeleteWorkerCount":  {
+      "type": "integer"
+    },
+    "ShallowCopyWorkerCount": {
+      "type": "integer"
+    },
+    "ShallowCopyInflightLimit": {
+      "type": "integer"
+    }
+  }
+}
