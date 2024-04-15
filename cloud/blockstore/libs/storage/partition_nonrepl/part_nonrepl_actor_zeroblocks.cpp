@@ -1,6 +1,7 @@
 #include "part_nonrepl_actor.h"
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -201,9 +202,12 @@ void TDiskAgentZeroActor::HandleZeroDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks undelivered for " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ZeroBlocks request #"
+            << GetRequestId(Request) << " undelivered. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -213,10 +217,12 @@ void TDiskAgentZeroActor::HandleTimeout(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ZeroBlocks request timed out. Disk id: "
-        << PartConfig->GetName() << " Device: " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ZeroBlocks request #"
+            << GetRequestId(Request) << " timed out. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(
         ctx,

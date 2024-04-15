@@ -1,6 +1,7 @@
 #include "part_nonrepl_actor.h"
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -191,9 +192,12 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks undelivered for " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ReadBlocksLocal request #"
+            << GetRequestId(Request) << " undelivered. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -203,10 +207,12 @@ void TDiskAgentReadActor::HandleTimeout(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ReadBlocks request timed out. Disk id: "
-        << PartConfig->GetName() << " Device: " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ReadBlocksLocal request #"
+            << GetRequestId(Request) << " timed out. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(ctx, PartConfig->MakeError(
         E_TIMEOUT,

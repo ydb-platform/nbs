@@ -3,6 +3,7 @@
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -202,9 +203,12 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ChecksumBlocks undelivered for " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ChecksumBlocks request #"
+            << GetRequestId(Request) << " undelivered. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -214,10 +218,12 @@ void TDiskAgentChecksumActor::HandleTimeout(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "ChecksumBlocks request timed out. Disk id: "
-        << PartConfig->GetName() << " Device: " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "ChecksumBlocks request #"
+            << GetRequestId(Request) << " timed out. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(ctx, MakeError(E_TIMEOUT, "ChecksumBlocks request timed out"));
 }
