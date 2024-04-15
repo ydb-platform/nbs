@@ -3,6 +3,7 @@ import logging
 import os
 
 import random
+import shlex
 import socket
 import time
 
@@ -54,7 +55,7 @@ class VirtualDevicesToIdMapper:
 
     def _execute_command(self, args: list[str]) -> str:
         with self._module_factory.make_ssh_client(False, self._ip, ssh_key_path=self._ssh_key_path) as ssh:
-            _, stdout, stderr = ssh.exec_command(args)
+            _, stdout, stderr = ssh.exec_command(shlex.join(args))
             output = ''
             for line in iter(lambda: stdout.readline(2048), ''):
                 output += line
