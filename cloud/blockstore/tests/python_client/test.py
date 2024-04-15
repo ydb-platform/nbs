@@ -71,8 +71,10 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
             response.Error.Code = EResult.E_ARGUMENT.value
 
         if request.Path != "/dev/disk/by-partlabel/NVMECOMPUTE01":
+            assert request.DryRun
             response.Error.Code = EResult.E_ARGUMENT.value
 
+        assert not request.DryRun
         return response
 
 
@@ -179,11 +181,13 @@ def test_resume_device():
 
         client.resume_device(
             "myt1-ct5-1.cloud.yandex.net",
-            "/dev/disk/by-partlabel/NVMECOMPUTE01")
+            "/dev/disk/by-partlabel/NVMECOMPUTE01",
+            dry_run=False)
 
         with pytest.raises(ClientError):
             client.resume_device(
                 "unknown",
-                "/dev/disk/by-partlabel/NVMECOMPUTE01")
+                "/dev/disk/by-partlabel/NVMECOMPUTE01",
+                dry_run=True)
 
         client.close()

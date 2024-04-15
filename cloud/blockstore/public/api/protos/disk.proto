@@ -208,6 +208,9 @@ message TResumeDeviceRequest
 
     // Device path.
     string Path = 3;
+
+    // Dry run.
+    bool DryRun = 4;
 }
 
 message TResumeDeviceResponse

@@ -27,9 +27,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
+struct TDiskRegistryTestFixture
     : public NUnitTest::TBaseFixture
 {
+    TDiskRegistryTestFixture() = default;
+
+    explicit TDiskRegistryTestFixture(bool nonReplicatedDontSuspendDevices)
+        : NonReplicatedDontSuspendDevices(nonReplicatedDontSuspendDevices)
+    {}
+
+    ~TDiskRegistryTestFixture() override = default;
+
     const TVector<NProto::TAgentConfig> Agents {
         CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1"),
@@ -55,25 +63,78 @@ struct TFixture
 
     std::unique_ptr<NActors::TTestActorRuntime> Runtime;
     NMonitoring::TDynamicCounterPtr Counters;
+    NMonitoring::TDynamicCounterPtr CriticalEvents;
+    std::unique_ptr<TDiskRegistryClient> DiskRegistry;
+    bool NonReplicatedDontSuspendDevices = true;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         Runtime = TTestRuntimeBuilder()
             .WithAgents(Agents)
-            .With([] {
+            .With([&] {
                 auto config = CreateDefaultStorageConfig();
                 config.SetDiskRegistryCountersHost("test");
-                config.SetNonReplicatedDontSuspendDevices(true);
+                config.SetNonReplicatedDontSuspendDevices(
+                    NonReplicatedDontSuspendDevices);
 
                 return config;
             }())
             .Build();
+        DiskRegistry = std::make_unique<TDiskRegistryClient>(*Runtime);
 
         Counters = Runtime->GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "disk_registry")
             ->GetSubgroup("host", "test");
+
+        CriticalEvents = new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(CriticalEvents);
     }
+
+    auto QueryAvailableStorage() const
+    {
+        auto response = DiskRegistry->QueryAvailableStorage(
+            TVector<TString>{"agent-1", "agent-2", "agent-3"},
+            "",
+            NProto::STORAGE_POOL_KIND_LOCAL);
+
+        auto& msg = response->Record;
+        SortBy(
+            *msg.MutableAvailableStorage(),
+            [](auto& info) { return info.GetAgentId(); });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
+
+        return std::make_tuple(
+            msg.GetAvailableStorage(0).GetChunkCount(),
+            msg.GetAvailableStorage(1).GetChunkCount(),
+            msg.GetAvailableStorage(2).GetChunkCount());
+    }
+
+    auto GetResumeDeviceResponse() const
+    {
+        TAutoPtr<NActors::IEventHandle> handle;
+        Runtime->GrabEdgeEventRethrow<TEvService::TEvResumeDeviceResponse>(
+            handle,
+            WaitTimeout);
+        UNIT_ASSERT(handle);
+        return std::unique_ptr<TEvService::TEvResumeDeviceResponse>(
+            handle->Release<TEvService::TEvResumeDeviceResponse>().Release());
+    }
+
+    void WaitForCounters() const
+    {
+        Runtime->AdvanceCurrentTime(TDuration::Seconds(20));
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+    }
+};
+
+struct TDiskRegistryWithAutoSuspendTestFixture: public TDiskRegistryTestFixture
+{
+    TDiskRegistryWithAutoSuspendTestFixture()
+        : TDiskRegistryTestFixture(false)
+    {}
+    ~TDiskRegistryWithAutoSuspendTestFixture() override = default;
 };
 
 }   // namespace
@@ -82,18 +143,12 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
-    Y_UNIT_TEST_F(ShouldSuspendDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldSuspendDevices, TDiskRegistryTestFixture)
     {
-        auto waitForCounters = [&] {
-            Runtime->AdvanceCurrentTime(TDuration::Seconds(20));
-            Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
-        };
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
 
-        TDiskRegistryClient diskRegistry(*Runtime);
-        diskRegistry.WaitReady();
-        diskRegistry.SetWritableState(true);
-
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {Agents[0]})
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {Agents[0]})
             | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
 
         size_t cleanDevices = 0;
@@ -114,7 +169,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         RegisterAgent(*Runtime, 0);
         WaitForAgent(*Runtime, 0);
-        waitForCounters();
+        WaitForCounters();
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -123,25 +178,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(Agents[0].DevicesSize(), cleanDevices);
 
         {
-            diskRegistry.SendAllocateDiskRequest("vol0", 80_GB);
-            auto response = diskRegistry.RecvAllocateDiskResponse();
+            DiskRegistry->SendAllocateDiskRequest("vol0", 80_GB);
+            auto response = DiskRegistry->RecvAllocateDiskResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_BS_DISK_ALLOCATION_FAILED,
                 response->GetStatus());
         }
 
         for (auto& d: Agents[1].GetDevices()) {
-            diskRegistry.SuspendDevice(d.GetDeviceUUID());
+            DiskRegistry->SuspendDevice(d.GetDeviceUUID());
         }
 
-        diskRegistry.UpdateConfig(CreateRegistryConfig(1, Agents)
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(1, Agents)
             | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
 
         cleanDevices = 0;
 
         RegisterAgent(*Runtime, 1);
         WaitForAgent(*Runtime, 1);
-        waitForCounters();
+        WaitForCounters();
 
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -150,66 +205,50 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, cleanDevices);
 
         {
-            diskRegistry.SendAllocateDiskRequest("vol0", 80_GB);
-            auto response = diskRegistry.RecvAllocateDiskResponse();
+            DiskRegistry->SendAllocateDiskRequest("vol0", 80_GB);
+            auto response = DiskRegistry->RecvAllocateDiskResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 E_BS_DISK_ALLOCATION_FAILED,
                 response->GetStatus());
         }
 
-        diskRegistry.ResumeDevice(
+        DiskRegistry->ResumeDevice(
             Agents[1].GetAgentId(),
-            Agents[1].GetDevices(0).GetDeviceName());
-        diskRegistry.ResumeDevice(
+            Agents[1].GetDevices(0).GetDeviceName(),
+            /*dryRun=*/false);
+        DiskRegistry->ResumeDevice(
             Agents[1].GetAgentId(),
-            Agents[1].GetDevices(1).GetDeviceName());
+            Agents[1].GetDevices(1).GetDeviceName(),
+            /*dryRun=*/false);
 
-        waitForCounters();
+        WaitForCounters();
         UNIT_ASSERT_VALUES_EQUAL(2, cleanDevices);
 
         for (auto& d: Agents[1].GetDevices()) {
-            diskRegistry.ResumeDevice(Agents[1].GetAgentId(), d.GetDeviceName());
+            DiskRegistry->ResumeDevice(
+                Agents[1].GetAgentId(),
+                d.GetDeviceName(),
+                /*dryRun=*/false);
         }
 
         while (Agents[1].DevicesSize() != cleanDevices) {
-            waitForCounters();
+            WaitForCounters();
         }
 
-        diskRegistry.AllocateDisk("vol0", 80_GB);
+        DiskRegistry->AllocateDisk("vol0", 80_GB);
     }
 
-    Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TDiskRegistryTestFixture)
     {
-        TDiskRegistryClient diskRegistry(*Runtime);
-        diskRegistry.WaitReady();
-        diskRegistry.SetWritableState(true);
-        diskRegistry.UpdateConfig(CreateRegistryConfig(0, Agents)
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
             | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
 
         RegisterAndWaitForAgents(*Runtime, Agents);
 
-        auto query = [&] {
-            auto response = diskRegistry.QueryAvailableStorage(
-                TVector<TString> {"agent-1", "agent-2", "agent-3"},
-                "",
-                NProto::STORAGE_POOL_KIND_LOCAL);
-
-            auto& msg = response->Record;
-            SortBy(*msg.MutableAvailableStorage(), [] (auto& info) {
-                return info.GetAgentId();
-            });
-
-            UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
-
-            return std::make_tuple(
-                msg.GetAvailableStorage(0).GetChunkCount(),
-                msg.GetAvailableStorage(1).GetChunkCount(),
-                msg.GetAvailableStorage(2).GetChunkCount()
-            );
-        };
-
         {
-            auto [n1, n2, n3] = query();
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
@@ -222,13 +261,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             actions[0].SetDevice("dev-5");
             actions[0].SetType(NProto::TAction::REMOVE_DEVICE);
 
-            auto response = diskRegistry.CmsAction(actions);
+            auto response = DiskRegistry->CmsAction(actions);
             const auto& result = response->Record.GetActionResults(0);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
         {
-            auto [n1, n2, n3] = query();
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(1, n2);
@@ -240,13 +279,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             actions[0].SetHost("agent-3");
             actions[0].SetType(NProto::TAction::REMOVE_HOST);
 
-            auto response = diskRegistry.CmsAction(actions);
+            auto response = DiskRegistry->CmsAction(actions);
             const auto& result = response->Record.GetActionResults(0);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
         {
-            auto [n1, n2, n3] = query();
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(1, n2);
@@ -262,14 +301,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             actions[1].SetHost("agent-3");
             actions[1].SetType(NProto::TAction::ADD_HOST);
 
-            auto response = diskRegistry.CmsAction(actions);
+            auto response = DiskRegistry->CmsAction(actions);
             for (const auto& result: response->Record.GetActionResults()) {
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
             }
         }
 
         {
-            auto [n1, n2, n3] = query();
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
@@ -277,15 +316,120 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         for (const auto& d: Agents[2].GetDevices()) {
-            diskRegistry.ResumeDevice(Agents[2].GetAgentId(), d.GetDeviceName());
+            DiskRegistry->ResumeDevice(
+                Agents[2].GetAgentId(),
+                d.GetDeviceName(),
+                /*dryRun=*/false);
         }
 
         {
-            auto [n1, n2, n3] = query();
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
             UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectResumeWhenAgentIsNotOnline, TDiskRegistryTestFixture)
+    {
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
+            | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
+
+        RegisterAndWaitForAgents(*Runtime, {Agents[0], Agents[1]});
+
+        auto resumeFailed = CriticalEvents->FindCounter(
+            "AppCriticalEvents/DiskRegistryResumeDeviceFailed");
+        UNIT_ASSERT(resumeFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
+
+        {
+            DiskRegistry->SendResumeDeviceRequest(
+                Agents[2].GetAgentId(),
+                Agents[2].GetDevices()[0].GetDeviceUUID(),
+                /*dryRun=*/false);
+            auto response = GetResumeDeviceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, resumeFailed->Val());
+        }
+    }
+}
+
+Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
+
+    Y_UNIT_TEST_F(ResumeDeviceShouldAddDevice, TDiskRegistryWithAutoSuspendTestFixture)
+    {
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+
+        DiskRegistry->UpdateConfig(
+            CreateRegistryConfig(0, Agents) |
+            WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
+        RegisterAgents(*Runtime, Agents.size());
+
+        int nrdDevices = 0;
+        for (const auto& agent: Agents) {
+            for (auto& device: agent.GetDevices()) {
+                if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_DEFAULT) {
+                    nrdDevices++;
+                }
+            }
+        }
+        WaitForSecureErase(*Runtime, nrdDevices);
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(0, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+        }
+
+        int localDevices = 0;
+        for (const auto& d: Agents[1].GetDevices()) {
+            if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+                localDevices++;
+                DiskRegistry->ResumeDevice(
+                    Agents[1].GetAgentId(),
+                    d.GetDeviceName(),
+                    /*dryRun=*/false);
+            }
+        }
+        WaitForSecureErase(*Runtime, localDevices);
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+        }
+
+        auto resumeFailed = CriticalEvents->FindCounter(
+            "AppCriticalEvents/DiskRegistryResumeDeviceFailed");
+        UNIT_ASSERT(resumeFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
+
+        {
+            DiskRegistry->SendResumeDeviceRequest(
+                Agents[1].GetAgentId(),
+                "wrong_device_name",
+                /*dryRun=*/true);
+            auto response = GetResumeDeviceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
+        }
+
+        {
+            DiskRegistry->SendResumeDeviceRequest(
+                Agents[1].GetAgentId(),
+                "wrong_device_name",
+                /*dryRun=*/false);
+            auto response = GetResumeDeviceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, resumeFailed->Val());
         }
     }
 }

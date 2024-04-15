@@ -498,16 +498,19 @@ struct TEvDiskRegistryPrivate
         TString Host;
         TString Path;
         NProto::EDeviceState State;
+        bool ShouldResumeDevice;
         bool DryRun;
 
         TUpdateCmsHostDeviceStateRequest(
                 TString host,
                 TString path,
                 NProto::EDeviceState state,
+                bool shouldResumeDevice,
                 bool dryRun)
             : Host(std::move(host))
             , Path(std::move(path))
             , State(state)
+            , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)
         {}
     };

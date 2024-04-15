@@ -108,12 +108,45 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ReadBlocksLocal:
         case EBlockStoreRequest::WriteBlocksLocal:
         case EBlockStoreRequest::QueryAvailableStorage:
-        case EBlockStoreRequest::ResumeDevice:
             return false;
-
-        default:
+        case EBlockStoreRequest::CreateVolume:
+        case EBlockStoreRequest::DestroyVolume:
+        case EBlockStoreRequest::ResizeVolume:
+        case EBlockStoreRequest::StatVolume:
+        case EBlockStoreRequest::AssignVolume:
+        case EBlockStoreRequest::CreateCheckpoint:
+        case EBlockStoreRequest::DeleteCheckpoint:
+        case EBlockStoreRequest::AlterVolume:
+        case EBlockStoreRequest::GetChangedBlocks:
+        case EBlockStoreRequest::GetCheckpointStatus:
+        case EBlockStoreRequest::DescribeVolume:
+        case EBlockStoreRequest::ListVolumes:
+        case EBlockStoreRequest::DiscoverInstances:
+        case EBlockStoreRequest::ExecuteAction:
+        case EBlockStoreRequest::DescribeVolumeModel:
+        case EBlockStoreRequest::UpdateDiskRegistryConfig:
+        case EBlockStoreRequest::DescribeDiskRegistryConfig:
+        case EBlockStoreRequest::CreatePlacementGroup:
+        case EBlockStoreRequest::DestroyPlacementGroup:
+        case EBlockStoreRequest::AlterPlacementGroupMembership:
+        case EBlockStoreRequest::DescribePlacementGroup:
+        case EBlockStoreRequest::ListPlacementGroups:
+        case EBlockStoreRequest::CmsAction:
+        case EBlockStoreRequest::CreateVolumeFromDevice:
+        case EBlockStoreRequest::ResumeDevice:
+        case EBlockStoreRequest::StartEndpoint:
+        case EBlockStoreRequest::StopEndpoint:
+        case EBlockStoreRequest::ListEndpoints:
+        case EBlockStoreRequest::KickEndpoint:
+        case EBlockStoreRequest::ListKeyrings:
+        case EBlockStoreRequest::DescribeEndpoint:
+        case EBlockStoreRequest::RefreshEndpoint:
             return true;
+        case EBlockStoreRequest::MAX:
+            Y_DEBUG_ABORT_UNLESS(false);
+            break;
     }
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

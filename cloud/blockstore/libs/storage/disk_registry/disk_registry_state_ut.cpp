@@ -1737,6 +1737,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         auto config1 = AgentConfig(1000, {
             Device("dev-1", "uuid-1", "rack-1"),
         });
+        auto config2 = AgentConfig(1001, {
+            Device("dev-2", "uuid-2", "rack-2"),
+        });
 
         auto monitoring = CreateMonitoringServiceStub();
         auto diskRegistryGroup = monitoring->GetCounters()
@@ -1750,6 +1753,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config1));
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, config2));
         });
 
         state.PublishCounters(Now());
@@ -1762,6 +1766,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             auto error = state.UpdateAgentCounters(stats);
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        }
+
+        {
+            NProto::TAgentStats stats;
+            stats.SetNodeId(1001);
+            auto* d = stats.AddDeviceStats();
+            d->SetDeviceUUID("uuid-2");
+
+            auto error = state.UpdateAgentCounters(stats);
+            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
         }
 
         state.PublishCounters(Now());
@@ -5978,6 +5992,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
+                false,   // shouldResumeDevice
                 false);  // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, result.Error.GetCode());
@@ -6035,6 +6050,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
@@ -7282,6 +7298,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts,
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
@@ -7296,6 +7313,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "dev-2",
                 NProto::DEVICE_STATE_WARNING,
                 ts + TDuration::Seconds(10),
+                false,   // shouldResumeDevice
                 true);   // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.Error.GetCode());
@@ -7332,6 +7350,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 "dev-2",
                 desiredState,
                 Now(),
+                false,    // shouldResumeDevice
                 false);   // dryRun
         };
 

@@ -619,6 +619,7 @@ public:
         const TString& path,
         NProto::EDeviceState state,
         TInstant now,
+        bool shouldResume,
         bool dryRun);
 
     NProto::TError ReplaceDevice(
@@ -1186,6 +1187,7 @@ private:
         NProto::TAgentConfig& agent,
         NProto::TDeviceConfig& device,
         TInstant now,
+        bool shouldResume,
         bool dryRun,
         TDuration& timeout);
 
@@ -1194,6 +1196,7 @@ private:
         NProto::TAgentConfig& agent,
         const TString& path,
         TInstant now,
+        bool shouldResume,
         bool dryRun);
 
     NProto::TError CmsRemoveDevice(
