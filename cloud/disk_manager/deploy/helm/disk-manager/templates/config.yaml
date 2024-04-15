@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: disk-manager-config-{{ .Values.serviceKind }}
+  name: {{ include "common.names.fullname" }}
 data:
   client-config.txt: |
 {{ tpl (.Files.Get "files/configs/client-config.txt") . | indent 4 }}

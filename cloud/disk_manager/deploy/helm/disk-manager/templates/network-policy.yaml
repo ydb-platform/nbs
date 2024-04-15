@@ -4,8 +4,8 @@ metadata:
   name: allow-all-{{ .Values.serviceKind }}
 spec:
   podSelector:
-    matchLabels: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
-      app: {{ $fullname }}
+    matchLabels:
+      app: {{ include "common.names.fullname" }}
   policyTypes:
     - Ingress
     - Egress

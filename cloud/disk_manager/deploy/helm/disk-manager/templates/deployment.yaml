@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
-metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
-  name: {{ $fullname }}
+metadata:
+  name: {{ include "common.names.fullname" }}
   labels:
-    app: {{ $fullname }}
+    app: {{ include "common.names.fullname" }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   annotations:
     checksum/client-config: {{ tpl (.Files.Get "files/configs/client-config.txt") . | sha256sum }}
@@ -11,12 +11,12 @@ metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
 spec:
   selector:
     matchLabels:
-      app: {{ $fullname }}
+      app: {{ include "common.names.fullname" }}
   replicas: {{ .Values.replicaCount }}
   template:
     metadata:
       labels:
-        app: {{ $fullname }}
+        app: {{ include "common.names.fullname" }}
     spec: {{ $serverConfigName := "server-config.txt" }}
       {{ $clientConfigName := "client-config.txt" }}
       {{ $serverConfigPath := printf "/etc/yc/disk-manager/%s" $serverConfigName}}
