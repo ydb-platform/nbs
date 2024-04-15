@@ -43,7 +43,10 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
+    // Refers to GenerateBlobIds or AddData request, depending on which one is
+    // in flight
     TMaybe<TInFlightRequest> InFlightRequest;
+    TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
 
@@ -160,9 +163,21 @@ private:
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
         ui64 offset = 0;
 
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteBlob;
+        InFlightBSRequests.reserve(RemainingBlobsToWrite);
         for (const auto& blob: GenerateBlobIdsResponse.GetBlobs()) {
             NKikimr::TLogoBlobID blobId =
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
+            InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
+                TRequestInfo(
+                    RequestInfo->Sender,
+                    RequestInfo->Cookie,
+                    RequestInfo->CallContext),
+                ProfileLog,
+                MediaKind,
+                RequestStats));
+            InFlightBSRequests.back()->Start(ctx.Now());
+
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
             if (GenerateBlobIdsResponse.BlobsSize() == 1) {
                 // do not copy the buffer if there is only one blob
@@ -219,8 +234,19 @@ private:
             "TEvPutResult response received: %s",
             msg->ToString().c_str());
 
+        ui64 blobIdx = msg->Id.Cookie();
+        // It is implicitly expected that cookies are generated in increasing
+        // order starting from 0.
+        TABLET_VERIFY(
+            blobIdx < InFlightBSRequests.size() &&
+            InFlightBSRequests[blobIdx] &&
+            !InFlightBSRequests[blobIdx]->IsCompleted());
+        InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
+
         --RemainingBlobsToWrite;
         if (RemainingBlobsToWrite == 0) {
+            RequestInfo->CallContext->RequestType =
+                EFileStoreRequest::WriteData;
             AddData(ctx);
         }
     }
@@ -292,6 +318,8 @@ private:
     void WriteData(const TActorContext& ctx, const NProto::TError& error)
     {
         WriteDataFallbackEnabled = true;
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::WriteData;
+
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
