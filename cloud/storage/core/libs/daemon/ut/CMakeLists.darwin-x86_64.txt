@@ -15,6 +15,7 @@ target_link_libraries(cloud-storage-core-libs-daemon-ut PUBLIC
   contrib-libs-cxxsupp
   yutil
   library-cpp-cpuid_check
+  cpp-actors-util
   cpp-testing-unittest_main
   core-libs-daemon
 )
