@@ -153,7 +153,7 @@ void TStarter::Start()
 
 void TStarter::Stop()
 {
-    AppStop(0);
+    AppStop();
     Thread->Join();
     try {
         Bootstrap.Stop();
