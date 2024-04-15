@@ -6,8 +6,8 @@ metadata: {{ $fullname := printf "%s-%s" "disk-manager" .Values.serviceKind }}
     app: {{ $fullname }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   annotations:
-    checksum/client-config: {{ tpl (.Files.Get "configs/client-config.txt") . | sha256sum }}
-    checksum/server-config: {{ tpl (.Files.Get "configs/server-config.txt") . | sha256sum }}
+    checksum/client-config: {{ tpl (.Files.Get "files/configs/client-config.txt") . | sha256sum }}
+    checksum/server-config: {{ tpl (.Files.Get "files/configs/server-config.txt") . | sha256sum }}
 spec:
   selector:
     matchLabels:

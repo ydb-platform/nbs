@@ -4,6 +4,6 @@ metadata:
   name: disk-manager-config-{{ .Values.serviceKind }}
 data:
   client-config.txt: |
-{{ tpl (.Files.Get "configs/client-config.txt") . | indent 4 }}
+{{ tpl (.Files.Get "files/configs/client-config.txt") . | indent 4 }}
   server-config.txt: |
-{{ tpl (.Files.Get "configs/server-config.txt") . | indent 4 }}
+{{ tpl (.Files.Get "files/configs/server-config.txt") . | indent 4 }}
