@@ -22,17 +22,16 @@ if [ $? -ne 0 ]; then
         "Consider updating the Version value or adding IgnoreVersion to $BIN_DIR/nbs/nbs-disk-registry.txt"
 fi
 
+source ./prepare_disk-agent.sh || exit 1
 start_nbs_agent() {
     if [ -z "$1" ]; then
         echo "Agent number is required"
         exit 1
     fi
 
-    source ./prepare_disk-agent.sh || exit 1
-
     IC_PORT=$(($IC_PORT + $1 * 100)) \
     MON_PORT=$(($MON_PORT + $1 * 100)) \
-    ./start_disk-agent \
+    start_disk-agent \
         --location-file $BIN_DIR/nbs/nbs-location-$1.txt \
         --disk-agent-file $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &
 }
