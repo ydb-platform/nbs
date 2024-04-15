@@ -217,9 +217,12 @@ void TDiskAgentWriteActor::HandleWriteDeviceBlocksUndelivery(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks undelivered for " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "WriteBlocks request #"
+            << GetRequestId(Request) << " undelivered. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     // Ignore undelivered event. Wait for TEvWakeup.
 }
@@ -229,10 +232,12 @@ void TDiskAgentWriteActor::HandleTimeout(
     const TActorContext& ctx)
 {
     const auto& device = DeviceRequests[ev->Cookie].Device;
-
-    LOG_WARN_S(ctx, TBlockStoreComponents::PARTITION_WORKER,
-        "WriteBlocks request timed out. Disk id: "
-        << PartConfig->GetName() << " Device: " << LogDevice(device));
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
+        "WriteBlocks request #"
+            << GetRequestId(Request) << " timed out. Disk id: "
+            << PartConfig->GetName() << " Device: " << LogDevice(device));
 
     HandleError(
         ctx,
