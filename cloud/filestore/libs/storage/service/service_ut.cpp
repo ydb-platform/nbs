@@ -1815,6 +1815,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 4,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            // 1MB = 4 blobs of 256KB. Read is performed twice.
+            UNIT_ASSERT_VALUES_EQUAL(
+                8,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
@@ -2176,7 +2184,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
                 subgroup->GetCounter("Errors")->GetAtomic());
-
         }
         {
             auto subgroup = counters->FindSubgroup("request", "WriteData");
@@ -2185,7 +2192,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 7,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
-
+        {
+            auto subgroup = counters->FindSubgroup("request", "WriteBlob");
+            UNIT_ASSERT(subgroup);
+            // Total number of put requests should have been 1 + 1 + 1 + 2 + 11
+            // + 3 + ceil(360 / 64) = 25
+            UNIT_ASSERT_VALUES_EQUAL(
+                25,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
     }
 
     Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)

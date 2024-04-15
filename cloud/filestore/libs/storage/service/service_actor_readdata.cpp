@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -44,6 +45,7 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
+    TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
@@ -254,7 +256,7 @@ void TReadDataActor::HandleDescribeDataResponse(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(InFlightRequest);
+    TABLET_VERIFY(InFlightRequest);
 
     InFlightRequest->Complete(ctx.Now(), msg->GetError());
     FinalizeProfileLogRequestInfo(
@@ -285,8 +287,24 @@ void TReadDataActor::HandleDescribeDataResponse(
 void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
 {
     RemainingBlobsToRead = DescribeResponse.GetBlobPieces().size();
+    if (RemainingBlobsToRead == 0) {
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadBlob;
     ui32 blobPieceId = 0;
+    InFlightBSRequests.reserve(RemainingBlobsToRead);
     for (const auto& blobPiece: DescribeResponse.GetBlobPieces()) {
+        InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
+            TRequestInfo(
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                RequestInfo->CallContext),
+            ProfileLog,
+            MediaKind,
+            RequestStats));
+        InFlightBSRequests.back()->Start(ctx.Now());
         NKikimr::TLogoBlobID blobId =
             LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
         LOG_DEBUG(
@@ -330,10 +348,6 @@ void TReadDataActor::ReadBlobIfNeeded(const TActorContext& ctx)
 
         SendToBSProxy(ctx, proxy, request.release(), blobPieceId++);
     }
-
-    if (RemainingBlobsToRead == 0) {
-        ReplyAndDie(ctx);
-    }
 }
 
 void TReadDataActor::HandleReadBlobResponse(
@@ -369,11 +383,17 @@ void TReadDataActor::HandleReadBlobResponse(
         (ui64)(msg->Status),
         ev->Cookie);
 
-    Y_ABORT_UNLESS(ev->Cookie < DescribeResponse.BlobPiecesSize());
+    TABLET_VERIFY(ev->Cookie < DescribeResponse.BlobPiecesSize());
     const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
 
+    ui64 blobIdx = ev->Cookie;
+    TABLET_VERIFY(
+        blobIdx < InFlightBSRequests.size() && InFlightBSRequests[blobIdx] &&
+        !InFlightBSRequests[blobIdx]->IsCompleted());
+    InFlightBSRequests[blobIdx]->Complete(ctx.Now(), {});
+
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        Y_ABORT_UNLESS(i < blobPiece.RangesSize());
+        TABLET_VERIFY(i < blobPiece.RangesSize());
 
         const auto& blobPiece = DescribeResponse.GetBlobPieces(ev->Cookie);
         const auto& blobRange = blobPiece.GetRanges(i);
@@ -427,7 +447,7 @@ void TReadDataActor::HandleReadBlobResponse(
             DescribeResponse.DebugString().c_str(),
             i,
             response.Buffer.size());
-        Y_ABORT_UNLESS(blobRange.GetOffset() >= AlignedByteRange.Offset);
+        TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
         char* targetData = GetDataPtr(
             blobRange.GetOffset(),
@@ -440,6 +460,7 @@ void TReadDataActor::HandleReadBlobResponse(
 
     --RemainingBlobsToRead;
     if (RemainingBlobsToRead == 0) {
+        RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
         ReplyAndDie(ctx);
     }
 }
@@ -461,6 +482,7 @@ void TReadDataActor::ReadData(
     const TString& fallbackReason)
 {
     ReadDataFallbackEnabled = true;
+    RequestInfo->CallContext->RequestType = EFileStoreRequest::ReadData;
 
     LOG_WARN(
         ctx,
