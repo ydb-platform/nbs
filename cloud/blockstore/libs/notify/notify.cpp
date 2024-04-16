@@ -194,7 +194,7 @@ public:
 
         auto p = NewPromise<NProto::TError>();
 
-        GetIamToken().Subscribe([this, p, event = data.Event, v] (TFuture<TResultOrError<TString>> future) mutable {
+        GetIamToken().Subscribe([this, p, event = data.Event, v = std::move(v)] (TFuture<TResultOrError<TString>> future) mutable {
             auto [token, error] = future.ExtractValue();
             if (HasError(error)) {
                 p.SetValue(error);
