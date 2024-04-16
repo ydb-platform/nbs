@@ -229,9 +229,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
+IServicePtr CreateService(
+    TNotifyConfigPtr config,
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
-    return std::make_shared<TService>(std::move(config), std::move(iamTokenClientPtr));
+    return std::make_shared<TService>(
+        std::move(config),
+        std::move(iamTokenClientPtr));
 }
 
 IServicePtr CreateServiceStub()
