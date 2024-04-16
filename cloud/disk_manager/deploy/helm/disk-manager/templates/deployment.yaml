@@ -24,7 +24,7 @@ spec:
       volumes:
       - name: disk-manager-config
         configMap:
-          name: "disk-manager-config-{{ .Values.serviceKind }}"
+          name: {{ include "common.names.configname" . }}
       initContainers:
       - name: disk-manager-init
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
