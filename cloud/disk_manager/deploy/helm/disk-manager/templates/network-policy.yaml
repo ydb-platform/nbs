@@ -5,7 +5,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: {{ include "common.names.fullname" }}
+      app: {{ include "common.names.fullname" . }}
   policyTypes:
     - Ingress
     - Egress
