@@ -291,7 +291,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mounter.Mount(resp.NbdDeviceFile, req.TargetPath, fsType, mountOptions)
+	return s.mountIfNeeded(resp.NbdDeviceFile, req.TargetPath, fsType, mountOptions)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -445,7 +445,7 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mounter.Mount(endpointDir, req.TargetPath, "", mountOptions)
+	return s.mountIfNeeded(endpointDir, req.TargetPath, "", mountOptions)
 }
 
 func (s *nodeService) mountBlockDevice(source string, target string) error {
@@ -461,7 +461,26 @@ func (s *nodeService) mountBlockDevice(source string, target string) error {
 	file.Close()
 
 	mountOptions := []string{"bind"}
-	return s.mounter.Mount(source, target, "", mountOptions)
+	return s.mountIfNeeded(source, target, "", mountOptions)
+}
+
+func (s *nodeService) mountIfNeeded(
+	source string,
+	target string,
+	fsType string,
+	options []string) error {
+
+	mounted, err := s.mounter.IsMountPoint(target)
+	if err != nil {
+		return err
+	}
+
+	if mounted {
+		log.Printf("Target path %q is already mounted", target)
+		return nil
+	}
+
+	return s.mounter.Mount(source, target, fsType, options)
 }
 
 func makeFilesystemIfNeeded(deviceName, fsType string) error {
