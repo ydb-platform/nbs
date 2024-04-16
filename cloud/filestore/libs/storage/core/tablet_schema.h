@@ -62,13 +62,14 @@ struct TTableSchema
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <bool UseDefaultCompactionPolicy, typename Type>
+template <typename Type>
 struct TSchemaInitializer;
 
-template <bool UseDefaultCompactionPolicy, typename Type>
-struct TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type>>
+template <typename Type>
+struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
 {
-    static void InitStorage(NKikimr::NTable::TAlter& alter)
+    static void
+    InitStorage(bool useDefaultCompactionPolicy, NKikimr::NTable::TAlter& alter)
     {
         alter.SetRoom(
             Type::TableId,
@@ -86,19 +87,21 @@ struct TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::S
         InitCompactionPolicy(
             alter,
             Type::TableId,
-            UseDefaultCompactionPolicy
+            useDefaultCompactionPolicy
                 ? Type::CompactionPolicy::CompactionPolicy
                 : ECompactionPolicy::IndexTable);
     }
 };
 
-template <bool UseDefaultCompactionPolicy, typename Type, typename ...Types>
-struct TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
+template <typename Type, typename... Types>
+struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
 {
-    static void InitStorage(NKikimr::NTable::TAlter& alter)
+    static void InitStorage(bool useDefaultCompactionPolicy, NKikimr::NTable::TAlter& alter)
     {
-        TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
-        TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Types...>>::InitStorage(alter);
+        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>::
+            InitStorage(useDefaultCompactionPolicy, alter);
+        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Types...>>::
+            InitStorage(useDefaultCompactionPolicy, alter);
     }
 };
 

@@ -16,11 +16,9 @@ void TIndexTabletDatabase::InitSchema(bool useDefaultCompactionPolicy)
 {
     Materialize<TIndexTabletSchema>();
 
-    if (useDefaultCompactionPolicy) {
-        TSchemaInitializer<false, TIndexTabletSchema::TTables>::InitStorage(Database.Alter());
-    } else {
-        TSchemaInitializer<true, TIndexTabletSchema::TTables>::InitStorage(Database.Alter());
-    }
+    TSchemaInitializer<TIndexTabletSchema::TTables>::InitStorage(
+        useDefaultCompactionPolicy,
+        Database.Alter());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
