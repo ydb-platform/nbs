@@ -1,6 +1,7 @@
 Tests {
     LoadTest {
         Name: "smoke"
+        KeepFileStore: true
         CreateFileStoreRequest: {
             FileSystemId: "smoke"
             FolderId: "folder"
@@ -11,17 +12,18 @@ Tests {
         DataLoadSpec {
             Actions {
                 Action: ACTION_READ
-                Rate: 33
+                Rate: 99
             }
             Actions {
                 Action: ACTION_WRITE
-                Rate: 33
+                Rate: 1
             }
-            ReadBytes: 4096
-            WriteBytes: 4096
+            ReadBytes: 65536
+            WriteBytes: 65536
             InitialFileSize: 104857600
             ValidationEnabled: true
-            AppendPercentage: 10
+            Sequential: true
+            AppendPercentage: 1
         }
         IODepth: 4
         TestDuration: 60
@@ -30,6 +32,7 @@ Tests {
 Tests {
     LoadTest {
         Name: "smoke64"
+        KeepFileStore: true
         CreateFileStoreRequest: {
             FileSystemId: "smoke64"
             FolderId: "folder"
@@ -40,17 +43,18 @@ Tests {
         DataLoadSpec {
             Actions {
                 Action: ACTION_READ
-                Rate: 33
+                Rate: 99
             }
             Actions {
                 Action: ACTION_WRITE
-                Rate: 33
+                Rate: 1
             }
             ReadBytes: 65536
             WriteBytes: 65536
             InitialFileSize: 104857600
             ValidationEnabled: true
-            AppendPercentage: 10
+            Sequential: true
+            AppendPercentage: 1
         }
         IODepth: 4
         TestDuration: 60

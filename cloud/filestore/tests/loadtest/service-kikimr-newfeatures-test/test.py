@@ -16,7 +16,11 @@ class Case(object):
 TESTS = [
     Case(
         "read-write-validation",
-        "cloud/filestore/tests/loadtest/service-kikimr-test/read-write-validation.txt",
+        "cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/read-write-validation.txt",
+    ),
+    Case(
+        "read-write-sequential-validation",
+        "cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/read-write-sequential-validation.txt",
     ),
 ]
 
@@ -28,6 +32,7 @@ def test_load(test_case):
         test_case.name,
         test_case.config_path,
         os.getenv("NFS_SERVER_PORT"),
+        mon_port=os.getenv("NFS_MON_PORT"),
     )
 
     return None
