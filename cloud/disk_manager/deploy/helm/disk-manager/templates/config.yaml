@@ -4,6 +4,6 @@ metadata:
   name: {{ include "common.names.fullname" }}
 data:
   client-config.txt: |
-{{ tpl (.Files.Get "files/configs/client-config.txt") . | indent 4 }}
+{{ tpl (.Files.Get "files/configs/client.txt") . | indent 4 }}
   server-config.txt: |
-{{ tpl (.Files.Get "files/configs/server-config.txt") . | indent 4 }}
+{{ tpl (.Files.Get "files/configs/server.txt") . | indent 4 }}
