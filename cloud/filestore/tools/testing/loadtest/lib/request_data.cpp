@@ -9,10 +9,13 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/utility.h>
 #include <util/generic/vector.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
+
+#include <atomic>
 
 namespace NCloud::NFileStore::NLoadTest {
 
@@ -74,6 +77,7 @@ struct THandleInfo
     ui64 Handle = 0;
     ui64 Size = 0;
     TSegmentsPtr Segments;
+    ui64 LastSlot = 0;
 
     THandleInfo() = default;
 
@@ -112,6 +116,7 @@ private:
     TMutex StateLock;
     ui64 LastWriteRequestId = 0;
 
+    TVector<THandleInfo> IncompleteHandleInfos;
     TVector<THandleInfo> HandleInfos;
 
     ui64 ReadBytes = DefaultBlockSize;
@@ -120,7 +125,7 @@ private:
     ui64 BlockSize = DefaultBlockSize;
     ui64 InitialFileSize = 0;
 
-    ui64 LastRequestId = 0;
+    std::atomic<ui64> LastRequestId = 0;
 
 public:
     TDataRequestGenerator(
@@ -260,7 +265,7 @@ private:
 
     TFuture<TCompletedRequest> HandleCreateHandle(
         const TFuture<NProto::TCreateHandleResponse>& future,
-        const TString name,
+        const TString& name,
         TInstant started)
     {
         try {
@@ -268,6 +273,7 @@ private:
             CheckResponse(response);
 
             auto handle = response.GetHandle();
+            auto& infos = InitialFileSize ? IncompleteHandleInfos : HandleInfos;
             with_lock (StateLock) {
                 TSegmentsPtr segments;
 
@@ -276,15 +282,18 @@ private:
                     segments->resize(Spec.GetInitialFileSize() / SEGMENT_SIZE);
                 }
 
-                HandleInfos.emplace_back(name, handle, 0, std::move(segments));
+                infos.emplace_back(name, handle, 0, std::move(segments));
             }
 
             NThreading::TFuture<NProto::TSetNodeAttrResponse> setAttr;
             if (InitialFileSize) {
+                static const int flags =
+                    ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+
                 auto request = CreateRequest<NProto::TSetNodeAttrRequest>();
                 request->SetHandle(handle);
                 request->SetNodeId(response.GetNodeAttr().GetId());
-                request->SetFlags(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+                request->SetFlags(flags);
                 request->MutableUpdate()->SetSize(InitialFileSize);
 
                 setAttr = Session->SetNodeAttr(CreateCallContext(), std::move(request));
@@ -312,12 +321,53 @@ private:
 
     TCompletedRequest HandleResizeAfterCreateHandle(
         const TFuture<NProto::TSetNodeAttrResponse>& future,
-        const TString name,
+        const TString& name,
         TInstant started)
     {
         try {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             CheckResponse(response);
+            bool handleFound = false;
+            with_lock (StateLock) {
+                ui32 handleIdx = 0;
+                while (handleIdx < IncompleteHandleInfos.size()) {
+                    auto& hinfo = IncompleteHandleInfos[handleIdx];
+                    if (hinfo.Name == name) {
+                        handleFound = true;
+
+                        hinfo.Size = Max(
+                            hinfo.Size,
+                            response.GetNode().GetSize());
+
+                        STORAGE_INFO(
+                            "updated file size for handle %lu and file %s"
+                            ", size=%lu",
+                            hinfo.Handle,
+                            name.Quote().c_str(),
+                            hinfo.Size);
+
+                        break;
+                    }
+
+                    ++handleIdx;
+                }
+
+                if (handleIdx < IncompleteHandleInfos.size()) {
+                    DoSwap(
+                        IncompleteHandleInfos[handleIdx],
+                        IncompleteHandleInfos.back());
+
+                    HandleInfos.push_back(
+                        std::move(IncompleteHandleInfos.back()));
+
+                    IncompleteHandleInfos.pop_back();
+                }
+            }
+
+            if (!handleFound) {
+                STORAGE_WARN("handle for file %s not found",
+                    name.Quote().c_str());
+            }
 
             return {
                 NProto::ACTION_CREATE_HANDLE,
@@ -351,9 +401,7 @@ private:
         }
 
         const auto started = TInstant::Now();
-        const ui64 slotCount = handleInfo.Size / ReadBytes;
-        Y_ABORT_UNLESS(slotCount);
-        const ui64 slotOffset = RandomNumber(slotCount);
+        const ui64 slotOffset = PickSlot(handleInfo, ReadBytes);
         const ui64 byteOffset = slotOffset * ReadBytes;
 
         auto request = CreateRequest<NProto::TReadDataRequest>();
@@ -443,8 +491,8 @@ private:
         if (RandomNumber<double>() < AppendProbability) {
             handleInfo.Size += WriteBytes;
         } else {
-            const ui64 slotCount = Max(handleInfo.Size / WriteBytes, 1ul);
-            const ui64 slotOffset = RandomNumber(slotCount);
+            handleInfo.Size = Max(handleInfo.Size, WriteBytes);
+            const ui64 slotOffset = PickSlot(handleInfo, WriteBytes);
             byteOffset = slotOffset * WriteBytes;
         }
 
@@ -553,7 +601,19 @@ private:
 
     TIntrusivePtr<TCallContext> CreateCallContext()
     {
-        return MakeIntrusive<TCallContext>(AtomicIncrement(LastRequestId));
+        return MakeIntrusive<TCallContext>(
+            LastRequestId.fetch_add(1, std::memory_order_relaxed));
+    }
+
+    ui64 PickSlot(THandleInfo& handleInfo, ui64 reqBytes)
+    {
+        const ui64 slotCount = handleInfo.Size / reqBytes;
+        Y_ABORT_UNLESS(slotCount);
+        if (Spec.GetSequential()) {
+            return handleInfo.LastSlot = (handleInfo.LastSlot + 1) % slotCount;
+        }
+
+        return RandomNumber(slotCount);
     }
 };
 

@@ -2,3 +2,4 @@ TwoStageReadEnabled: true
 NewCompactionEnabled: true
 NewCleanupEnabled: true
 ThreeStageWriteEnabled: true
+ReadAheadCacheRangeSize: 1048576
