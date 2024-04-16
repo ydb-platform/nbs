@@ -175,6 +175,10 @@ private:
         const TEvDiskRegistryProxy::TEvSubscribeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleConnectionEstablished(
+        const TEvDiskRegistryProxy::TEvConnectionEstablished::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleConnectionLost(
         const TEvDiskRegistryProxy::TEvConnectionLost::TPtr& ev,
         const NActors::TActorContext& ctx);

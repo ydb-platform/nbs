@@ -85,6 +85,7 @@ void TDiskRegistryProxyActor::StartWork(
     TThis::Become(&TThis::StateWork);
 
     DiskRegistryTabletId = tabletId;
+    NotifySubscribersConnectionEstablished(ctx);
 }
 
 void TDiskRegistryProxyActor::CreateClient(const TActorContext& ctx)
@@ -166,10 +167,23 @@ void TDiskRegistryProxyActor::RegisterPages(const TActorContext& ctx)
     }
 }
 
-void TDiskRegistryProxyActor::NotifySubscribers(const TActorContext& ctx)
+void TDiskRegistryProxyActor::NotifySubscribersConnectionLost(
+    const TActorContext& ctx)
 {
     for (const auto& subscriber: Subscribers) {
-        auto request = std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>();
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionLost>();
+
+        NCloud::Send(ctx, subscriber, std::move(request));
+    }
+}
+
+void TDiskRegistryProxyActor::NotifySubscribersConnectionEstablished(
+    const TActorContext& ctx)
+{
+    for (const auto& subscriber: Subscribers) {
+        auto request =
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionEstablished>();
 
         NCloud::Send(ctx, subscriber, std::move(request));
     }
@@ -183,7 +197,7 @@ void TDiskRegistryProxyActor::HandleConnected(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
+    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Connection to Disk Registry ready. TabletId: " << msg->TabletId
             << " Status: " << NKikimrProto::EReplyStatus_Name(msg->Status)
             << " ClientId: " << msg->ClientId
@@ -217,7 +231,7 @@ void TDiskRegistryProxyActor::HandleDisconnect(
         "Connection to Disk Registry failed: %s",
         FormatError(error).data());
 
-    NotifySubscribers(ctx);
+    NotifySubscribersConnectionLost(ctx);
 
     CancelActiveRequests(ctx);
 }
@@ -420,10 +434,11 @@ void TDiskRegistryProxyActor::HandleSubscribe(
         error.SetCode(S_ALREADY);
     }
 
-    const bool connected = !!TabletClientId;
-
-    auto response = std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
-        std::move(error), connected);
+    const bool discovered = !!DiskRegistryTabletId;
+    auto response =
+        std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
+            std::move(error),
+            discovered);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

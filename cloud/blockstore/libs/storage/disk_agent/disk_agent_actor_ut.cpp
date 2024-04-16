@@ -2853,6 +2853,56 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(2, registrationCount);
     }
 
+    Y_UNIT_TEST(ShouldRegisterAfterDRProxyIsReady)
+    {
+        int subscribed = 0;
+        int connectionEstablished = 0;
+        TTestBasicRuntime runtime;
+        runtime.SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryProxy::EvSubscribeRequest: {
+                        auto response = std::make_unique<
+                            TEvDiskRegistryProxy::TEvSubscribeResponse>(
+                            /*connected=*/false);
+                        auto event = std::make_unique<IEventHandle>(
+                            MakeDiskAgentServiceId(),
+                            MakeDiskRegistryProxyServiceId(),
+                            response.release());
+                        runtime.SendAsync(event.release());
+                        subscribed++;
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvDiskRegistryProxy::EvConnectionEstablished: {
+                        UNIT_ASSERT_VALUES_EQUAL(1, subscribed);
+                        connectionEstablished++;
+                        break;
+                    }
+                    case TEvDiskAgentPrivate::EvRegisterAgentRequest: {
+                        // Assert that attempt to register will be sent after
+                        // DRProxy is ready.
+                        UNIT_ASSERT_VALUES_EQUAL(1, connectionEstablished);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(DiskAgentConfig({"MemoryDevice1"}))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        diskAgent.SendRequest(MakeDiskAgentServiceId(),
+            std::make_unique<TEvDiskRegistryProxy::TEvConnectionEstablished>());
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+    }
+
     Y_UNIT_TEST(ShouldNotRegisterWhenNoDevicesDiscovered)
     {
         int registrationCount = 0;

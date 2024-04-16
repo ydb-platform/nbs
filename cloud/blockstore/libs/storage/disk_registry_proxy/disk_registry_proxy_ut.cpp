@@ -316,7 +316,7 @@ struct TTestRuntimeBuilder
         return *this;
     }
 
-    std::unique_ptr<TTestActorRuntime> Build()
+    std::unique_ptr<TTestActorRuntime> Build(bool initializeDRProxy = true)
     {
         auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -351,6 +351,14 @@ struct TTestRuntimeBuilder
                 TMailboxType::Simple,
                 0));
 
+        if (initializeDRProxy) {
+            InitializeDiskRegistryProxy(*runtime);
+        }
+
+        return runtime;
+    }
+
+    void InitializeDiskRegistryProxy(TTestActorRuntime& runtime) {
         auto storageConfig = std::make_shared<TStorageConfig>(
             StorageConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
@@ -365,21 +373,19 @@ struct TTestRuntimeBuilder
 
         auto drp = CreateDiskRegistryProxy(storageConfig, proxyConfig);
 
-        runtime->AddLocalService(
+        runtime.AddLocalService(
             MakeDiskRegistryProxyServiceId(),
             TActorSetupCmd(drp.release(), TMailboxType::Simple, 0));
 
-        runtime->AddLocalService(
+        runtime.AddLocalService(
             MakeSSProxyServiceId(),
             TActorSetupCmd(new TSSProxyMock(Pools), TMailboxType::Simple, 0));
 
-        SetupTabletServices(*runtime);
+        SetupTabletServices(runtime);
 
         if (OwnerId) {
-            BootDiskRegistryMock(*runtime);
+            BootDiskRegistryMock(runtime);
         }
-
-        return runtime;
     }
 };
 
@@ -614,36 +620,69 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         UNIT_ASSERT(FAILED(response->GetStatus()));
     }
 
-    Y_UNIT_TEST(ShouldSubscribe)
+    Y_UNIT_TEST(ShouldHandleConnectionLost)
     {
-        auto runtime = TTestRuntimeBuilder().Build();
+        auto builder = TTestRuntimeBuilder();
+        auto runtime = builder.Build(false);
+
+        int lookupSent = 0;
+        std::unique_ptr<IEventHandle> lookupResponseEvent;
+        auto baseFilter = runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLookupTabletRequest:
+                        lookupSent++;
+                        break;
+                    case TEvHiveProxy::EvLookupTabletResponse:
+                        UNIT_ASSERT_VALUES_EQUAL(1, lookupSent);
+                        lookupResponseEvent.reset(event.Release());
+                        return true;
+                    default:
+                        break;
+                }
+                return false;
+            });
+
+        UNIT_ASSERT(!lookupResponseEvent);
+        builder.InitializeDiskRegistryProxy(*runtime);
+        // TEvHiveProxy::EvLookupTabletRequest should be sent on the start of
+        // the actor.
+        UNIT_ASSERT_VALUES_EQUAL(1, lookupSent);
+        UNIT_ASSERT(lookupResponseEvent);
 
         TDiskRegistryClient client(*runtime);
-
         auto subscriber = runtime->AllocateEdgeActor();
 
         {
             auto response = client.Subscribe(subscriber);
-            UNIT_ASSERT(!response->Connected);
+            // DR is not discovered until TEvHiveProxy::TEvLookupTabletResponse
+            // is not received.
+            UNIT_ASSERT(!response->Discovered);
         }
 
-        client.AllocateDisk("disk-1", 10_GB);
+        runtime->SetEventFilter(baseFilter);
+        runtime->SendAsync(lookupResponseEvent.release());
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
             auto response = client.Subscribe(subscriber);
-            UNIT_ASSERT(response->Connected);
+            UNIT_ASSERT(response->Discovered);
         }
+
+        // Allocate disk to connect DRProxy with DR.
+        client.AllocateDisk("disk-1", 10_GB);
 
         RebootDiskRegistryMock(*runtime);
 
         using TNotification = TEvDiskRegistryProxy::TEvConnectionLost;
-
         TAutoPtr<IEventHandle> handle;
         runtime->GrabEdgeEventRethrow<TNotification>(handle, WaitTimeout);
 
         UNIT_ASSERT(handle);
-        std::unique_ptr<TNotification> notification(handle->Release<TNotification>()
-            .Release());
+        std::unique_ptr<TNotification> notification(
+            handle->Release<TNotification>().Release());
 
         UNIT_ASSERT(SUCCEEDED(notification->GetStatus()));
 

@@ -69,7 +69,9 @@ private:
     void RegisterPages(const NActors::TActorContext& ctx);
     void RenderHtmlInfo(IOutputStream& out) const;
 
-    void NotifySubscribers(const NActors::TActorContext& ctx);
+    void NotifySubscribersConnectionLost(const NActors::TActorContext& ctx);
+    void NotifySubscribersConnectionEstablished(
+        const NActors::TActorContext& ctx);
 
     void LookupTablet(const NActors::TActorContext& ctx);
     void CreateTablet(

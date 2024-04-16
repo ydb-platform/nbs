@@ -37,12 +37,12 @@ struct TEvDiskRegistryProxy
 
     struct TSubscribeResponse
     {
-        const bool Connected = false;
+        const bool Discovered = false;
 
         TSubscribeResponse() = default;
 
-        explicit TSubscribeResponse(bool connected)
-            : Connected(connected)
+        explicit TSubscribeResponse(bool discovered)
+            : Discovered(discovered)
         {}
     };
 
@@ -60,6 +60,14 @@ struct TEvDiskRegistryProxy
     };
 
     struct TUnsubscribeResponse
+    {
+    };
+
+    //
+    // ConnectionEstablished notification
+    //
+
+    struct TConnectionEstablished
     {
     };
 
@@ -137,21 +145,22 @@ struct TEvDiskRegistryProxy
     {
         EvBegin = TBlockStoreEvents::DISK_REGISTRY_PROXY_START,
 
-        EvSubscribeRequest = EvBegin + 1,
-        EvSubscribeResponse = EvBegin + 2,
+        EvSubscribeRequest,
+        EvSubscribeResponse,
 
-        EvUnsubscribeRequest = EvBegin + 3,
-        EvUnsubscribeResponse = EvBegin + 4,
+        EvUnsubscribeRequest,
+        EvUnsubscribeResponse,
 
-        EvConnectionLost = EvBegin + 5,
+        EvConnectionLost,
+        EvConnectionEstablished,
 
-        EvReassignRequest = EvBegin + 6,
-        EvReassignResponse = EvBegin + 7,
+        EvReassignRequest,
+        EvReassignResponse,
 
-        EvDiskRegistryCreateResult = EvBegin + 8,
+        EvDiskRegistryCreateResult,
 
-        EvGetDrTabletInfoRequest = EvBegin + 9,
-        EvGetDrTabletInfoResponse = EvBegin + 10,
+        EvGetDrTabletInfoRequest,
+        EvGetDrTabletInfoResponse,
 
         EvEnd
     };
@@ -162,6 +171,8 @@ struct TEvDiskRegistryProxy
     BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvConnectionLost = TResponseEvent<TConnectionLost, EvConnectionLost>;
+    using TEvConnectionEstablished =
+        TResponseEvent<TConnectionEstablished, EvConnectionEstablished>;
     using TEvDiskRegistryCreateResult =
         TResponseEvent<TDiskRegistryCreateResult, EvDiskRegistryCreateResult>;
 };

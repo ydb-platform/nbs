@@ -142,13 +142,7 @@ void TDiskAgentActor::HandleRegisterAgentResponse(
 
     if (!HasError(msg->GetError())) {
         RegistrationInProgress = false;
-
         LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Register completed");
-
-        NCloud::Send(
-            ctx,
-            MakeDiskRegistryProxyServiceId(),
-            std::make_unique<TEvDiskRegistryProxy::TEvSubscribeRequest>(ctx.SelfID));
 
     } else {
         LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT,
@@ -170,7 +164,8 @@ void TDiskAgentActor::HandleSubscribeResponse(
 {
     auto* msg = ev->Get();
 
-    if (SUCCEEDED(msg->GetStatus()) && !msg->Connected) {
+    if (FAILED(msg->GetStatus()) || msg->Discovered)
+    {
         SendRegisterRequest(ctx);
     }
 }
@@ -187,6 +182,15 @@ void TDiskAgentActor::SendRegisterRequest(const TActorContext& ctx)
         ctx,
         ctx.SelfID,
         std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentRequest>());
+}
+
+void TDiskAgentActor::HandleConnectionEstablished(
+    const TEvDiskRegistryProxy::TEvConnectionEstablished::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    SendRegisterRequest(ctx);
 }
 
 void TDiskAgentActor::HandleConnectionLost(
