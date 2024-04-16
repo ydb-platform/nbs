@@ -6,8 +6,8 @@ metadata:
     app: {{ include "common.names.fullname" . }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   annotations:
-    checksum/client-config: {{ tpl (.Files.Get "files/configs/client.txt") . | sha256sum }}
-    checksum/server-config: {{ tpl (.Files.Get "files/configs/server.txt") . | sha256sum }}
+    checksum/client-config: {{ include "disk-manager.clientConfigFile" . | sha256sum }}
+    checksum/server-config: {{ include "disk-manager.serverConfigFile" . | sha256sum }}
 spec:
   selector:
     matchLabels:
@@ -17,37 +17,43 @@ spec:
     metadata:
       labels:
         app: {{ include "common.names.fullname" . }}
-    spec: {{ $serverConfigName := "server-config.txt" }}
-      {{ $clientConfigName := "client-config.txt" }}
-      {{ $serverConfigPath := printf "/etc/yc/disk-manager/%s" $serverConfigName}}
-      {{ $clientConfigPath := printf "/etc/yc/disk-manager/%s" $clientConfigName}}
+    spec:
       volumes:
-      - name: disk-manager-config
+      - name: {{ include "disk-manager.serverVolumeName" . }}
         configMap:
           name: {{ include "common.names.configname" . }}
+          items:
+            - key: {{ include "disk-manager.serverConfigName" . }}
+              path: {{ include "disk-manager.serverConfigName" . }}
+      - name: {{ include "disk-manager.clientVolumeName" . }}
+        configMap:
+          name: {{ include "common.names.configname" . }}
+          items:
+            - key: {{ include "disk-manager.clientConfigName" . }}
+              path: {{ include "disk-manager.clientConfigName" . }}
       initContainers:
       - name: disk-manager-init
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: "{{ .Values.image.pullPolicy }}"
-        command: ["/usr/bin/yc-disk-manager-init-db", "--config={{ $serverConfigPath }}"]
+        command: ["/usr/bin/yc-disk-manager-init-db", '--config={{ include "disk-manager.serverConfigPath" . }}']
         volumeMounts:
-        - name: disk-manager-config
-          mountPath: "{{ $serverConfigPath }}"
-          subPath: server.txt
+          - name: {{ include "disk-manager.serverVolumeName" . }}
+            mountPath: {{ include "disk-manager.serverConfigPath" . }}
+            subPath: {{ include "disk-manager.serverConfigName" . }}
 
       containers:
       - name: disk-manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        command: ["/usr/bin/yc-disk-manager", "--config={{ $serverConfigPath }}"]
+        command: ["/usr/bin/yc-disk-manager", '--config={{ include "disk-manager.serverConfigPath" . }}']
         imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         volumeMounts:
-        - name: disk-manager-config
-          mountPath: "{{ $serverConfigPath }}"
-          subPath: "{{ $serverConfigName }}"
+        - name: {{ include "disk-manager.serverVolumeName" . }}
+          mountPath: {{ include "disk-manager.serverConfigPath" . }}
+          subPath: {{ include "disk-manager.serverConfigName" . }}
         {{- if eq .Values.serviceKind "controlplane" }}
-        - name: disk-manager-config
-          mountPath: "{{ $clientConfigPath }}"
-          subPath: "client.txt"
+        - name: {{ include "disk-manager.clientVolumeName" . }}
+          mountPath: {{ include "disk-manager.clientConfigPath" . }}
+          subPath: {{ include "disk-manager.clientConfigName" . }}
         {{- end }}
         ports:
-          - containerPort: {{ .Values.service.internalPort | int }}
+          - containerPort: {{ .Values.service.internalPort }}

@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ include "common.names.configname" . }}
 data:
-  client-config.txt: |
-{{ tpl (.Files.Get "files/configs/client.txt") . | indent 4 }}
-  server-config.txt: |
-{{ tpl (.Files.Get "files/configs/server.txt") . | indent 4 }}
+  {{ include "disk-manager.clientConfigName" . }}: |
+{{ include "disk-manager.clientConfigFile" . | indent 4 }}
+  {{ include "disk-manager.serverConfigName" . }}: |
+{{ include "disk-manager.serverConfigFile" . | indent 4 }}
