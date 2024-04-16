@@ -44,13 +44,13 @@ TTarget ConvertValue(const TSource& value)
 
 template <class TTarget, typename TSource>
 TTarget ConvertValue(
- 	const google::protobuf::RepeatedPtrField<TSource>& value)
+    const google::protobuf::RepeatedPtrField<TSource>& value)
 {
     TTarget v(Reserve(value.size()));
     for (const auto& x : value) {
-	  v.push_back(x);
-	}
-	return v;
+          v.push_back(x);
+        }
+        return v;
 }
 
 template <typename T>
