@@ -108,13 +108,13 @@ ui64 GetStartIndex(const T& request)
 template <typename T>
 TString GetRequestDetails(const T& request)
 {
-    constexpr bool isTWriteBlocksRequest =
+    constexpr bool IsTWriteBlocksRequest =
         std::is_base_of_v<T, NProto::TWriteBlocksRequest>;
 
-    constexpr bool hasGetStartIndex =
+    constexpr bool HasGetStartIndex =
         requires(const T& t) { t.GetStartIndex(); };
 
-    if constexpr (isTWriteBlocksRequest) {
+    if constexpr (IsTWriteBlocksRequest) {
         ui64 bytes = 0;
         for (const auto& buffer: request.GetBlocks().GetBuffers()) {
             bytes += buffer.Size();
@@ -125,7 +125,7 @@ TString GetRequestDetails(const T& request)
                << ", size: " << bytes
                << ", buffers: " << request.GetBlocks().BuffersSize()
                << ")";
-    } else if constexpr (hasGetStartIndex) {
+    } else if constexpr (HasGetStartIndex) {
         return TStringBuilder()
                << " (offset: " << request.GetStartIndex()
                << ", count: " << GetBlocksCount(request) << ")";
@@ -138,8 +138,8 @@ TString GetRequestDetails(const T& request)
 template <typename T>
 TString GetDiskId(const T& request)
 {
-    constexpr bool hasGetDiskId = requires { request.GetDiskId(); };
-    if constexpr (hasGetDiskId) {
+    constexpr bool HasGetDiskId = requires { request.GetDiskId(); };
+    if constexpr (HasGetDiskId) {
         return request.GetDiskId();
     }
     return {};
