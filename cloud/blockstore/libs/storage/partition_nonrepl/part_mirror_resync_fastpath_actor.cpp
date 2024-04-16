@@ -1,5 +1,6 @@
 #include "part_mirror_resync_fastpath_actor.h"
 
+#include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -50,7 +51,8 @@ void TMirrorPartitionResyncFastPathActor::Bootstrap(const TActorContext& ctx)
 void TMirrorPartitionResyncFastPathActor::ChecksumBlocks(
     const TActorContext& ctx)
 {
-    for (size_t i = 0; i < Replicas.size(); ++i) {
+    ReadBlocks(ctx, 0);
+    for (size_t i = 1; i < Replicas.size(); ++i) {
         ChecksumReplicaBlocks(ctx, i);
     }
 }
@@ -106,7 +108,7 @@ void TMirrorPartitionResyncFastPathActor::CompareChecksums(
         }
     }
 
-    ReadBlocks(ctx, firstIdx);
+    Done(ctx);
 }
 
 void TMirrorPartitionResyncFastPathActor::ReadBlocks(
@@ -138,6 +140,18 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(
     Y_UNUSED(request.release());
 
     ctx.Send(std::move(event));
+}
+
+void TMirrorPartitionResyncFastPathActor::CalculateChecksum()
+{
+    if (auto guard = SgList.Acquire()) {
+        TBlockChecksum checksum;
+        const TSgList& sgList = guard.Get();
+        for (auto blockData: sgList) {
+           checksum.Extend(blockData.Data(), blockData.Size());
+        }
+        Checksums.insert({0, checksum.GetValue()});
+    }
 }
 
 void TMirrorPartitionResyncFastPathActor::Done(const TActorContext& ctx)
@@ -193,7 +207,15 @@ void TMirrorPartitionResyncFastPathActor::HandleReadResponse(
     const NActors::TActorContext& ctx)
 {
     Error = ev->Get()->GetError();
-    Done(ctx);
+    if (HasError(Error)) {
+        Done(ctx);
+        return;
+    }
+
+    CalculateChecksum();
+    if (Checksums.size() == Replicas.size()) {
+        CompareChecksums(ctx);
+    }
 }
 
 void TMirrorPartitionResyncFastPathActor::HandleReadUndelivery(

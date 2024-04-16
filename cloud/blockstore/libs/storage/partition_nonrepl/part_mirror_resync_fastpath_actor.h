@@ -54,6 +54,7 @@ private:
     void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
     void ReadReplicaBlocks(const NActors::TActorContext& ctx, int idx);
     void CompareChecksums(const NActors::TActorContext& ctx);
+    void CalculateChecksum();
     void ReadBlocks(const NActors::TActorContext& ctx, int idx);
     void Done(const NActors::TActorContext& ctx);
 
