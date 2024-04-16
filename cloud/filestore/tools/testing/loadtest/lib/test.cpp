@@ -450,7 +450,7 @@ public:
                 bool cont = true;
                 while (auto maybeCmd = Commands.Dequeue()) {
                     auto& cmd = *maybeCmd;
-                    if(!(cont = HandleCommand(cmd))) {
+                    if (cont = HandleCommand(cmd); !cont) {
                         break;
                     }
                 }
@@ -1026,7 +1026,7 @@ public:
             TargetFuture.GetValueSync();
         }
 
-        if (Config.HasCreateFileStoreRequest()) {
+        if (Config.HasCreateFileStoreRequest() && !Config.GetKeepFileStore()) {
             auto filesystemId =
                 Config.GetCreateFileStoreRequest().GetFileSystemId();
 
