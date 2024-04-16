@@ -16,7 +16,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -36,7 +36,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         executor.WriteTx([&] (TIndexTabletDatabase db) {
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         constexpr ui64 commitId = 1;
@@ -90,7 +90,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         constexpr ui64 commitId = 1;
@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         constexpr ui64 commitId = 1;
@@ -158,7 +158,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         const TString checkpointId1 = "test1";
@@ -185,7 +185,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         const TString sessionId1 = "test1";
@@ -212,7 +212,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         const TString sessionId1 = "test1";
@@ -282,7 +282,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         constexpr ui64 nodeId = 1;
@@ -318,7 +318,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         TMaybe<NProto::TStorageConfig> serviceConfig;
@@ -349,7 +349,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema();
+            db.InitSchema(false);
         });
 
         using TEntries = TVector<TCompactionRangeInfo>;
@@ -412,6 +412,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
         });
     }
+
+    Y_UNIT_TEST(ShouldStoreCompactionMap)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            db.InitSchema(false);
+        });
+
+    }
+
 }
 
 }   // namespace NCloud::NFileStore::NStorage

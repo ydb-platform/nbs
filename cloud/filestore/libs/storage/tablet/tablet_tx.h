@@ -236,6 +236,11 @@ struct TTxIndexTablet
         // actually unused, needed in tablet_tx.h to avoid sophisticated
         // template tricks
         const TRequestInfoPtr RequestInfo;
+        bool UseDefaultCompactionPolicy;
+
+        TInitSchema(bool useDefaultCompactionPolicy)
+            : UseDefaultCompactionPolicy(useDefaultCompactionPolicy)
+        {}
 
         void Clear()
         {

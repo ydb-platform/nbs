@@ -62,11 +62,11 @@ struct TTableSchema
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename Type>
+template <bool UseDefaultCompactionPolicy, typename Type>
 struct TSchemaInitializer;
 
-template <typename Type>
-struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
+template <bool UseDefaultCompactionPolicy, typename Type>
+struct TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type>>
 {
     static void InitStorage(NKikimr::NTable::TAlter& alter)
     {
@@ -86,17 +86,19 @@ struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
         InitCompactionPolicy(
             alter,
             Type::TableId,
-            Type::CompactionPolicy::CompactionPolicy);
+            UseDefaultCompactionPolicy
+                ? Type::CompactionPolicy::CompactionPolicy
+                : ECompactionPolicy::IndexTable);
     }
 };
 
-template <typename Type, typename ...Types>
-struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
+template <bool UseDefaultCompactionPolicy, typename Type, typename ...Types>
+struct TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
 {
     static void InitStorage(NKikimr::NTable::TAlter& alter)
     {
-        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
-        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Types...>>::InitStorage(alter);
+        TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
+        TSchemaInitializer<UseDefaultCompactionPolicy, NKikimr::NIceDb::Schema::SchemaTables<Types...>>::InitStorage(alter);
     }
 };
 
