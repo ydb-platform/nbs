@@ -33,8 +33,7 @@ public:
         return Token;
     }
 
-    TFuture<TResultOrError<NIamClient::TTokenInfo>>
-    GetTokenAsync() override
+    TFuture<TResultOrError<NIamClient::TTokenInfo>> GetTokenAsync() override
     {
         return MakeFuture(TResultOrError(Token));
     }

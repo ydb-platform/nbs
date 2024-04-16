@@ -2,10 +2,10 @@
 
 #include "config.h"
 #include "https.h"
-#include <cloud/storage/core/libs/iam/iface/client.h>
-#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <library/cpp/json/writer/json_value.h>
 
@@ -131,7 +131,7 @@ public:
     void Stop() override
     {}
 
-    auto GetIamToken() 
+    auto GetIamToken()
     {
         if (Config->GetVersion() == 2) {
             if (!IamClient) {
@@ -229,9 +229,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr IamTokenClientPtr)
+IServicePtr CreateService(TNotifyConfigPtr config, NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
-    return std::make_shared<TService>(std::move(config), std::move(IamTokenClientPtr));
+    return std::make_shared<TService>(std::move(config), std::move(iamTokenClientPtr));
 }
 
 IServicePtr CreateServiceStub()

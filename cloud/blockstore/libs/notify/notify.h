@@ -60,7 +60,7 @@ struct IService
 
 IServicePtr CreateService(
     TNotifyConfigPtr config,
-    NCloud::NIamClient::IIamTokenClientPtr IamTokenClientPtr);
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr);
 
 IServicePtr CreateNullService(ILoggingServicePtr logging);
 
