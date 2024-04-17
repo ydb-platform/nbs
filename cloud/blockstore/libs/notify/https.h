@@ -26,7 +26,7 @@ public:
         const TString& endpoint,
         const TString& data,
         const TString& contentType,
-        const TString& iamTokenStr,
+        const TString& iamToken,
         const THttpsCallback& callback);
 
 private:

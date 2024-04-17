@@ -939,13 +939,13 @@ void THttpsClient::Post(
     const TString& endpoint,
     const TString& data,
     const TString& contentType,
-    const TString& iamTokenStr,
+    const TString& iamToken,
     const THttpsCallback& callback)
 {
     THttpHeaders headers;
     headers.AddHeader(THttpInputHeader("Content-Type", contentType));
-    if (!iamTokenStr.Empty()) {
-        headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + iamTokenStr));
+    if (!iamToken.empty()) {
+        headers.AddHeader(THttpInputHeader("Authorization", "Bearer " + iamToken));
     }
     Impl->SendRequest(
         EHttpMethod::Post,

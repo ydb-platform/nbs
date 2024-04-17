@@ -27,6 +27,10 @@ static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 // Same class as TIamTokenClientForStub, but returns nonempty token.
 class TIamTokenClientForTests final: public NIamClient::IIamTokenClient
 {
+private:
+    NIamClient::TTokenInfo Token =
+        NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()};
+
 public:
     TResultOrError<NIamClient::TTokenInfo> GetToken() override
     {
@@ -43,10 +47,6 @@ public:
 
     void Stop() override
     {}
-
-private:
-    NIamClient::TTokenInfo Token =
-        NIamClient::TTokenInfo{"XXXXXXXXXXXXXXXXXXXXXXXXXX", TInstant::Zero()};
 };
 
 using TIamTokenClientForTestsPtr = std::shared_ptr<TIamTokenClientForTests>;
@@ -81,7 +81,7 @@ auto MakeConfigV2()
 auto CreateNotifyService(int version)
 {
     return CreateService(
-        version == 2 ? MakeConfigV2() : MakeConfig(),
+        version == V2 ? MakeConfigV2() : MakeConfig(),
         std::make_shared<TIamTokenClientForTests>());
 }
 

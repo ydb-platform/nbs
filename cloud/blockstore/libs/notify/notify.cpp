@@ -194,32 +194,36 @@ public:
 
         auto p = NewPromise<NProto::TError>();
 
-        GetIamToken().Subscribe([this, p, event = data.Event, v = std::move(v)] (TFuture<TResultOrError<TString>> future) mutable {
-            auto [token, error] = future.ExtractValue();
-            if (HasError(error)) {
-                p.SetValue(error);
-                return;
-            }
+        GetIamToken().Subscribe(
+            [this, p, event = data.Event, v = std::move(v)](
+                TFuture<TResultOrError<TString>> future) mutable
+            {
+                auto [token, error] = future.ExtractValue();
+                if (HasError(error)) {
+                    p.SetValue(error);
+                    return;
+                }
 
-            HttpsClient.Post(
-                Config->GetEndpoint(),
-                v.GetStringRobust(),
-                "application/json",
-                token,
-                [p, event] (int code, const TString& message) mutable {
-                    const bool isSuccess = code >= 200 && code < 300;
+                HttpsClient.Post(
+                    Config->GetEndpoint(),
+                    v.GetStringRobust(),
+                    "application/json",
+                    token,
+                    [p, event](int code, const TString& message) mutable
+                    {
+                        const bool isSuccess = code >= 200 && code < 300;
 
-                    if (isSuccess) {
-                        p.SetValue(MakeError(S_OK, TStringBuilder()
-                            << "HTTP code: " << code));
-                        return;
-                    }
+                        if (isSuccess) {
+                            p.SetValue(MakeError(S_OK, TStringBuilder()
+                                << "HTTP code: " << code));
+                            return;
+                        }
 
-                    p.SetValue(MakeError(E_REJECTED, TStringBuilder()
-                        << "Couldn't send notification " << event
-                        << ". HTTP error: " << code << " " << message));
+                        p.SetValue(MakeError(E_REJECTED, TStringBuilder()
+                                << "Couldn't send notification " << event
+                                << ". HTTP error: " << code << " " << message));
+                    });
             });
-        });
 
         return p.GetFuture();
     }
