@@ -126,6 +126,6 @@ format_disk rot 64G
 setup_nonrepl_disk_registry
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-test -f static && ln -s "${SCRIPT_DIR}/static" static
-test -f dynamic && ln -s "${SCRIPT_DIR}/dynamic" dynamic
-test -f nbs && ln -s "${SCRIPT_DIR}/nbs" nbs
+test -d static && ln -s "${SCRIPT_DIR}/static" static
+test -d dynamic && ln -s "${SCRIPT_DIR}/dynamic" dynamic
+test -d nbs && ln -s "${SCRIPT_DIR}/nbs" nbs
