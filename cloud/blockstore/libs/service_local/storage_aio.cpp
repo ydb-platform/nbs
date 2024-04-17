@@ -776,7 +776,7 @@ public:
             StorageContext->StorageBlockCount * StorageContext->BlockSize);
 
         future.Subscribe([this] (auto& future) {
-            auto error = future.GetValue();
+            const auto& error = future.GetValue();
             if (HasError(error)) {
                 Response.SetValue(error);
                 return;
