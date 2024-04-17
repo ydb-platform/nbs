@@ -595,7 +595,7 @@ TString TCommand::GetIamTokenFromClient()
         return iamToken;
     }
     try {
-        auto tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
+        const auto& tokenInfo = IamClient->GetTokenAsync().GetValue(WaitTimeout);
         if (!HasError(tokenInfo)) {
             iamToken = tokenInfo.GetResult().Token;
         }
