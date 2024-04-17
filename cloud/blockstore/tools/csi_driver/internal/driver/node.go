@@ -5,21 +5,22 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfsapi "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/mount-utils"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const NodeTargetPathPattern = "/var/lib/kubelet/pods/([a-z0-9-]+)/volumes/kubernetes.io~csi/([a-z0-9-]+)/mount"
 
 const topologyNodeKey = "topology.nbs.csi/node"
 
@@ -44,15 +45,16 @@ var capabilities = []*csi.NodeServiceCapability{
 type nodeService struct {
 	csi.NodeServer
 
-	nodeID        string
-	clientID      string
-	vmMode        bool
-	nbsSocketsDir string
-	podSocketsDir string
-	nbsClient     nbsclient.ClientIface
-	nfsClient     nfsclient.EndpointClientIface
+	nodeID            string
+	clientID          string
+	vmMode            bool
+	nbsSocketsDir     string
+	podSocketsDir     string
+	targetPathPattern string
 
-	mounter mount.Interface
+	nbsClient nbsclient.ClientIface
+	nfsClient nfsclient.EndpointClientIface
+	mounter   mounter.Interface
 }
 
 func newNodeService(
@@ -61,18 +63,21 @@ func newNodeService(
 	vmMode bool,
 	nbsSocketsDir string,
 	podSocketsDir string,
+	targetPathPattern string,
 	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.EndpointClientIface) csi.NodeServer {
+	nfsClient nfsclient.EndpointClientIface,
+	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
-		nodeID:        nodeID,
-		clientID:      clientID,
-		vmMode:        vmMode,
-		nbsSocketsDir: nbsSocketsDir,
-		podSocketsDir: podSocketsDir,
-		nbsClient:     nbsClient,
-		nfsClient:     nfsClient,
-		mounter:       mount.New(""),
+		nodeID:            nodeID,
+		clientID:          clientID,
+		vmMode:            vmMode,
+		nbsSocketsDir:     nbsSocketsDir,
+		podSocketsDir:     podSocketsDir,
+		nbsClient:         nbsClient,
+		nfsClient:         nfsClient,
+		mounter:           mounter,
+		targetPathPattern: targetPathPattern,
 	}
 }
 
@@ -153,7 +158,7 @@ func (s *nodeService) NodePublishVolume(
 			"VolumeContext missing in NodePublishVolumeRequest")
 	}
 
-	if getPodId(req) == "" {
+	if s.getPodId(req) == "" {
 		return nil, status.Errorf(codes.Internal,
 			"podUID missing in NodePublishVolumeRequest.VolumeContext")
 	}
@@ -246,7 +251,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	_, err := s.startNbsEndpoint(ctx, getPodId(req), req.VolumeId, vhostIpc)
+	_, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, vhostIpc)
 	if err != nil {
 		return status.Errorf(codes.Internal,
 			"Failed to start NBS endpoint: %+v", err)
@@ -259,7 +264,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpoint(ctx, getPodId(req), req.VolumeId, nbdIpc)
+	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
 	if err != nil {
 		return status.Errorf(codes.Internal,
 			"Failed to start NBS endpoint: %+v", err)
@@ -277,7 +282,7 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		fsType = mnt.FsType
 	}
 
-	if err := makeFilesystemIfNeeded(resp.NbdDeviceFile, fsType); err != nil {
+	if err := s.makeFilesystemIfNeeded(resp.NbdDeviceFile, fsType); err != nil {
 		return err
 	}
 
@@ -298,7 +303,7 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	resp, err := s.startNbsEndpoint(ctx, getPodId(req), req.VolumeId, nbdIpc)
+	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
 	if err != nil {
 		return status.Errorf(codes.Internal,
 			"Failed to start NBS endpoint: %+v", err)
@@ -319,7 +324,7 @@ func (s *nodeService) startNbsEndpoint(
 	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := filepath.Join(s.podSocketsDir, podId, volumeId)
-	if err := os.MkdirAll(endpointDir, 0777); err != nil {
+	if err := os.MkdirAll(endpointDir, 0775); err != nil {
 		return nil, err
 	}
 
@@ -348,8 +353,8 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.podSocketsDir, getPodId(req), req.VolumeId)
-	if err := os.MkdirAll(endpointDir, 0777); err != nil {
+	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
+	if err := os.MkdirAll(endpointDir, 0775); err != nil {
 		return err
 	}
 
@@ -357,7 +362,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return status.Errorf(codes.Internal, "NFS client wasn't created")
 	}
 
-	socketPath := filepath.Join(s.nbsSocketsDir, getPodId(req), req.VolumeId, nfsSocketName)
+	socketPath := filepath.Join(s.nbsSocketsDir, s.getPodId(req), req.VolumeId, nfsSocketName)
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       socketPath,
@@ -379,12 +384,12 @@ func (s *nodeService) nodeUnpublishVolume(
 	ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) error {
 
-	if err := mount.CleanupMountPoint(req.TargetPath, s.mounter, true); err != nil {
+	if err := s.mounter.CleanupMountPoint(req.TargetPath); err != nil {
 		return err
 	}
 
 	// no other way to get podId from NodeUnpublishVolumeRequest
-	podId, _, err := parseTargetPath(req.TargetPath)
+	podId, _, err := s.parseTargetPath(req.TargetPath)
 	if err != nil {
 		return err
 	}
@@ -427,7 +432,7 @@ func (s *nodeService) nodeUnpublishVolume(
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.podSocketsDir, getPodId(req), req.VolumeId)
+	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
 
 	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
 	// "If the disk.img image file has not been created manually before starting a VM
@@ -489,35 +494,31 @@ func (s *nodeService) mountIfNeeded(
 	return s.mounter.Mount(source, target, fsType, options)
 }
 
-func makeFilesystemIfNeeded(deviceName, fsType string) error {
-	if _, err := exec.LookPath("blkid"); err != nil {
-		return fmt.Errorf("failed to find 'blkid' tool: %v", err)
+func (s *nodeService) makeFilesystemIfNeeded(deviceName, fsType string) error {
+
+	existed, err := s.mounter.IsFilesystemExisted(deviceName)
+	if err != nil {
+		return err
 	}
 
-	if _, err := os.Stat(deviceName); os.IsNotExist(err) {
-		return fmt.Errorf("failed to find device %q: %v", deviceName, err)
-	}
-
-	out, err := exec.Command("blkid", deviceName).CombinedOutput()
-	if err == nil && string(out) != "" {
-		log.Printf("filesystem exists: %q", string(out))
+	if existed {
+		log.Printf("filesystem exists on device: %q", deviceName)
 		return nil
 	}
 
 	log.Printf("making filesystem %q on device %q", fsType, deviceName)
-
-	out, err = exec.Command("mkfs", "-t", fsType, deviceName).CombinedOutput()
+	err = s.mounter.MakeFilesystem(deviceName, fsType)
 	if err != nil {
-		return fmt.Errorf("failed to make filesystem: %v, output %q", err, out)
+		return err
 	}
 
-	log.Printf("succeeded making filesystem: %q", out)
+	log.Printf("succeeded making filesystem: %q")
 	return nil
 }
 
-func getPodId(req *csi.NodePublishVolumeRequest) string {
+func (s *nodeService) getPodId(req *csi.NodePublishVolumeRequest) string {
 	// another way to get podId is: return req.VolumeContext["csi.storage.k8s.io/pod.uid"]
-	podId, _, err := parseTargetPath(req.TargetPath)
+	podId, _, err := s.parseTargetPath(req.TargetPath)
 	if err != nil {
 		return ""
 	}
@@ -525,8 +526,8 @@ func getPodId(req *csi.NodePublishVolumeRequest) string {
 	return podId
 }
 
-func parseTargetPath(targetPath string) (string, string, error) {
-	re := regexp.MustCompile(`/var/lib/kubelet/pods/([a-z0-9-]+)/volumes/kubernetes.io~csi/([a-z0-9-]+)/mount`)
+func (s *nodeService) parseTargetPath(targetPath string) (string, string, error) {
+	re := regexp.MustCompile(s.targetPathPattern)
 	matches := re.FindStringSubmatch(targetPath)
 
 	if len(matches) <= 2 {
