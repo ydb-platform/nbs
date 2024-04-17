@@ -3613,7 +3613,7 @@ NProto::TError TDiskRegistryState::UpdateAgentCounters(
     for (const auto& device: stats.GetDeviceStats()) {
         const auto& uuid = device.GetDeviceUUID();
 
-        const bool deviceIsUnknown = std::ranges::any_of(
+        const bool deviceIsUnknown = AnyOf(
             agent->GetUnknownDevices(),
             [&uuid](const NProto::TDeviceConfig& device)
             { return device.GetDeviceUUID() == uuid; });
