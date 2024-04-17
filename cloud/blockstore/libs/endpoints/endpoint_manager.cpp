@@ -1330,9 +1330,9 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         ctx,
         startRequest->GetUnixSocketPath(),
         startRequest->GetHeaders());
-    auto [sessionInfo, error] = Executor->WaitFor(future);
-    if (HasError(error)) {
-        return error;
+    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
+    if (HasError(getSessionError)) {
+        return getSessionError;
     }
 
     STORAGE_INFO("Switching endpoint"
@@ -1345,12 +1345,12 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         *startRequest,
         sessionInfo.Volume,
         sessionInfo.Session);
-    error = Executor->WaitFor(switchFuture);
-    if (HasError(error)) {
+    const auto& switchError = Executor->WaitFor(switchFuture);
+    if (HasError(switchError)) {
         ReportEndpointSwitchFailure(TStringBuilder()
             << "Failed to switch endpoint for volume "
             << sessionInfo.Volume.GetDiskId()
-            << ", " << error.GetMessage());
+            << ", " << switchError.GetMessage());
     }
 
     return error;
