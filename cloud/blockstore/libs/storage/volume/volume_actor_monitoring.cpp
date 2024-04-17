@@ -367,7 +367,7 @@ void OutputClientInfo(
             }
             TABLED() {
                 UL() {
-                    for (const auto p: pipes) {
+                    for (const auto& p: pipes) {
                         if (p.second.State != TVolumeClientState::EPipeState::DEACTIVATED) {
                             if (p.second.State == TVolumeClientState::EPipeState::WAIT_START) {
                                 LI() {
@@ -828,9 +828,9 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                         TABLEH() { out << "Value"; }
                     }
                 }
-                const auto protoValues = Config->GetStorageConfigProto();
+                const auto& protoValues = Config->GetStorageConfigProto();
                 constexpr i32 expectedNonRepeatedFieldIndex = -1;
-                auto descriptor = protoValues.GetDescriptor();
+                const auto* descriptor = protoValues.GetDescriptor();
                 if (descriptor == nullptr) {
                     return;
                 }
@@ -1643,7 +1643,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
         return;
     }
 
-    auto config = *State->GetNonreplicatedPartitionConfig();
+    const auto& config = *State->GetNonreplicatedPartitionConfig();
 
     HTML(out) {
         BODY() {
@@ -1736,7 +1736,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                 TABLED() { out << d.GetNodeId(); }
                                 TABLED() { out << d.GetTransportId(); }
                                 TABLED() {
-                                    auto e = d.GetRdmaEndpoint();
+                                    const auto& e = d.GetRdmaEndpoint();
                                     out << e.GetHost() << ":" << e.GetPort();
                                 }
                                 TABLED() { out << d.GetDeviceName(); }

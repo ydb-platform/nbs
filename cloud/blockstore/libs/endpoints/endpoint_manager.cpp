@@ -879,7 +879,7 @@ NProto::TError TEndpointManager::AlterEndpoint(
         newReq.GetMountSeqNumber(),
         newReq.GetHeaders());
 
-    if (auto error = Executor->WaitFor(future); HasError(error)) {
+    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         return error;
     }
 
@@ -997,7 +997,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     CloseAllEndpointSockets(*endpoint.Request);
     RemoveSession(std::move(ctx), *request);
 
-    auto error = EndpointStorage->RemoveEndpoint(socketPath);
+    const auto& error = EndpointStorage->RemoveEndpoint(socketPath);
     if (HasError(error)) {
         STORAGE_ERROR("Failed to remove endpoint from storage: "
             << FormatError(error));
@@ -1161,13 +1161,13 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     const auto& listener = listenerIt->second;
 
     auto future = SessionManager->GetSession(ctx, socketPath, headers);
-    auto [sessionInfo, error] = Executor->WaitFor(future);
-    if (HasError(error)) {
-        return TErrorResponse(error);
+    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
+    if (HasError(getSessionError)) {
+        return TErrorResponse(getSessionError);
     }
 
-    error = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
-    return TErrorResponse(error);
+    const auto& refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    return TErrorResponse(refreshError);
 }
 
 NProto::TError TEndpointManager::OpenAllEndpointSockets(
@@ -1353,7 +1353,7 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
             << ", " << switchError.GetMessage());
     }
 
-    return error;
+    return switchError;
 }
 
 TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(

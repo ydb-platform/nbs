@@ -204,7 +204,7 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (auto error = msg->GetError();
+    if (const auto& error = msg->GetError();
         FAILED(error.GetCode()))
     {
         return ReplyAndDie(ctx, error);
@@ -213,7 +213,7 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
     if (auto error = ValidateDescribeBlocksResponse(msg->Record);
         FAILED(error.GetCode()))
     {
-        return ReplyAndDie(ctx, error);
+        return ReplyAndDie(ctx, std::move(error));
     }
 
     ProcessDescribeBlocksResponse(std::move(msg->Record));

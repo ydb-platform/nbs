@@ -137,7 +137,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 
     const auto& volumeConfig = GetNewestConfig();
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
-    const auto volumeParams = State->GetVolumeParams();
+    const auto& volumeParams = State->GetVolumeParams();
 
     State->SetBlockCountToMigrate(std::nullopt);
 
@@ -483,7 +483,7 @@ void TVolumeActor::HandleBootExternalResponse(
     const auto* appData = AppData(ctx);
 
     auto config = Config;
-    auto partitionConfig = part->PartitionConfig;
+    const auto& partitionConfig = part->PartitionConfig;
     auto diagnosticsConfig = DiagnosticsConfig;
     auto profileLog = ProfileLog;
     auto blockDigestGenerator = BlockDigestGenerator;
