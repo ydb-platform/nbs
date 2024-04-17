@@ -566,6 +566,9 @@ public:
     TDuration GetVolumeProxyCacheRetryDuration() const;
 
     TDuration GetServiceSelfPingInterval() const;
+
+    bool GetDataScrubbingEnabled() const;
+    TDuration GetScrubbingInterval() const;
 };
 
 ui64 GetAllocationUnit(

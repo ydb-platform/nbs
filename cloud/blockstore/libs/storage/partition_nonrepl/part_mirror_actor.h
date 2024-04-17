@@ -29,10 +29,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration ScrubbingNextRangeInterval = TDuration::MilliSeconds(50);
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
@@ -63,7 +59,6 @@ private:
 
     NProto::TError Status;
 
-    bool DataScrubbingNeeded = false;
     ui64 ScrubbingRangeId = 0;
     TBlockRange64 ScrubbingRange;
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
@@ -79,8 +74,7 @@ public:
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
         NActors::TActorId statActorId,
-        NActors::TActorId resyncActorId,
-        bool dataScrubbingNeeded);
+        NActors::TActorId resyncActorId);
 
     ~TMirrorPartitionActor();
 
@@ -92,7 +86,6 @@ private:
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void ScheduleScrubbingNextRange(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
-    void ScrubbingNextRange(const NActors::TActorContext& ctx);
     void CompareChecksums(const NActors::TActorContext& ctx);
     void ReplyAndDie(const NActors::TActorContext& ctx);
 

@@ -290,8 +290,7 @@ struct TTestEnv
             TActorId(), // statActorId
             // resync actor id should be set since mirror actor should be aware
             // of the fact that resync is in progress
-            TActorId(0, "nobody"), // resyncActorId
-            false // dataScrubbingNeeded
+            TActorId(0, "nobody") // resyncActorId
         );
 
         Runtime.AddLocalService(

@@ -44,7 +44,7 @@ void TResyncRangeActor::Bootstrap(const TActorContext& ctx)
         "ResyncRange",
         RequestInfo->CallContext->RequestId);
 
-    ChecksumRangeActorCompanion.CalculateChecksums(ctx);
+    ChecksumRangeActorCompanion.CalculateChecksums(ctx, Range);
 }
 
 void TResyncRangeActor::CompareChecksums(const TActorContext& ctx)

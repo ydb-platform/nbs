@@ -23,7 +23,6 @@ NActors::IActorPtr CreateMirrorPartition(
     TVector<TDevices> replicas,
     NRdma::IClientPtr rdmaClient,
     NActors::TActorId statActorId,
-    NActors::TActorId resyncActorId = NActors::TActorId(),
-    bool dataScrubbingNeeded = false);
+    NActors::TActorId resyncActorId = NActors::TActorId());
 
 }   // namespace NCloud::NBlockStore::NStorage

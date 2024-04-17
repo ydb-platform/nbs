@@ -41,9 +41,7 @@ private:
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
-    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{
-        Range,
-        Replicas};
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion{Replicas};
 
 public:
     TResyncRangeActor(

@@ -33,8 +33,7 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         TVector<TDevices> replicas,
         NRdma::IClientPtr rdmaClient,
         TActorId statActorId,
-        TActorId resyncActorId,
-        bool dataScrubbingNeeded)
+        TActorId resyncActorId)
     : Config(std::move(config))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(digestGenerator))
@@ -48,7 +47,6 @@ TMirrorPartitionActor::TMirrorPartitionActor(
         std::move(partConfig),
         std::move(migrations),
         std::move(replicas))
-    , DataScrubbingNeeded(dataScrubbingNeeded)
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor()
@@ -60,7 +58,7 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
     SetupPartitions(ctx);
     ScheduleCountersUpdate(ctx);
 
-    if (DataScrubbingNeeded) {
+    if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
         ScheduleScrubbingNextRange(ctx);
     }
 
@@ -114,65 +112,6 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     ReplicaCounters.resize(State.GetReplicaInfos().size());
 }
 
-void TMirrorPartitionActor::ScrubbingNextRange(const TActorContext& ctx)
-{
-    ScrubbingRange =
-        RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
-    if (ScrubbingRange.Start >= State.GetBlockCount()) {
-        ScrubbingRangeId = 0;
-        ScrubbingRange =
-            RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
-    }
-
-    for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
-        if (!requestInfo.Write) {
-            continue;
-        }
-        const auto& requestRange = requestInfo.Value;
-        if (ScrubbingRange.Overlaps(requestRange)) {
-            LOG_DEBUG(
-                ctx,
-                TBlockStoreComponents::PARTITION,
-                "[%s] Scrubbing range %s rejected due to inflight write to %s",
-                DiskId.c_str(),
-                DescribeRange(ScrubbingRange).c_str(),
-                DescribeRange(requestRange).c_str());
-
-            ScheduleScrubbingNextRange(ctx);
-            return;
-        }
-    }
-
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%s] Scrubbing range %s",
-        DiskId.c_str(),
-        DescribeRange(ScrubbingRange).c_str());
-
-    TVector<TReplicaDescriptor> replicas;
-    const auto& replicaInfos = State.GetReplicaInfos();
-    const auto& replicaActors = State.GetReplicaActors();
-    for (ui32 i = 0; i < replicaInfos.size(); i++) {
-        if (replicaInfos[i].Config->DevicesReadyForReading(ScrubbingRange)) {
-            replicas.emplace_back(
-                replicaInfos[i].Config->GetName(),
-                i,
-                replicaActors[i]);
-        }
-    }
-
-    if (replicas.empty()) {
-        ScrubbingRangeId++;
-        ScheduleScrubbingNextRange(ctx);
-    }
-
-    ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(
-        ScrubbingRange,
-        replicas);
-    ChecksumRangeActorCompanion.CalculateChecksums(ctx);
-}
-
 void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 {
     const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
@@ -192,6 +131,16 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
             DiskId.c_str(),
             DescribeRange(ScrubbingRange).c_str());
 
+        for (size_t i = 0; i < checksums.size(); i++) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Replica %lu range %s checksum %lu",
+                DiskId.c_str(),
+                i,
+                DescribeRange(ScrubbingRange).c_str(),
+                checksums[i]);
+        }
         ReportMirroredDiskChecksumMismatch();
     }
 
@@ -277,7 +226,7 @@ void TMirrorPartitionActor::ScheduleScrubbingNextRange(
     const TActorContext& ctx)
 {
     ctx.Schedule(
-        ScrubbingNextRangeInterval,
+        Config->GetScrubbingInterval(),
         new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
 }
 
@@ -287,7 +236,59 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 {
     Y_UNUSED(ev);
 
-    ScrubbingNextRange(ctx);
+    ScrubbingRange =
+        RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
+    if (ScrubbingRange.Start >= State.GetBlockCount()) {
+        ScrubbingRangeId = 0;
+        ScrubbingRange =
+            RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
+    }
+
+    for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
+        if (!requestInfo.Write) {
+            continue;
+        }
+        const auto& requestRange = requestInfo.Value;
+        if (ScrubbingRange.Overlaps(requestRange)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Scrubbing range %s rejected due to inflight write to %s",
+                DiskId.c_str(),
+                DescribeRange(ScrubbingRange).c_str(),
+                DescribeRange(requestRange).c_str());
+
+            ScheduleScrubbingNextRange(ctx);
+            return;
+        }
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Scrubbing range %s",
+        DiskId.c_str(),
+        DescribeRange(ScrubbingRange).c_str());
+
+    TVector<TReplicaDescriptor> replicas;
+    const auto& replicaInfos = State.GetReplicaInfos();
+    const auto& replicaActors = State.GetReplicaActors();
+    for (ui32 i = 0; i < replicaInfos.size(); i++) {
+        if (replicaInfos[i].Config->DevicesReadyForReading(ScrubbingRange)) {
+            replicas.emplace_back(
+                replicaInfos[i].Config->GetName(),
+                i,
+                replicaActors[i]);
+        }
+    }
+
+    if (replicas.empty()) {
+        ++ScrubbingRangeId;
+        ScheduleScrubbingNextRange(ctx);
+    }
+
+    ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
+    ChecksumRangeActorCompanion.CalculateChecksums(ctx, ScrubbingRange);
 }
 
 void TMirrorPartitionActor::HandleChecksumUndelivery(

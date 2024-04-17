@@ -480,6 +480,9 @@ TDuration MSeconds(ui32 value)
     xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(10)   )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
+                                                                                  \
+    xxx(DataScrubbingEnabled, bool,      false                                   )\
+    xxx(ScrubbingInterval,    TDuration, MSeconds(50)                            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

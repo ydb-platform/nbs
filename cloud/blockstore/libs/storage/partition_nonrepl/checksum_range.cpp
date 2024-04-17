@@ -12,16 +12,10 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
-        TBlockRange64 range,
         TVector<TReplicaDescriptor> replicas)
-    : Range(range)
-    , Replicas(std::move(replicas))
+    : Replicas(std::move(replicas))
 {
     Checksums.resize(Replicas.size());
-}
-
-TChecksumRangeActorCompanion::TChecksumRangeActorCompanion()
-{
 }
 
 bool TChecksumRangeActorCompanion::IsFinished() const
@@ -49,19 +43,24 @@ TDuration TChecksumRangeActorCompanion::GetChecksumDuration() const
     return ChecksumDuration;
 }
 
-void TChecksumRangeActorCompanion::CalculateChecksums(const TActorContext& ctx)
+void TChecksumRangeActorCompanion::CalculateChecksums(
+    const TActorContext& ctx,
+    TBlockRange64 range)
 {
     for (size_t i = 0; i < Replicas.size(); ++i) {
-        CalculateReplicaChecksum(ctx, i);
+        CalculateReplicaChecksum(ctx, range, i);
     }
     ChecksumStartTs = ctx.Now();
 }
 
-void TChecksumRangeActorCompanion::CalculateReplicaChecksum(const TActorContext& ctx, int idx)
+void TChecksumRangeActorCompanion::CalculateReplicaChecksum(
+    const TActorContext& ctx,
+    TBlockRange64 range,
+    int idx)
 {
     auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
-    request->Record.SetStartIndex(Range.Start);
-    request->Record.SetBlocksCount(Range.Size());
+    request->Record.SetStartIndex(range.Start);
+    request->Record.SetBlocksCount(range.Size());
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
