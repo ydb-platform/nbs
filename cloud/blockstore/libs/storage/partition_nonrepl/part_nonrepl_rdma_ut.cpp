@@ -896,6 +896,27 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleDrainRequest)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.Rdma().InitAllEndpoints();
+        TPartitionClient client(runtime, env.ActorId);
+
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
+
+        runtime.DispatchEvents();
+
+        auto response =
+            client.RecvResponse<NPartition::TEvPartition::TEvDrainResponse>();
+
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

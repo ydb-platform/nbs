@@ -147,6 +147,7 @@ private:
     BLOCKSTORE_IMPLEMENT_REQUEST(ZeroBlocks, TEvService);
     BLOCKSTORE_IMPLEMENT_REQUEST(DescribeBlocks, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(ChecksumBlocks, TEvNonreplPartitionPrivate);
+    BLOCKSTORE_IMPLEMENT_REQUEST(Drain, NPartition::TEvPartition);
 
     BLOCKSTORE_IMPLEMENT_REQUEST(CompactRange, TEvVolume);
     BLOCKSTORE_IMPLEMENT_REQUEST(GetCompactionStatus, TEvVolume);
