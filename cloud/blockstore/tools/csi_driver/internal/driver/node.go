@@ -392,9 +392,11 @@ func (s *nodeService) nodeUnpublishVolume(
 	podSocketDir := filepath.Join(s.podSocketsDir, podId, req.VolumeId)
 	nodeSocketDir := filepath.Join(s.nbsSocketsDir, podId, req.VolumeId)
 
-	_, err = os.Stat(filepath.Join(podSocketDir, nbsSocketName))
-	if os.IsExist(err) {
-		log.Printf("stop nbs endpoint, pod: %q, volume: %q", podId, req.VolumeId)
+	// Trying to stop both NBS and NFS endpoints,
+	// because the endpoint's backend service is unknown here.
+	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
+
+	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
 			UnixSocketPath: filepath.Join(nodeSocketDir, nbsSocketName),
 		})
@@ -404,10 +406,8 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	_, err = os.Stat(filepath.Join(podSocketDir, nfsSocketName))
-	if os.IsExist(err) {
-		log.Printf("stop nfs endpoint, pod: %q, volume: %q", podId, req.VolumeId)
-		_, err = s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
+	if s.nfsClient != nil {
+		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
 			SocketPath: filepath.Join(nodeSocketDir, nfsSocketName),
 		})
 		if err != nil {
@@ -416,7 +416,13 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	return os.RemoveAll(podSocketDir)
+	if err := os.RemoveAll(podSocketDir); err != nil {
+		return err
+	}
+
+	// remove pod's folder if it's empty
+	os.Remove(filepath.Join(s.podSocketsDir, podId))
+	return nil
 }
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
