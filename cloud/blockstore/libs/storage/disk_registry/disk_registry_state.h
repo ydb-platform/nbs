@@ -1169,6 +1169,11 @@ private:
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
 
+    void ResumeLocalDevices(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        TInstant now);
+
     TResultOrError<NProto::TDeviceConfig> AllocateReplacementDevice(
         TDiskRegistryDatabase& db,
         const TString& diskId,
@@ -1198,6 +1203,11 @@ private:
         TInstant now,
         bool shouldResume,
         bool dryRun);
+
+    NProto::TError RegisterUnknownDevices(
+        TDiskRegistryDatabase& db,
+        NProto::TAgentConfig& agent,
+        TInstant now);
 
     NProto::TError CmsRemoveDevice(
         TDiskRegistryDatabase& db,
