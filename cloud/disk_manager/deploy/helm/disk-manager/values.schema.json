@@ -31,10 +31,10 @@
       "type": "integer",
       "title": "Port for monitoring in prometheus format"
     },
-    "auth_config": {
+    "authConfig": {
       "type": "object",
       "properties": {
-        "DisableAuthorization": {
+        "disableAuthorization": {
           "type": "boolean",
           "title": "Disable authorisation for disk manager"
         }
@@ -119,14 +119,14 @@
               "type": "boolean",
               "title": "Use insecure NBS server GRPC API"
             },
-            "EnableThrottlingForMediaKinds": {
+            "enableThrottlingForMediaKinds": {
               "type": "array",
               "title": "List of media kinds to enable throttling for",
               "items": {
                 "type": "string"
               }
             },
-            "UseGZIPCompression": {
+            "useGZIPCompression": {
               "type": "boolean",
               "title": "Use GZIP compression in NBS"
             }
@@ -154,19 +154,19 @@
     "ydb": {
       "type": "object",
       "properties": {
-        "Secure": {
+        "secure": {
           "type": "boolean"
         },
-        "Endpoint": {
+        "endpoint": {
           "type": "string"
         },
-        "Port": {
+        "port": {
           "type": "integer"
         },
-        "Database": {
+        "database": {
           "type": "string"
         },
-        "RootPath": {
+        "rootPath": {
           "type": "string"
         },
         "disableAuthentication": {
@@ -175,35 +175,35 @@
         "snapshot": {
           "type": "object",
           "properties": {
-            "Endpoint": {
+            "endpoint": {
               "type": "string"
             },
-            "Port": {
+            "port": {
               "type": "integer"
             },
-            "Database": {
+            "database": {
               "type": "string"
             },
-            "RootPath": {
+            "rootPath": {
               "type": "string"
             }
           }
         }
       }
     },
-    "ChunkBlobsTableShardCount": {
+    "chunkBlobsTableShardCount": {
       "type": "integer"
     },
-    "ChunkMapTableShardCount": {
+    "chunkMapTableShardCount": {
       "type": "integer"
     },
-    "DeleteWorkerCount":  {
+    "deleteWorkerCount":  {
       "type": "integer"
     },
-    "ShallowCopyWorkerCount": {
+    "shallowCopyWorkerCount": {
       "type": "integer"
     },
-    "ShallowCopyInflightLimit": {
+    "shallowCopyInflightLimit": {
       "type": "integer"
     }
   }

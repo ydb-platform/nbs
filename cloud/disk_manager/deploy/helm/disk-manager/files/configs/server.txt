@@ -77,19 +77,19 @@ NbsConfig: {
     }
 {{- end }}
     GrpcKeepAlive: {}
-{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.Insecure }}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.insecure }}
     Insecure: true
     DisableAuthentication: true
 {{- end }}
-{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.enableThrottlingForMediaKinds }}
     EnableThrottlingForMediaKinds: [
-    {{- $length := len .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
-    {{- range $i, $kind := .Values.nbs.nbsControl.EnableThrottlingForMediaKinds }}
+    {{- $length := len .Values.nbs.nbsControl.enableThrottlingForMediaKinds }}
+    {{- range $i, $kind := .Values.nbs.nbsControl.enableThrottlingForMediaKinds }}
         "{{ $kind }}"{{- if lt $i (sub $length 1) }},{{- end }}
     {{- end }}
     ]
 {{- end }}
-{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.UseGZIPCompression }}
+{{- if and .Values.nbs.nbsControl .Values.nbs.nbsControl.useGZIPCompression }}
     UseGZIPCompression: true
 {{- end }}
 }
@@ -168,59 +168,59 @@ MonitoringConfig: {
     ServerVersionFile: "/usr/lib/yc/disk-manager/server-version.txt"
 }
 AuthConfig: {
-{{- if and .Values.auth_config .Values.auth_config.DisableAuthorization }}
+{{- if and .Values.authConfig .Values.authConfig.disableAuthorization }}
     DisableAuthorization: true
 {{- else }}
     MetadataUrl: "http://localhost:6770/computeMetadata/v1/instance/service-accounts/default/token"
 {{- end }}
 {{- if eq .Values.serviceKind "controlplane" }}
-    AccessServiceEndpoint: "{{ .Values.auth_config.AccessServiceEndpoint }}"
+    AccessServiceEndpoint: "{{ .Values.authConfig.AccessServiceEndpoint }}"
     FolderId: "yc.disk-manager.disk-manager-permissions"
 {{- end }}
 }
 PersistenceConfig: {
-{{- if .Values.ydb.Secure }}
+{{- if .Values.ydb.secure }}
     Secure: true
 {{- end }}
 {{- if .Values.ydb.disableAuthentication}}
     DisableAuthentication: true
 {{- end }}
-    Endpoint: "{{ .Values.ydb.Endpoint }}:{{ .Values.ydb.Port }}"
-    Database: "{{ .Values.ydb.Database }}"
-{{- if .Values.ydb.RootPath }}
-    RootPath: "{{ .Values.ydb.RootPath }}"
+    Endpoint: "{{ .Values.ydb.endpoint }}:{{ .Values.ydb.port }}"
+    Database: "{{ .Values.ydb.database }}"
+{{- if .Values.ydb.rootPath }}
+    RootPath: "{{ .Values.ydb.rootPath }}"
 {{- end }}
 }
 {{- if eq .Values.serviceKind "dataplane" }}
 DataplaneConfig: {
     SnapshotConfig: {
         PersistenceConfig: {
-{{- if .Values.ydb.Secure }}
+{{- if .Values.ydb.secure }}
             Secure: true
 {{- end }}
-            Endpoint: "{{ .Values.ydb.snapshot.Endpoint }}:{{ .Values.ydb.snapshot.Port }}"
-            Database: "{{ .Values.ydb.snapshot.Database }}"
-{{- if .Values.ydb.snapshot.RootPath }}
-            RootPath: "{{ .Values.ydb.snapshot.RootPath }}"
+            Endpoint: "{{ .Values.ydb.snapshot.endpoint }}:{{ .Values.ydb.snapshot.port }}"
+            Database: "{{ .Values.ydb.snapshot.database }}"
+{{- if .Values.ydb.snapshot.rootPath }}
+            RootPath: "{{ .Values.ydb.snapshot.rootPath }}"
 {{- end }}
         }
-{{- if .Values.ChunkBlobsTableShardCount }}
-        ChunkBlobsTableShardCount: {{ .Values.ChunkBlobsTableShardCount }}
+{{- if .Values.chunkBlobsTableShardCount }}
+        ChunkBlobsTableShardCount: {{ .Values.chunkBlobsTableShardCount }}
 {{- end }}
-{{- if .Values.ChunkMapTableShardCount }}
-        ChunkMapTableShardCount: {{ .Values.ChunkMapTableShardCount }}
+{{- if .Values.chunkMapTableShardCount }}
+        ChunkMapTableShardCount: {{ .Values.chunkMapTableShardCount }}
 {{- end }}
-{{- if .Values.ExternalBlobsMediaKind }}
-        ExternalBlobsMediaKind: "{{ .Values.ExternalBlobsMediaKind }}"
+{{- if .Values.externalBlobsMediaKind }}
+        ExternalBlobsMediaKind: "{{ .Values.externalBlobsMediaKind }}"
 {{- end }}
-{{- if .Values.DeleteWorkerCount }}
-        DeleteWorkerCount: {{ .Values.DeleteWorkerCount }}
+{{- if .Values.deleteWorkerCount }}
+        DeleteWorkerCount: {{ .Values.deleteWorkerCount }}
 {{- end }}
-{{- if .Values.ShallowCopyWorkerCount }}
-        ShallowCopyWorkerCount: {{ .Values.ShallowCopyWorkerCount }}
+{{- if .Values.shallowCopyWorkerCount }}
+        ShallowCopyWorkerCount: {{ .Values.shallowCopyWorkerCount }}
 {{- end }}
-{{- if .Values.ShallowCopyInflightLimit }}
-        ShallowCopyInflightLimit: {{ .Values.ShallowCopyInflightLimit }}
+{{- if .Values.shallowCopyInflightLimit }}
+        ShallowCopyInflightLimit: {{ .Values.shallowCopyInflightLimit }}
 {{- end }}
 {{- if .Values.probeCompressionPercentage }}
 {{- range $codec, $percentage := .Values.probeCompressionPercentage }}
@@ -231,17 +231,17 @@ ProbeCompressionPercentage: {
 {{- end }}
 {{- end }}
     }
-{{- if .Values.ReaderCount }}
-    ReaderCount: {{ .Values.ReaderCount }}
+{{- if .Values.readerCount }}
+    ReaderCount: {{ .Values.readerCount }}
 {{- end }}
-{{- if .Values.WriterCount }}
-    WriterCount: {{ .Values.WriterCount}}
+{{- if .Values.writerCount }}
+    WriterCount: {{ .Values.writerCount}}
 {{- end }}
-{{- if .Values.ChunksInflightLimit }}
-    ChunksInflightLimit: {{ .Values.ChunksInflightLimit }}
+{{- if .Values.chunksInflightLimit }}
+    ChunksInflightLimit: {{ .Values.chunksInflightLimit }}
 {{- end }}
-{{- if .Values.SnapshotCollectionInflightLimit }}
-    SnapshotCollectionInflightLimit: {{ .Values.SnapshotCollectionInflightLimit }}
+{{- if .Values.snapshotCollectionInflightLimit }}
+    SnapshotCollectionInflightLimit: {{ .Values.snapshotCollectionInflightLimit }}
 {{- end }}
 }
 {{- end }}
