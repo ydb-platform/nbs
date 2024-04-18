@@ -91,7 +91,9 @@ public:
         SetupFileStorePerformanceAndChannels(
             false,  // do not allocate mixed0 channel
             *StorageConfig,
-            config);
+            config,
+            {}      // clientPerformanceProfile
+        );
 
         return std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(config);
     }

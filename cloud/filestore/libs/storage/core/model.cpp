@@ -441,6 +441,26 @@ ui32 NodesLimit(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(xxx, ...)                        \
+    xxx(ThrottlingEnabled,                      __VA_ARGS__)                   \
+    xxx(BoostTime,                              __VA_ARGS__)                   \
+    xxx(BoostRefillTime,                        __VA_ARGS__)                   \
+    xxx(BurstPercentage,                        __VA_ARGS__)                   \
+    xxx(DefaultPostponedRequestWeight,          __VA_ARGS__)                   \
+    xxx(MaxPostponedWeight,                     __VA_ARGS__)                   \
+    xxx(MaxWriteCostMultiplier,                 __VA_ARGS__)                   \
+    xxx(MaxPostponedTime,                       __VA_ARGS__)                   \
+    xxx(MaxPostponedCount,                      __VA_ARGS__)                   \
+// PERFORMANCE_PROFILE_PARAMETERS_SIMPLE
+
+#define PERFORMANCE_PROFILE_PARAMETERS_AU(xxx, ...)                            \
+    xxx(MaxReadIops,                            __VA_ARGS__)                   \
+    xxx(MaxReadBandwidth,                       __VA_ARGS__)                   \
+    xxx(MaxWriteIops,                           __VA_ARGS__)                   \
+    xxx(MaxWriteBandwidth,                      __VA_ARGS__)                   \
+    xxx(BoostPercentage,                        __VA_ARGS__)                   \
+// PERFORMANCE_PROFILE_PARAMETERS_AU
+
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,
     const TStorageConfig& config,
@@ -452,29 +472,25 @@ void SetupFileStorePerformanceAndChannels(
 
     OverrideStorageMediaKind(config, fileStore);
 
-#define SETUP_PARAMETER(name, ...)                                             \
+#define SETUP_PARAMETER_SIMPLE(name, ...)                                      \
     fileStore.SetPerformanceProfile##name(                                     \
         clientProfile.Get##name()                                              \
             ? clientProfile.Get##name()                                        \
-            : name(config, fileStore, ## __VA_ARGS__));                        \
-// SETUP_PARAMENTS
+            : name(config, fileStore));                                        \
+// SETUP_PARAMETER_AU
 
-    SETUP_PARAMETER(ThrottlingEnabled);
-    SETUP_PARAMETER(MaxReadIops, allocationUnitCount);
-    SETUP_PARAMETER(MaxReadBandwidth, allocationUnitCount);
-    SETUP_PARAMETER(MaxWriteIops, allocationUnitCount);
-    SETUP_PARAMETER(MaxWriteBandwidth, allocationUnitCount);
-    SETUP_PARAMETER(BoostTime);
-    SETUP_PARAMETER(BoostRefillTime);
-    SETUP_PARAMETER(BoostPercentage, allocationUnitCount);
-    SETUP_PARAMETER(BurstPercentage);
-    SETUP_PARAMETER(DefaultPostponedRequestWeight);
-    SETUP_PARAMETER(MaxPostponedWeight);
-    SETUP_PARAMETER(MaxWriteCostMultiplier);
-    SETUP_PARAMETER(MaxPostponedTime);
-    SETUP_PARAMETER(MaxPostponedCount);
+#define SETUP_PARAMETER_AU(name, ...)                                          \
+    fileStore.SetPerformanceProfile##name(                                     \
+        clientProfile.Get##name()                                              \
+            ? clientProfile.Get##name()                                        \
+            : name(config, fileStore, allocationUnitCount));                   \
+// SETUP_PARAMETER_SIMPLE
 
-#undef SETUP_PARAMENTER
+    PERFORMANCE_PROFILE_PARAMETERS_SIMPLE(SETUP_PARAMETER_SIMPLE);
+    PERFORMANCE_PROFILE_PARAMETERS_AU(SETUP_PARAMETER_AU);
+
+#undef SETUP_PARAMETER_SIMPLE
+#undef SETUP_PARAMETER_AU
 
     fileStore.SetNodesCount(NodesLimit(config, fileStore));
 
@@ -483,18 +499,6 @@ void SetupFileStorePerformanceAndChannels(
         allocateMixed0Channel,
         config,
         fileStore);
-}
-
-void SetupFileStorePerformanceAndChannels(
-    bool allocateMixed0Channel,
-    const TStorageConfig& config,
-    NKikimrFileStore::TConfig& fileStore)
-{
-    SetupFileStorePerformanceAndChannels(
-        allocateMixed0Channel,
-        config,
-        fileStore,
-        NProto::TFileStorePerformanceProfile());
 }
 
 }   // namespace NCloud::NFileStore::NStorage
