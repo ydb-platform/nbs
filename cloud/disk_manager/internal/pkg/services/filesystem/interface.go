@@ -3,7 +3,7 @@ package filesystem
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

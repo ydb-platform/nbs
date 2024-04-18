@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package yandex.cloud.priv.disk_manager.v1;
+package cloud.disk_manager;
 
 import "cloud/api/operation/operation.proto";
-import "yandex/cloud/priv/disk_manager/v1/disk.proto";
-import "yandex/cloud/priv/disk_manager/v1/image.proto";
+import "cloud/disk_manager/api/disk.proto";
+import "cloud/disk_manager/api/image.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1;disk_manager";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
 // Images are stored in global AZ and there's also a pool of base disks in each regional AZ.
 // Size of pools are managed automatically, these disks are assigned to a special cloud+folder.

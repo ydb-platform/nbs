@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/api/operation"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"google.golang.org/grpc"

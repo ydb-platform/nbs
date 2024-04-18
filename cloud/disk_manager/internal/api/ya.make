@@ -11,7 +11,7 @@ SRCS(
 
 PEERDIR(
     cloud/api/operation
-    cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1
+    cloud/disk_manager/api
 )
 
 END()
