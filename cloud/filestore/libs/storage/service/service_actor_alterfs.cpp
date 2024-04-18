@@ -1,5 +1,4 @@
 #include "service_actor.h"
-#include "cloud/filestore/public/api/protos/fs.pb.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
