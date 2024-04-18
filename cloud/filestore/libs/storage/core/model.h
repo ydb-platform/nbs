@@ -16,9 +16,4 @@ void SetupFileStorePerformanceAndChannels(
     NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientPerformanceProfile);
 
-void SetupFileStorePerformanceAndChannels(
-    bool allocateMixed0Channel,
-    const TStorageConfig& config,
-    NKikimrFileStore::TConfig& fileStore);
-
 }   // namespace NCloud::NFileStore::NStorage

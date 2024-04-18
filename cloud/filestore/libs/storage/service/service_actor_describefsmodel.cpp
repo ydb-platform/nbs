@@ -31,7 +31,9 @@ void TStorageServiceActor::HandleDescribeFileStoreModel(
     SetupFileStorePerformanceAndChannels(
         false,  // do not allocate mixed0 channel
         *StorageConfig,
-        config);
+        config,
+        {}      // clientPerformanceProfile
+    );
 
     auto response = std::make_unique<TEvService::TEvDescribeFileStoreModelResponse>();
     auto* model = response->Record.MutableFileStoreModel();

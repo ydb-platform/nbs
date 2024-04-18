@@ -21,6 +21,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void SetupFileStorePerformanceAndChannels(
+    bool allocateMixed0Channel,
+    const TStorageConfig& config,
+    NKikimrFileStore::TConfig& fileStore)
+{
+    SetupFileStorePerformanceAndChannels(
+        allocateMixed0Channel,
+        config,
+        fileStore,
+        {}  // clientPerformanceProfile
+    );
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TConfigs
     : public NUnitTest::TBaseFixture
 {
