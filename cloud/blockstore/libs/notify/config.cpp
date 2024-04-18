@@ -8,10 +8,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_NOTIFY_CONFIG(xxx)                                           \
-    xxx(Endpoint,       TString,            "")                                 \
-    xxx(CaCertFilename, TString,            "")                                 \
-    xxx(Version,        ui32,               1 )                                 \
+#define BLOCKSTORE_NOTIFY_CONFIG(xxx)                                          \
+    xxx(Endpoint,       TString,            "")                                \
+    xxx(CaCertFilename, TString,            "")                                \
+    xxx(Version,        ui32,               1 )                                \
 
 // BLOCKSTORE_NOTIFY_CONFIG
 
