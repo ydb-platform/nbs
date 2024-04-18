@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_counters.h"
-#include "tablet_database.h"
 #include "tablet_private.h"
 #include "tablet_state.h"
 #include "tablet_tx.h"
@@ -366,6 +365,9 @@ private:
         const TByteRange& range);
 
     NProto::TError IsDataOperationAllowed() const;
+
+    TCompactionInfo GetCompactionInfo() const;
+    TCleanupInfo GetCleanupInfo() const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

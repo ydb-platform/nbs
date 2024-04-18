@@ -1381,12 +1381,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(ShouldAutomaticallyRunCompaction)
+    TABLET_TEST_16K(ShouldAutomaticallyRunCompaction)
     {
         const auto block = tabletConfig.BlockSize;
+        const auto threshold = 8 * DefaultBlockSize / block;
 
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetCompactionThreshold(5);
+        storageConfig.SetCompactionThreshold(threshold);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetWriteBlobThreshold(2 * block);
 
@@ -1420,14 +1421,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // blob 3
         tablet.WriteData(handle, 0, 2 * block, 'd');
 
+        // blob 4
+        tablet.WriteData(handle, 0, 2 * block, 'e');
+
+        // blob 5
+        tablet.WriteData(handle, 0, 2 * block, 'f');
+
+        // blob 6
+        tablet.WriteData(handle, 0, 2 * block, 'g');
+
         {
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 4);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 7);
         }
 
-        // blob 4
-        tablet.WriteData(handle, 2 * block, 2 * block, 'e');
+        // blob 7
+        tablet.WriteData(handle, 2 * block, 2 * block, 'h');
 
         {
             auto response = tablet.GetStorageStats();
@@ -1438,13 +1448,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         {
             auto response = tablet.ReadData(handle, 0, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'd'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'g'));
         }
 
         {
             auto response = tablet.ReadData(handle, 2 * block, 2 * block);
             const auto& buffer = response->Record.GetBuffer();
-            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'e'));
+            UNIT_ASSERT(CompareBuffer(buffer, 2 * block, 'h'));
         }
 
         tablet.DestroyHandle(handle);
@@ -3669,14 +3679,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(2, requests.size());
     }
 
-    TABLET_TEST(BackgroundOperationsShouldNotGetStuckForeverDuringCompactionMapLoading)
+    TABLET_TEST_16K(BackgroundOperationsShouldNotGetStuckForeverDuringCompactionMapLoading)
     {
         const auto block = tabletConfig.BlockSize;
+        const auto thresholdInBlobs = 8;
+        const auto threshold = thresholdInBlobs * DefaultBlockSize / block;
 
         NProto::TStorageConfig storageConfig;
         // hard to test anything apart from Compaction - it shares
         // EOperationState with Cleanup and FlushBytes
-        storageConfig.SetCompactionThreshold(2);
+        storageConfig.SetCompactionThreshold(threshold);
         // Flush has a separate EOperationState
         storageConfig.SetFlushThreshold(1);
         storageConfig.SetLoadedCompactionRangesPerTx(2);
@@ -3768,10 +3780,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         // this write should succeed - it targets the range that should be
         // loaded at this point of time
-        tablet.SendWriteDataRequest(handle, 0, 2 * block, 'a');
-        {
-            auto response = tablet.RecvWriteDataResponse();
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        for (ui32 i = 0; i < thresholdInBlobs - 1; ++i) {
+            tablet.SendWriteDataRequest(handle, 0, 2 * block, 'a');
+            {
+                auto response = tablet.RecvWriteDataResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
         }
 
         // Compaction should've been triggered and its operation state should've

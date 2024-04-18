@@ -309,53 +309,16 @@ STFUNC(TCompactionActor::StateWork)
 
 void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
 {
-    auto [compactRangeId, compactionScore] = GetRangeToCompact();
-    auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
+    const auto compactionInfo = GetCompactionInfo();
+    const auto cleanupInfo = GetCleanupInfo();
 
     if (BlobIndexOps.Empty()) {
-        if (compactionScore >= Config->GetCompactionThreshold()) {
+        if (compactionInfo.ShouldCompact) {
             BlobIndexOps.Push(EBlobIndexOp::Compaction);
-        } else if (Config->GetNewCompactionEnabled()) {
-            const auto& stats = GetFileSystemStats();
-            const auto compactionStats = GetCompactionMapStats(0);
-            const auto used = stats.GetUsedBlocksCount();
-            auto alive = stats.GetMixedBlocksCount();
-            if (alive > stats.GetGarbageBlocksCount()) {
-                alive -= stats.GetGarbageBlocksCount();
-            } else {
-                alive = 0;
-            }
-            const auto avgGarbagePercentage = used && alive > used
-                ? 100 * static_cast<double>(alive - used) / used
-                : 0;
-            const auto rangeCount = compactionStats.UsedRangesCount;
-            const auto avgCompactionScore = rangeCount
-                ? static_cast<double>(stats.GetMixedBlobsCount()) / rangeCount
-                : 0;
-            // TODO: use GarbageCompactionThreshold
-
-            const bool shouldCompact =
-                avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
-                || avgCompactionScore >= Config->GetCompactionThresholdAverage();
-            if (compactionScore > 1 && shouldCompact) {
-                BlobIndexOps.Push(EBlobIndexOp::Compaction);
-            }
         }
 
-        if (cleanupScore >= Config->GetCleanupThreshold()) {
+        if (cleanupInfo.ShouldCleanup) {
             BlobIndexOps.Push(EBlobIndexOp::Cleanup);
-        } else if (Config->GetNewCleanupEnabled()) {
-            const auto& stats = GetFileSystemStats();
-            const auto compactionStats = GetCompactionMapStats(0);
-            const auto rangeCount = compactionStats.UsedRangesCount;
-            const auto avgCleanupScore = rangeCount
-                ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
-                : 0;
-            const bool shouldCleanup =
-                avgCleanupScore >= Config->GetCleanupThresholdAverage();
-            if (cleanupScore && shouldCleanup) {
-                BlobIndexOps.Push(EBlobIndexOp::Cleanup);
-            }
         }
 
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()) {
@@ -377,7 +340,9 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         case EBlobIndexOp::Compaction: {
             ctx.Send(
                 SelfId(),
-                new TEvIndexTabletPrivate::TEvCompactionRequest(compactRangeId, false)
+                new TEvIndexTabletPrivate::TEvCompactionRequest(
+                    compactionInfo.RangeId,
+                    false)
             );
             break;
         }
@@ -385,7 +350,8 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
         case EBlobIndexOp::Cleanup: {
             ctx.Send(
                 SelfId(),
-                new TEvIndexTabletPrivate::TEvCleanupRequest(cleanupRangeId)
+                new TEvIndexTabletPrivate::TEvCleanupRequest(
+                    cleanupInfo.RangeId)
             );
             break;
         }
