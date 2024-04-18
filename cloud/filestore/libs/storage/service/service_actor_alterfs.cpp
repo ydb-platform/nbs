@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "cloud/filestore/public/api/protos/fs.pb.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
@@ -24,6 +25,7 @@ private:
     const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
+    const NProto::TFileStorePerformanceProfile PerformanceProfile;
     const bool Alter = false;
 
     NKikimrFileStore::TConfig Config;
@@ -81,7 +83,6 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
 {
-    Config.SetFileSystemId(FileSystemId);
     Config.SetCloudId(request.GetCloudId());
     Config.SetFolderId(request.GetFolderId());
     Config.SetProjectId(request.GetProjectId());
@@ -95,8 +96,8 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
+    , PerformanceProfile(request.GetPerformanceProfile())
 {
-    Config.SetFileSystemId(FileSystemId);
     Config.SetBlocksCount(request.GetBlocksCount());
     Config.SetVersion(request.GetConfigVersion());
 }
@@ -138,7 +139,9 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
     if (!Alter) {
         if (config.GetBlocksCount() > Config.GetBlocksCount()) {
-            ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Cannot decrease filestore size"));
+            ReplyAndDie(
+                ctx,
+                MakeError(E_ARGUMENT, "Cannot decrease filestore size"));
             return;
         }
 
@@ -151,7 +154,8 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         SetupFileStorePerformanceAndChannels(
             allocateMixed0,
             *StorageConfig,
-            config);
+            config,
+            PerformanceProfile);
     } else {
         if (const auto& cloud = Config.GetCloudId()) {
             config.SetCloudId(cloud);
