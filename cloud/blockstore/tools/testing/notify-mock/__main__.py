@@ -30,7 +30,11 @@ def create_api(file):
 
             logging.info(f'[NotifyAPI] handle POST request: {self.path} {req}')
 
-            if self.path != '/notify/v1/send':
+            if self.path == '/notify/v2/send':
+                if self.headers.get('Authorization') is None:
+                    self.send_error(403)
+                    return
+            elif self.path != '/notify/v1/send':
                 self.send_error(400)
                 return
 
