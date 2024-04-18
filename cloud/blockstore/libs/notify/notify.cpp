@@ -4,6 +4,8 @@
 #include "https.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/iam/iface/client.h>
+#include <cloud/storage/core/libs/iam/iface/public.h>
 
 #include <library/cpp/json/writer/json_value.h>
 
@@ -107,11 +109,16 @@ class TService final
 {
 private:
     const TNotifyConfigPtr Config;
+    NCloud::NIamClient::IIamTokenClientPtr IamClient;
     THttpsClient HttpsClient;
+    TLog Log;
 
 public:
-    explicit TService(TNotifyConfigPtr config)
+    explicit TService(
+        TNotifyConfigPtr config,
+        NCloud::NIamClient::IIamTokenClientPtr iamClient)
         : Config(std::move(config))
+        , IamClient(std::move(iamClient))
     {}
 
     void Start() override
@@ -123,6 +130,40 @@ public:
 
     void Stop() override
     {}
+
+    auto GetIamToken()
+    {
+        if (Config->GetVersion() == 2) {
+            if (!IamClient) {
+                STORAGE_WARN(
+                    "missing iam-client "
+                    << "Got error while requesting token: "
+                    << "IAM client is missing");
+            } else {
+                return IamClient->GetTokenAsync().Apply(
+                    [this](const auto& future) -> TResultOrError<TString>
+                    {
+                        auto response = future.GetValue();
+
+                        if (HasError(response)) {
+                            return response.GetError();
+                        }
+
+                        auto tokenInfo = response.GetResult();
+                        if (tokenInfo.Token.empty()) {
+                            STORAGE_WARN(
+                                "missing iam-token "
+                                << "Got error while requesting token: "
+                                << "iam token is empty");
+                            return MakeError(E_ARGUMENT, "empty iam token");
+                        };
+
+                        return std::move(tokenInfo.Token);
+                    });
+            }
+        }
+        return MakeFuture(TResultOrError<TString>(TString()));
+    }
 
     TFuture<NProto::TError> Notify(const TNotification& data) override
     {
@@ -153,22 +194,35 @@ public:
 
         auto p = NewPromise<NProto::TError>();
 
-        HttpsClient.Post(
-            Config->GetEndpoint(),
-            v.GetStringRobust(),
-            "application/json",
-            [p, event = data.Event] (int code, const TString& message) mutable {
-                const bool isSuccess = code >= 200 && code < 300;
-
-                if (isSuccess) {
-                    p.SetValue(MakeError(S_OK, TStringBuilder()
-                        << "HTTP code: " << code));
+        GetIamToken().Subscribe(
+            [this, p, event = data.Event, v = std::move(v)](
+                TFuture<TResultOrError<TString>> future) mutable
+            {
+                auto [token, error] = future.ExtractValue();
+                if (HasError(error)) {
+                    p.SetValue(error);
                     return;
                 }
 
-                p.SetValue(MakeError(E_REJECTED, TStringBuilder()
-                    << "Couldn't send notification " << event
-                    << ". HTTP error: " << code << " " << message));
+                HttpsClient.Post(
+                    Config->GetEndpoint(),
+                    v.GetStringRobust(),
+                    "application/json",
+                    token,
+                    [p, event](int code, const TString& message) mutable
+                    {
+                        const bool isSuccess = code >= 200 && code < 300;
+
+                        if (isSuccess) {
+                            p.SetValue(MakeError(S_OK, TStringBuilder()
+                                << "HTTP code: " << code));
+                            return;
+                        }
+
+                        p.SetValue(MakeError(E_REJECTED, TStringBuilder()
+                                << "Couldn't send notification " << event
+                                << ". HTTP error: " << code << " " << message));
+                    });
             });
 
         return p.GetFuture();
@@ -179,9 +233,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServicePtr CreateService(TNotifyConfigPtr config)
+IServicePtr CreateService(
+    TNotifyConfigPtr config,
+    NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr)
 {
-    return std::make_shared<TService>(std::move(config));
+    return std::make_shared<TService>(
+        std::move(config),
+        std::move(iamTokenClientPtr));
 }
 
 IServicePtr CreateServiceStub()
