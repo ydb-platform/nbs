@@ -85,8 +85,7 @@ func run(
 	logging.Info(ctx, "Locking process memory")
 	err := util.LockProcessMemory()
 	if err != nil {
-		// TODO:_ why it is not logged normally?
-		logging.Error(ctx, "Failed to lock process memory")
+		logging.Error(ctx, "Failed to lock process memory: %v", err)
 		return err
 	}
 
