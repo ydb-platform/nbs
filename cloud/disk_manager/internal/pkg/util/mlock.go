@@ -10,13 +10,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
-type memRange struct {
+type memoryRange struct {
 	start uintptr
 	end   uintptr
 }
 
-type memItem struct {
-	memoryRange memRange
+type procMapsItem struct {
+	memRange    memoryRange
 	permissions string
 	offset      uintptr
 	device      string
@@ -24,13 +24,13 @@ type memItem struct {
 	pathname    string
 }
 
-func parseMemRange(line string) (*memItem, error) {
-	var item memItem
+func parseProcMapsLine(line string) (*procMapsItem, error) {
+	var item procMapsItem
 	n, err := fmt.Sscanf(
 		line,
 		"%x-%x %s %x %s %d %s",
-		&item.memoryRange.start,
-		&item.memoryRange.end,
+		&item.memRange.start,
+		&item.memRange.end,
 		&item.permissions,
 		&item.offset,
 		&item.device,
@@ -43,7 +43,7 @@ func parseMemRange(line string) (*memItem, error) {
 	return &item, nil
 }
 
-func mlock(memoryRange memRange) error {
+func mlock(memoryRange memoryRange) error {
 	len := memoryRange.end - memoryRange.start
 	_, _, errno := syscall.Syscall(syscall.SYS_MLOCK, memoryRange.start, len, 0)
 	if errno != 0 {
@@ -52,11 +52,11 @@ func mlock(memoryRange memRange) error {
 	return nil
 }
 
-func shouldLockRange(item *memItem) bool {
+func shouldLockRange(item *procMapsItem) bool {
 	return item.inode != 0 && item.permissions[0] == 'r'
 }
 
-func LockBinary() error {
+func LockProcessMemory() error {
 	maps, err := os.Open("/proc/self/maps")
 	if err != nil {
 		return err
@@ -65,13 +65,13 @@ func LockBinary() error {
 
 	scanner := bufio.NewScanner(maps)
 	for scanner.Scan() {
-		item, err := parseMemRange(scanner.Text())
+		item, err := parseProcMapsLine(scanner.Text())
 		if err != nil {
 			return err
 		}
 
 		if shouldLockRange(item) {
-			err = mlock(item.memoryRange)
+			err = mlock(item.memRange)
 			if err != nil {
 				return err
 			}
