@@ -2413,7 +2413,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST(ShouldRejectWritesDueToBackpressure)
+    TABLET_TEST_16K(ShouldRejectWritesDueToBackpressure)
     {
         const auto block = tabletConfig.BlockSize;
 
@@ -2424,8 +2424,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetFlushThresholdForBackpressure(2 * block);
-        storageConfig.SetCompactionThresholdForBackpressure(3);
-        storageConfig.SetCleanupThresholdForBackpressure(10);
+        storageConfig.SetCompactionThresholdForBackpressure(
+            8 * DefaultBlockSize / block);
+        storageConfig.SetCleanupThresholdForBackpressure(20);
         storageConfig.SetFlushBytesThresholdForBackpressure(block / 2);
 
         TTestEnv env({}, std::move(storageConfig));
@@ -2459,6 +2460,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.WriteData(handle, 0, block, '0'); // 1 blob, 1 fresh block, 3 markers
         tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 5 markers
         tablet.WriteData(handle, 0, 2 * block, '0'); // 3 blobs, 1 fresh block, 7 markers
+        tablet.WriteData(handle, 2 * block, 2 * block, '0'); // 4 blobs, 1 fresh block, 9 markers
+        tablet.WriteData(handle, 4 * block, 2 * block, '0'); // 5 blobs, 1 fresh block, 11 markers
+        tablet.WriteData(handle, 6 * block, 2 * block, '0'); // 6 blobs, 1 fresh block, 13 markers
+        tablet.WriteData(handle, 8 * block, 2 * block, '0'); // 7 blobs, 1 fresh block, 15 markers
+        tablet.WriteData(handle, 10 * block, 2 * block, '0'); // 8 blobs, 1 fresh block, 17 markers
 
         // backpressure due to CompactionScoreThresholdForBackpressure
         tablet.SendWriteDataRequest(handle, 0, 2 * block, '0');
@@ -2471,9 +2477,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.Compaction(rangeId);
 
         // no backpressure after Compaction
-        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 9 markers
+        tablet.WriteData(handle, 0, 2 * block, '0'); // 2 blobs, 1 fresh block, 19 markers
 
-        tablet.WriteData(handle, 0, block, '0'); // 2 blobs, 2 fresh blocks, 10 markers
+        tablet.WriteData(handle, 0, block, '0'); // 2 blobs, 2 fresh blocks, 20 markers
         tablet.Flush(); // 3 blobs, 10 markers
         tablet.Compaction(rangeId); // 1 blob, 10 markers
 

@@ -660,7 +660,9 @@ public:
         }
     };
 
-    bool IsWriteAllowed(const TBackpressureThresholds& thresholds) const;
+    bool IsWriteAllowed(
+        const TBackpressureThresholds& thresholds,
+        TString* message) const;
 
     //
     // FreshBytes

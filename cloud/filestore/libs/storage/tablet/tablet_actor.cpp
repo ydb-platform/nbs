@@ -297,8 +297,8 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     return {
         Config->GetFlushThresholdForBackpressure(),
         Config->GetFlushBytesThresholdForBackpressure(),
-        GetCompactionScoreFactor()
-            * Config->GetCompactionThresholdForBackpressure(),
+        ScaleCompactionThreshold(
+            Config->GetCompactionThresholdForBackpressure()),
         Config->GetCleanupThresholdForBackpressure(),
     };
 }
@@ -335,7 +335,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         return ErrorInvalidHandle(request.GetHandle());
     }
 
-    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+    TString message;
+    if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
         if (CompactionStateLoadStatus.Finished &&
             ++BackpressureErrorCount >=
                 Config->GetMaxBackpressureErrorsBeforeSuicide())
@@ -350,7 +351,9 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
             Suicide(ctx);
         }
 
-        return MakeError(E_REJECTED, "rejected due to backpressure");
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "rejected due to backpressure: " << message);
     }
 
     return NProto::TError{};
@@ -381,7 +384,7 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 TIndexTabletActor::GetCompactionScoreFactor() const
+ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
 {
     // Blob size has a limit specified in bytes whereas the capacity of a
     // single compaction range is actually specified in blocks - see
@@ -389,18 +392,18 @@ ui32 TIndexTabletActor::GetCompactionScoreFactor() const
     // of blobs per range by something that's linear w.r.t. BlockSize.
     //
     // See issue #95.
-    return GetBlockSize() / DefaultBlockSize;
+    const ui64 factor = GetBlockSize() / DefaultBlockSize;
+    return Min<ui64>(Max<ui32>(), factor * t);
 }
 
 TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
 {
     auto [compactRangeId, compactionScore] = GetRangeToCompact();
 
-    const auto compactionScoreFactor = GetCompactionScoreFactor();
     const auto compactionThreshold =
-        compactionScoreFactor * Config->GetCompactionThreshold();
+        ScaleCompactionThreshold(Config->GetCompactionThreshold());
     const auto compactionThresholdAverage =
-        compactionScoreFactor * Config->GetCompactionThresholdAverage();
+        ScaleCompactionThreshold(Config->GetCompactionThresholdAverage());
 
     const auto& stats = GetFileSystemStats();
     const auto compactionStats = GetCompactionMapStats(0);

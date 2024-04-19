@@ -366,7 +366,7 @@ private:
 
     NProto::TError IsDataOperationAllowed() const;
 
-    ui32 GetCompactionScoreFactor() const;
+    ui32 ScaleCompactionThreshold(ui32 t) const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
 
