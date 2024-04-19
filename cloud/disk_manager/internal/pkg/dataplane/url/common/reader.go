@@ -75,6 +75,12 @@ func NewURLReader(
 		)
 	}
 
+	if resp.ContentLength == 0 {
+		return nil, NewSourceInvalidError(
+			"url ContentLength should not be zero",
+		)
+	}
+
 	return &urlReader{
 		httpClient: httpClient,
 		url:        url,
