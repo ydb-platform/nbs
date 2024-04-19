@@ -62,75 +62,37 @@ struct TTestEnv
         return devices;
     }
 
+    struct TParams
+    {
+        NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
+        bool MarkBlocksUsed = false;
+        bool MuteIOErrors = false;
+        NProto::EStorageMediaKind MediaKind =
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+        TDevices Devices;
+    };
+
     explicit TTestEnv(TTestActorRuntime& runtime)
-        : TTestEnv(runtime, NProto::VOLUME_IO_OK)
+        : TTestEnv(runtime, TParams{})
     {}
 
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            false,
-            DefaultDevices(runtime.GetNodeId(0)),
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            TDevices devices)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            false,
-            std::move(devices),
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            bool markBlocksUsed)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            markBlocksUsed,
-            DefaultDevices(runtime.GetNodeId(0)),
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            bool markBlocksUsed,
-            TDevices devices)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            markBlocksUsed,
-            std::move(devices),
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED)
-    {}
-
-    explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            bool markBlocksUsed,
-            TDevices devices,
-            NProto::EStorageMediaKind mediaKind)
+    TTestEnv(TTestActorRuntime& runtime, TParams params)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
         , StorageStatsServiceState(MakeIntrusive<TStorageStatsServiceState>())
         , DiskAgentState(std::make_shared<TDiskAgentState>())
     {
+        if (params.Devices.empty()) {
+            params.Devices = DefaultDevices(runtime.GetNodeId(0));
+        }
+
         SetupLogging();
 
         NProto::TStorageServiceConfig storageConfig;
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
-        if (mediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
+        if (params.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED) {
             storageConfig.SetNonReplicatedMinRequestTimeoutSSD(60'000);
             storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(60'000);
             storageConfig.SetNonReplicatedMinRequestTimeoutHDD(1'000);
@@ -156,21 +118,21 @@ struct TTestEnv
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(nodeId),
             TActorSetupCmd(
-                new TDiskAgentMock(devices, DiskAgentState),
+                new TDiskAgentMock(params.Devices, DiskAgentState),
                 TMailboxType::Simple,
                 0
             )
         );
 
         auto partConfig = std::make_shared<TNonreplicatedPartitionConfig>(
-            ToLogicalBlocks(devices, DefaultBlockSize),
-            ioMode,
+            ToLogicalBlocks(params.Devices, DefaultBlockSize),
+            params.IOMode,
             "test",
             DefaultBlockSize,
-            TNonreplicatedPartitionConfig::TVolumeInfo{Now(), mediaKind},
+            TNonreplicatedPartitionConfig::TVolumeInfo{Now(), params.MediaKind},
             VolumeActorId,
-            false, // muteIOErrors
-            markBlocksUsed,
+            params.MuteIOErrors,
+            params.MarkBlocksUsed,
             THashSet<TString>(), // freshDeviceIds
             TDuration::Zero(), // maxTimedOutDeviceStateDuration
             false, // maxTimedOutDeviceStateDurationOverridden
@@ -553,7 +515,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             );
         }
 
-        TTestEnv env(runtime, NProto::VOLUME_IO_OK, std::move(devices));
+        TTestEnv env(runtime, {.Devices = std::move(devices)});
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -700,12 +662,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-        TTestEnv env(
-            runtime,
-            NProto::VOLUME_IO_OK,
-            false,
-            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
-            mediaKind);
+        TTestEnv env(runtime, {.MediaKind = mediaKind});
         env.DiskAgentState->ResponseDelay = TDuration::Max();
 
         auto& counters = env.StorageStatsServiceState->Counters.Simple;
@@ -875,12 +832,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-        TTestEnv env(
-            runtime,
-            NProto::VOLUME_IO_OK,
-            false,
-            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
-            mediaKind);
+        TTestEnv env(runtime, {.MediaKind = mediaKind});
         env.DiskAgentState->ResponseDelay = TDuration::MilliSeconds(1'500);
 
         TPartitionClient client(runtime, env.ActorId);
@@ -1320,7 +1272,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
     {
         TTestBasicRuntime runtime;
 
-        TTestEnv env(runtime, NProto::VOLUME_IO_ERROR_READ_ONLY);
+        TTestEnv env(runtime, {.IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY});
 
         TPartitionClient client(runtime, env.ActorId);
 
@@ -1383,6 +1335,50 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         readBlocks();
+    }
+
+    Y_UNIT_TEST(ShouldHandleReadIOError)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(runtime, {
+            .IOMode = NProto::VOLUME_IO_ERROR_READ_ONLY,
+            .MuteIOErrors = true
+        });
+
+        TPartitionClient client(runtime, env.ActorId);
+
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+                {
+                    auto response = std::make_unique<
+                        TEvDiskAgent::TEvReadDeviceBlocksResponse>(MakeError(
+                        MAKE_SYSTEM_ERROR(EIO),
+                        "async IO operation failed"));
+
+                    std::unique_ptr<IEventHandle> handle{new IEventHandle(
+                        event->Recipient,
+                        event->Sender,
+                        response.release(),
+                        0,
+                        event->Cookie)};
+                    event.Reset(handle.release());
+                }
+
+                return false;
+            });
+
+        client.SendReadBlocksRequest(
+            TBlockRange64::MakeClosedInterval(0, 1024));
+
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO_SILENT,
+            response->GetStatus(),
+            FormatError(response->GetError()));
     }
 
     Y_UNIT_TEST(ShouldSendStatsToVolume)
