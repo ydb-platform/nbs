@@ -114,6 +114,17 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
 
 void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 {
+    if (WriteIntersectsWithScrubbing) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to inflight write",
+            DiskId.c_str(),
+            DescribeRange(ScrubbingRange).c_str());
+        ScheduleScrubbingNextRange(ctx);
+        return;
+    }
+
     const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
 
     bool equal = true;
@@ -236,6 +247,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 {
     Y_UNUSED(ev);
 
+    WriteIntersectsWithScrubbing = false;
     ScrubbingRange =
         RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
     if (ScrubbingRange.Start >= State.GetBlockCount()) {
@@ -253,7 +265,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
             LOG_DEBUG(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Scrubbing range %s rejected due to inflight write to %s",
+                "[%s] Reschedule scrubbing for range %s due to inflight write to %s",
                 DiskId.c_str(),
                 DescribeRange(ScrubbingRange).c_str(),
                 DescribeRange(requestRange).c_str());

@@ -1230,6 +1230,97 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
     }
+
+    Y_UNIT_TEST(ShouldNotFindMismatchIfChecksumIntersectedWithWrite)
+    {
+        using namespace NMonitoring;
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+
+        TTestBasicRuntime runtime;
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(0, 200);
+
+        env.WriteReplica(0, range, 'A');
+        env.WriteReplica(1, range, 'B');
+        env.WriteReplica(2, range, 'C');
+
+        enum {
+            INIT,
+            REQUESTS_RECIEVED,
+            CHECKSUM_SENT,
+            FINISH
+        } state = INIT;
+
+        ui32 ranges = 0;
+        TAutoPtr<IEventHandle> delayedWriteRequest;
+        TAutoPtr<IEventHandle> delayedChecksumRequest;
+        runtime.SetObserverFunc([&] (auto& event) {
+            switch (state) {
+                case INIT: {
+                    if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
+                        if (!delayedWriteRequest) {
+                            delayedWriteRequest = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                    if (event->GetTypeRewrite() == TEvDiskAgent::EvChecksumDeviceBlocksRequest) {
+                        if (!delayedChecksumRequest) {
+                            delayedChecksumRequest = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                    if (delayedWriteRequest && delayedChecksumRequest) {
+                        state = REQUESTS_RECIEVED;
+                    }
+                    break;
+                }
+                case REQUESTS_RECIEVED: {
+                    runtime.Send(delayedChecksumRequest.Release());
+                    state = CHECKSUM_SENT;
+                    break;
+                }
+                case CHECKSUM_SENT: {
+                    if (event->GetTypeRewrite() == TEvDiskAgent::EvChecksumDeviceBlocksResponse) {
+                        runtime.Send(delayedWriteRequest.Release());
+                        state = FINISH;
+                    }
+                    break;
+                }
+                case FINISH: {
+                    if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
+                        ranges++;
+                    }
+                    break;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+
+        env.WriteActor(env.ActorId, range, 'D');
+
+        while (ranges < 5) {
+            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        }
+
+        auto mirroredDiskChecksumMismatch =
+            counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

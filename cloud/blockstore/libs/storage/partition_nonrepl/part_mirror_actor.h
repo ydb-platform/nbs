@@ -62,6 +62,7 @@ private:
     ui64 ScrubbingRangeId = 0;
     TBlockRange64 ScrubbingRange;
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
+    bool WriteIntersectsWithScrubbing = false;
 
 public:
     TMirrorPartitionActor(

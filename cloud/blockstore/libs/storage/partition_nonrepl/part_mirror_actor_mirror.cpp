@@ -61,6 +61,10 @@ void TMirrorPartitionActor::MirrorRequest(
     const auto requestIdentityKey = ev->Cookie;
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 
+    if (ScrubbingRange.Overlaps(range)) {
+        WriteIntersectsWithScrubbing = true;
+    }
+
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,
         std::move(requestInfo),
