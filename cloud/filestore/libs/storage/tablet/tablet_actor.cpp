@@ -386,13 +386,17 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 
 ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
 {
+    // Max needed for the freshly created FS case - GetBlockSize() returns 0
+    // before we process our first EvUpdateConfig event.
+    const ui32 blockSize = Max(GetBlockSize(), DefaultBlockSize);
+
     // Blob size has a limit specified in bytes whereas the capacity of a
     // single compaction range is actually specified in blocks - see
     // BlockGroupSize. That's why we need to scale the limit on the number
     // of blobs per range by something that's linear w.r.t. BlockSize.
     //
     // See issue #95.
-    const ui64 factor = GetBlockSize() / DefaultBlockSize;
+    const ui64 factor = blockSize / DefaultBlockSize;
     return Min<ui64>(Max<ui32>(), factor * t);
 }
 
