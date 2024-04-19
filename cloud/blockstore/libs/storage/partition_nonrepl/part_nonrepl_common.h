@@ -59,12 +59,9 @@ void ProcessError(
         error.SetCode(E_REJECTED);
     }
 
-    if (error.GetCode() == E_IO) {
-        error = config.MakeIOError(std::move(*error.MutableMessage()), true);
-    }
-
-    if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SYSTEM &&
-        STATUS_FROM_CODE(error.GetCode()) == EIO)
+    if (error.GetCode() == E_IO ||
+        (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SYSTEM &&
+         STATUS_FROM_CODE(error.GetCode()) == EIO))
     {
         error = config.MakeIOError(std::move(*error.MutableMessage()), true);
     }
