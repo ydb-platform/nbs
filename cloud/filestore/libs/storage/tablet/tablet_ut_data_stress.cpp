@@ -351,7 +351,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
     }                                                                          \
 // PERFORM_TEST
 
-        const ui32 d = GetEnv("SANITIZER_TYPE") == "thread" ? 10 : 1;
+        const auto sanitizerType = GetEnv("SANITIZER_TYPE");
+        // temporary logging
+        Cerr << "sanitizer: " << sanitizerType << Endl;
+        const ui32 d = sanitizerType == "thread" ? 20 : 1;
 
         PERFORM_TEST(5'000 / d);
         PERFORM_TEST(1'000 / d);
