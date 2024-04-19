@@ -316,9 +316,6 @@ void TBootstrap::InitKikimrService()
     }
 
     Configs->InitDiskAgentConfig();
-    // InitRdmaConfig should be called after InitDiskAgentConfig
-    // to backport legacy RDMA config
-    Configs->InitRdmaConfig();
 
     STORAGE_INFO("Configs initialized");
 
@@ -332,6 +329,12 @@ void TBootstrap::InitKikimrService()
     }
 
     STORAGE_INFO("CMS configs initialized");
+
+    // InitRdmaConfig should be called after InitDiskAgentConfig
+    // and ApplyCMSConfigs to backport legacy RDMA config
+    Configs->InitRdmaConfig();
+
+    STORAGE_INFO("RDMA config initialized");
 
     auto logging = std::make_shared<TLoggingProxy>();
     auto monitoring = std::make_shared<TMonitoringProxy>();
