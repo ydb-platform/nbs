@@ -115,10 +115,13 @@ def _test_every_method_impl(sync):
         },
         "query_available_storage": {
             "agent_ids": ["DefaultAgemtId"],
+            "storage_pool_name": "DefaulPoolName",
+            "storage_pool_kind": protos.EStoragePoolKind.Value("STORAGE_POOL_KIND_DEFAULT"),
         },
         "resume_device": {
             "agent_id": "DefaultAgemtId",
             "path": "DefaultPath",
+            "dry_run": False,
         },
         "start_endpoint": {
             "unix_socket_path": "DefaultUnixSocketPath",

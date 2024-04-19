@@ -3613,8 +3613,26 @@ NProto::TError TDiskRegistryState::UpdateAgentCounters(
     for (const auto& device: stats.GetDeviceStats()) {
         const auto& uuid = device.GetDeviceUUID();
 
-        if (stats.GetNodeId() != DeviceList.FindNodeId(uuid)) {
-            return MakeError(E_ARGUMENT, "unexpected device");
+        const bool deviceIsUnknown = AnyOf(
+            agent->GetUnknownDevices(),
+            [&uuid](const NProto::TDeviceConfig& device)
+            { return device.GetDeviceUUID() == uuid; });
+        if (deviceIsUnknown) {
+            return MakeError(
+                S_FALSE,
+                TStringBuilder() << "Device: \"" << uuid << "\" is unknown");
+        }
+
+        const NProto::TDeviceConfig* knownDevice = DeviceList.FindDevice(uuid);
+        if (!knownDevice || stats.GetNodeId() != knownDevice->GetNodeId()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Unexpected device. DeviceId: \"" << uuid
+                    << "\" Sender node id: " << stats.GetNodeId()
+                    << " Found node id: "
+                    << (knownDevice ? ToString(knownDevice->GetNodeId())
+                                    : "null"));
         }
     }
 
@@ -5102,18 +5120,14 @@ auto TDiskRegistryState::AddNewDevices(
     NProto::TAgentConfig& agent,
     const TString& path,
     TInstant now,
+    bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
 {
-    TVector<TDeviceId> devicesThatNeedToBeCleaned;
     TVector<NProto::TDeviceConfig*> devices;
 
     for (auto& device: *agent.MutableUnknownDevices()) {
         if (device.GetDeviceName() == path) {
             devices.push_back(&device);
-
-            if (GetDevicePoolKind(device.GetPoolName()) == NProto::DEVICE_POOL_KIND_LOCAL) {
-                devicesThatNeedToBeCleaned.push_back(device.GetDeviceUUID());
-            }
         }
     }
 
@@ -5167,7 +5181,9 @@ auto TDiskRegistryState::AddNewDevices(
             << "AddNewDevices: " << JoinSeq(" ", affectedDisks));
     }
 
-    ResumeDevices(now, db, ids);
+    if (shouldResume) {
+        ResumeDevices(now, db, ids);
+    }
 
     return {
         .Error = std::move(error),
@@ -5179,6 +5195,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
     NProto::TAgentConfig& agent,
     NProto::TDeviceConfig& device,
     TInstant now,
+    bool shouldResume,
     bool dryRun,
     TDuration& timeout)
 {
@@ -5214,7 +5231,7 @@ NProto::TError TDiskRegistryState::CmsAddDevice(
     ApplyDeviceStateChange(db, agent, device, now, affectedDisk);
     Y_UNUSED(affectedDisk);
 
-    if (!HasError(error)) {
+    if (shouldResume && !HasError(error)) {
         ResumeDevice(now, db, device.GetDeviceUUID());
     }
 
@@ -5299,6 +5316,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     const TString& path,
     NProto::EDeviceState newState,
     TInstant now,
+    bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
 {
     if (newState != NProto::DEVICE_STATE_ONLINE &&
@@ -5310,7 +5328,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     auto [agent, devices] = ResolveDevices(agentId, path);
 
     if (agent && devices.empty() && newState == NProto::DEVICE_STATE_ONLINE) {
-        return AddNewDevices(db, *agent, path, now, dryRun);
+        return AddNewDevices(db, *agent, path, now, shouldResume, dryRun);
     }
 
     if (!agent || devices.empty()) {
@@ -5331,6 +5349,7 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
                 *agent,
                 *device,
                 now,
+                shouldResume,
                 dryRun,
                 result.Timeout);
         } else {

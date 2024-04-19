@@ -119,6 +119,7 @@ func TestResumeDevice(t *testing.T) {
 		ctx,
 		"agentId",
 		"path",
+		false, // DryRun
 	)
 	require.NoError(t, err)
 }

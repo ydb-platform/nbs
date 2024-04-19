@@ -81,6 +81,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
                 devices[0].GetDeviceName(),
                 NProto::DEVICE_STATE_WARNING,
                 {},     // now
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL_C(

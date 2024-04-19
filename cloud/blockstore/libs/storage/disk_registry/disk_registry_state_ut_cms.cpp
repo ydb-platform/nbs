@@ -66,6 +66,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 "NVMENBS01",
                 NProto::DEVICE_STATE_ONLINE,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_SUCCESS(result.Error);
@@ -143,6 +144,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_SUCCESS(result.Error);
@@ -233,6 +235,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -262,6 +265,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                 "NVMENBS01",
                 NProto::DEVICE_STATE_WARNING,
                 Now(),
+                false,  // shouldResumeDevice
                 false); // dryRun
 
             UNIT_ASSERT_SUCCESS(result.Error);
