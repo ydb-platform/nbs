@@ -22,6 +22,4 @@ PEERDIR(
     cloud/api/operation
 )
 
-PROTO_NAMESPACE(cloud/disk_manager/api)
-
 END()

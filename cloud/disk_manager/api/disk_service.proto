@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-package yandex.cloud.priv.disk_manager.v1;
+package cloud.disk_manager;
 
 import "cloud/api/operation/operation.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
-import "yandex/cloud/priv/disk_manager/v1/disk.proto";
+import "cloud/disk_manager/api/disk.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api/yandex/cloud/priv/disk_manager/v1;disk_manager";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
 service DiskService {
     // Returns operation with:
