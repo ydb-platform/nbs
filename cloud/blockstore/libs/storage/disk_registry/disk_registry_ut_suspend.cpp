@@ -17,27 +17,23 @@
 #include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 using namespace NDiskRegistryTest;
 
+using namespace std::chrono_literals;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDiskRegistryTestFixture
+struct TFixture
     : public NUnitTest::TBaseFixture
 {
-    TDiskRegistryTestFixture() = default;
-
-    explicit TDiskRegistryTestFixture(bool nonReplicatedDontSuspendDevices)
-        : NonReplicatedDontSuspendDevices(nonReplicatedDontSuspendDevices)
-    {}
-
-    ~TDiskRegistryTestFixture() override = default;
-
     const TVector<NProto::TAgentConfig> Agents {
         CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1"),
@@ -65,9 +61,11 @@ struct TDiskRegistryTestFixture
     NMonitoring::TDynamicCounterPtr Counters;
     NMonitoring::TDynamicCounterPtr CriticalEvents;
     std::unique_ptr<TDiskRegistryClient> DiskRegistry;
-    bool NonReplicatedDontSuspendDevices = true;
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
+    {}
+
+    void SetUpRuntime(bool nonReplicatedDontSuspendDevices = true)
     {
         Runtime = TTestRuntimeBuilder()
             .WithAgents(Agents)
@@ -75,7 +73,7 @@ struct TDiskRegistryTestFixture
                 auto config = CreateDefaultStorageConfig();
                 config.SetDiskRegistryCountersHost("test");
                 config.SetNonReplicatedDontSuspendDevices(
-                    NonReplicatedDontSuspendDevices);
+                    nonReplicatedDontSuspendDevices);
 
                 return config;
             }())
@@ -87,7 +85,7 @@ struct TDiskRegistryTestFixture
             ->GetSubgroup("component", "disk_registry")
             ->GetSubgroup("host", "test");
 
-        CriticalEvents = new NMonitoring::TDynamicCounters();
+        CriticalEvents = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(CriticalEvents);
     }
 
@@ -111,30 +109,56 @@ struct TDiskRegistryTestFixture
             msg.GetAvailableStorage(2).GetChunkCount());
     }
 
-    auto GetResumeDeviceResponse() const
-    {
-        TAutoPtr<NActors::IEventHandle> handle;
-        Runtime->GrabEdgeEventRethrow<TEvService::TEvResumeDeviceResponse>(
-            handle,
-            WaitTimeout);
-        UNIT_ASSERT(handle);
-        return std::unique_ptr<TEvService::TEvResumeDeviceResponse>(
-            handle->Release<TEvService::TEvResumeDeviceResponse>().Release());
-    }
-
     void WaitForCounters() const
     {
-        Runtime->AdvanceCurrentTime(TDuration::Seconds(20));
-        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        Runtime->AdvanceCurrentTime(20s);
+        Runtime->DispatchEvents({}, 10ms);
     }
-};
 
-struct TDiskRegistryWithAutoSuspendTestFixture: public TDiskRegistryTestFixture
-{
-    TDiskRegistryWithAutoSuspendTestFixture()
-        : TDiskRegistryTestFixture(false)
-    {}
-    ~TDiskRegistryWithAutoSuspendTestFixture() override = default;
+    auto CmsAction(const NProto::TAction& action) const
+    {
+        auto response = DiskRegistry->CmsAction(TVector{action});
+        UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+        return response->Record.GetActionResults(0);
+    }
+
+    auto RemoveHost(TString host) const
+    {
+        NProto::TAction action;
+        action.SetHost(std::move(host));
+        action.SetType(NProto::TAction::REMOVE_HOST);
+
+        return CmsAction(action);
+    }
+
+    auto RemoveDevice(TString host, TString path) const
+    {
+        NProto::TAction action;
+        action.SetHost(std::move(host));
+        action.SetDevice(std::move(path));
+        action.SetType(NProto::TAction::REMOVE_DEVICE);
+
+        return CmsAction(action);
+    }
+
+    auto AddHost(TString host) const
+    {
+        NProto::TAction action;
+        action.SetHost(std::move(host));
+        action.SetType(NProto::TAction::ADD_HOST);
+
+        return CmsAction(action);
+    }
+
+    auto AddDevice(TString host, TString path) const
+    {
+        NProto::TAction action;
+        action.SetHost(std::move(host));
+        action.SetDevice(std::move(path));
+        action.SetType(NProto::TAction::ADD_DEVICE);
+
+        return CmsAction(action);
+    }
 };
 
 }   // namespace
@@ -143,8 +167,10 @@ struct TDiskRegistryWithAutoSuspendTestFixture: public TDiskRegistryTestFixture
 
 Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
-    Y_UNIT_TEST_F(ShouldSuspendDevices, TDiskRegistryTestFixture)
+    Y_UNIT_TEST_F(ShouldSuspendDevices, TFixture)
     {
+        SetUpRuntime();
+
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
 
@@ -153,14 +179,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         size_t cleanDevices = 0;
 
-        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
-                    auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
+        Runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistryPrivate::EvSecureEraseResponse)
+                {
+                    auto* msg = event->Get<
+                        TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                     cleanDevices += msg->CleanDevices;
                 }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -185,7 +215,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetStatus());
         }
 
-        for (auto& d: Agents[1].GetDevices()) {
+        for (const auto& d: Agents[1].GetDevices()) {
             DiskRegistry->SuspendDevice(d.GetDeviceUUID());
         }
 
@@ -214,21 +244,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         DiskRegistry->ResumeDevice(
             Agents[1].GetAgentId(),
-            Agents[1].GetDevices(0).GetDeviceName(),
-            /*dryRun=*/false);
+            Agents[1].GetDevices(0).GetDeviceName());
         DiskRegistry->ResumeDevice(
             Agents[1].GetAgentId(),
-            Agents[1].GetDevices(1).GetDeviceName(),
-            /*dryRun=*/false);
+            Agents[1].GetDevices(1).GetDeviceName());
 
         WaitForCounters();
         UNIT_ASSERT_VALUES_EQUAL(2, cleanDevices);
 
-        for (auto& d: Agents[1].GetDevices()) {
+        for (const auto& d: Agents[1].GetDevices()) {
             DiskRegistry->ResumeDevice(
                 Agents[1].GetAgentId(),
-                d.GetDeviceName(),
-                /*dryRun=*/false);
+                d.GetDeviceName());
         }
 
         while (Agents[1].DevicesSize() != cleanDevices) {
@@ -238,8 +265,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         DiskRegistry->AllocateDisk("vol0", 80_GB);
     }
 
-    Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TDiskRegistryTestFixture)
+    Y_UNIT_TEST_F(ShouldSuspendDevicesOnCMSRequest, TFixture)
     {
+        SetUpRuntime();
+
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
@@ -256,13 +285,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            TVector<NProto::TAction> actions(1);
-            actions[0].SetHost("agent-2");
-            actions[0].SetDevice("dev-5");
-            actions[0].SetType(NProto::TAction::REMOVE_DEVICE);
-
-            auto response = DiskRegistry->CmsAction(actions);
-            const auto& result = response->Record.GetActionResults(0);
+            const auto result = RemoveDevice("agent-2", "dev-5");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
@@ -275,12 +298,67 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            TVector<NProto::TAction> actions(1);
-            actions[0].SetHost("agent-3");
-            actions[0].SetType(NProto::TAction::REMOVE_HOST);
+            auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
 
-            auto response = DiskRegistry->CmsAction(actions);
-            const auto& result = response->Record.GetActionResults(0);
+            request->Record.SetDiskId("vol0");
+            request->Record.SetBlockSize(DefaultBlockSize);
+            request->Record.SetBlocksCount(30_GB / DefaultBlockSize);
+            request->Record.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+            request->Record.AddAgentIds("agent-3");
+
+            DiskRegistry->SendRequest(std::move(request));
+
+            auto response = DiskRegistry->RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(1, n2);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+
+        {
+            const auto result = RemoveHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, result.GetResult().GetCode());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(1, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+        }
+
+        size_t cleanDevices = 0;
+
+        Runtime->SetEventFilter([&] (auto&, TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
+                auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
+
+                cleanDevices += msg->CleanDevices;
+            }
+
+            return false;
+        });
+
+        DiskRegistry->MarkDiskForCleanup("vol0");
+        DiskRegistry->SendDeallocateDiskRequest(
+            "vol0",
+            true // sync
+        );
+
+        Runtime->DispatchEvents({
+            .CustomFinalCondition = [&] {
+                return cleanDevices == 3;
+            }
+        }, 15s);
+
+        {
+            const auto result = RemoveHost("agent-3");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
@@ -293,18 +371,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         {
-            TVector<NProto::TAction> actions(2);
-            actions[0].SetHost("agent-2");
-            actions[0].SetDevice("dev-5");
-            actions[0].SetType(NProto::TAction::ADD_DEVICE);
+            const auto result = AddHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+        }
 
-            actions[1].SetHost("agent-3");
-            actions[1].SetType(NProto::TAction::ADD_HOST);
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
 
-            auto response = DiskRegistry->CmsAction(actions);
-            for (const auto& result: response->Record.GetActionResults()) {
-                UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
-            }
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(1, n2);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+
+        {
+            const auto result = AddDevice("agent-2", "dev-5");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
         }
 
         {
@@ -312,14 +393,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, n1);
             UNIT_ASSERT_VALUES_EQUAL(2, n2);
-            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
         }
 
         for (const auto& d: Agents[2].GetDevices()) {
             DiskRegistry->ResumeDevice(
                 Agents[2].GetAgentId(),
-                d.GetDeviceName(),
-                /*dryRun=*/false);
+                d.GetDeviceName());
         }
 
         {
@@ -331,8 +411,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldRejectResumeWhenAgentIsNotOnline, TDiskRegistryTestFixture)
+    Y_UNIT_TEST_F(ShouldRejectResumeWhenAgentIsNotOnline, TFixture)
     {
+        SetUpRuntime();
+
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
@@ -348,19 +430,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             DiskRegistry->SendResumeDeviceRequest(
                 Agents[2].GetAgentId(),
-                Agents[2].GetDevices()[0].GetDeviceUUID(),
-                /*dryRun=*/false);
-            auto response = GetResumeDeviceResponse();
+                Agents[2].GetDevices()[0].GetDeviceUUID());
+            auto response = DiskRegistry->RecvResumeDeviceResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(1, resumeFailed->Val());
         }
     }
-}
 
-Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
-
-    Y_UNIT_TEST_F(ResumeDeviceShouldAddDevice, TDiskRegistryWithAutoSuspendTestFixture)
+    Y_UNIT_TEST_F(ResumeDeviceShouldAddDevice, TFixture)
     {
+        SetUpRuntime(
+            false   // nonReplicatedDontSuspendDevices
+        );
+
         DiskRegistry->WaitReady();
         DiskRegistry->SetWritableState(true);
 
@@ -371,7 +453,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
 
         int nrdDevices = 0;
         for (const auto& agent: Agents) {
-            for (auto& device: agent.GetDevices()) {
+            for (const auto& device: agent.GetDevices()) {
                 if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_DEFAULT) {
                     nrdDevices++;
                 }
@@ -393,8 +475,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
                 localDevices++;
                 DiskRegistry->ResumeDevice(
                     Agents[1].GetAgentId(),
-                    d.GetDeviceName(),
-                    /*dryRun=*/false);
+                    d.GetDeviceName());
             }
         }
         WaitForSecureErase(*Runtime, localDevices);
@@ -416,8 +497,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
             DiskRegistry->SendResumeDeviceRequest(
                 Agents[1].GetAgentId(),
                 "wrong_device_name",
-                /*dryRun=*/true);
-            auto response = GetResumeDeviceResponse();
+                true);  // dryRun
+            auto response = DiskRegistry->RecvResumeDeviceResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(0, resumeFailed->Val());
         }
@@ -425,11 +506,125 @@ Y_UNIT_TEST_SUITE(TDiskRegistryWithAutoSuspendTest) {
         {
             DiskRegistry->SendResumeDeviceRequest(
                 Agents[1].GetAgentId(),
-                "wrong_device_name",
-                /*dryRun=*/false);
-            auto response = GetResumeDeviceResponse();
+                "wrong_device_name");
+            auto response = DiskRegistry->RecvResumeDeviceResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(1, resumeFailed->Val());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldSuspendLocalDevices, TFixture)
+    {
+        SetUpRuntime(
+            false   // nonReplicatedDontSuspendDevices
+        );
+
+        DiskRegistry->WaitReady();
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, Agents)
+            | WithPoolConfig("local", NProto::DEVICE_POOL_KIND_LOCAL, 10_GB));
+
+        RegisterAndWaitForAgent(*Runtime, 0, 4);
+        RegisterAndWaitForAgent(*Runtime, 1, 4);
+        RegisterAndWaitForAgent(*Runtime, 2, 0);
+
+        size_t cleanDevices = 0;
+
+        Runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistryPrivate::EvSecureEraseResponse)
+                {
+                    auto* msg = event->Get<
+                        TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
+
+                    cleanDevices += msg->CleanDevices;
+                }
+
+                return false;
+            });
+
+        auto waitDevices = [&] (size_t count) {
+            return Runtime->DispatchEvents({
+                .CustomFinalCondition = [&] {
+                    return cleanDevices == count;
+                }
+            }, 15s);
+        };
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(0, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+        }
+
+        DiskRegistry->ResumeDevice("agent-2", "dev-5");
+        DiskRegistry->ResumeDevice("agent-2", "dev-6");
+
+        UNIT_ASSERT(waitDevices(2));
+        cleanDevices = 0;
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3);
+        }
+
+        DiskRegistry->ResumeDevice("agent-3", "dev-1");
+        DiskRegistry->ResumeDevice("agent-3", "dev-2");
+        DiskRegistry->ResumeDevice("agent-3", "dev-3");
+        DiskRegistry->ResumeDevice("agent-3", "dev-4");
+
+        UNIT_ASSERT(waitDevices(4));
+        cleanDevices = 0;
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(4, n3);
+        }
+
+        {
+            const auto result = RemoveHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 were suspended
+        }
+
+        {
+            const auto result = AddHost("agent-3");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+        }
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(0, n3); // devices from agent-3 are still suspended
+        }
+
+        DiskRegistry->ResumeDevice("agent-3", "dev-1");
+
+        {
+            auto [n1, n2, n3] = QueryAvailableStorage();
+
+            UNIT_ASSERT_VALUES_EQUAL(0, n1);
+            UNIT_ASSERT_VALUES_EQUAL(2, n2);
+            UNIT_ASSERT_VALUES_EQUAL(1, n3);
         }
     }
 }
