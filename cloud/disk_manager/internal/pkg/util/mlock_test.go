@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestParseMemoryItems(t *testing.T) {
 	type testCase struct {
 		line         string
@@ -34,7 +36,6 @@ func TestParseMemoryItems(t *testing.T) {
 
 	_, err := parseProcMapsLine("02443000-02444000 r--p 02242000 fd:11")
 	require.Error(t, err)
-
 }
 
 func TestShouldLockRange(t *testing.T) {
@@ -93,7 +94,7 @@ func TestShouldLockRange(t *testing.T) {
 	}
 }
 
-func TestLockBinaryDoesNotFail(t *testing.T) {
+func TestLockProcessMemoryDoesNotFail(t *testing.T) {
 	err := LockProcessMemory()
 	require.NoError(t, err)
 }
