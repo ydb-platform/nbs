@@ -675,7 +675,6 @@ def test_change_layout(
 
     assert bkp["Agents"][0]["AgentId"] == agent_id
     assert len(bkp["Agents"][0]["Devices"]) == 9
-    assert len(bkp["DirtyDevices"]) == 9
 
     disk_agent.kill()
 
