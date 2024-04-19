@@ -176,17 +176,19 @@ func (c *nbsServerControllerService) DeleteVolume(
 	// because the resource's type is unknown here.
 	// When we miss we get S_FALSE/S_ALREADY code (err == nil).
 
-	_, err := c.nbsClient.DestroyVolume(ctx, &nbsapi.TDestroyVolumeRequest{
-		DiskId: req.VolumeId,
-	})
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"Failed to destroy disk: %+v", err)
+	if c.nbsClient != nil {
+		_, err := c.nbsClient.DestroyVolume(ctx, &nbsapi.TDestroyVolumeRequest{
+			DiskId: req.VolumeId,
+		})
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"Failed to destroy disk: %+v", err)
+		}
 	}
 
 	if c.nfsClient != nil {
-		_, err = c.nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
+		_, err := c.nfsClient.DestroyFileStore(ctx, &nfsapi.TDestroyFileStoreRequest{
 			FileSystemId: req.VolumeId,
 		})
 		if err != nil {

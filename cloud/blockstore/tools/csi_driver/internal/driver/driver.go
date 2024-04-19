@@ -12,6 +12,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	log "github.com/sirupsen/logrus"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc"
 )
@@ -104,8 +105,10 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.VMMode,
 			cfg.NbsSocketsDir,
 			cfg.PodSocketsDir,
+			NodeTargetPathPattern,
 			nbsClient,
-			nfsEndpointClient))
+			nfsEndpointClient,
+			mounter.NewMounter()))
 
 	return &Driver{grpcServer: grpcServer}, nil
 }
