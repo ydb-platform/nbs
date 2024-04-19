@@ -297,7 +297,8 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     return {
         Config->GetFlushThresholdForBackpressure(),
         Config->GetFlushBytesThresholdForBackpressure(),
-        Config->GetCompactionThresholdForBackpressure(),
+        GetCompactionScoreFactor()
+            * Config->GetCompactionThresholdForBackpressure(),
         Config->GetCleanupThresholdForBackpressure(),
     };
 }
@@ -380,17 +381,22 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
+ui32 TIndexTabletActor::GetCompactionScoreFactor() const
 {
-    auto [compactRangeId, compactionScore] = GetRangeToCompact();
-
     // Blob size has a limit specified in bytes whereas the capacity of a
     // single compaction range is actually specified in blocks - see
     // BlockGroupSize. That's why we need to scale the limit on the number
     // of blobs per range by something that's linear w.r.t. BlockSize.
     //
     // See issue #95.
-    const auto compactionScoreFactor = GetBlockSize() / DefaultBlockSize;
+    return GetBlockSize() / DefaultBlockSize;
+}
+
+TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
+{
+    auto [compactRangeId, compactionScore] = GetRangeToCompact();
+
+    const auto compactionScoreFactor = GetCompactionScoreFactor();
     const auto compactionThreshold =
         compactionScoreFactor * Config->GetCompactionThreshold();
     const auto compactionThresholdAverage =
