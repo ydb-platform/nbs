@@ -1189,6 +1189,171 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
     }
+
+    Y_UNIT_TEST_F(ShouldCleanupLocalDevicesBeforeRemoveHost, TFixture)
+    {
+        const TVector agents {CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 93_GB),
+            Device("dev-2", "uuid-2", "rack-1", 93_GB)
+                | WithPool("local", NProto::DEVICE_POOL_KIND_LOCAL)
+        })};
+
+        SetUpRuntime(TTestRuntimeBuilder()
+            .With([]{
+                auto config = CreateDefaultStorageConfig();
+                config.SetNonReplicatedDontSuspendDevices(false);
+                config.SetAllocationUnitNonReplicatedSSD(93);
+
+                return config;
+            }())
+            .WithAgents(agents)
+            .Build());
+
+        DiskRegistry->SetWritableState(true);
+
+        {
+            auto config = CreateRegistryConfig(0, agents);
+            auto& pool = *config.AddDevicePoolConfigs();
+            pool.SetName("local");
+            pool.SetAllocationUnit(93_GB);
+            pool.SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+            DiskRegistry->UpdateConfig(std::move(config));
+        }
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        DiskRegistry->ResumeDevice(
+            agents[0].GetAgentId(),
+            agents[0].GetDevices(1).GetDeviceName());
+
+        WaitForSecureErase(*Runtime, agents);
+
+        {
+            auto response = DiskRegistry->AllocateDisk("nrd", 93_GB);
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-1",
+                response->Record.GetDevices(0).GetDeviceUUID());
+        }
+
+        {
+            auto response = DiskRegistry->AllocateDisk(
+                "local",
+                93_GB,     // diskSize
+                512,       // blockSize
+                TString{}, // placementGroupId
+                0,         // placementPartitionIndex
+                "nbs",
+                "nbs.tests",
+                0,         // replicaCount
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "uuid-2",
+                response->Record.GetDevices(0).GetDeviceUUID());
+        }
+
+        // try to remove host
+        {
+            auto [error, timeout] = RemoveHost(agents[0].GetAgentId());
+
+            // no way, we have disks on the host
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+        }
+
+        TAutoPtr<IEventHandle> secureErase;
+        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                    auto& msg = *event->Get<
+                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+
+                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "uuid-1",
+                        msg.DirtyDevices[0].GetDeviceUUID());
+
+                    UNIT_ASSERT(!secureErase);
+                    secureErase.Swap(event);
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        // deallocate 'nrd' so we trigger the secure erase operation
+        DiskRegistry->MarkDiskForCleanup("nrd");
+        DiskRegistry->DeallocateDisk("nrd");
+
+        Runtime->DispatchEvents({
+            .CustomFinalCondition = [&] {
+                return !!secureErase;
+            }
+        }, 15s);
+        UNIT_ASSERT(secureErase);
+        Runtime->SetObserverFunc(&TTestActorRuntime::DefaultObserverFunc);
+
+        DiskRegistry->MarkDiskForCleanup("local");
+        DiskRegistry->SendDeallocateDiskRequest(
+            "local",
+            true // sync
+        );
+
+        // try to remove host
+        {
+            auto [error, timeout] = RemoveHost(agents[0].GetAgentId());
+
+            // no way, we have a dirty local device on the host
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
+        }
+
+        // Complete the secure erase operation
+        Runtime->Send(secureErase);
+        UNIT_ASSERT(!secureErase);
+
+        // Wait for the next secure erase to clear the local device (uuid-2)
+        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                    auto& msg = *event->Get<
+                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+
+                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "uuid-2",
+                        msg.DirtyDevices[0].GetDeviceUUID());
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        Runtime->DispatchEvents(
+            {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                 TEvDiskRegistryPrivate::EvSecureEraseResponse)}},
+            15s);
+
+        Runtime->DispatchEvents(
+            {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                 TEvDiskRegistry::EvDeallocateDiskResponse)}},
+            15s);
+
+        {
+            auto response = DiskRegistry->RecvDeallocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        // now we ready to remove host
+        {
+            auto [error, timeout] = RemoveHost(agents[0].GetAgentId());
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
