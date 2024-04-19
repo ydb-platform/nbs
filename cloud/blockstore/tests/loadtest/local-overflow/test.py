@@ -65,10 +65,13 @@ def __run_test(test_case):
     env = LocalLoadTest(
         "",
         storage_config_patches=[storage],
-        dynamic_pdisks=[dict(user_kind=1) for x in range(test_case.dynamic_disk_count)],
+        dynamic_pdisks=[dict(user_kind=1, disk_size=1024*1024*1024)
+                        for x in range(test_case.dynamic_disk_count)],
         dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="system", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="rot", pdisk_user_kind=1)
+            dict(name="dynamic_storage_pool:1",
+                 kind="system", pdisk_user_kind=0),
+            dict(name="dynamic_storage_pool:2",
+                 kind="rot", pdisk_user_kind=1)
         ],
     )
 
