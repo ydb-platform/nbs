@@ -297,7 +297,8 @@ TThresholds TIndexTabletActor::BuildBackpressureThresholds() const
     return {
         Config->GetFlushThresholdForBackpressure(),
         Config->GetFlushBytesThresholdForBackpressure(),
-        Config->GetCompactionThresholdForBackpressure(),
+        ScaleCompactionThreshold(
+            Config->GetCompactionThresholdForBackpressure()),
         Config->GetCleanupThresholdForBackpressure(),
     };
 }
@@ -334,7 +335,8 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
         return ErrorInvalidHandle(request.GetHandle());
     }
 
-    if (!IsWriteAllowed(BuildBackpressureThresholds())) {
+    TString message;
+    if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
         if (CompactionStateLoadStatus.Finished &&
             ++BackpressureErrorCount >=
                 Config->GetMaxBackpressureErrorsBeforeSuicide())
@@ -349,7 +351,9 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
             Suicide(ctx);
         }
 
-        return MakeError(E_REJECTED, "rejected due to backpressure");
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "rejected due to backpressure: " << message);
     }
 
     return NProto::TError{};
@@ -376,6 +380,96 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     }
 
     return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
+{
+    // Max needed for the freshly created FS case - GetBlockSize() returns 0
+    // before we process our first EvUpdateConfig event.
+    const ui32 blockSize = Max(GetBlockSize(), DefaultBlockSize);
+
+    // Blob size has a limit specified in bytes whereas the capacity of a
+    // single compaction range is actually specified in blocks - see
+    // BlockGroupSize. That's why we need to scale the limit on the number
+    // of blobs per range by something that's linear w.r.t. BlockSize.
+    //
+    // See issue #95.
+    const ui64 factor = blockSize / DefaultBlockSize;
+    return Min<ui64>(Max<ui32>(), factor * t);
+}
+
+TCompactionInfo TIndexTabletActor::GetCompactionInfo() const
+{
+    auto [compactRangeId, compactionScore] = GetRangeToCompact();
+
+    const auto compactionThreshold =
+        ScaleCompactionThreshold(Config->GetCompactionThreshold());
+    const auto compactionThresholdAverage =
+        ScaleCompactionThreshold(Config->GetCompactionThresholdAverage());
+
+    const auto& stats = GetFileSystemStats();
+    const auto compactionStats = GetCompactionMapStats(0);
+    const auto used = stats.GetUsedBlocksCount();
+    auto alive = stats.GetMixedBlocksCount();
+    if (alive > stats.GetGarbageBlocksCount()) {
+        alive -= stats.GetGarbageBlocksCount();
+    } else {
+        alive = 0;
+    }
+    const auto avgGarbagePercentage = used && alive > used
+        ? 100 * static_cast<double>(alive - used) / used
+        : 0;
+    const auto rangeCount = compactionStats.UsedRangesCount;
+    const auto avgCompactionScore = rangeCount
+        ? static_cast<double>(stats.GetMixedBlobsCount()) / rangeCount
+        : 0;
+    // TODO: use GarbageCompactionThreshold
+
+    const bool shouldCompact =
+        avgGarbagePercentage >= Config->GetGarbageCompactionThresholdAverage()
+        || avgCompactionScore >= compactionThresholdAverage;
+
+    return {
+        compactionThreshold,
+        compactionThresholdAverage,
+        Config->GetGarbageCompactionThreshold(),
+        Config->GetGarbageCompactionThresholdAverage(),
+        compactionScore,
+        compactRangeId,
+        avgGarbagePercentage,
+        avgCompactionScore,
+        Config->GetNewCompactionEnabled(),
+        compactionScore >= compactionThreshold
+            || Config->GetNewCompactionEnabled()
+            && compactionScore > 1 && shouldCompact,
+    };
+}
+
+TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
+{
+    auto [cleanupRangeId, cleanupScore] = GetRangeToCleanup();
+    const auto& stats = GetFileSystemStats();
+    const auto compactionStats = GetCompactionMapStats(0);
+    const auto rangeCount = compactionStats.UsedRangesCount;
+    const auto avgCleanupScore = rangeCount
+        ? static_cast<double>(stats.GetDeletionMarkersCount()) / rangeCount
+        : 0;
+    const bool shouldCleanup =
+        avgCleanupScore >= Config->GetCleanupThresholdAverage();
+
+    return {
+        Config->GetCleanupThreshold(),
+        Config->GetCleanupThresholdAverage(),
+        cleanupScore,
+        cleanupRangeId,
+        avgCleanupScore,
+        Config->GetNewCleanupEnabled(),
+        cleanupScore >= Config->GetCleanupThreshold()
+            || Config->GetNewCleanupEnabled()
+            && cleanupScore && shouldCleanup,
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
