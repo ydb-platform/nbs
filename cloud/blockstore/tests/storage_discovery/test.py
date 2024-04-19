@@ -74,8 +74,8 @@ def _setup_disk_registry_config(nbs, agent_id):
 def _wait_for_devices_to_be_cleared(client, expected_dirty_count=0):
     while True:
         bkp = client.backup_disk_registry_state()["Backup"]
-        dirty_devices = bkp.get("DirtyDevices")
-        dirty_count = 0 if dirty_devices is None else len(dirty_devices)
+        dirty_devices = bkp.get("DirtyDevices", [])
+        dirty_count = len(dirty_devices)
         if dirty_count == expected_dirty_count:
             break
         time.sleep(1)
