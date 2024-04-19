@@ -1375,9 +1375,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             TBlockRange64::MakeClosedInterval(0, 1024));
 
         auto response = client.RecvReadBlocksResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_IO_SILENT,
-            response->GetStatus(),
+        UNIT_ASSERT_C(
+            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
             FormatError(response->GetError()));
     }
 
