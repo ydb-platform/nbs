@@ -10,6 +10,8 @@ PEERDIR(
     cloud/filestore/libs/storage/testlib
 )
 
+ENV(SANITIZER_TYPE=${SANITIZER_TYPE})
+
 YQL_LAST_ABI_VERSION()
 
 END()
