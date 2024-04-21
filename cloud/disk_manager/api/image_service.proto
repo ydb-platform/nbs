@@ -14,17 +14,17 @@ service ImageService {
     // Returns operation with:
     // metadata: CreateImageMetadata
     // response: CreateImageResponse
-    rpc Create(CreateImageRequest) returns (operation.Operation);
+    rpc Create(CreateImageRequest) returns (cloud.operation.Operation);
 
     // Returns operation with:
     // metadata: UpdateImageMetadata
     // response: google.protobuf.Empty
-    rpc Update(UpdateImageRequest) returns (operation.Operation);
+    rpc Update(UpdateImageRequest) returns (cloud.operation.Operation);
 
     // Returns operation with:
     // metadata: DeleteImageMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeleteImageRequest) returns (operation.Operation);
+    rpc Delete(DeleteImageRequest) returns (cloud.operation.Operation);
 }
 
 message CreateImageRequest {

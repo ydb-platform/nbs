@@ -16,12 +16,12 @@ service SnapshotService {
     // Returns operation with:
     // metadata: CreateSnapshotMetadata
     // response: CreateSnapshotResponse
-    rpc Create(CreateSnapshotRequest) returns (operation.Operation);
+    rpc Create(CreateSnapshotRequest) returns (cloud.operation.Operation);
 
     // Returns operation with:
     // metadata: DeleteSnapshotMetadata
     // response: DeleteSnapshotResponse
-    rpc Delete(DeleteSnapshotRequest) returns (operation.Operation);
+    rpc Delete(DeleteSnapshotRequest) returns (cloud.operation.Operation);
 }
 
 message CreateSnapshotRequest {
