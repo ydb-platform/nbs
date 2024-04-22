@@ -22,7 +22,8 @@ To build run the following command from the repository root folder:
 ### 2. Configuring
 - prepare bin directory
 ```bash
-SYMLINK_BINARIES=false ./setup.sh
+cd cloud/filestore/bin
+./setup.sh
 ```
 
 ### 3. Running services
