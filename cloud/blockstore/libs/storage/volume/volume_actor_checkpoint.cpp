@@ -733,15 +733,21 @@ template <>
 void TCheckpointActor<TCreateCheckpointMethod>::Bootstrap(
     const TActorContext& ctx)
 {
-    // if this volume is a single-partition blobstorage-based disk, draining is
-    // not needed.
-    const bool skipDrain = (PartitionDescrs.size() == 1) &&
-                           (PartitionDescrs[0].DiskRegistryBasedDisk == false);
+    // Drain needed for:
+    // 1. multi-partition blobstorage-based volumes.
+    // 2. diskregistry-based volumes with the old behavior when the shadow disk
+    //    is not created.
 
-    if (skipDrain) {
-        DoAction(ctx);
-    } else {
+    const bool isDiskRegistryBased = PartitionDescrs[0].DiskRegistryBasedDisk;
+    const bool isBlobStorageBased = !isDiskRegistryBased;
+    const bool shouldDrain =
+        (isBlobStorageBased && PartitionDescrs.size() > 1) ||
+        (isDiskRegistryBased && !CreateCheckpointShadowDisk);
+
+    if (shouldDrain) {
         Drain(ctx);
+    } else {
+        DoAction(ctx);
     }
 }
 
@@ -931,15 +937,17 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
 
     AddTransaction(*requestInfo);
 
-    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
-        msg.Record.GetCheckpointId(),
-        ctx.Now(),
-        ProtoCheckpointType2Create(
-            msg.Record.GetIsLight(),
-            msg.Record.GetCheckpointType()),
-        ProtoCheckpointType2CheckpointType(
-            msg.Record.GetIsLight(),
-            msg.Record.GetCheckpointType()));
+    const auto& checkpointRequest =
+        State->GetCheckpointStore().MakeCreateCheckpointRequest(
+            msg.Record.GetCheckpointId(),
+            ctx.Now(),
+            ProtoCheckpointType2Create(
+                msg.Record.GetIsLight(),
+                msg.Record.GetCheckpointType()),
+            ProtoCheckpointType2CheckpointType(
+                msg.Record.GetIsLight(),
+                msg.Record.GetCheckpointType()),
+            Config->GetUseShadowDisksForNonreplDiskCheckpoints());
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -971,13 +979,8 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
 
     auto& checkpointStore = State->GetCheckpointStore();
     const auto& checkpointId = msg.Record.GetCheckpointId();
-    const auto type = checkpointStore.GetCheckpointType(checkpointId);
-
-    const auto& checkpointRequest = checkpointStore.CreateNew(
-        checkpointId,
-        ctx.Now(),
-        ECheckpointRequestType::Delete,
-        type.value_or(ECheckpointType::Normal));
+    const auto& checkpointRequest =
+        checkpointStore.MakeDeleteCheckpointRequest(checkpointId, ctx.Now());
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -1007,11 +1010,10 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
 
     AddTransaction(*requestInfo);
 
-    const auto& checkpointRequest = State->GetCheckpointStore().CreateNew(
-        msg.Record.GetCheckpointId(),
-        ctx.Now(),
-        ECheckpointRequestType::DeleteData,
-        ECheckpointType::Normal);
+    const auto& checkpointRequest =
+        State->GetCheckpointStore().MakeDeleteCheckpointDataRequest(
+            msg.Record.GetCheckpointId(),
+            ctx.Now());
     ExecuteTx<TSaveCheckpointRequest>(
         ctx,
         std::move(requestInfo),
@@ -1304,24 +1306,21 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
 
 bool TVolumeActor::CanExecuteWriteRequest() const
 {
-    const bool isCheckpointBeingCreated =
-        State->GetCheckpointStore().IsCheckpointBeingCreated();
-
     // If our volume is DiskRegistry-based, write requests are allowed only if
-    // there are no active checkpoints
+    // there are no active write-blocking checkpoints.
     if (State->GetDiskRegistryBasedPartitionActor()) {
-        const bool checkpointExistsOrCreatingNow =
-            State->GetCheckpointStore().DoesCheckpointBlockingWritesExist() ||
-            isCheckpointBeingCreated;
-
-        return !checkpointExistsOrCreatingNow;
+        return !State->GetCheckpointStore().DoesCheckpointBlockingWritesExist();
     }
 
-    // If our volume is BlobStorage-based, write requests are allowed only if we
-    // have only one partition or there is no checkpoint creation request in
-    // flight
-    const bool isSinglePartition = State->GetPartitions().size() == 1;
-    return isSinglePartition || !isCheckpointBeingCreated;
+    // For BlobStorage-based volumes, write/zero requests always allowed for
+    // single-partition volumes.
+    if (State->GetPartitions().size() == 1) {
+        return true;
+    }
+
+    // For multi-partition volumes writes are disabled when checkpoint creation
+    // request is in flight.
+    return !State->GetCheckpointStore().IsCheckpointBeingCreated();
 }
 
 bool TVolumeActor::PrepareUpdateCheckpointRequest(
@@ -1360,12 +1359,15 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         State->GetCheckpointStore().GetRequestById(args.RequestId);
 
     LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME,
-        "[%lu] CheckpointRequest %lu %s marked: %s disk: %s",
+        "[%lu] CheckpointRequest %lu for disk %s, checkpoint %s, marked: %s, "
+        "shadow disk: %s, error=%s",
         TabletID(),
         request.RequestId,
+        State->GetDiskId().Quote().c_str(),
         request.CheckpointId.Quote().c_str(),
         args.Completed ? "completed" : "rejected",
-        args.ShadowDiskId.Quote().c_str());
+        args.ShadowDiskId.Quote().c_str(),
+        args.ErrorMessage.value_or("").c_str());
 
     const bool needToDestroyShadowActor =
         (request.ReqType == ECheckpointRequestType::Delete ||

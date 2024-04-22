@@ -72,13 +72,16 @@ struct TCheckpointRequest
             TInstant timestamp,
             ECheckpointRequestType reqType,
             ECheckpointRequestState state,
-            ECheckpointType type)
+            ECheckpointType type,
+            bool useShadowDisk)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
         , ReqType(reqType)
         , State(state)
         , Type(type)
+        , ShadowDiskState(
+              useShadowDisk ? EShadowDiskState::New : EShadowDiskState::None)
     {}
 
     TCheckpointRequest(
@@ -132,6 +135,7 @@ private:
     ui64 LastCheckpointRequestId = 0;
     ui64 CheckpointRequestInProgress = 0;
     bool CheckpointBeingCreated = false;
+    bool CheckpointBlockingWritesBeingCreated = false;
     bool CheckpointBlockingWritesExists = false;
     const TString DiskID;
 
@@ -141,11 +145,18 @@ public:
         const TString& diskID);
     ~TCheckpointStore() = default;
 
-    const TCheckpointRequest& CreateNew(
+    const TCheckpointRequest& MakeCreateCheckpointRequest(
         TString checkpointId,
         TInstant timestamp,
         ECheckpointRequestType reqType,
-        ECheckpointType type);
+        ECheckpointType type,
+        bool useShadowDisk);
+    const TCheckpointRequest& MakeDeleteCheckpointRequest(
+        const TString& checkpointId,
+        TInstant timestamp);
+    const TCheckpointRequest& MakeDeleteCheckpointDataRequest(
+        const TString& checkpointId,
+        TInstant timestamp);
 
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
@@ -197,6 +208,7 @@ private:
     void DeleteCheckpointData(const TString& checkpointId);
     void CalcCheckpointsState();
     void Apply(const TCheckpointRequest& checkpointRequest);
+    [[nodiscard]] TInstant GetCorrectedTimestamp(TInstant timestamp) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
