@@ -1286,7 +1286,7 @@ func (s *storageYDB) markForCancellation(
 	}
 	state := states[0]
 
-	if IsCancelling(state.Status) {
+	if IsCancellingOrCancelled(state.Status) {
 		err = tx.Commit(ctx)
 		if err != nil {
 			return false, err

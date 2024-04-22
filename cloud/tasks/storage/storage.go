@@ -63,7 +63,7 @@ func IsEnded(status TaskStatus) bool {
 	return status == TaskStatusFinished || status == TaskStatusCancelled
 }
 
-func IsCancelling(status TaskStatus) bool {
+func IsCancellingOrCancelled(status TaskStatus) bool {
 	return status >= TaskStatusReadyToCancel
 }
 
