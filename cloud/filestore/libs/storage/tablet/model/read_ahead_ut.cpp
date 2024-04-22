@@ -385,6 +385,18 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         UNIT_ASSERT_VALUES_EQUAL(
             Expected(111, 5_MB, 1_MB, 0),
             FillResult(cache, 111, Handle2, 5_MB, 1_MB));
+
+        cache.OnDestroyHandle(111, Handle2);
+
+        // results still present for Handle1
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 0, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 0_MB, 1_MB));
+
+        // but dropped for Handle2
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle2, 1_MB, 1_MB));
     }
 
     Y_UNIT_TEST(ShouldEvictNodesAndResults)
