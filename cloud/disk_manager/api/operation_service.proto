@@ -8,8 +8,8 @@ import "google/protobuf/empty.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
 service OperationService {
-    rpc Get(GetOperationRequest) returns (cloud.operation.Operation);
-    rpc Cancel(CancelOperationRequest) returns (cloud.operation.Operation);
+    rpc Get(GetOperationRequest) returns (.cloud.operation.Operation);
+    rpc Cancel(CancelOperationRequest) returns (.cloud.operation.Operation);
 }
 
 message GetOperationRequest {

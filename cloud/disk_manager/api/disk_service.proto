@@ -13,34 +13,34 @@ service DiskService {
     // Returns operation with:
     // metadata: CreateDiskMetadata
     // response: google.protobuf.Empty
-    rpc Create(CreateDiskRequest) returns (cloud.operation.Operation);
+    rpc Create(CreateDiskRequest) returns (.cloud.operation.Operation);
 
     // Delete the disk without deleting its snapshots.
     //
     // Returns operation with:
     // metadata: DeleteDiskMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeleteDiskRequest) returns (cloud.operation.Operation);
+    rpc Delete(DeleteDiskRequest) returns (.cloud.operation.Operation);
 
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Resize(ResizeDiskRequest) returns (cloud.operation.Operation);
+    rpc Resize(ResizeDiskRequest) returns (.cloud.operation.Operation);
 
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Alter(AlterDiskRequest) returns (cloud.operation.Operation);
+    rpc Alter(AlterDiskRequest) returns (.cloud.operation.Operation);
 
     // Should be called before starting the VM with proper token.
     //
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Assign(AssignDiskRequest) returns (cloud.operation.Operation);
+    rpc Assign(AssignDiskRequest) returns (.cloud.operation.Operation);
 
     // Should be called after stopping the VM.
     //
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Unassign(UnassignDiskRequest) returns (cloud.operation.Operation);
+    rpc Unassign(UnassignDiskRequest) returns (.cloud.operation.Operation);
 
     rpc DescribeModel(DescribeDiskModelRequest) returns (DiskModel) {}
 
@@ -55,7 +55,7 @@ service DiskService {
     // Returns operation with:
     // metadata: MigrateDiskMetadata
     // response: google.protobuf.Empty
-    rpc Migrate(MigrateDiskRequest) returns (cloud.operation.Operation);
+    rpc Migrate(MigrateDiskRequest) returns (.cloud.operation.Operation);
 
     // Sends a signal to the migration operation, advancing migration process forward.
     rpc SendMigrationSignal(SendMigrationSignalRequest) returns (google.protobuf.Empty);

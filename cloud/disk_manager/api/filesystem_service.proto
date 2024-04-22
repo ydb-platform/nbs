@@ -10,16 +10,16 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 service FilesystemService {
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Create(CreateFilesystemRequest) returns (cloud.operation.Operation);
+    rpc Create(CreateFilesystemRequest) returns (.cloud.operation.Operation);
 
     // Returns operation with:
     // metadata: DeleteFilesystemMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeleteFilesystemRequest) returns (cloud.operation.Operation);
+    rpc Delete(DeleteFilesystemRequest) returns (.cloud.operation.Operation);
 
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Resize(ResizeFilesystemRequest) returns (cloud.operation.Operation);
+    rpc Resize(ResizeFilesystemRequest) returns (.cloud.operation.Operation);
 
     rpc DescribeModel(DescribeFilesystemModelRequest) returns (FilesystemModel) {}
 }
