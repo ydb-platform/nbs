@@ -40,7 +40,7 @@ cd cloud/filestore/bin
 
 - if you get dynamic link errors you may need to set `LD_LIBRARY_PATH` to include all necessary libraries:
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<path-to-repo-root>/cloud/filestore/apps/client
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<path-to-repo-root>/cloud/filestore/buildall/cloud/filestore/apps/client
 ```
 
 ### 4. Accessing filestore
