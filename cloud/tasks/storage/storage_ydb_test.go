@@ -2875,7 +2875,7 @@ func TestStorageYDBMarkForCancellation(t *testing.T) {
 	require.EqualValues(t, taskState.ErrorMessage, "Cancelled by client")
 }
 
-func TestStorageYDBMarkForCancellationAlready(t *testing.T) {
+func TestStorageYDBMarkForCancellationIfAlreadyCancelling(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -2925,7 +2925,7 @@ func TestStorageYDBMarkForCancellationAlready(t *testing.T) {
 	require.Equal(t, taskState.Status, TaskStatusCancelling)
 }
 
-func TestStorageYDBMarkForCancellationFinished(t *testing.T) {
+func TestStorageYDBMarkForCancellationIfAlreadyFinished(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -2972,6 +2972,55 @@ func TestStorageYDBMarkForCancellationFinished(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, taskState.GenerationID, 0)
 	require.Equal(t, taskState.Status, TaskStatusFinished)
+}
+
+func TestStorageYDBMarkForCancellationIfAlreadyCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+	createdAt := time.Now()
+	taskDuration := time.Minute
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": "task1"},
+	).On("Add", int64(1)).Once()
+
+	taskID, err := storage.CreateTask(ctx, TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task1",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusCancelled,
+		State:          []byte{},
+		Dependencies:   NewStringSet(),
+	})
+	require.NoError(t, err)
+	metricsRegistry.AssertAllExpectations(t)
+
+	cancelling, err := storage.MarkForCancellation(ctx, taskID, createdAt.Add(taskDuration))
+	require.NoError(t, err)
+	require.True(t, cancelling)
+	metricsRegistry.AssertAllExpectations(t)
+
+	taskState, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.EqualValues(t, taskState.GenerationID, 0)
+	require.Equal(t, taskState.Status, TaskStatusCancelled)
 }
 
 func TestStorageYDBUpdateTask(t *testing.T) {
