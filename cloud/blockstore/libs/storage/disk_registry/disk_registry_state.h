@@ -178,15 +178,11 @@ struct TCheckpointInfo
         , ShadowDiskId(std::move(shadowDiskId))
     {}
 
-    static TString MakeShadowDiskId(
+    static TString MakeId(
         const TString& sourceDiskId,
         const TString& checkpointId);
 
-    static TString MakeUniqueId(
-        const TString& sourceDiskId,
-        const TString& checkpointId);
-
-    TString UniqueId() const;
+    TString Id() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,7 +419,8 @@ public:
     NProto::TError DeallocateCheckpoint(
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
-        const TCheckpointId& checkpointId);
+        const TCheckpointId& checkpointId,
+        TDiskId* shadowDiskId);
 
     NProto::TError GetCheckpointDataState(
         const TDiskId& sourceDiskId,
