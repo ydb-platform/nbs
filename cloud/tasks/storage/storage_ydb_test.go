@@ -3948,6 +3948,110 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 	require.Equal(t, 1, len(taskInfos))
 }
 
+func TestStorageYDBCancelRegularTask(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	createdAt := time.Now()
+	task := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		LastRunner:     "runner",
+		LastHost:       "host",
+	}
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": task.TaskType},
+	).On("Add", int64(1)).Once()
+
+	schedule := TaskSchedule{
+		ScheduleInterval: time.Second,
+		MaxTasksInflight: 1,
+	}
+
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err := storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(taskInfos))
+
+	taskID := taskInfos[0].ID
+
+	taskState, err := storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+
+	_, err = storage.MarkForCancellation(ctx, taskID, time.Now())
+	require.NoError(t, err)
+
+	taskState, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusReadyToCancel, taskState.Status)
+
+	generationID := taskState.GenerationID
+
+	// Check idempotency, expect that generation and status are unchanged.
+	_, err = storage.MarkForCancellation(ctx, taskID, time.Now())
+	require.NoError(t, err)
+	taskState, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusReadyToCancel, taskState.Status)
+	require.Equal(t, generationID, taskState.GenerationID)
+
+	// Lock task for cancellation, expect that generation and status are changed.
+	taskState, err = storage.LockTaskToCancel(ctx, TaskInfo{
+		ID:           taskID,
+		GenerationID: generationID,
+	}, time.Now(), "host", "runner_43")
+	require.NoError(t, err)
+	require.EqualValues(t, generationID+1, taskState.GenerationID)
+
+	// Check idempotency, expect that generation and status are unchanged.
+	_, err = storage.MarkForCancellation(ctx, taskID, time.Now())
+	require.NoError(t, err)
+	taskState, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusCancelling, taskState.Status)
+	require.Equal(t, generationID+1, taskState.GenerationID)
+
+	// End task, expect that generation and status are changed.
+	taskState.Status = TaskStatusCancelled
+	_, err = storage.UpdateTask(ctx, taskState)
+	require.NoError(t, err)
+	taskState, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusCancelled, taskState.Status)
+	require.Equal(t, generationID+2, taskState.GenerationID)
+
+	// Check idempotency, expect that generation and status are unchanged.
+	_, err = storage.MarkForCancellation(ctx, taskID, time.Now())
+	require.NoError(t, err)
+	taskState, err = storage.GetTask(ctx, taskID)
+	require.NoError(t, err)
+	require.Equal(t, TaskStatusCancelled, taskState.Status)
+	require.Equal(t, generationID+2, taskState.GenerationID)
+}
+
 func TestStorageYDBClearEndedTasks(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
