@@ -4700,6 +4700,12 @@ bool TDiskRegistryState::HasDependentSsdDisks(
             continue;
         }
 
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+            PendingCleanup.FindDiskId(d.GetDeviceUUID()))
+        {
+            return true;
+        }
+
         const auto diskId = FindDisk(d.GetDeviceUUID());
 
         if (!diskId) {
