@@ -31,10 +31,10 @@ BIN_DIR=`find_bin_dir`
 echo "${SYMLINK_BINARIES}"
 
 BUILD_ROOT="$REPO_DIR/cloud/filestore/buildall"
-YDBD_BIN="$BUILD_ROOT/contrib/ydb/apps/ydbd/ydbd"
-FILESTORE_CLIENT_BIN="$BUILD_ROOT/cloud/filestore/apps/client/filestore-client"
-FILESTORE_SERVER_BIN="$BUILD_ROOT/cloud/filestore/apps/server/filestore-server"
-FILESTORE_VHOST_BIN="$BUILD_ROOT/cloud/filestore/apps/vhost/filestore-vhost"
+YDBD_BIN="contrib/ydb/apps/ydbd/ydbd"
+FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
+FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
+FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"
 
 if $SYMLINK_BINARIES; then
     # If SYMLINK_BINARIES is set to false, it is assumed that binaries are already
