@@ -13,10 +13,10 @@ usermod -a -G kvm $USER
 # How to build and run
 
 ### 1. Building
-Ensure that necessary binaries are located in `./bin/` directory.
+To build run the following command from the repository root folder:
 
 ```bash
-cd cloud/filestore/nbs
+./ya make cloud/filestore/buildall -r
 ```
 
 ### 2. Configuring
