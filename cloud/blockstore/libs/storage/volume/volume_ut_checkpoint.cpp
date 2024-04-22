@@ -1011,7 +1011,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(stolenDeviceRequest);
         TEST_NO_RESPONSE(runtime, WriteBlocks);
 
-        // Send Create checkpoint request. It delayed untill write request
+        // Send Create checkpoint request. It delayed until write request
         // completed.
         volume.SendCreateCheckpointRequest("c1");
         runtime->DispatchEvents({}, TDuration::Seconds(1));
@@ -1176,7 +1176,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         TAutoPtr<IEventHandle> evRangeMigrated;
 
-        auto oldObsereverFunc = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+        auto oldObserverFunc = runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -1205,7 +1205,49 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.WaitReady();
 
         if (checkpointAt == 2) {
-            volume.CreateCheckpoint("c1");
+            // Write block during migration.
+            // We will steal TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted
+            // from TNonreplicatedPartitionMigrationCommonActor. This will delay
+            // the drain execution.
+            std::unique_ptr<IEventHandle> stolenResponse;
+            auto stealWriteResponse = [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted)
+                {
+                    stolenResponse.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            };
+            auto oldObserverFunc = runtime->SetObserverFunc(stealWriteResponse);
+
+            // Execute write request.
+            client1.WriteBlocksLocal(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId(),
+                GetBlockContent(1));
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+            // Got stolen TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted.
+            UNIT_ASSERT(stolenResponse);
+            runtime->SetObserverFunc(oldObserverFunc);
+
+            // Send Create checkpoint request. It delayed until write request
+            // completed.
+            volume.SendCreateCheckpointRequest("c1");
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            TEST_NO_RESPONSE(runtime, CreateCheckpoint);
+
+            // Return stolen response - write request will be completed after this
+            runtime->Send(stolenResponse.release());
+
+            // Checkpoint creation completed.
+            auto createCheckpointResponse =
+                volume.RecvCreateCheckpointResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                createCheckpointResponse->GetStatus());
         }
 
         // checking that our volume sees the requested migrations
@@ -1249,7 +1291,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         UNIT_ASSERT(evRangeMigrated);
 
-        runtime->SetObserverFunc(oldObsereverFunc);
+        runtime->SetObserverFunc(oldObserverFunc);
 
         runtime->Send(evRangeMigrated.Release());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
