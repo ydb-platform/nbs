@@ -1318,8 +1318,8 @@ bool TVolumeActor::CanExecuteWriteRequest() const
         return true;
     }
 
-    // For multi-partition volumes writes disabled when checkpoint creation
-    // request in flight.
+    // For multi-partition volumes writes are disabled when checkpoint creation
+    // request is in flight.
     return !State->GetCheckpointStore().IsCheckpointBeingCreated();
 }
 
