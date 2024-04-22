@@ -568,15 +568,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<NProto::TAction> actions;
         actions.push_back(action);
 
-        runtime->SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvUpdateCmsHostDeviceStateRequest: {
-                    return TTestActorRuntime::EEventAction::DROP;
+        Runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::
+                        EvUpdateCmsHostDeviceStateRequest: {
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
                 }
-            }
 
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
 
         DiskRegistry->SendCmsActionRequest(std::move(actions));
 
@@ -1262,24 +1265,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         TAutoPtr<IEventHandle> secureErase;
-        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
-                    auto& msg = *event->Get<
-                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+        Runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
 
-                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        "uuid-1",
-                        msg.DirtyDevices[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "uuid-1",
+                            msg.DirtyDevices[0].GetDeviceUUID());
 
-                    UNIT_ASSERT(!secureErase);
-                    secureErase.Swap(event);
-                    return TTestActorRuntime::EEventAction::DROP;
+                        UNIT_ASSERT(!secureErase);
+                        secureErase.Swap(event);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
                 }
-            }
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
 
         // deallocate 'nrd' so we trigger the secure erase operation
         DiskRegistry->MarkDiskForCleanup("nrd");
@@ -1313,20 +1318,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(!secureErase);
 
         // Wait for the next secure erase to clear the local device (uuid-2)
-        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
-                    auto& msg = *event->Get<
-                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+        Runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
 
-                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        "uuid-2",
-                        msg.DirtyDevices[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "uuid-2",
+                            msg.DirtyDevices[0].GetDeviceUUID());
+                    }
                 }
-            }
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
 
         Runtime->DispatchEvents(
             {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
