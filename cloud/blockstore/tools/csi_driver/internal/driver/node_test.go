@@ -110,11 +110,11 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 
 	fileInfo, err := os.Stat(sourcePath)
 	assert.False(t, os.IsNotExist(err))
-	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
+	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(filepath.Join(sourcePath, "disk.img"))
 	assert.False(t, os.IsNotExist(err))
-	assert.Equal(t, fs.FileMode(0660), fileInfo.Mode().Perm())
+	assert.Equal(t, fs.FileMode(0644), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
@@ -239,7 +239,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	fileInfo, err := os.Stat(sourcePath)
 	assert.False(t, os.IsNotExist(err))
-	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
+	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
