@@ -23,6 +23,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
         Y_DEBUG_ABORT_UNLESS(0);
     }
 
+    DrainActorCompanion.ProcessDrainRequests(ctx);
     ContinueMigrationIfNeeded(ctx);
 }
 
