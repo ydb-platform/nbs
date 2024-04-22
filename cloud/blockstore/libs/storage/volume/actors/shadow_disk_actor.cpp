@@ -474,9 +474,12 @@ void TAcquireShadowDiskActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    auto poisoner = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        MakeIntrusive<TCallContext>());
 
-    ReplyAndDie(ctx, MakeError(E_REJECTED));
+    NCloud::Reply(ctx, *poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
 }
 
 void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
