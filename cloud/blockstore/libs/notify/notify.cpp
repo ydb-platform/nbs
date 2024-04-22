@@ -212,8 +212,8 @@ public:
 
                 if (!self) {
                     p.SetValue(MakeError(
-                        E_FAIL,
-                        "object of the Notify class was destroyed before sending the request"));
+                        E_REJECTED,
+                        "Object of the Notify class was destroyed before request sending"));
                     return;
                 }
 
