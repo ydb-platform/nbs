@@ -313,8 +313,8 @@ func (g *ConfigGenerator) dumpConfigs(
 			ctx,
 			resultConfigs,
 			valuesTemplatePath,
-			configPath,
-			targetName)
+			path.Join(configPath, targetName),
+			g.spec.ServiceSpec.Clusters[cluster].Values.FileName)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to generate values for target '%v': %w",
@@ -384,10 +384,9 @@ func (g *ConfigGenerator) dumpValues(
 	ctx context.Context,
 	configs []ResultConfig,
 	valuesTemplatePath string,
-	configPath string,
-	target string,
+	dumpPath string,
+	fileName string,
 ) error {
-	dumpPath := path.Join(configPath, target)
 	g.LogDbg(ctx, "dump values to %v", dumpPath)
 
 	var resultConfigs []ResultConfig
@@ -417,7 +416,7 @@ func (g *ConfigGenerator) dumpValues(
 		)
 	}
 	file, err := os.OpenFile(
-		path.Join(dumpPath, "values.yaml"),
+		path.Join(dumpPath, fileName),
 		os.O_WRONLY|os.O_CREATE|os.O_TRUNC,
 		0755)
 	if err != nil {
