@@ -101,7 +101,8 @@ void TIndexTabletActor::ExecuteTx_Cleanup(
 
     TIndexTabletDatabase db(tx.DB);
 
-    CleanupMixedBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
+    args.ProcessedDeletionMarkerCount =
+        CleanupMixedBlockDeletions(db, args.RangeId, args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_Cleanup(
@@ -137,6 +138,11 @@ void TIndexTabletActor::CompleteTx_Cleanup(
 
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+
+    Metrics.Cleanup.Update(
+        1,
+        args.ProcessedDeletionMarkerCount * GetBlockSize(),
+        ctx.Now() - args.RequestInfo->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

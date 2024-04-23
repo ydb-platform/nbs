@@ -693,7 +693,7 @@ public:
         ui64 len);
 
     TFlushBytesCleanupInfo StartFlushBytes(TVector<TBytes>* bytes);
-    void FinishFlushBytes(
+    ui32 FinishFlushBytes(
         TIndexTabletDatabase& db,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -781,7 +781,8 @@ public:
         ui32 blockIndex,
         ui32 blocksCount);
 
-    void CleanupMixedBlockDeletions(
+    // returns processed deletion marker count
+    ui32 CleanupMixedBlockDeletions(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);

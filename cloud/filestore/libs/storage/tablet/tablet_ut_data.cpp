@@ -4836,6 +4836,182 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
+    TABLET_TEST(ShouldCollectCountersForBackgroundOps)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        using TLabel = TTestRegistryVisitor::TLabel;
+        auto makeLabels = [] (const TString& request, const TString& sensor) {
+            return TVector<TLabel>({
+                {"sensor", request + "." + sensor},
+                {"filesystem", "test"},
+            });
+        };
+
+        auto makeExpectedLabels = [=] (
+            const ui32 compactionOps, const ui32 compactionOpBytes,
+            const ui32 cleanupOps, const ui32 cleanupOpBytes,
+            const ui32 flushOps, const ui32 flushOpBytes,
+            const ui32 flushBytesOps, const ui32 flushBytesOpBytes,
+            const ui32 trimBytesOps, const ui32 trimBytesOpBytes,
+            const ui32 collectGarbageOps, const ui32 collectGarbageOpBytes)
+        {
+            return TVector<std::pair<TVector<TLabel>, i64>>({
+                {makeLabels("Compaction", "Count"), compactionOps},
+                {makeLabels("Compaction", "RequestBytes"), compactionOpBytes},
+                {makeLabels("Cleanup", "Count"), cleanupOps},
+                {makeLabels("Cleanup", "RequestBytes"), cleanupOpBytes},
+                {makeLabels("Flush", "Count"), flushOps},
+                {makeLabels("Flush", "RequestBytes"), flushOpBytes},
+                {makeLabels("FlushBytes", "Count"), flushBytesOps},
+                {makeLabels("FlushBytes", "RequestBytes"), flushBytesOpBytes},
+                {makeLabels("TrimBytes", "Count"), trimBytesOps},
+                {makeLabels("TrimBytes", "RequestBytes"), trimBytesOpBytes},
+                {makeLabels("CollectGarbage", "Count"), collectGarbageOps},
+                {makeLabels("CollectGarbage", "RequestBytes"), collectGarbageOpBytes},
+            });
+        };
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                0, 0,
+                0, 0,
+                0, 0,
+                0, 0,
+                0, 0,
+                0, 0
+            ));
+        }
+
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.Flush();
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                0, 0,
+                0, 0,
+                1, block,
+                0, 0,
+                0, 0,
+                0, 0
+            ));
+        }
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.Compaction(rangeId);
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                1, block,
+                0, 0,
+                1, block,
+                0, 0,
+                0, 0,
+                0, 0
+            ));
+        }
+
+        tablet.Cleanup(rangeId);
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                1, block,
+                1, block,
+                1, block,
+                0, 0,
+                0, 0,
+                0, 0
+            ));
+        }
+
+        tablet.WriteData(handle, 0, 1_KB, 'a');
+        tablet.FlushBytes();
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                1, block,
+                1, block,
+                1, block,
+                1, 1_KB,
+                1, 1_KB,
+                0, 0
+            ));
+        }
+
+        tablet.CollectGarbage();
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(makeExpectedLabels(
+                1, block,
+                1, block,
+                1, block,
+                1, 1_KB,
+                1, 1_KB,
+                // 3 x new blobs (flush+compaction+flushbytes results)
+                // 2 x garbage blobs (flush+compaction results)
+                1, 5 * block
+            ));
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
 #undef TABLET_TEST
 }
 

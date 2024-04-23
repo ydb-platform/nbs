@@ -359,7 +359,7 @@ TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes
     return Impl->FreshBytes.StartCleanup(GetCurrentCommitId(), bytes);
 }
 
-void TIndexTabletState::FinishFlushBytes(
+ui32 TIndexTabletState::FinishFlushBytes(
     TIndexTabletDatabase& db,
     ui64 chunkId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -378,6 +378,8 @@ void TIndexTabletState::FinishFlushBytes(
     DecrementFreshBytesCount(db, sz);
 
     Impl->FreshBytes.FinishCleanup(chunkId);
+
+    return sz;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -784,7 +786,7 @@ void TIndexTabletState::UpdateBlockLists(
     WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 }
 
-void TIndexTabletState::CleanupMixedBlockDeletions(
+ui32 TIndexTabletState::CleanupMixedBlockDeletions(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -840,6 +842,8 @@ void TIndexTabletState::CleanupMixedBlockDeletions(
         stats.BlobsCount,
         stats.DeletionsCount,
         profileLogRequest);
+
+    return deletionMarkerCount;
 }
 
 void TIndexTabletState::RewriteMixedBlocks(

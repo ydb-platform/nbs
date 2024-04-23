@@ -31,6 +31,7 @@ private:
     const ui32 BlockSize;
     const IProfileLogPtr ProfileLog;
     /*const*/ TVector<TMixedBlob> Blobs;
+    ui32 OperationSize = 0;
 
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
@@ -88,7 +89,11 @@ TFlushActor::TFlushActor(
     , ProfileLog(std::move(profileLog))
     , Blobs(std::move(blobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{}
+{
+    for (const auto& b: Blobs) {
+        OperationSize += b.Blocks.size() * BlockSize;
+    }
+}
 
 void TFlushActor::Bootstrap(const TActorContext& ctx)
 {
@@ -174,8 +179,12 @@ void TFlushActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvFlushCompleted>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvFlushCompleted>(error);
         response->CommitId = CommitId;
+        response->Count = 1;
+        response->Size = OperationSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -186,7 +195,8 @@ void TFlushActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvFlushResponse>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvFlushResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -198,7 +208,9 @@ STFUNC(TFlushActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
@@ -383,6 +395,8 @@ void TIndexTabletActor::HandleFlushCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueFlushIfNeeded(ctx);
     EnqueueBlobIndexOpIfNeeded(ctx);
+
+    Metrics.Flush.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
