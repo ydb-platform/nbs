@@ -1056,14 +1056,17 @@ private:
 public:
     bool TryFillDescribeResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange inputRange);
     void InvalidateReadAheadCache(ui64 nodeId);
     void RegisterReadAheadResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
     TReadAheadCacheStats CalculateReadAheadCacheStats() const;
