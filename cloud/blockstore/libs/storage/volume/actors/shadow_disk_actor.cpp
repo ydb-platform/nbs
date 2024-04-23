@@ -62,18 +62,15 @@ bool CheckDeviceUUIDsIdentical(
     const TDevices& described,
     const TDevices& acquired)
 {
-    if (described.size() != acquired.size()) {
-        return false;
-    }
-
-    TSet<TString> devices;
-    for (const auto& d: described) {
-        devices.insert(d.GetDeviceUUID());
+    TSet<TString> acquiredDevices;
+    for (const auto& d: acquired) {
+        acquiredDevices.insert(d.GetDeviceUUID());
     }
 
     return AllOf(
-        acquired,
-        [&](const auto& d) { return devices.contains(d.GetDeviceUUID()); });
+        described,
+        [&](const auto& d)
+        { return acquiredDevices.contains(d.GetDeviceUUID()); });
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -474,12 +471,14 @@ void TAcquireShadowDiskActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto poisoner = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        MakeIntrusive<TCallContext>());
-
-    NCloud::Reply(ctx, *poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
+    NCloud::Reply(
+        ctx,
+        *CreateRequestInfo(
+            ev->Sender,
+            ev->Cookie,
+            MakeIntrusive<TCallContext>()),
+        std::make_unique<TEvents::TEvPoisonTaken>());
+    ReplyAndDie(ctx, MakeError(E_REJECTED));
 }
 
 void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)

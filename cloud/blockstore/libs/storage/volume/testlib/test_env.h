@@ -236,6 +236,8 @@ public:
 
     void ReconnectPipe();
 
+    // Attention! During reboot the filter set via runtime->SetObserverFunc()
+    // will not get messages.
     void RebootTablet();
 
     void RebootSysTablet();
