@@ -3690,28 +3690,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Steal the acquire response.
         // We will return it later to complete the shadow disk acquiring.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
         {
+            Y_UNUSED(runtime);
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
             {
                 stolenAcquireResponse.reset(event.Release());
-                return TTestActorRuntime::EEventAction::DROP;
+                return true;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
-        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
 
         // Reboot volume tablet.
-        // Attention! this restart method is different from
-        // volume.RebootTablet(). The filter set via runtime->SetObserverFunc()
-        // continues to intercept messages.
-        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-        volume.ReconnectPipe();
+        volume.RebootTablet();
 
         // Check that the acquire response was stolen.
         UNIT_ASSERT(stolenAcquireResponse);
-        runtime->SetObserverFunc(oldFilter);
+        runtime->SetEventFilter(oldFilter);
 
         // We check that attempts to write to the disk are blocked. Since the
         // shadow disk is partially filled, and the shadow disk acquiring has
@@ -3802,28 +3800,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Steal the acquire response.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
         {
+            Y_UNUSED(runtime);
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
             {
                 stolenAcquireResponse.reset(event.Release());
-                return TTestActorRuntime::EEventAction::DROP;
+                return true;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
-        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
 
         // Reboot volume tablet.
-        // Attention! this restart method is different from
-        // volume.RebootTablet(). The filter set via runtime->SetObserverFunc()
-        // continues to intercept messages.
-        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-        volume.ReconnectPipe();
+        volume.RebootTablet();
 
         // Check that the acquire response was stolen.
         UNIT_ASSERT(stolenAcquireResponse);
-        runtime->SetObserverFunc(oldFilter);
+        runtime->SetEventFilter(oldFilter);
 
         // We check that attempts to write to the disk are blocked. Since the
         // shadow disk is partially filled, and the shadow disk acquiring has
@@ -4400,27 +4396,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             Cout << "volumeActorId = " << volumeActorId << Endl;
 
             bool poisonTaken = false;
-            auto trackPoisonTaken = [&](TAutoPtr<IEventHandle>& event)
+            auto trackPoisonTaken = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
             {
+                Y_UNUSED(runtime);
+
                 if (event->GetTypeRewrite() == TEvents::TSystem::PoisonTaken &&
                     event->Recipient == volumeActorId)
                 {
                     poisonTaken = true;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             };
-            auto oldFilter = runtime->SetObserverFunc(trackPoisonTaken);
+            auto oldFilter = runtime->SetEventFilter(trackPoisonTaken);
 
             // Reboot volume tablet.
-            // Attention! this restart method is different from
-            // volume.RebootTablet(). The filter set via
-            // runtime->SetObserverFunc() continues to intercept messages.
-            NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-            volume.ReconnectPipe();
+            volume.RebootTablet();
 
             // Check volume got PoisonTaken message.
             UNIT_ASSERT(poisonTaken);
-            runtime->SetObserverFunc(oldFilter);
+            runtime->SetEventFilter(oldFilter);
         };
 
         // Check that the volume actor receives the TEvPoisonTaken message when
@@ -4435,30 +4430,30 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         checkVolumeActorReceivesPoisonTakenMessage();
 
         // Check that the volume actor receives the TEvPoisonTaken message when
-        // TAcquireShadowDiskActor wait for shadow disk acquiring.
+        // TAcquireShadowDiskActor is waiting for shadow disk acquiring.
         {
             std::unique_ptr<IEventHandle> stolenAcquireResponse;
-            auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+            auto stealAcquireResponse =
+                [&](TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event) -> bool
             {
+                Y_UNUSED(runtime);
+
                 if (event->GetTypeRewrite() ==
                     TEvDiskRegistry::EvAcquireDiskResponse)
                 {
                     stolenAcquireResponse.reset(event.Release());
-                    return TTestActorRuntime::EEventAction::DROP;
+                    return true;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             };
-            auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+            auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
 
             // Reboot volume tablet.
-            // Attention! this restart method is different from
-            // volume.RebootTablet(). The filter set via
-            // runtime->SetObserverFunc() continues to intercept messages.
-            NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-            volume.ReconnectPipe();
+            volume.RebootTablet();
 
             UNIT_ASSERT(stolenAcquireResponse);
-            runtime->SetObserverFunc(oldFilter);
+            runtime->SetEventFilter(oldFilter);
         }
         checkVolumeActorReceivesPoisonTakenMessage();
     }

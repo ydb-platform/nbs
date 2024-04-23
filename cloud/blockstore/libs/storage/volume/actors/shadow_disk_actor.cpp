@@ -471,13 +471,7 @@ void TAcquireShadowDiskActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    NCloud::Reply(
-        ctx,
-        *CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            MakeIntrusive<TCallContext>()),
-        std::make_unique<TEvents::TEvPoisonTaken>());
+    NCloud::Reply(ctx, *ev, std::make_unique<TEvents::TEvPoisonTaken>());
     ReplyAndDie(ctx, MakeError(E_REJECTED));
 }
 
