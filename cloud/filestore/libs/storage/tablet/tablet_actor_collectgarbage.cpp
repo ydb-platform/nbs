@@ -44,6 +44,7 @@ private:
     const ui64 CollectCommitId;
     const ui32 CollectCounter;
     const bool CleanupWholeHistory;
+    ui32 OperationSize = 0;
 
     NProto::TProfileLogRequestInfo ProfileLogRequest;
 
@@ -130,7 +131,15 @@ TCollectGarbageActor::TCollectGarbageActor(
     , CollectCounter(collectCounter)
     , CleanupWholeHistory(cleanupWholeHistory)
     , ProfileLogRequest(std::move(profileLogRequest))
-{}
+{
+    for (const auto& b: NewBlobs) {
+        OperationSize += b.BlobSize();
+    }
+
+    for (const auto& b: GarbageBlobs) {
+        OperationSize += b.BlobSize();
+    }
+}
 
 void TCollectGarbageActor::Bootstrap(const TActorContext& ctx)
 {
@@ -274,7 +283,11 @@ void TCollectGarbageActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvCollectGarbageCompleted;
+        auto response = std::make_unique<TCompletion>(error);
+        response->Count = 1;
+        response->Size = OperationSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -313,7 +326,9 @@ STFUNC(TCollectGarbageActor::StateWork)
 void TIndexTabletActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 {
     const ui64 garbageQueueSize = GetGarbageQueueSize();
-    if (garbageQueueSize < Config->GetCollectGarbageThreshold() && GetStartupGcExecuted()) {
+    if (garbageQueueSize < Config->GetCollectGarbageThreshold()
+            && GetStartupGcExecuted())
+    {
         return;
     }
 
@@ -471,6 +486,8 @@ void TIndexTabletActor::HandleCollectGarbageCompleted(
 
     WorkerActors.erase(ev->Sender);
     EnqueueCollectGarbageIfNeeded(ctx);
+
+    Metrics.CollectGarbage.Update(msg->Count, msg->Size, msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
