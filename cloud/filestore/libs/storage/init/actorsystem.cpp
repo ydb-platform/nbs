@@ -214,7 +214,8 @@ public:
                     config,
                     std::move(profileLog),
                     std::move(traceSerializer),
-                    std::move(metricsRegistry));
+                    std::move(metricsRegistry),
+                    true);
                 return actor.release();
             };
 
