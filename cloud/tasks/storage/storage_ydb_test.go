@@ -3747,7 +3747,7 @@ func TestStorageYDBCreateRegularTasksUsingCrontab(t *testing.T) {
 	require.Equal(t, 2, len(taskInfos))
 
 	// Rewind time and check that new tasks were not created.
-	task.CreatedAt = createdAt.Add(2 * day)
+	task.CreatedAt = createdAt.Add(day + 2*time.Second)
 	err = storage.CreateRegularTasks(ctx, task, schedule)
 	require.NoError(t, err)
 
@@ -3946,6 +3946,85 @@ func TestStorageYDBCreateRegularTasksUsingCrontabInNewMonthOrYear(t *testing.T) 
 	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(taskInfos))
+}
+
+func TestStorageYDBRegularTaskShouldNotBeCreatedIfPreviousCrontabTaskIsNotFinished(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	taskStallingTimeout := "1s"
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
+		TaskStallingTimeout: &taskStallingTimeout,
+	}, metricsRegistry)
+	require.NoError(t, err)
+
+	day := 24 * time.Hour
+
+	createdAt := time.Date(2024, 1, 26, 19, 41, 59, 0, time.Local)
+	task := TaskState{
+		IdempotencyKey: getIdempotencyKeyForTest(t),
+		TaskType:       "task",
+		Description:    "Some task",
+		CreatedAt:      createdAt,
+		CreatedBy:      "some_user",
+		ModifiedAt:     createdAt,
+		GenerationID:   0,
+		Status:         TaskStatusReadyToRun,
+		State:          []byte{},
+		LastRunner:     "runner",
+		LastHost:       "host",
+	}
+
+	schedule := TaskSchedule{
+		MaxTasksInflight: 1,
+
+		UseCrontab: true,
+		Hour:       19,
+		Min:        42,
+	}
+
+	metricsRegistry.GetCounter(
+		"created",
+		map[string]string{"type": task.TaskType},
+	).On("Add", int64(1)).Once()
+
+	// Rewind time and check that initial task was created.
+	task.CreatedAt = createdAt.Add(2 * time.Second)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err := storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(taskInfos))
+
+	currTask, err := storage.GetTask(ctx, taskInfos[0].ID)
+	require.NoError(t, err)
+
+	// Rewind time and check that new tasks were not created.
+	task.CreatedAt = createdAt.Add(day + 2*time.Second)
+	err = storage.CreateRegularTasks(ctx, task, schedule)
+	require.NoError(t, err)
+
+	taskInfos, err = storage.ListTasksReadyToRun(ctx, 100500, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(taskInfos))
+	require.Equal(t, currTask.ID, taskInfos[0].ID)
+
+	// Should be able to finish task successfully.
+	currTask.Status = TaskStatusFinished
+	metricsRegistry.GetTimer(
+		"time/total",
+		map[string]string{"type": task.TaskType},
+	).On("RecordDuration", mock.Anything).Once()
+
+	_, err = storage.UpdateTask(ctx, currTask)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBCancelRegularTask(t *testing.T) {
