@@ -12,6 +12,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Needed for smooth migration from legacy to new tables.
 type compoundStorage struct {
 	legacyStorageFolder string
 	legacyStorage       Storage
@@ -389,14 +390,14 @@ func (s *compoundStorage) ResumeTask(ctx context.Context, taskID string) error {
 	return errors.NewNonRetriableErrorf("not implemented")
 }
 
-func (s *compoundStorage) Heartbeat(
+func (s *compoundStorage) HeartbeatNode(
 	ctx context.Context,
 	host string,
 	ts time.Time,
 	inflightTaskCount uint32,
 ) error {
 
-	return s.storage.Heartbeat(ctx, host, ts, inflightTaskCount)
+	return s.storage.HeartbeatNode(ctx, host, ts, inflightTaskCount)
 }
 
 func (s *compoundStorage) GetAliveNodes(ctx context.Context) ([]Node, error) {

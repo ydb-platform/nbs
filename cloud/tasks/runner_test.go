@@ -888,6 +888,7 @@ func TestRunnerForCancelGotNonCancellableError(t *testing.T) {
 
 func TestTaskPingerOnce(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -900,7 +901,7 @@ func TestTaskPingerOnce(t *testing.T) {
 	state := storage.TaskState{
 		ID: "taskId",
 	}
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
 
 	go func() {
 		// Cancel runner loop on first iteration.
@@ -909,12 +910,13 @@ func TestTaskPingerOnce(t *testing.T) {
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
 func TestTaskPingerImmediateFailure(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -927,7 +929,7 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 	state := storage.TaskState{
 		ID: "taskId",
 	}
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError)
 	callback.On("Run")
 
 	go func() {
@@ -937,12 +939,13 @@ func TestTaskPingerImmediateFailure(t *testing.T) {
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
 func TestTaskPingerTwice(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -955,7 +958,7 @@ func TestTaskPingerTwice(t *testing.T) {
 	state := storage.TaskState{
 		ID: "taskId",
 	}
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Twice()
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Twice()
 
 	go func() {
 		// Cancel runner loop on second iteration.
@@ -964,12 +967,13 @@ func TestTaskPingerTwice(t *testing.T) {
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
 func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -982,8 +986,8 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 	state := storage.TaskState{
 		ID: "taskId",
 	}
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Once()
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError).Once()
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, nil).Once()
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Return(state, assert.AnError).Once()
 	callback.On("Run")
 
 	go func() {
@@ -993,12 +997,13 @@ func TestTaskPingerFailureOnSecondIteration(t *testing.T) {
 		cancel()
 	}()
 
-	taskPinger(ctx, execCtx, pingPeriod, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
 func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx, cancel := context.WithCancel(newContext())
 	taskStorage := mocks.NewStorageMock()
 	task := NewTaskMock()
@@ -1011,16 +1016,17 @@ func TestTaskPingerCancelledContextInUpdateTask(t *testing.T) {
 	state := storage.TaskState{
 		ID: "taskId",
 	}
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Run(func(args mock.Arguments) {
+	taskStorage.On("UpdateTask", mock.Anything, mock.MatchedBy(matchesState(t, state))).Run(func(args mock.Arguments) {
 		cancel()
 	}).Return(state, context.Canceled).Once()
 
-	taskPinger(ctx, execCtx, pingPeriod, callback.Run)
+	taskPinger(ctx, execCtx, pingPeriod, pingTimeout, callback.Run)
 	mock.AssertExpectationsForObjects(t, task, taskStorage, callback)
 }
 
 func TestTryExecutingTask(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
 	registry := NewRegistry()
@@ -1051,13 +1057,14 @@ func TestTryExecutingTask(t *testing.T) {
 	runner.On("executeTask", mock.Anything, mock.Anything, task)
 	runnerMetrics.On("OnExecutionStopped")
 
-	err = lockAndExecuteTask(ctx, taskStorage, registry, runnerMetrics, pingPeriod, runner, taskInfo)
+	err = lockAndExecuteTask(ctx, taskStorage, registry, runnerMetrics, pingPeriod, pingTimeout, runner, taskInfo)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
 }
 
 func TestTryExecutingTaskFailToPing(t *testing.T) {
 	pingPeriod := 100 * time.Millisecond
+	pingTimeout := 100 * time.Second
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
 	registry := NewRegistry()
@@ -1099,7 +1106,7 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 	})
 	runnerMetrics.On("OnExecutionStopped")
 
-	err = lockAndExecuteTask(ctx, taskStorage, registry, runnerMetrics, pingPeriod, runner, taskInfo)
+	err = lockAndExecuteTask(ctx, taskStorage, registry, runnerMetrics, pingPeriod, pingTimeout, runner, taskInfo)
 	mock.AssertExpectationsForObjects(t, taskStorage, runner, runnerMetrics, task)
 	require.NoError(t, err)
 }
@@ -1292,21 +1299,21 @@ func TestHeartbeats(t *testing.T) {
 	}
 
 	taskStorage.On(
-		"Heartbeat",
+		"HeartbeatNode",
 		mock.Anything,
 		host,
 		mock.Anything,
 		uint32(1),
 	).Return(nil).Once()
 	taskStorage.On(
-		"Heartbeat",
+		"HeartbeatNode",
 		mock.Anything,
 		host,
 		mock.Anything,
 		uint32(2),
 	).Return(nil).Once()
 	taskStorage.On(
-		"Heartbeat",
+		"HeartbeatNode",
 		mock.Anything,
 		host,
 		mock.Anything,

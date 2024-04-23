@@ -4281,7 +4281,7 @@ func TestHeartbeat(t *testing.T) {
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, metrics.NewEmptyRegistry())
 	require.NoError(t, err)
 
-	err = storage.Heartbeat(ctx, "host-1", time.Now(), 1)
+	err = storage.HeartbeatNode(ctx, "host-1", time.Now(), 1)
 	require.NoError(t, err)
 
 	node, err := storage.GetNode(ctx, "host-1")
@@ -4303,13 +4303,13 @@ func TestMultipleHeartbeats(t *testing.T) {
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, metrics.NewEmptyRegistry())
 	require.NoError(t, err)
 
-	err = storage.Heartbeat(ctx, "host-1", time.Now(), 1)
+	err = storage.HeartbeatNode(ctx, "host-1", time.Now(), 1)
 	require.NoError(t, err)
 
 	initialNode, err := storage.GetNode(ctx, "host-1")
 	require.NoError(t, err)
 
-	err = storage.Heartbeat(ctx, "host-1", time.Now(), 2)
+	err = storage.HeartbeatNode(ctx, "host-1", time.Now(), 2)
 	require.NoError(t, err)
 
 	node, err := storage.GetNode(ctx, "host-1")
@@ -4334,7 +4334,7 @@ func TestGetAliveNodes(t *testing.T) {
 	referenceTime := time.Now().UTC()
 
 	registerNodeInThePast := func(host string, offset time.Duration) {
-		err = storage.Heartbeat(ctx, host, referenceTime.Add(-offset), 1)
+		err = storage.HeartbeatNode(ctx, host, referenceTime.Add(-offset), 1)
 		require.NoError(t, err)
 	}
 
