@@ -48,8 +48,9 @@ message TDataLoadSpec
     uint32 AppendPercentage = 4;
     uint64 InitialFileSize = 5;
     bool ValidationEnabled = 6;
+    bool Sequential = 7;
 
-    repeated TAction Actions = 7;
+    repeated TAction Actions = 8;
 }
 
 
@@ -85,6 +86,9 @@ message TLoadTest
     uint32 SessionRetryTimeout = 14;
 
     TMigrationSpec MigrationSpec = 15;
+
+    // disables destruction of the filestore created via CreateFileStoreRequest
+    bool KeepFileStore = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -27,12 +27,21 @@ struct TDefaultCache: TReadAheadCache
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui64 Handle1 = 1;
+constexpr ui64 Handle2 = 2;
+constexpr ui64 Handle3 = 3;
+
 TByteRange MakeRange(ui64 offset, ui32 len)
 {
     return TByteRange(offset, len, 4_KB);
 }
 
-void RegisterResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+void RegisterResult(
+    TReadAheadCache& cache,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 offset,
+    ui32 len)
 {
     NProtoPrivate::TDescribeDataResponse result;
     auto* p = result.AddBlobPieces();
@@ -45,8 +54,13 @@ void RegisterResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
     range->SetLength(len);
     range->SetBlobOffset(0);
 
-    cache.RegisterResult(nodeId, MakeRange(offset, len), result);
-};
+    cache.RegisterResult(nodeId, handle, MakeRange(offset, len), result);
+}
+
+void RegisterResult(TReadAheadCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+{
+    return RegisterResult(cache, nodeId, Handle1, offset, len);
+}
 
 TString Expected(
     ui64 nodeId,
@@ -75,10 +89,20 @@ TString Expected(ui64 nodeId, ui64 offset, ui32 len, ui32 blobOffset)
     return Expected(nodeId, offset, len, 1, 2, 3, 1, blobOffset);
 }
 
-TString FillResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+TString FillResult(
+    TReadAheadCache& cache,
+    ui64 nodeId,
+    ui64 handle,
+    ui64 offset,
+    ui32 len)
 {
     NProtoPrivate::TDescribeDataResponse result;
-    if (cache.TryFillResult(nodeId, MakeRange(offset, len), &result)) {
+    const bool filled = cache.TryFillResult(
+        nodeId,
+        handle,
+        MakeRange(offset, len), &result);
+
+    if (filled) {
         const auto& bps = result.GetBlobPieces();
         UNIT_ASSERT_VALUES_EQUAL(1, bps.size());
         const auto& branges = bps[0].GetRanges();
@@ -93,8 +117,14 @@ TString FillResult(TDefaultCache& cache, ui64 nodeId, ui64 offset, ui32 len)
             bps[0].GetBSGroupId(),
             branges[0].GetBlobOffset());
     }
+
     return {};
-};
+}
+
+TString FillResult(TReadAheadCache& cache, ui64 nodeId, ui64 offset, ui32 len)
+{
+    return FillResult(cache, nodeId, Handle1, offset, len);
+}
 
 }   // namespace
 
@@ -115,6 +145,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         while (offset < 1_MB - requestSize) {
             r = cache.RegisterDescribe(
                 nodeId,
+                Handle1,
                 TByteRange(offset, requestSize, blockSize));
             UNIT_ASSERT_C(!r, r.GetRef().Describe());
             offset += requestSize;
@@ -123,6 +154,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         while (offset < 10_MB) {
             r = cache.RegisterDescribe(
                 nodeId,
+                Handle1,
                 TByteRange(offset, requestSize, blockSize));
             UNIT_ASSERT(r);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -133,6 +165,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
 
         r = cache.RegisterDescribe(
             nodeId,
+            Handle1,
             TByteRange(100_MB, requestSize, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
     }
@@ -144,30 +177,89 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
 
         TDefaultCache cache;
         TMaybe<TByteRange> r;
-        r = cache.RegisterDescribe(nodeId, TByteRange(0, 128_KB, blockSize));
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(0, 128_KB, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
-        r = cache.RegisterDescribe(nodeId, TByteRange(128_KB, 128_KB, blockSize));
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(128_KB, 128_KB, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
-        r = cache.RegisterDescribe(nodeId, TByteRange(512_KB, 256_KB, blockSize));
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(512_KB, 256_KB, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
-        r = cache.RegisterDescribe(nodeId, TByteRange(384_KB, 128_KB, blockSize));
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(384_KB, 128_KB, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
-        r = cache.RegisterDescribe(nodeId, TByteRange(768_KB, 256_KB, blockSize));
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(768_KB, 256_KB, blockSize));
         UNIT_ASSERT(r);
         UNIT_ASSERT_VALUES_EQUAL(
             TByteRange(768_KB, 1_MB, blockSize).Describe(),
             r->Describe());
         r = cache.RegisterDescribe(
             nodeId,
+            Handle1,
             TByteRange(1_MB + 256_KB, 256_KB, blockSize));
         UNIT_ASSERT_C(!r, r.GetRef().Describe());
         r = cache.RegisterDescribe(
             nodeId,
+            Handle1,
             TByteRange(1_MB + 512_KB, 384_KB, blockSize));
         UNIT_ASSERT(r);
         UNIT_ASSERT_VALUES_EQUAL(
             TByteRange(1_MB + 512_KB, 1_MB, blockSize).Describe(),
             r->Describe());
+    }
+
+    Y_UNIT_TEST(ShouldDetectPureSequentialReadOver2Handles)
+    {
+        const ui64 nodeId = 111;
+        const ui32 blockSize = 4_KB;
+        const ui32 requestSize = 32 * blockSize;
+
+        TDefaultCache cache;
+
+        TMaybe<TByteRange> r;
+        TVector<ui64> handles = {Handle1, Handle2};
+        ui32 handleIdx = 0;
+        ui64 offset = 0;
+        while (offset < 1_MB - requestSize) {
+            r = cache.RegisterDescribe(
+                nodeId,
+                handles[handleIdx],
+                TByteRange(offset, requestSize, blockSize));
+            UNIT_ASSERT_C(!r, r.GetRef().Describe());
+            offset += requestSize;
+            handleIdx = (handleIdx + 1) % handles.size();
+        }
+
+        while (offset < 10_MB) {
+            r = cache.RegisterDescribe(
+                nodeId,
+                handles[handleIdx],
+                TByteRange(offset, requestSize, blockSize));
+            UNIT_ASSERT(r);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TByteRange(offset, 1_MB, blockSize).Describe(),
+                r->Describe());
+            offset += requestSize;
+            handleIdx = (handleIdx + 1) % handles.size();
+        }
+
+        r = cache.RegisterDescribe(
+            nodeId,
+            Handle1,
+            TByteRange(100_MB, requestSize, blockSize));
+        UNIT_ASSERT_C(!r, r.GetRef().Describe());
     }
 
     Y_UNIT_TEST(ShouldCacheResults)
@@ -218,6 +310,93 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         UNIT_ASSERT_VALUES_EQUAL(
             Expected(222, 106_MB - 128_KB, 128_KB, 1_MB - 128_KB),
             FillResult(cache, 222, 106_MB - 128_KB, 128_KB));
+    }
+
+    Y_UNIT_TEST(ShouldCacheResultsByHandle)
+    {
+        TReadAheadCache cache(TDefaultAllocator::Instance());
+        cache.Reset(32, 4, 1_MB, 20);
+
+        RegisterResult(cache, 111, Handle1, 0, 1_MB);
+        RegisterResult(cache, 111, Handle2, 1_MB, 1_MB);
+        RegisterResult(cache, 111, Handle1, 2_MB, 1_MB);
+        RegisterResult(cache, 111, Handle2, 3_MB, 1_MB);
+        RegisterResult(cache, 111, Handle1, 4_MB, 1_MB);
+        RegisterResult(cache, 111, Handle2, 5_MB, 1_MB);
+
+        // first 2 results already evicted from the per-node state
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle3, 0, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle3, 1_MB, 1_MB));
+
+        // the next 4 results are present in the per-node state
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 2_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle3, 2_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 3_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle3, 3_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 4_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle3, 4_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 5_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle3, 5_MB, 1_MB));
+
+        // only the second result is unavailable for Handle1 lookups
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 0, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 0_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle1, 1_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 2_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 2_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 3_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 3_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 4_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 4_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 5_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 5_MB, 1_MB));
+
+        // only the first result is unavailable for Handle2 lookups
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle2, 0_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 1_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle2, 1_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 2_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle2, 2_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 3_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle2, 3_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 4_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle2, 4_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 5_MB, 1_MB, 0),
+            FillResult(cache, 111, Handle2, 5_MB, 1_MB));
+
+        cache.OnDestroyHandle(111, Handle2);
+
+        // results still present for Handle1
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(111, 0, 1_MB, 0),
+            FillResult(cache, 111, Handle1, 0_MB, 1_MB));
+
+        // but dropped for Handle2
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, 111, Handle2, 1_MB, 1_MB));
     }
 
     Y_UNIT_TEST(ShouldEvictNodesAndResults)

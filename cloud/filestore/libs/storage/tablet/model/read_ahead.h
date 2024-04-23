@@ -63,17 +63,22 @@ private:
     using TDescribeResults = TRingBuffer<TDescribeResult>;
     using TByteRanges = TRingBuffer<TRange>;
 
-    struct TNodeState
+    struct THandleState
     {
         static const ui32 RANGE_COUNT = 32;
         TByteRanges LastRanges;
         TDescribeResults DescribeResults;
 
-        TNodeState()
+        THandleState()
             : LastRanges(RANGE_COUNT)
             , DescribeResults(0)
         {
         }
+    };
+
+    struct TNodeState
+    {
+        THashMap<ui64, THandleState> HandleStates;
     };
 
     using TNodeStates = THashMap<ui64, TNodeState>;
@@ -88,7 +93,7 @@ private:
     ui32 MaxGapPercentage = 0;
 
 public:
-    TReadAheadCache(IAllocator* allocator);
+    explicit TReadAheadCache(IAllocator* allocator);
     ~TReadAheadCache();
 
     void Reset(
@@ -99,16 +104,20 @@ public:
 
     bool TryFillResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
 
     // returns the suggested range to describe
     TMaybe<TByteRange> RegisterDescribe(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange inputRange);
     void InvalidateCache(ui64 nodeId);
+    void OnDestroyHandle(ui64 nodeId, ui64 handle);
     void RegisterResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
 
@@ -118,7 +127,24 @@ public:
     }
 
 private:
-    TNodeState& Access(ui64 nodeId);
+    THandleState& Access(ui64 nodeId, ui64 handle);
+
+    bool TryFillResultImpl(
+        ui64 nodeId,
+        ui64 handle,
+        const TByteRange& range,
+        NProtoPrivate::TDescribeDataResponse* response);
+
+    TMaybe<TByteRange> RegisterDescribeImpl(
+        ui64 nodeId,
+        ui64 handle,
+        const TByteRange inputRange);
+
+    void RegisterResultImpl(
+        ui64 nodeId,
+        ui64 handle,
+        const TByteRange& range,
+        const NProtoPrivate::TDescribeDataResponse& result);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

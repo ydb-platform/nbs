@@ -16,6 +16,8 @@ DATA(
 
 PEERDIR(
     cloud/filestore/tests/python/lib
+
+    contrib/python/requests/py3
 )
 
 SET(

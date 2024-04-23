@@ -234,14 +234,36 @@ bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
 }
 
 bool TIndexTabletState::IsWriteAllowed(
-    const TIndexTabletState::TBackpressureThresholds& thresholds) const
+    const TIndexTabletState::TBackpressureThresholds& thresholds,
+    TString* message) const
 {
-    const ui64 freshBlocksDataSize = GetFreshBlocksCount() * GetBlockSize();
+    const auto freshBlocksDataSize = GetFreshBlocksCount() * GetBlockSize();
 
-    return freshBlocksDataSize < thresholds.Flush
-        && GetFreshBytesCount() < thresholds.FlushBytes
-        && GetRangeToCompact().Score < thresholds.CompactionScore
-        && GetRangeToCleanup().Score < thresholds.CleanupScore;
+    if (freshBlocksDataSize >= thresholds.Flush) {
+        *message = TStringBuilder() << "freshBlocksDataSize: "
+            << freshBlocksDataSize;
+        return false;
+    }
+
+    const auto freshBytesCount = GetFreshBytesCount();
+    if (freshBytesCount >= thresholds.FlushBytes) {
+        *message = TStringBuilder() << "freshBytesCount: " << freshBytesCount;
+        return false;
+    }
+
+    const auto compactionScore = GetRangeToCompact().Score;
+    if (compactionScore >= thresholds.CompactionScore) {
+        *message = TStringBuilder() << "compactionScore: " << compactionScore;
+        return false;
+    }
+
+    const auto cleanupScore = GetRangeToCleanup().Score;
+    if (cleanupScore >= thresholds.CleanupScore) {
+        *message = TStringBuilder() << "cleanupScore: " << cleanupScore;
+        return false;
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,7 +359,7 @@ TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes
     return Impl->FreshBytes.StartCleanup(GetCurrentCommitId(), bytes);
 }
 
-void TIndexTabletState::FinishFlushBytes(
+ui32 TIndexTabletState::FinishFlushBytes(
     TIndexTabletDatabase& db,
     ui64 chunkId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -356,6 +378,8 @@ void TIndexTabletState::FinishFlushBytes(
     DecrementFreshBytesCount(db, sz);
 
     Impl->FreshBytes.FinishCleanup(chunkId);
+
+    return sz;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -762,7 +786,7 @@ void TIndexTabletState::UpdateBlockLists(
     WriteMixedBlocks(db, rangeId, blob.BlobId, blob.Blocks);
 }
 
-void TIndexTabletState::CleanupMixedBlockDeletions(
+ui32 TIndexTabletState::CleanupMixedBlockDeletions(
     TIndexTabletDatabase& db,
     ui32 rangeId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
@@ -818,6 +842,8 @@ void TIndexTabletState::CleanupMixedBlockDeletions(
         stats.BlobsCount,
         stats.DeletionsCount,
         profileLogRequest);
+
+    return deletionMarkerCount;
 }
 
 void TIndexTabletState::RewriteMixedBlocks(
@@ -1116,17 +1142,19 @@ void TIndexTabletState::CompleteForcedRangeOperation()
 
 bool TIndexTabletState::TryFillDescribeResult(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
-    return Impl->ReadAheadCache.TryFillResult(nodeId, range, response);
+    return Impl->ReadAheadCache.TryFillResult(nodeId, handle, range, response);
 }
 
 TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange inputRange)
 {
-    return Impl->ReadAheadCache.RegisterDescribe(nodeId, inputRange);
+    return Impl->ReadAheadCache.RegisterDescribe(nodeId, handle, inputRange);
 }
 
 void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
@@ -1136,10 +1164,11 @@ void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
 
 void TIndexTabletState::RegisterReadAheadResult(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange& range,
     const NProtoPrivate::TDescribeDataResponse& result)
 {
-    Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
+    Impl->ReadAheadCache.RegisterResult(nodeId, handle, range, result);
 }
 
 TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const

@@ -1003,6 +1003,56 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         TAG(TH3) { out << "CompactionMap"; }
         DumpCompactionMap(out, TabletID(), GetCompactionMapStats(topSize));
 
+#define DUMP_INFO_FIELD(info, name)                                            \
+        TABLER() {                                                             \
+            TABLED() { out << #name; }                                         \
+            TABLED() { out << info.name; }                                     \
+        }                                                                      \
+// DUMP_INFO_FIELD
+
+        TAG(TH3) { out << "CompactionInfo"; }
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Parameter"; }
+                    TABLEH() { out << "Value"; }
+                }
+            }
+
+            const auto compactionInfo = GetCompactionInfo();
+            DUMP_INFO_FIELD(compactionInfo, Threshold);
+            DUMP_INFO_FIELD(compactionInfo, ThresholdAverage);
+            DUMP_INFO_FIELD(compactionInfo, GarbageThreshold);
+            DUMP_INFO_FIELD(compactionInfo, GarbageThresholdAverage);
+            DUMP_INFO_FIELD(compactionInfo, Score);
+            DUMP_INFO_FIELD(compactionInfo, RangeId);
+            DUMP_INFO_FIELD(compactionInfo, GarbagePercentage);
+            DUMP_INFO_FIELD(compactionInfo, AverageScore);
+            DUMP_INFO_FIELD(compactionInfo, NewCompactionEnabled);
+            DUMP_INFO_FIELD(compactionInfo, ShouldCompact);
+        }
+
+        TAG(TH3) { out << "CleanupInfo"; }
+        TABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Parameter"; }
+                    TABLEH() { out << "Value"; }
+                }
+            }
+
+            const auto cleanupInfo = GetCleanupInfo();
+            DUMP_INFO_FIELD(cleanupInfo, Threshold);
+            DUMP_INFO_FIELD(cleanupInfo, ThresholdAverage);
+            DUMP_INFO_FIELD(cleanupInfo, Score);
+            DUMP_INFO_FIELD(cleanupInfo, RangeId);
+            DUMP_INFO_FIELD(cleanupInfo, AverageScore);
+            DUMP_INFO_FIELD(cleanupInfo, NewCleanupEnabled);
+            DUMP_INFO_FIELD(cleanupInfo, ShouldCleanup);
+        }
+
+#undef DUMP_INFO_FIELD
+
         TAG(TH3) {
             if (!IsForcedRangeOperationRunning()) {
                 BuildMenuButton(out, "compact-all");

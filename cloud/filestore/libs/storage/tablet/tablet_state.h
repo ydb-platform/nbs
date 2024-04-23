@@ -48,6 +48,75 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCompactionInfo
+{
+    const ui32 Threshold;
+    const ui32 ThresholdAverage;
+    const ui32 GarbageThreshold;
+    const ui32 GarbageThresholdAverage;
+    const ui32 Score;
+    const ui32 RangeId;
+    const double GarbagePercentage;
+    const double AverageScore;
+    const bool NewCompactionEnabled;
+    const bool ShouldCompact;
+
+    TCompactionInfo(
+            ui32 threshold,
+            ui32 thresholdAverage,
+            ui32 garbageThreshold,
+            ui32 garbageThresholdAverage,
+            ui32 score,
+            ui32 rangeId,
+            double garbagePercentage,
+            double averageScore,
+            bool newCompactionEnabled,
+            bool shouldCompact)
+        : Threshold(threshold)
+        , ThresholdAverage(thresholdAverage)
+        , GarbageThreshold(garbageThreshold)
+        , GarbageThresholdAverage(garbageThresholdAverage)
+        , Score(score)
+        , RangeId(rangeId)
+        , GarbagePercentage(garbagePercentage)
+        , AverageScore(averageScore)
+        , NewCompactionEnabled(newCompactionEnabled)
+        , ShouldCompact(shouldCompact)
+    {
+    }
+};
+
+struct TCleanupInfo
+{
+    const ui32 Threshold;
+    const ui32 ThresholdAverage;
+    const ui32 Score;
+    const ui32 RangeId;
+    const double AverageScore;
+    const bool NewCleanupEnabled;
+    const bool ShouldCleanup;
+
+    TCleanupInfo(
+            ui32 threshold,
+            ui32 thresholdAverage,
+            ui32 score,
+            ui32 rangeId,
+            double averageScore,
+            bool newCleanupEnabled,
+            bool shouldCleanup)
+        : Threshold(threshold)
+        , ThresholdAverage(thresholdAverage)
+        , Score(score)
+        , RangeId(rangeId)
+        , AverageScore(averageScore)
+        , NewCleanupEnabled(newCleanupEnabled)
+        , ShouldCleanup(shouldCleanup)
+    {
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TIndexTabletState
 {
 private:
@@ -591,7 +660,9 @@ public:
         }
     };
 
-    bool IsWriteAllowed(const TBackpressureThresholds& thresholds) const;
+    bool IsWriteAllowed(
+        const TBackpressureThresholds& thresholds,
+        TString* message) const;
 
     //
     // FreshBytes
@@ -622,7 +693,7 @@ public:
         ui64 len);
 
     TFlushBytesCleanupInfo StartFlushBytes(TVector<TBytes>* bytes);
-    void FinishFlushBytes(
+    ui32 FinishFlushBytes(
         TIndexTabletDatabase& db,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -710,7 +781,8 @@ public:
         ui32 blockIndex,
         ui32 blocksCount);
 
-    void CleanupMixedBlockDeletions(
+    // returns processed deletion marker count
+    ui32 CleanupMixedBlockDeletions(
         TIndexTabletDatabase& db,
         ui32 rangeId,
         NProto::TProfileLogRequestInfo& profileLogRequest);
@@ -992,14 +1064,17 @@ private:
 public:
     bool TryFillDescribeResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         NProtoPrivate::TDescribeDataResponse* response);
     TMaybe<TByteRange> RegisterDescribe(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange inputRange);
     void InvalidateReadAheadCache(ui64 nodeId);
     void RegisterReadAheadResult(
         ui64 nodeId,
+        ui64 handle,
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
     TReadAheadCacheStats CalculateReadAheadCacheStats() const;

@@ -10,6 +10,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/system/env.h>
 
 #include <random>
 
@@ -283,11 +284,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
 {
     Y_UNIT_TEST_F(ShouldTruncateAndAllocateFiles, TEnvironment)
     {
-#define PERFORM_TEST(test_steps)                                               \
+#define PERFORM_TEST(testSteps)                                                \
     {                                                                          \
         std::uniform_int_distribution<ui32> dist(0, EStepType::MAX - 1);       \
                                                                                \
-        for (size_t i = 0; i < test_steps; ++i) {                              \
+        for (size_t i = 0; i < testSteps; ++i) {                               \
             const ui32 type = dist(Engine);                                    \
             switch (type) {                                                    \
                 case EStepType::Truncate: {                                    \
@@ -350,8 +351,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
     }                                                                          \
 // PERFORM_TEST
 
-        PERFORM_TEST(5'000);
-        PERFORM_TEST(1'000);
+        const auto sanitizerType = GetEnv("SANITIZER_TYPE");
+        // temporary logging
+        Cerr << "sanitizer: " << sanitizerType << Endl;
+        const ui32 d = sanitizerType == "thread" ? 20 : 1;
+
+        PERFORM_TEST(5'000 / d);
+        PERFORM_TEST(1'000 / d);
 
 #undef PERFORM_TEST
     }

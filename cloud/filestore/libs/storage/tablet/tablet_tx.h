@@ -1412,6 +1412,7 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 ChunkId;
+        ui32 TrimmedBytes = 0;
 
         TTrimBytes(TRequestInfoPtr requestInfo, ui64 chunkId)
             : TProfileAware(EFileStoreSystemRequest::TrimBytes)
@@ -1422,6 +1423,7 @@ struct TTxIndexTablet
         void Clear()
         {
             TProfileAware::Clear();
+            TrimmedBytes = 0;
         }
     };
 
@@ -1470,6 +1472,7 @@ struct TTxIndexTablet
         const ui64 CollectBarrier;
 
         ui64 CommitId = InvalidCommitId;
+        ui32 ProcessedDeletionMarkerCount = 0;
 
         TCleanup(TRequestInfoPtr requestInfo, ui32 rangeId, ui64 collectBarrier)
             : TProfileAware(EFileStoreSystemRequest::Cleanup)
@@ -1483,6 +1486,7 @@ struct TTxIndexTablet
             TProfileAware::Clear();
 
             CommitId = InvalidCommitId;
+            ProcessedDeletionMarkerCount = 0;
         }
     };
 

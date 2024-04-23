@@ -160,7 +160,7 @@ struct TEvIndexTabletPrivate
     // Operation completion
     //
 
-    struct TOperationCompleted
+    struct TIndexOperationCompleted
     {
         TSet<ui32> MixedBlocksRanges;
         ui64 CommitId = 0;
@@ -192,7 +192,7 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    using TWriteBatchCompleted = TOperationCompleted;
+    using TWriteBatchCompleted = TIndexOperationCompleted;
 
     //
     // ReadBlob
@@ -213,6 +213,12 @@ struct TEvIndexTabletPrivate
         ui32 Count = 0;
         ui32 Size = 0;
         TDuration Time;
+    };
+
+    struct TOperationCompleted
+        : TIndexOperationCompleted
+        , TDataOperationCompleted
+    {
     };
 
     struct TReadBlobCompleted: TDataOperationCompleted
@@ -248,7 +254,7 @@ struct TEvIndexTabletPrivate
     // ReadWrite completion
     //
 
-    struct TReadWriteCompleted: TDataOperationCompleted, TOperationCompleted
+    struct TReadWriteCompleted: TOperationCompleted
     {
     };
 
@@ -306,7 +312,7 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    struct TFlushBytesCompleted
+    struct TFlushBytesCompleted: TDataOperationCompleted
     {
         TCallContextPtr CallContext;
         TSet<ui32> MixedBlocksRanges;
@@ -457,7 +463,6 @@ struct TEvIndexTabletPrivate
     struct TCollectGarbageResponse
     {
     };
-
 
     using TCollectGarbageCompleted = TOperationCompleted;
 

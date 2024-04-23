@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include "tablet_counters.h"
-#include "tablet_database.h"
 #include "tablet_private.h"
 #include "tablet_state.h"
 #include "tablet_tx.h"
@@ -131,6 +130,13 @@ private:
             std::atomic<i64> Count{0};
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
+
+            void Update(ui32 requestCount, ui32 requestBytes, TDuration d)
+            {
+                Count.fetch_add(requestCount, std::memory_order_relaxed);
+                RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
+                Time.Record(d);
+            }
         };
 
         TRequestMetrics ReadBlob;
@@ -141,6 +147,12 @@ private:
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
+        TRequestMetrics Compaction;
+        TRequestMetrics Cleanup;
+        TRequestMetrics Flush;
+        TRequestMetrics FlushBytes;
+        TRequestMetrics TrimBytes;
+        TRequestMetrics CollectGarbage;
 
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
@@ -366,6 +378,10 @@ private:
         const TByteRange& range);
 
     NProto::TError IsDataOperationAllowed() const;
+
+    ui32 ScaleCompactionThreshold(ui32 t) const;
+    TCompactionInfo GetCompactionInfo() const;
+    TCleanupInfo GetCleanupInfo() const;
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

@@ -161,6 +161,68 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertResizeFileStoreFailed("test", 0);
     }
 
+    Y_UNIT_TEST(ShouldResizeFileStoreWithCustomPerformanceProfile)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const char* fsId = "test";
+        const auto initialBlockCount = 1'000;
+        const auto blockCount = 100'000'000;
+        const auto customMaxReadIops = 111;
+        const auto customMaxWriteIops = 222;
+        service.CreateFileStore("test", initialBlockCount);
+        auto resizeRequest = service.CreateResizeFileStoreRequest(
+            "test",
+            blockCount);
+        resizeRequest->Record.MutablePerformanceProfile()->SetMaxReadIops(
+            customMaxReadIops);
+        service.SendRequest(MakeStorageServiceId(), std::move(resizeRequest));
+        auto resizeResponse = service.RecvResizeFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            resizeResponse->GetStatus(),
+            resizeResponse->GetErrorReason());
+
+        auto response = service.GetFileStoreInfo(fsId)->Record.GetFileStore();
+        UNIT_ASSERT_VALUES_EQUAL(fsId, response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, response.GetBlocksCount());
+
+        auto profile = response.GetPerformanceProfile();
+        UNIT_ASSERT(!profile.GetThrottlingEnabled());
+        // autocalculated
+        UNIT_ASSERT_VALUES_EQUAL(600, profile.GetMaxWriteIops());
+        // custom
+        UNIT_ASSERT_VALUES_EQUAL(customMaxReadIops, profile.GetMaxReadIops());
+
+        resizeRequest = service.CreateResizeFileStoreRequest(
+            "test",
+            blockCount);
+        resizeRequest->Record.MutablePerformanceProfile()->SetMaxWriteIops(
+            customMaxWriteIops);
+
+        service.SendRequest(MakeStorageServiceId(), std::move(resizeRequest));
+        resizeResponse = service.RecvResizeFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            resizeResponse->GetStatus(),
+            resizeResponse->GetErrorReason());
+
+        response = service.GetFileStoreInfo(fsId)->Record.GetFileStore();
+        UNIT_ASSERT_VALUES_EQUAL(fsId, response.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, response.GetBlocksCount());
+
+        profile = response.GetPerformanceProfile();
+        UNIT_ASSERT(!profile.GetThrottlingEnabled());
+        // custom
+        UNIT_ASSERT_VALUES_EQUAL(customMaxWriteIops, profile.GetMaxWriteIops());
+        // autocalculated
+        UNIT_ASSERT_VALUES_EQUAL(200, profile.GetMaxReadIops());
+    }
+
     Y_UNIT_TEST(ShouldResizeFileStoreAndAddChannels)
     {
         TTestEnv env;
@@ -208,7 +270,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 }
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
-        service.ResizeFileStore("test", 4_TB/DefaultBlockSize);
+        service.ResizeFileStore("test", 4_TB / DefaultBlockSize);
         UNIT_ASSERT(alterChannelsCount > 0);
         UNIT_ASSERT(alterChannelsCount > createChannelsCount);
     }
