@@ -46,7 +46,16 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 }
 
 func (m *mounter) MakeFilesystem(device string, fsType string) error {
-	out, err := exec.Command("mkfs", "-t", fsType, device).CombinedOutput()
+	options := []string{"-t", fsType}
+	if fsType == "ext4" {
+		options = append(options, "-E", "nodiscard")
+	}
+	if fsType == "xfs" {
+		options = append(options, "-K")
+	}
+
+	options = append(options, device)
+	out, err := exec.Command("mkfs", options...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to make filesystem: %v, output %q", err, out)
 	}
