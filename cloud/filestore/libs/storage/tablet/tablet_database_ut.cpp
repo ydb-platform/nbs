@@ -412,16 +412,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
         });
     }
-
-    Y_UNIT_TEST(ShouldStoreCompactionMap)
-    {
-        TTestExecutor executor;
-        executor.WriteTx([&] (TIndexTabletDatabase db) {
-            db.InitSchema(false);
-        });
-
-    }
-
 }
 
 }   // namespace NCloud::NFileStore::NStorage
