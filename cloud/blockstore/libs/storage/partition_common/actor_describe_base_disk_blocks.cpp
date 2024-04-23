@@ -204,10 +204,10 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
 {
     auto* msg = ev->Get();
 
-    if (const auto& error = msg->GetError();
+    if (auto error = msg->GetError();
         FAILED(error.GetCode()))
     {
-        return ReplyAndDie(ctx, error);
+        return ReplyAndDie(ctx, std::move(error));
     }
 
     if (auto error = ValidateDescribeBlocksResponse(msg->Record);

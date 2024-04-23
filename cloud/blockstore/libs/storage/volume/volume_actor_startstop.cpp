@@ -482,46 +482,47 @@ void TVolumeActor::HandleBootExternalResponse(
 
     const auto* appData = AppData(ctx);
 
-    auto config = Config;
-    const auto& partitionConfig = part->PartitionConfig;
-    auto diagnosticsConfig = DiagnosticsConfig;
-    auto profileLog = ProfileLog;
-    auto blockDigestGenerator = BlockDigestGenerator;
-    auto storageAccessMode = State->GetStorageAccessMode();
-    auto siblingCount = State->GetPartitions().size();
-    auto selfId = SelfId();
+    auto factory = [
+        config = Config,
+        partitionConfig = part->PartitionConfig,
+        diagnosticsConfig = DiagnosticsConfig,
+        profileLog = ProfileLog,
+        blockDigestGenerator = BlockDigestGenerator,
+        storageAccessMode = State->GetStorageAccessMode(),
+        siblingCount = State->GetPartitions().size(),
+        selfId = SelfId()] (const TActorId& owner, TTabletStorageInfo* storage) mutable 
+        {
+            switch (storage->TabletType) 
+            {
+                case TTabletTypes::BlockStorePartition:
+                    return NPartition::CreatePartitionTablet(
+                            owner,
+                            storage,
+                            std::move(config),
+                            std::move(diagnosticsConfig),
+                            std::move(profileLog),
+                            std::move(blockDigestGenerator),
+                            std::move(partitionConfig),
+                            storageAccessMode,
+                            siblingCount,
+                            selfId).release();
 
-    auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-        Y_ABORT_UNLESS(
-            storage->TabletType == TTabletTypes::BlockStorePartition ||
-            storage->TabletType == TTabletTypes::BlockStorePartition2);
-
-        if (storage->TabletType == TTabletTypes::BlockStorePartition) {
-            return NPartition::CreatePartitionTablet(
-                owner,
-                storage,
-                config,
-                diagnosticsConfig,
-                profileLog,
-                blockDigestGenerator,
-                std::move(partitionConfig),
-                storageAccessMode,
-                siblingCount,
-                selfId).release();
-        } else {
-            return NPartition2::CreatePartitionTablet(
-                owner,
-                storage,
-                config,
-                diagnosticsConfig,
-                profileLog,
-                blockDigestGenerator,
-                std::move(partitionConfig),
-                storageAccessMode,
-                siblingCount,
-                selfId).release();
-        }
-    };
+                case TTabletTypes::BlockStorePartition2:
+                    return NPartition2::CreatePartitionTablet(
+                            owner,
+                            storage,
+                            std::move(config),
+                            std::move(diagnosticsConfig),
+                            std::move(profileLog),
+                            std::move(blockDigestGenerator),
+                            std::move(partitionConfig),
+                            storageAccessMode,
+                            siblingCount,
+                            selfId).release();
+                default:
+                    Y_ABORT();
+            }
+        };
 
     auto setupInfo = MakeIntrusive<TTabletSetupInfo>(
         factory,

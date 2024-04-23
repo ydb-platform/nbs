@@ -50,22 +50,22 @@ public:
         return Config.GetNvmeDevices();
     }
 
-    const auto& GetNVMeTarget()
+    const auto& GetNVMeTarget() const
     {
         return Config.GetNvmeTarget();
     }
 
-    const auto& GetRdmaEndpoint()
+    const auto& GetRdmaEndpoint() const
     {
         return Config.GetRdmaTarget().GetEndpoint();
     }
 
-    const auto& DeprecatedGetRdmaTarget()
+    const auto& DeprecatedGetRdmaTarget() const
     {
         return Config.GetRdmaTarget();
     }
 
-    bool DeprecatedHasRdmaTarget()
+    auto DeprecatedHasRdmaTarget() const
     {
         return Config.HasRdmaTarget();
     }
