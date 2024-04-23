@@ -324,7 +324,7 @@ func (s *nodeService) startNbsEndpoint(
 	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := filepath.Join(s.podSocketsDir, podId, volumeId)
-	if err := os.MkdirAll(endpointDir, 0775); err != nil {
+	if err := os.MkdirAll(endpointDir, 0755); err != nil {
 		return nil, err
 	}
 
@@ -354,7 +354,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	req *csi.NodePublishVolumeRequest) error {
 
 	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
-	if err := os.MkdirAll(endpointDir, 0775); err != nil {
+	if err := os.MkdirAll(endpointDir, 0755); err != nil {
 		return err
 	}
 
@@ -439,7 +439,7 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	// then it will be created automatically with the PersistentVolumeClaim size."
 	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
 	diskImgPath := filepath.Join(endpointDir, "disk.img")
-	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0660)
+	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0644)
 	if err != nil {
 		return status.Errorf(codes.Internal, "Failed to create disk.img: %+v", err)
 	}
