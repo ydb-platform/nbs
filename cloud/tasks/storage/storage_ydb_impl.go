@@ -684,11 +684,12 @@ func (s *storageYDB) createRegularTasks(
 	}
 	defer res.Close()
 
-	found := false
-	schState := scheduleState{}
+	var schState *scheduleState
 
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
+			schState = new(scheduleState)
+
 			err = res.ScanNamed(
 				persistence.OptionalWithDefault("task_type", &schState.taskType),
 				persistence.OptionalWithDefault("scheduled_at", &schState.scheduledAt),
@@ -697,9 +698,12 @@ func (s *storageYDB) createRegularTasks(
 			if err != nil {
 				return err
 			}
-
-			found = true
 		}
+	}
+
+	if schState != nil && schState.tasksInflight != 0 {
+		// Some tasks are in-flight, nothing to do.
+		return tx.Commit(ctx)
 	}
 
 	shouldSchedule := false
@@ -708,7 +712,7 @@ func (s *storageYDB) createRegularTasks(
 		year, month, day := state.CreatedAt.UTC().Date()
 		hour, min, _ := state.CreatedAt.UTC().Clock()
 
-		if found {
+		if schState != nil {
 			lastRunYear, lastRunMonth, lastRunDay := schState.scheduledAt.UTC().Date()
 
 			if year > lastRunYear || (year == lastRunYear && month > lastRunMonth) ||
@@ -723,10 +727,10 @@ func (s *storageYDB) createRegularTasks(
 			}
 		}
 	} else {
-		if found {
+		if schState != nil {
 			schedulingTime := schState.scheduledAt.Add(schedule.ScheduleInterval)
 
-			if schState.tasksInflight == 0 && state.CreatedAt.After(schedulingTime) {
+			if state.CreatedAt.After(schedulingTime) {
 				shouldSchedule = true
 			}
 		} else {
@@ -740,9 +744,10 @@ func (s *storageYDB) createRegularTasks(
 			return err
 		}
 
-		schState.taskType = state.TaskType
-		schState.tasksInflight = uint64(schedule.MaxTasksInflight)
-		schState.scheduledAt = state.CreatedAt
+		newSchState := scheduleState{}
+		newSchState.taskType = state.TaskType
+		newSchState.tasksInflight = uint64(schedule.MaxTasksInflight)
+		newSchState.scheduledAt = state.CreatedAt
 
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
@@ -754,9 +759,9 @@ func (s *storageYDB) createRegularTasks(
 			upsert into schedules (task_type, scheduled_at, tasks_inflight)
 			values ($task_type, $scheduled_at, $tasks_inflight)
 		`, s.tablesPath),
-			persistence.ValueParam("$task_type", persistence.UTF8Value(schState.taskType)),
-			persistence.ValueParam("$scheduled_at", persistence.TimestampValue(schState.scheduledAt)),
-			persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(schState.tasksInflight)),
+			persistence.ValueParam("$task_type", persistence.UTF8Value(newSchState.taskType)),
+			persistence.ValueParam("$scheduled_at", persistence.TimestampValue(newSchState.scheduledAt)),
+			persistence.ValueParam("$tasks_inflight", persistence.Uint64Value(newSchState.tasksInflight)),
 		)
 		if err != nil {
 			return err
