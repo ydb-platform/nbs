@@ -188,7 +188,7 @@ private:
 
     TStorageConfigPtr Config;
 
-    bool UseDefaultCompactionPolicy;
+    const bool UseDefaultCompactionPolicy;
 
     struct TCompactionStateLoadStatus
     {
