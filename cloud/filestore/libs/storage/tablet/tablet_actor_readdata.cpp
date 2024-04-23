@@ -612,8 +612,14 @@ void TIndexTabletActor::HandleDescribeData(
     auto* handle = FindHandle(msg->Record.GetHandle());
     const ui64 nodeId = handle ? handle->GetNodeId() : InvalidNodeId;
     NProtoPrivate::TDescribeDataResponse result;
-    if (TryFillDescribeResult(nodeId, byteRange, &result)) {
-        RegisterDescribe(nodeId, byteRange);
+    const bool filled = TryFillDescribeResult(
+        nodeId,
+        msg->Record.GetHandle(),
+        byteRange,
+        &result);
+
+    if (filled) {
+        RegisterDescribe(nodeId, msg->Record.GetHandle(), byteRange);
 
         auto response =
             std::make_unique<TEvIndexTablet::TEvDescribeDataResponse>();
@@ -689,6 +695,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
         // support classes which don't have an assignment operator
         auto readAheadRange = RegisterDescribe(
             args.NodeId,
+            args.Handle,
             args.AlignedByteRange);
         if (readAheadRange.Defined()) {
             args.ReadAheadRange.ConstructInPlace(*readAheadRange);
@@ -804,7 +811,11 @@ void TIndexTabletActor::CompleteTx_ReadData(
                 *args.ReadAheadRange,
                 args,
                 &record);
-            RegisterReadAheadResult(args.NodeId, *args.ReadAheadRange, record);
+            RegisterReadAheadResult(
+                args.NodeId,
+                args.Handle,
+                *args.ReadAheadRange,
+                record);
         }
 
         auto response =

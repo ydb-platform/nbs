@@ -533,6 +533,10 @@ void TIndexTabletState::DestroyHandle(
 
     ReleaseLocks(db, handle->GetHandle());
 
+    Impl->ReadAheadCache.OnDestroyHandle(
+        handle->GetNodeId(),
+        handle->GetHandle());
+
     RemoveHandle(handle);
 }
 

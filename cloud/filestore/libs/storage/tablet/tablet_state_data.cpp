@@ -1138,17 +1138,19 @@ void TIndexTabletState::CompleteForcedRangeOperation()
 
 bool TIndexTabletState::TryFillDescribeResult(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange& range,
     NProtoPrivate::TDescribeDataResponse* response)
 {
-    return Impl->ReadAheadCache.TryFillResult(nodeId, range, response);
+    return Impl->ReadAheadCache.TryFillResult(nodeId, handle, range, response);
 }
 
 TMaybe<TByteRange> TIndexTabletState::RegisterDescribe(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange inputRange)
 {
-    return Impl->ReadAheadCache.RegisterDescribe(nodeId, inputRange);
+    return Impl->ReadAheadCache.RegisterDescribe(nodeId, handle, inputRange);
 }
 
 void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
@@ -1158,10 +1160,11 @@ void TIndexTabletState::InvalidateReadAheadCache(ui64 nodeId)
 
 void TIndexTabletState::RegisterReadAheadResult(
     ui64 nodeId,
+    ui64 handle,
     const TByteRange& range,
     const NProtoPrivate::TDescribeDataResponse& result)
 {
-    Impl->ReadAheadCache.RegisterResult(nodeId, range, result);
+    Impl->ReadAheadCache.RegisterResult(nodeId, handle, range, result);
 }
 
 TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
