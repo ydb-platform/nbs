@@ -4869,7 +4869,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
-        tabletConfig.ChannelCount = 4;
         TIndexTabletClient tablet(
             env.GetRuntime(),
             nodeIdx,
