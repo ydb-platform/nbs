@@ -931,6 +931,11 @@ NProto::TError TDiskRegistryState::RegisterAgent(
                     && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
                     && r.NewDevices.contains(uuid))
             {
+                STORAGE_INFO(
+                    "Suspend the new local device %s (%s)",
+                    uuid.c_str(),
+                    d.GetDeviceName().c_str());
+
                 SuspendDevice(db, uuid);
             }
         }
@@ -4695,6 +4700,12 @@ bool TDiskRegistryState::HasDependentSsdDisks(
             continue;
         }
 
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+            PendingCleanup.FindDiskId(d.GetDeviceUUID()))
+        {
+            return true;
+        }
+
         const auto diskId = FindDisk(d.GetDeviceUUID());
 
         if (!diskId) {
@@ -4892,11 +4903,94 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     ApplyAgentStateChange(db, *agent, now, affectedDisks);
 
-    if (newState != NProto::AGENT_STATE_ONLINE) {
+    if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
     }
 
+    if (newState == NProto::AGENT_STATE_ONLINE && !HasError(result)) {
+        result = RegisterUnknownDevices(db, *agent, now);
+
+        if (!HasError(result) &&
+            StorageConfig->GetNonReplicatedDontSuspendDevices())
+        {
+            ResumeLocalDevices(db, *agent, now);
+        }
+    }
+
     return result;
+}
+
+NProto::TError TDiskRegistryState::RegisterUnknownDevices(
+    TDiskRegistryDatabase& db,
+    NProto::TAgentConfig& agent,
+    TInstant now)
+{
+    TVector<TDeviceId> ids;
+    for (const auto& device: agent.GetUnknownDevices()) {
+        ids.push_back(device.GetDeviceUUID());
+    }
+
+    STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
+        << " Devices=" << JoinSeq(", ", ids));
+
+    auto newConfig = GetConfig();
+
+    NProto::TAgentConfig* knownAgent = FindIfPtr(
+        *newConfig.MutableKnownAgents(),
+        [&] (const auto& x) {
+            return x.GetAgentId() == agent.GetAgentId();
+        });
+    if (!knownAgent) {
+        knownAgent = newConfig.AddKnownAgents();
+        knownAgent->SetAgentId(agent.GetAgentId());
+    }
+
+    for (auto& id: ids) {
+        knownAgent->AddDevices()->SetDeviceUUID(id);
+    }
+
+    TVector<TString> affectedDisks;
+    auto error = UpdateConfig(
+        db,
+        std::move(newConfig),
+        false,  // ignoreVersion
+        affectedDisks);
+
+    if (!affectedDisks.empty()) {
+        ReportDiskRegistryUnexpectedAffectedDisks(TStringBuilder()
+            << "RegisterUnknownDevices: " << JoinSeq(" ", affectedDisks));
+    }
+
+    if (!HasError(error)) {
+        for (auto& device: *agent.MutableUnknownDevices()) {
+            if (device.GetState() == NProto::DEVICE_STATE_ONLINE) {
+                device.SetStateMessage("New device");
+            }
+
+            device.SetStateTs(now.MicroSeconds());
+        }
+    }
+
+    return error;
+}
+
+void TDiskRegistryState::ResumeLocalDevices(
+    TDiskRegistryDatabase& db,
+    NProto::TAgentConfig& agent,
+    TInstant now)
+{
+    for (const auto& device: agent.GetDevices()) {
+        if (device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
+            && DeviceList.IsSuspendedDevice(device.GetDeviceUUID()))
+        {
+            STORAGE_INFO(
+                "Resume the local device %s (%s)",
+                device.GetDeviceUUID().c_str(),
+                device.GetDeviceName().c_str());
+
+            ResumeDevice(now, db, device.GetDeviceUUID());
+        }
+    }
 }
 
 void TDiskRegistryState::SuspendLocalDevices(
@@ -4905,6 +4999,11 @@ void TDiskRegistryState::SuspendLocalDevices(
 {
     for (const auto& d: agent.GetDevices()) {
         if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL) {
+            STORAGE_INFO(
+                "Suspend the local device %s (%s)",
+                d.GetDeviceUUID().c_str(),
+                d.GetDeviceName().c_str());
+
             SuspendDevice(db, d.GetDeviceUUID());
         }
     }

@@ -14,6 +14,8 @@
 
 #include <util/string/builder.h>
 
+#include <errno.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,8 +59,8 @@ void ProcessError(
         error.SetCode(E_REJECTED);
     }
 
-    if (error.GetCode() == E_IO) {
-        error = config.MakeIOError(std::move(error.GetMessage()), true);
+    if (error.GetCode() == E_IO || error.GetCode() == MAKE_SYSTEM_ERROR(EIO)) {
+        error = config.MakeIOError(std::move(*error.MutableMessage()), true);
     }
 }
 
