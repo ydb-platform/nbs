@@ -434,7 +434,8 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             StorageConfig,
             ProfileLog,
             TraceSerializer,
-            Registry);
+            Registry,
+            true);
         return actor.release();
     };
 
@@ -594,7 +595,8 @@ void TTestEnv::SetupLocalServiceConfig(
             StorageConfig,
             ProfileLog,
             TraceSerializer,
-            Registry);
+            Registry,
+            true);
         return actor.release();
     };
 
