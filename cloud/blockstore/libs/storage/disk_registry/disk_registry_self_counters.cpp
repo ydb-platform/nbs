@@ -12,6 +12,11 @@ void TDiskRegistrySelfCounters::Init(
 {
     FreeBytes = counters->GetCounter("FreeBytes");
     TotalBytes = counters->GetCounter("TotalBytes");
+    BrokenBytes = counters->GetCounter("BrokenBytes");
+    DecommissionedBytes = counters->GetCounter("DecommissionedBytes");
+    SuspendedBytes = counters->GetCounter("SuspendedBytes");
+    DirtyBytes = counters->GetCounter("DirtyBytes");
+    AllocatedBytes = counters->GetCounter("AllocatedBytes");
     AllocatedDisks = counters->GetCounter("AllocatedDisks");
     AllocatedDevices = counters->GetCounter("AllocatedDevices");
     DirtyDevices = counters->GetCounter("DirtyDevices");
@@ -85,6 +90,11 @@ void TDiskRegistrySelfCounters::TDevicePoolCounters::Init(
 {
     FreeBytes = counters->GetCounter("FreeBytes");
     TotalBytes = counters->GetCounter("TotalBytes");
+    BrokenBytes = counters->GetCounter("BrokenBytes");
+    DecommissionedBytes = counters->GetCounter("DecommissionedBytes");
+    SuspendedBytes = counters->GetCounter("SuspendedBytes");
+    DirtyBytes = counters->GetCounter("DirtyBytes");
+    AllocatedBytes = counters->GetCounter("AllocatedBytes");
     AllocatedDevices = counters->GetCounter("AllocatedDevices");
     DirtyDevices = counters->GetCounter("DirtyDevices");
     DevicesInOnlineState = counters->GetCounter("DevicesInOnlineState");

@@ -1448,6 +1448,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         auto freeBytes = diskRegistryGroup->GetCounter("FreeBytes");
         auto totalBytes = diskRegistryGroup->GetCounter("TotalBytes");
+        auto brokenBytes = diskRegistryGroup->GetCounter("BrokenBytes");
+        auto decommissionedBytes = diskRegistryGroup->GetCounter("DecommissionedBytes");
+        auto suspendedBytes = diskRegistryGroup->GetCounter("SuspendedBytes");
+        auto dirtyBytes = diskRegistryGroup->GetCounter("DirtyBytes");
+        auto allocatedBytes = diskRegistryGroup->GetCounter("AllocatedBytes");
         auto allocatedDisks = diskRegistryGroup->GetCounter("AllocatedDisks");
         auto allocatedDevices = diskRegistryGroup->GetCounter("AllocatedDevices");
         auto dirtyDevices = diskRegistryGroup->GetCounter("DirtyDevices");
@@ -1598,6 +1603,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(dirtyDevices->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 60_GB);
         UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 6);
@@ -1638,6 +1648,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 40_GB);
         UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 20_GB);
+        UNIT_ASSERT(totalBytes->Val() ==
+                        freeBytes->Val() +
+                        brokenBytes->Val() +
+                        decommissionedBytes->Val() +
+                        suspendedBytes->Val() +
+                        dirtyBytes->Val() +
+                        allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 1);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 2);
         UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 6);
@@ -1656,11 +1678,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(20_GB, defaultPool.FreeBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(40_GB, defaultPool.TotalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, defaultPool.AllocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, defaultPool.AllocatedDevices->Val());
         UNIT_ASSERT_VALUES_EQUAL(4, defaultPool.DevicesInOnlineState->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(20_GB, localPool.FreeBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(20_GB, localPool.TotalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, localPool.AllocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, localPool.AllocatedDevices->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, localPool.DevicesInOnlineState->Val());
 
@@ -1674,6 +1698,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 30_GB);
         UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 30_GB);
+        UNIT_ASSERT(totalBytes->Val() ==
+                        freeBytes->Val() +
+                        brokenBytes->Val() +
+                        decommissionedBytes->Val() +
+                        suspendedBytes->Val() +
+                        dirtyBytes->Val() +
+                        allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 2);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 3);
         UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 6);
@@ -1710,6 +1746,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 20_GB); // the agent is in a warning state
         UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 10_GB);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 20_GB);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 10_GB);
+        UNIT_ASSERT(totalBytes->Val() ==
+                        freeBytes->Val() +
+                        brokenBytes->Val() +
+                        decommissionedBytes->Val() +
+                        suspendedBytes->Val() +
+                        dirtyBytes->Val() +
+                        allocatedBytes->Val());
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 2);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 3);
         UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 5);
@@ -1725,6 +1773,87 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         UNIT_ASSERT_VALUES_EQUAL(placementGroups->Val(), 1);
         UNIT_ASSERT_VALUES_EQUAL(fullPlacementGroups->Val(), 1);
         UNIT_ASSERT_VALUES_EQUAL(allocatedDisksInGroups->Val(), 1);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            auto error = state.SuspendDevice(db, deviceToBreak);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 20_GB); // the agent is in a warning state
+        UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 20_GB);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 10_GB);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 10_GB);
+        UNIT_ASSERT(totalBytes->Val() ==
+                        freeBytes->Val() +
+                        brokenBytes->Val() +
+                        decommissionedBytes->Val() +
+                        suspendedBytes->Val() +
+                        dirtyBytes->Val() +
+                        allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInWarningState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInErrorState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInOnlineState->Val(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInWarningState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInUnavailableState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInOnlineState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInMigrationState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(disksInTemporarilyUnavailableState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInErrorState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(placementGroups->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(fullPlacementGroups->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDisksInGroups->Val(), 1);
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT(state.MarkDeviceAsDirty(db, "uuid-5"));
+        });
+
+        state.PublishCounters(Now());
+
+        UNIT_ASSERT_VALUES_EQUAL(freeBytes->Val(), 10_GB); // the agent is in a warning state
+        UNIT_ASSERT_VALUES_EQUAL(totalBytes->Val(), 60_GB);
+        UNIT_ASSERT_VALUES_EQUAL(brokenBytes->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(decommissionedBytes->Val(), 20_GB);
+        UNIT_ASSERT_VALUES_EQUAL(suspendedBytes->Val(), 10_GB);
+        UNIT_ASSERT_VALUES_EQUAL(dirtyBytes->Val(), 10_GB);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedBytes->Val(), 10_GB);
+        UNIT_ASSERT(totalBytes->Val() ==
+                        freeBytes->Val() +
+                        brokenBytes->Val() +
+                        decommissionedBytes->Val() +
+                        suspendedBytes->Val() +
+                        dirtyBytes->Val() +
+                        allocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDisks->Val(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDevices->Val(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInOnlineState->Val(), 5);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInWarningState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(devicesInErrorState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInOnlineState->Val(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInWarningState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(agentsInUnavailableState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInOnlineState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInMigrationState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(disksInTemporarilyUnavailableState->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(disksInErrorState->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(placementGroups->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(fullPlacementGroups->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(allocatedDisksInGroups->Val(), 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.FreeBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(20_GB, localPool.TotalBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, localPool.AllocatedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, localPool.BrokenBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, localPool.DecommissionedBytes->Val());
+        UNIT_ASSERT_VALUES_EQUAL(10_GB, localPool.DirtyBytes->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectBrokenStats)
