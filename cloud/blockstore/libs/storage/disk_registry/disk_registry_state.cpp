@@ -3799,7 +3799,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                 continue;
             }
 
-            if  (allocated) {
+            if (allocated) {
                 pool.AllocatedBytes += deviceBytes;
             } else {
                 pool.FreeBytes += deviceBytes;
