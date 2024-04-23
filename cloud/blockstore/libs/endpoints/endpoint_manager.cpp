@@ -883,7 +883,7 @@ NProto::TError TEndpointManager::AlterEndpoint(
         return error;
     }
 
-    auto [sessionInfo, error] = Executor->WaitFor(SessionManager->GetSession(
+    const auto& [sessionInfo, error] = Executor->WaitFor(SessionManager->GetSession(
         ctx,
         socketPath,
         newReq.GetHeaders()));
@@ -997,8 +997,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     CloseAllEndpointSockets(*endpoint.Request);
     RemoveSession(std::move(ctx), *request);
 
-    const auto& error = EndpointStorage->RemoveEndpoint(socketPath);
-    if (HasError(error)) {
+    if (const auto& error = EndpointStorage->RemoveEndpoint(socketPath); HasError(error)) {
         STORAGE_ERROR("Failed to remove endpoint from storage: "
             << FormatError(error));
     }
