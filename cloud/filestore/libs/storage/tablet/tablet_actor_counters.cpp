@@ -141,105 +141,39 @@ void TIndexTabletActor::TMetrics::Register(
         FsRegistry,
         {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
 
-    REGISTER_AGGREGATABLE_SUM(
-        ReadBlob.Count,
-        EMetricType::MT_DERIVATIVE);
+#define REGISTER_REQUEST(name)                                                 \
+    REGISTER_AGGREGATABLE_SUM(                                                 \
+        name.Count,                                                            \
+        EMetricType::MT_DERIVATIVE);                                           \
+                                                                               \
+    REGISTER_AGGREGATABLE_SUM(                                                 \
+        name.RequestBytes,                                                     \
+        EMetricType::MT_DERIVATIVE);                                           \
+                                                                               \
+    name.Time.Register(                                                        \
+        AggregatableFsRegistry,                                                \
+        {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
+// REGISTER_REQUEST
 
-    REGISTER_AGGREGATABLE_SUM(
-        ReadBlob.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    ReadBlob.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "ReadBlob"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        WriteBlob.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        WriteBlob.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    WriteBlob.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "WriteBlob"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        PatchBlob.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        PatchBlob.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    PatchBlob.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "PatchBlob"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        ReadData.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        ReadData.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    ReadData.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "ReadData"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        DescribeData.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        DescribeData.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    DescribeData.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "DescribeData"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        WriteData.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        WriteData.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    WriteData.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "WriteData"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        AddData.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        AddData.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    AddData.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "AddData"), CreateLabel("histogram", "Time")});
-
-    REGISTER_AGGREGATABLE_SUM(
-        GenerateBlobIds.Count,
-        EMetricType::MT_DERIVATIVE);
-
-    REGISTER_AGGREGATABLE_SUM(
-        GenerateBlobIds.RequestBytes,
-        EMetricType::MT_DERIVATIVE);
-
-    GenerateBlobIds.Time.Register(
-        AggregatableFsRegistry,
-        {CreateLabel("request", "GenerateBlobIds"), CreateLabel("histogram", "Time")});
+    REGISTER_REQUEST(ReadBlob);
+    REGISTER_REQUEST(WriteBlob);
+    REGISTER_REQUEST(PatchBlob);
+    REGISTER_REQUEST(ReadData);
+    REGISTER_REQUEST(DescribeData);
+    REGISTER_REQUEST(WriteData);
+    REGISTER_REQUEST(AddData);
+    REGISTER_REQUEST(GenerateBlobIds);
+    REGISTER_REQUEST(Compaction);
+    REGISTER_REQUEST(Cleanup);
+    REGISTER_REQUEST(Flush);
+    REGISTER_REQUEST(FlushBytes);
+    REGISTER_REQUEST(TrimBytes);
+    REGISTER_REQUEST(CollectGarbage);
 
     REGISTER_LOCAL(MaxBlobsInRange, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(MaxDeletionsInRange, EMetricType::MT_ABSOLUTE);
 
+#undef REGISTER_REQUEST
 #undef REGISTER_LOCAL
 #undef REGISTER_AGGREGATABLE_SUM
 #undef REGISTER

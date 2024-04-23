@@ -36,6 +36,7 @@ private:
 
     TVector<TMixedBlobMeta> SrcBlobs;
     const TVector<TCompactionBlob> DstBlobs;
+    ui32 OperationSize = 0;
 
     THashMap<TPartialBlobId, IBlockBufferPtr, TPartialBlobIdHash> Buffers;
 
@@ -111,7 +112,11 @@ TCompactionActor::TCompactionActor(
     , SrcBlobs(std::move(srcBlobs))
     , DstBlobs(std::move(dstBlobs))
     , ProfileLogRequest(std::move(profileLogRequest))
-{}
+{
+    for (const auto& b: SrcBlobs) {
+        OperationSize += b.Blocks.size() * BlockSize;
+    }
+}
 
 void TCompactionActor::Bootstrap(const TActorContext& ctx)
 {
@@ -271,6 +276,9 @@ void TCompactionActor::ReplyAndDie(
         auto response = std::make_unique<TEvIndexTabletPrivate::TEvCompactionCompleted>(error);
         response->CommitId = CommitId;
         response->MixedBlocksRanges = {RangeId};
+        response->Count = 1;
+        response->Size = OperationSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -638,6 +646,8 @@ void TIndexTabletActor::HandleCompactionCompleted(
     BlobIndexOpState.Complete();
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
+
+    Metrics.Compaction.Update(msg->Count, msg->Size, msg->Time);
 
     WorkerActors.erase(ev->Sender);
 }

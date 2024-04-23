@@ -108,6 +108,7 @@ private:
     TVector<TVector<ui32>> SrcBlobOffsets;
     const TVector<TFlushBytesBlob> DstBlobs;
     /* const */ TSet<ui32> MixedBlocksRanges;
+    ui32 OperationSize = 0;
 
     THashMap<TPartialBlobId, IBlockBufferPtr, TPartialBlobIdHash> Buffers;
     using TBlobOffsetMap =
@@ -193,7 +194,15 @@ TFlushBytesActor::TFlushBytesActor(
     , SrcBlobOffsets(std::move(srcBlobOffsets))
     , DstBlobs(std::move(dstBlobs))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
-{}
+{
+    for (const auto& b: DstBlobs) {
+        for (const auto& block: b.Blocks) {
+            for (const auto& i: block.BlockBytes.Intervals) {
+                OperationSize += i.Data.Size();
+            }
+        }
+    }
+}
 
 void TFlushBytesActor::Bootstrap(const TActorContext& ctx)
 {
@@ -418,6 +427,8 @@ void TFlushBytesActor::ReplyAndDie(
         response->ChunkId = ChunkId;
         response->CallContext = RequestInfo->CallContext;
         response->MixedBlocksRanges = std::move(MixedBlocksRanges);
+        response->Size = OperationSize;
+        response->Time = ctx.Now() - RequestInfo->StartedTs;
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -835,6 +846,8 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CollectCommitId));
     WorkerActors.erase(ev->Sender);
 
+    Metrics.FlushBytes.Update(1, msg->Size, msg->Time);
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -872,7 +885,8 @@ void TIndexTabletActor::ExecuteTx_TrimBytes(
 
     TIndexTabletDatabase db(tx.DB);
 
-    FinishFlushBytes(db, args.ChunkId, args.ProfileLogRequest);
+    args.TrimmedBytes =
+        FinishFlushBytes(db, args.ChunkId, args.ProfileLogRequest);
 }
 
 void TIndexTabletActor::CompleteTx_TrimBytes(
@@ -903,6 +917,11 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
     EnqueueBlobIndexOpIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
     EnqueueFlushIfNeeded(ctx);
+
+    Metrics.TrimBytes.Update(
+        1,
+        args.TrimmedBytes,
+        ctx.Now() - args.RequestInfo->StartedTs);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
