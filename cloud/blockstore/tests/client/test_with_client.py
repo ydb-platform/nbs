@@ -437,6 +437,13 @@ def test_backup():
         "--backup-disk-id", "volume-1",
         "--checkpoint-id", "checkpoint-0",
         "--io-depth", "16",
+        "--verbose")
+
+    run("backupvolume",
+        "--disk-id", "volume-0",
+        "--backup-disk-id", "volume-1",
+        "--checkpoint-id", "checkpoint-0",
+        "--io-depth", "16",
         "--changed-blocks-count", str(CHANGED_BLOCKS_COUNT),
         "--verbose")
 
