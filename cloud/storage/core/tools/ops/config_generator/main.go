@@ -79,20 +79,14 @@ func getNfsConfigMap() configurator.ConfigMap {
 	}
 }
 
-func getDiskManagerConfigMap() configurator.ConfigMap {
-	return configurator.ConfigMap{}
-}
-
-func getConfigMap(serviceName string) (configurator.ConfigMap, error) {
+func getConfigMap(serviceName string) configurator.ConfigMap {
 	switch serviceName {
 	case "nbs":
-		return getNbsConfigMap(), nil
+		return getNbsConfigMap()
 	case "nfs":
-		return getNfsConfigMap(), nil
-	case "disk-manager":
-		return getDiskManagerConfigMap(), nil
+		return getNfsConfigMap()
 	default:
-		return nil, fmt.Errorf("unknown service: %v", serviceName)
+		return configurator.ConfigMap{}
 	}
 }
 
@@ -142,11 +136,6 @@ func run(opts *Options, ctx context.Context) error {
 		return fmt.Errorf("can't load config: %w", err)
 	}
 
-	configMap, err := getConfigMap(config.ServiceName)
-	if err != nil {
-		return err
-	}
-
 	whiteListCluster := make([]string, 0)
 	if len(opts.WhiteListClusters) > 0 {
 		whiteListCluster = strings.Split(opts.WhiteListClusters, ",")
@@ -156,7 +145,7 @@ func run(opts *Options, ctx context.Context) error {
 		logger,
 		configurator.GeneratorSpec{
 			ServiceSpec:   *config,
-			ConfigMap:     configMap,
+			ConfigMap:     getConfigMap(config.ServiceName),
 			ArcadiaPath:   opts.ArcadiaRootPath,
 			OverridesPath: opts.ServicePath}).Generate(ctx, whiteListCluster)
 }
