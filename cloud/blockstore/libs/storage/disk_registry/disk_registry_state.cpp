@@ -195,6 +195,11 @@ struct TDevicePoolCounters
 {
     ui64 FreeBytes = 0;
     ui64 TotalBytes = 0;
+    ui64 BrokenBytes = 0;
+    ui64 DecommissionedBytes = 0;
+    ui64 SuspendedBytes = 0;
+    ui64 DirtyBytes = 0;
+    ui64 AllocatedBytes = 0;
     ui64 AllocatedDevices = 0;
     ui64 DirtyDevices = 0;
     ui64 DevicesInOnlineState = 0;
@@ -208,6 +213,11 @@ void SetDevicePoolCounters(
 {
     counters.FreeBytes->Set(values.FreeBytes);
     counters.TotalBytes->Set(values.TotalBytes);
+    counters.BrokenBytes->Set(values.BrokenBytes);
+    counters.DecommissionedBytes->Set(values.DecommissionedBytes);
+    counters.SuspendedBytes->Set(values.SuspendedBytes);
+    counters.DirtyBytes->Set(values.DirtyBytes);
+    counters.AllocatedBytes->Set(values.AllocatedBytes);
     counters.AllocatedDevices->Set(values.AllocatedDevices);
     counters.DirtyDevices->Set(values.DirtyDevices);
     counters.DevicesInOnlineState->Set(values.DevicesInOnlineState);
@@ -3708,7 +3718,8 @@ void TDiskRegistryState::PublishCounters(TInstant now)
     ui64 unknownDevices = 0;
 
     for (const auto& agent: AgentList.GetAgents()) {
-        switch (agent.GetState()) {
+        const auto agentState = agent.GetState();
+        switch (agentState) {
             case NProto::AGENT_STATE_ONLINE: {
                 ++agentsInOnlineState;
                 break;
@@ -3731,6 +3742,7 @@ void TDiskRegistryState::PublishCounters(TInstant now)
             const auto deviceBytes = device.GetBlockSize() * device.GetBlocksCount();
             const bool allocated = !DeviceList.FindDiskId(device.GetDeviceUUID()).empty();
             const bool dirty = DeviceList.IsDirtyDevice(device.GetDeviceUUID());
+            const bool suspended = DeviceList.IsSuspendedDevice(device.GetDeviceUUID());
 
             const auto poolName = GetPoolNameForCounters(
                 device.GetPoolName(),
@@ -3749,10 +3761,6 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
             switch (deviceState) {
                 case NProto::DEVICE_STATE_ONLINE: {
-                    if (!allocated && !dirty && agent.GetState() == NProto::AGENT_STATE_ONLINE) {
-                        pool.FreeBytes += deviceBytes;
-                    }
-
                     ++pool.DevicesInOnlineState;
                     break;
                 }
@@ -3765,6 +3773,36 @@ void TDiskRegistryState::PublishCounters(TInstant now)
                     break;
                 }
                 default: {}
+            }
+
+            if (suspended) {
+                pool.SuspendedBytes += deviceBytes;
+                continue;
+            }
+
+            if (dirty) {
+                pool.DirtyBytes += deviceBytes;
+                continue;
+            }
+
+            if (agentState == NProto::AGENT_STATE_UNAVAILABLE ||
+                    deviceState == NProto::DEVICE_STATE_ERROR)
+            {
+                pool.BrokenBytes += deviceBytes;
+                continue;
+            }
+
+            if (agentState == NProto::AGENT_STATE_WARNING ||
+                    deviceState == NProto::DEVICE_STATE_WARNING)
+            {
+                pool.DecommissionedBytes += deviceBytes;
+                continue;
+            }
+
+            if (allocated) {
+                pool.AllocatedBytes += deviceBytes;
+            } else {
+                pool.FreeBytes += deviceBytes;
             }
         }
     }
@@ -3883,6 +3921,11 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     ui64 freeBytes = 0;
     ui64 totalBytes = 0;
+    ui64 brokenBytes = 0;
+    ui64 decommissionedBytes = 0;
+    ui64 suspendedBytes = 0;
+    ui64 dirtyBytes = 0;
+    ui64 allocatedBytes = 0;
     ui64 allocatedDevices = 0;
     ui64 dirtyDevices = 0;
     ui64 devicesInOnlineState = 0;
@@ -3895,6 +3938,11 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
         freeBytes += counterValues.FreeBytes;
         totalBytes += counterValues.TotalBytes;
+        brokenBytes += counterValues.BrokenBytes;
+        decommissionedBytes += counterValues.DecommissionedBytes;
+        suspendedBytes += counterValues.SuspendedBytes;
+        dirtyBytes += counterValues.DirtyBytes;
+        allocatedBytes += counterValues.AllocatedBytes;
         allocatedDevices += counterValues.AllocatedDevices;
         dirtyDevices += counterValues.DirtyDevices;
         devicesInOnlineState += counterValues.DevicesInOnlineState;
@@ -3904,6 +3952,11 @@ void TDiskRegistryState::PublishCounters(TInstant now)
 
     SelfCounters.FreeBytes->Set(freeBytes);
     SelfCounters.TotalBytes->Set(totalBytes);
+    SelfCounters.BrokenBytes->Set(brokenBytes);
+    SelfCounters.DecommissionedBytes->Set(decommissionedBytes);
+    SelfCounters.SuspendedBytes->Set(suspendedBytes);
+    SelfCounters.DirtyBytes->Set(dirtyBytes);
+    SelfCounters.AllocatedBytes->Set(allocatedBytes);
     SelfCounters.AllocatedDevices->Set(allocatedDevices);
     SelfCounters.DirtyDevices->Set(dirtyDevices);
     SelfCounters.UnknownDevices->Set(unknownDevices);
