@@ -52,7 +52,8 @@ TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
     return params;
 }
 
-[[maybe_unused]] TCgiParameters GetHttpMethodParameters(const TEvRemoteHttpInfo& msg)
+[[maybe_unused]] TCgiParameters GetHttpMethodParameters(
+    const TEvRemoteHttpInfo& msg)
 {
     if (msg.GetMethod() != HTTP_METHOD_POST) {
         return msg.Cgi();
@@ -875,7 +876,9 @@ struct TIndexTabletMonitoringActor
 
         {
             // notify tablet
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvDumpCompactionRangeCompleted>();
+            using TCompletion =
+                TEvIndexTabletPrivate::TEvDumpCompactionRangeCompleted;
+            auto response = std::make_unique<TCompletion>();
             NCloud::Send(ctx, Owner, std::move(response));
         }
 

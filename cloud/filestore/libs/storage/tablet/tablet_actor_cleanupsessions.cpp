@@ -123,13 +123,15 @@ void TCleanupSessionsActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvCleanupSessionsCompleted;
+        auto response = std::make_unique<TCompletion>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsResponse>(error);
+        using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;
+        auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 

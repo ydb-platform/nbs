@@ -16,7 +16,8 @@ namespace {
 NProto::TError ValidateRequest(const NProto::TCreateNodeRequest& request)
 {
     if (request.GetNodeId() == InvalidNodeId ||
-        (request.HasLink() && request.GetLink().GetTargetNode() == InvalidNodeId) ||
+        (request.HasLink()
+         && request.GetLink().GetTargetNode() == InvalidNodeId) ||
         (request.HasSymLink() && request.GetSymLink().GetTargetPath().empty()))
     {
         return ErrorInvalidArgument();
@@ -40,16 +41,28 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
 {
     if (request.HasDirectory()) {
         const auto& dir = request.GetDirectory();
-        attrs = CreateDirectoryAttrs(dir.GetMode(), request.GetUid(), request.GetGid());
+        attrs = CreateDirectoryAttrs(
+            dir.GetMode(),
+            request.GetUid(),
+            request.GetGid());
     } else if (request.HasFile()) {
         const auto& file = request.GetFile();
-        attrs = CreateRegularAttrs(file.GetMode(), request.GetUid(), request.GetGid());
+        attrs = CreateRegularAttrs(
+            file.GetMode(),
+            request.GetUid(),
+            request.GetGid());
     } else if (request.HasSymLink()) {
         const auto& link = request.GetSymLink();
-        attrs = CreateLinkAttrs(link.GetTargetPath(), request.GetUid(), request.GetGid());
+        attrs = CreateLinkAttrs(
+            link.GetTargetPath(),
+            request.GetUid(),
+            request.GetGid());
     } else if (request.HasSocket()) {
         const auto& sock = request.GetSocket();
-        attrs = CreateSocketAttrs(sock.GetMode(), request.GetUid(), request.GetGid());
+        attrs = CreateSocketAttrs(
+            sock.GetMode(),
+            request.GetUid(),
+            request.GetGid());
     }
 }
 
@@ -61,7 +74,8 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* session = AcceptRequest<TEvService::TCreateNodeMethod>(ev, ctx, ValidateRequest);
+    auto* session =
+        AcceptRequest<TEvService::TCreateNodeMethod>(ev, ctx, ValidateRequest);
     if (!session) {
         return;
     }

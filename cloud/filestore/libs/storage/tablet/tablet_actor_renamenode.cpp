@@ -13,7 +13,9 @@ namespace {
 
 NProto::TError ValidateRequest(const NProto::TRenameNodeRequest& request)
 {
-    if (request.GetNodeId() == InvalidNodeId || request.GetNewParentId() == InvalidNodeId) {
+    if (request.GetNodeId() == InvalidNodeId
+            || request.GetNewParentId() == InvalidNodeId)
+    {
         return ErrorInvalidArgument();
     }
 
@@ -43,7 +45,8 @@ void TIndexTabletActor::HandleRenameNode(
     const TEvService::TEvRenameNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* session = AcceptRequest<TEvService::TRenameNodeMethod>(ev, ctx, ValidateRequest);
+    auto* session =
+        AcceptRequest<TEvService::TRenameNodeMethod>(ev, ctx, ValidateRequest);
     if (!session) {
         return;
     }
