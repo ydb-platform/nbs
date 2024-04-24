@@ -30,12 +30,13 @@ type ConfigDescription struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 type CfgFileOverride struct {
-	Domain          string `yaml:"domain"`
-	MonAddress      string `yaml:"monAddress"`
-	MonPort         string `yaml:"monPort"`
-	IcPort          string `yaml:"icPort"`
-	IcDiskAgentPort string `yaml:"icDiskAgentPort"`
-	VHostIcPort     string `yaml:"vHostIcPort"`
+	Domain          string            `yaml:"domain"`
+	MonAddress      string            `yaml:"monAddress"`
+	MonPort         string            `yaml:"monPort"`
+	IcPort          string            `yaml:"icPort"`
+	IcDiskAgentPort string            `yaml:"icDiskAgentPort"`
+	VHostIcPort     string            `yaml:"vHostIcPort"`
+	CustomOverrides map[string]string `yaml:"customOverrides"`
 }
 
 type ClusterSpec struct {
@@ -242,7 +243,11 @@ func (g *ConfigGenerator) dumpConfigs(
 			)
 		}
 
-		tmpl, err := template.New(cfgFile).Parse(string(cfgFileData))
+		tmpl, err := template.New(cfgFile).Funcs(template.FuncMap{
+			"lookup": func(key string, defaultValue string) string {
+				return g.lookupCustomKey(ctx, key, defaultValue, cluster, zone, seed)
+			},
+		}).Parse(string(cfgFileData))
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse cfg file %v: %w",
@@ -495,6 +500,35 @@ func (g *ConfigGenerator) constructCfgOverride(
 	}
 
 	return override
+}
+
+func (g *ConfigGenerator) lookupCustomKey(
+	ctx context.Context,
+	key string,
+	defaultValue string,
+	cluster string,
+	zone string,
+	seed bool,
+) string {
+
+	if seed {
+		seedOverrides := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverrideSeed[zone].CustomOverrides
+		if value, ok := seedOverrides[key]; ok {
+			return value
+		}
+	}
+
+	zoneConfig := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverride[zone]
+	if value, ok := zoneConfig.CustomOverrides[key]; ok {
+		return value
+	}
+
+	if value, ok := g.spec.ServiceSpec.DefaultOverride.CustomOverrides[key]; ok {
+		return value
+	}
+
+	g.LogDbg(ctx, "key %v not found in custom overrides for cluster %v, zone %v", key, cluster, zone)
+	return defaultValue
 }
 
 func (g *ConfigGenerator) generateConfigForCluster(

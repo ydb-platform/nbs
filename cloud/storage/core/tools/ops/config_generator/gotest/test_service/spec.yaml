@@ -13,6 +13,8 @@ clusters:
       zone1:
         domain: 'zone1'
         monPort: '9999'
+        customOverrides:
+          CustomKey: 'CustomValue'
       zone2:
         domain: 'zone2'
     zoneCfgOverrideSeed:
