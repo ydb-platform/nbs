@@ -23,7 +23,8 @@ NProto::TError ValidateRequest(const NProto::TSetNodeXAttrRequest& request)
         return error;
     }
 
-    if (auto error = ValidateXAttrValue(request.GetName(), request.GetValue()); HasError(error)) {
+    auto error = ValidateXAttrValue(request.GetName(), request.GetValue());
+    if (HasError(error)) {
         return error;
     }
 

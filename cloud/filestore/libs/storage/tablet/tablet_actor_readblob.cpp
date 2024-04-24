@@ -280,11 +280,8 @@ void TReadBlobActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvReadBlobCompleted>(error);
-        response->Count = 1;
-        response->Size = TotalSize;
-        response->Time = t;
+        using TCompletion = TEvIndexTabletPrivate::TEvReadBlobCompleted;
+        auto response = std::make_unique<TCompletion>(error, 1, TotalSize, t);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -295,7 +292,8 @@ void TReadBlobActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvReadBlobResponse>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvReadBlobResponse;
+        auto response = std::make_unique<TCompletion>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -452,12 +450,7 @@ void TIndexTabletActor::HandleReadBlobCompleted(
 
     WorkerActors.erase(ev->Sender);
 
-    Metrics.ReadBlob.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.ReadBlob.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.ReadBlob.Time.Record(msg->Time);
-
+    Metrics.ReadBlob.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

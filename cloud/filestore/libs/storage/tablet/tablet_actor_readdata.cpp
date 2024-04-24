@@ -439,12 +439,13 @@ void TReadDataActor::ReplyAndDie(
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
-        auto response = std::make_unique<TCompletion>(error);
-        response->CommitId = CommitId;
-        response->MixedBlocksRanges = std::move(MixedBlocksRanges);
-        response->Count = 1;
-        response->Size = OriginByteRange.Length;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            std::move(MixedBlocksRanges),
+            CommitId,
+            1,
+            OriginByteRange.Length,
+            ctx.Now() - RequestInfo->StartedTs);
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -575,11 +576,7 @@ void TIndexTabletActor::HandleReadDataCompleted(
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
 
-    Metrics.ReadData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.ReadData.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.ReadData.Time.Record(msg->Time);
+    Metrics.ReadData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

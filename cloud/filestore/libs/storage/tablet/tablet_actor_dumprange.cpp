@@ -76,8 +76,10 @@ void TIndexTabletActor::CompleteTx_DumpCompactionRange(
         args.RequestInfo->CallContext,
         "DumpCompactionRange");
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse>(
-        args.RangeId, std::move(args.Blobs));
+    using TResponse = TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse;
+    auto response = std::make_unique<TResponse>(
+        args.RangeId,
+        std::move(args.Blobs));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

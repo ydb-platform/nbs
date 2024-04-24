@@ -162,8 +162,16 @@ struct TEvIndexTabletPrivate
 
     struct TIndexOperationCompleted
     {
-        TSet<ui32> MixedBlocksRanges;
-        ui64 CommitId = 0;
+        const TSet<ui32> MixedBlocksRanges;
+        const ui64 CommitId;
+
+        TIndexOperationCompleted(
+                TSet<ui32> mixedBlocksRanges,
+                ui64 commitId)
+            : MixedBlocksRanges(std::move(mixedBlocksRanges))
+            , CommitId(commitId)
+        {
+        }
     };
 
     //
@@ -183,7 +191,6 @@ struct TEvIndexTabletPrivate
     //
     // WriteBatch
     //
-
     struct TWriteBatchRequest
     {
     };
@@ -210,20 +217,38 @@ struct TEvIndexTabletPrivate
 
     struct TDataOperationCompleted
     {
-        ui32 Count = 0;
-        ui32 Size = 0;
-        TDuration Time;
+        const ui32 Count;
+        const ui32 Size;
+        const TDuration Time;
+
+        TDataOperationCompleted(
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d)
+            : Count(requestCount)
+            , Size(requestBytes)
+            , Time(d)
+        {
+        }
     };
 
     struct TOperationCompleted
         : TIndexOperationCompleted
         , TDataOperationCompleted
     {
+        TOperationCompleted(
+                TSet<ui32> mixedBlocksRanges,
+                ui64 commitId,
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d)
+            : TIndexOperationCompleted(std::move(mixedBlocksRanges), commitId)
+            , TDataOperationCompleted(requestCount, requestBytes, d)
+        {
+        }
     };
 
-    struct TReadBlobCompleted: TDataOperationCompleted
-    {
-    };
+    using TReadBlobCompleted = TDataOperationCompleted;
 
     //
     // WriteBlob
@@ -247,16 +272,24 @@ struct TEvIndexTabletPrivate
             double ApproximateFreeSpaceShare = 0;
         };
 
-        TVector<TWriteRequestResult> Results;
+        const TVector<TWriteRequestResult> Results;
+
+        TWriteBlobCompleted(
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d,
+                TVector<TWriteRequestResult> results)
+            : TDataOperationCompleted(requestCount, requestBytes, d)
+            , Results(std::move(results))
+        {
+        }
     };
 
     //
     // ReadWrite completion
     //
 
-    struct TReadWriteCompleted: TOperationCompleted
-    {
-    };
+    using TReadWriteCompleted = TOperationCompleted;
 
     //
     // AddData completion
@@ -264,7 +297,17 @@ struct TEvIndexTabletPrivate
 
     struct TAddDataCompleted: TDataOperationCompleted
     {
-        ui64 CommitId = 0;
+        const ui64 CommitId;
+
+        TAddDataCompleted(
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d,
+                ui64 commitId)
+            : TDataOperationCompleted(requestCount, requestBytes, d)
+            , CommitId(commitId)
+        {
+        }
     };
 
     //
@@ -314,10 +357,26 @@ struct TEvIndexTabletPrivate
 
     struct TFlushBytesCompleted: TDataOperationCompleted
     {
-        TCallContextPtr CallContext;
-        TSet<ui32> MixedBlocksRanges;
-        ui64 CollectCommitId = 0;
-        ui64 ChunkId = 0;
+        const TCallContextPtr CallContext;
+        const TSet<ui32> MixedBlocksRanges;
+        const ui64 CollectCommitId;
+        const ui64 ChunkId;
+
+        TFlushBytesCompleted(
+                ui32 requestCount,
+                ui32 requestBytes,
+                TDuration d,
+                TCallContextPtr callContext,
+                TSet<ui32> mixedBlocksRanges,
+                ui64 collectCommitId,
+                ui64 chunkId)
+            : TDataOperationCompleted(requestCount, requestBytes, d)
+            , CallContext(std::move(callContext))
+            , MixedBlocksRanges(std::move(mixedBlocksRanges))
+            , CollectCommitId(collectCommitId)
+            , ChunkId(chunkId)
+        {
+        }
     };
 
     //
@@ -328,7 +387,7 @@ struct TEvIndexTabletPrivate
     {
         ui32 RangeId;
 
-        TCleanupRequest(ui32 rangeId)
+        explicit TCleanupRequest(ui32 rangeId)
             : RangeId(rangeId)
         {}
     };
@@ -432,7 +491,7 @@ struct TEvIndexTabletPrivate
     {
         const ui32 RangeId;
 
-        TDumpCompactionRangeRequest(ui32 rangeId)
+        explicit TDumpCompactionRangeRequest(ui32 rangeId)
             : RangeId(rangeId)
         {}
     };
@@ -464,7 +523,7 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    using TCollectGarbageCompleted = TOperationCompleted;
+    using TCollectGarbageCompleted = TDataOperationCompleted;
 
     //
     // DeleteGarbage

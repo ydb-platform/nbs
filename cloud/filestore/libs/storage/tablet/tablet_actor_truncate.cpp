@@ -122,7 +122,8 @@ private:
     {
         {
             // notify tablet
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvTruncateCompleted>();
+            auto response =
+                std::make_unique<TEvIndexTabletPrivate::TEvTruncateCompleted>();
             response->NodeId = NodeId;
 
             NCloud::Send(ctx, Tablet, std::move(response));
@@ -130,7 +131,8 @@ private:
 
         if (RequestInfo->Sender != Tablet) {
             // reply to caller
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvTruncateResponse>();
+            auto response =
+                std::make_unique<TEvIndexTabletPrivate::TEvTruncateResponse>();
             response->NodeId = NodeId;
 
             NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -146,7 +148,8 @@ void TIndexTabletActor::EnqueueTruncateIfNeeded(const NActors::TActorContext& ct
 {
     while (HasPendingTruncateOps()) {
         auto [nodeId, range] = DequeueTruncateOp();
-        auto request = std::make_unique<TEvIndexTabletPrivate::TEvTruncateRequest>(nodeId, range);
+        using TRequest = TEvIndexTabletPrivate::TEvTruncateRequest;
+        auto request = std::make_unique<TRequest>(nodeId, range);
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
 }

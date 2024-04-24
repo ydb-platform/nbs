@@ -184,14 +184,16 @@ void TWriteBatchActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchCompleted>(error);
-        response->CommitId = CommitId;
+        using TCompletion = TEvIndexTabletPrivate::TEvWriteBatchCompleted;
+        auto response =
+            std::make_unique<TCompletion>(error, TSet<ui32>(), CommitId);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchResponse>(error);
+        using TResponse = TEvIndexTabletPrivate::TEvWriteBatchResponse;
+        auto response = std::make_unique<TResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -210,7 +212,9 @@ STFUNC(TWriteBatchActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvIndexTabletPrivate::TEvAddBlobResponse, HandleAddBlobResponse);
 
         default:
@@ -237,7 +241,8 @@ void TIndexTabletActor::HandleWriteBatch(
 
         if (ev->Sender != ctx.SelfID) {
             // reply to caller
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchResponse>();
+            auto response =
+                std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchResponse>();
             NCloud::Reply(ctx, *ev, std::move(response));
         }
         return;
