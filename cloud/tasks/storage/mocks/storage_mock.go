@@ -227,7 +227,7 @@ func (s *StorageMock) ResumeTask(ctx context.Context, taskID string) error {
 	return args.Error(0)
 }
 
-func (s *StorageMock) Heartbeat(
+func (s *StorageMock) HeartbeatNode(
 	ctx context.Context,
 	host string,
 	ts time.Time,

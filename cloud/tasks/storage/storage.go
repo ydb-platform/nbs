@@ -380,7 +380,7 @@ type Storage interface {
 	ResumeTask(ctx context.Context, taskID string) error
 
 	// Update last heartbeat column.
-	Heartbeat(ctx context.Context, host string, ts time.Time, inflightTaskCount uint32) error
+	HeartbeatNode(ctx context.Context, host string, ts time.Time, inflightTaskCount uint32) error
 
 	// Fetch the nodes that have recently send heartbeats.
 	GetAliveNodes(ctx context.Context) ([]Node, error)

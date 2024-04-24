@@ -74,6 +74,7 @@ type runnerForRun struct {
 	metrics                runnerMetrics
 	channel                *channel
 	pingPeriod             time.Duration
+	pingTimeout            time.Duration
 	host                   string
 	id                     string
 	maxRetriableErrorCount uint64
@@ -311,6 +312,7 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r.registry,
 		r.metrics,
 		r.pingPeriod,
+		r.pingTimeout,
 		r,
 		taskInfo,
 	)
@@ -319,13 +321,14 @@ func (r *runnerForRun) lockAndExecuteTask(
 ////////////////////////////////////////////////////////////////////////////////
 
 type runnerForCancel struct {
-	storage    storage.Storage
-	registry   *Registry
-	metrics    runnerMetrics
-	channel    *channel
-	pingPeriod time.Duration
-	host       string
-	id         string
+	storage     storage.Storage
+	registry    *Registry
+	metrics     runnerMetrics
+	channel     *channel
+	pingPeriod  time.Duration
+	pingTimeout time.Duration
+	host        string
+	id          string
 }
 
 func (r *runnerForCancel) receiveTask(
@@ -431,6 +434,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r.registry,
 		r.metrics,
 		r.pingPeriod,
+		r.pingTimeout,
 		r,
 		taskInfo,
 	)
@@ -442,6 +446,7 @@ func taskPinger(
 	ctx context.Context,
 	execCtx *executionContext,
 	pingPeriod time.Duration,
+	pingTimeout time.Duration,
 	onError func(),
 ) {
 
@@ -452,8 +457,17 @@ func taskPinger(
 	)
 
 	for {
-		err := execCtx.ping(ctx)
+		// Use separate func to ensure that "defer cancel()" is called after
+		// each iteration.
+		ping := func() error {
+			pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+			defer cancel()
+			return execCtx.ping(pingCtx)
+		}
+
+		err := ping()
 		// Pinger being cancelled does not constitute an error.
+		// It is crucial to check original ctx here.
 		if err != nil && ctx.Err() == nil {
 			logError(
 				ctx,
@@ -485,6 +499,7 @@ func lockAndExecuteTask(
 	registry *Registry,
 	runnerMetrics runnerMetrics,
 	pingPeriod time.Duration,
+	pingTimeout time.Duration,
 	runner runner,
 	taskInfo storage.TaskInfo,
 ) error {
@@ -538,7 +553,7 @@ func lockAndExecuteTask(
 	execCtx := newExecutionContext(task, taskStorage, taskState)
 
 	pingCtx, cancelPing := context.WithCancel(ctx)
-	go taskPinger(pingCtx, execCtx, pingPeriod, cancelRun)
+	go taskPinger(pingCtx, execCtx, pingPeriod, pingTimeout, cancelRun)
 	defer cancelPing()
 
 	runnerMetrics.OnExecutionStarted(taskState)
@@ -588,6 +603,7 @@ func startRunner(
 	channelForRun *channel,
 	channelForCancel *channel,
 	pingPeriod time.Duration,
+	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -612,6 +628,7 @@ func startRunner(
 		metrics:                runnerForRunMetrics,
 		channel:                channelForRun,
 		pingPeriod:             pingPeriod,
+		pingTimeout:            pingTimeout,
 		host:                   host,
 		id:                     idForRun,
 		maxRetriableErrorCount: maxRetriableErrorCount,
@@ -626,13 +643,14 @@ func startRunner(
 	)
 
 	go runnerLoop(ctx, registry, &runnerForCancel{
-		storage:    taskStorage,
-		registry:   registry,
-		metrics:    runnerForCancelMetrics,
-		channel:    channelForCancel,
-		pingPeriod: pingPeriod,
-		host:       host,
-		id:         idForCancel,
+		storage:     taskStorage,
+		registry:    registry,
+		metrics:     runnerForCancelMetrics,
+		channel:     channelForCancel,
+		pingPeriod:  pingPeriod,
+		pingTimeout: pingTimeout,
+		host:        host,
+		id:          idForCancel,
 	})
 
 	return nil
@@ -647,6 +665,7 @@ func startRunners(
 	channelsForRun []*channel,
 	channelsForCancel []*channel,
 	pingPeriod time.Duration,
+	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -663,6 +682,7 @@ func startRunners(
 			channelsForRun[i],
 			channelsForCancel[i],
 			pingPeriod,
+			pingTimeout,
 			hangingTaskTimeout,
 			exceptHangingTaskTypes,
 			host,
@@ -688,6 +708,7 @@ func startStalkingRunners(
 	channelsForRun []*channel,
 	channelsForCancel []*channel,
 	pingPeriod time.Duration,
+	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
 	exceptHangingTaskTypes []string,
 	host string,
@@ -704,6 +725,7 @@ func startStalkingRunners(
 			channelsForRun[i],
 			channelsForCancel[i],
 			pingPeriod,
+			pingTimeout,
 			hangingTaskTimeout,
 			exceptHangingTaskTypes,
 			host,
@@ -738,7 +760,7 @@ func startHeartbeats(
 
 	for {
 
-		_ = storage.Heartbeat(ctx, host, time.Now(), inflightTaskCountReporter())
+		_ = storage.HeartbeatNode(ctx, host, time.Now(), inflightTaskCountReporter())
 
 		select {
 		case <-ticker.C:
@@ -801,6 +823,13 @@ func StartRunners(
 		return err
 	}
 
+	// Use TaskStallingTimeout as ping timeout, because there is no sense in
+	// pinging stalling task.
+	pingTimeout, err := time.ParseDuration(config.GetTaskStallingTimeout())
+	if err != nil {
+		return err
+	}
+
 	hangingTaskTimeout, err := time.ParseDuration(config.GetHangingTaskTimeout())
 	if err != nil {
 		return err
@@ -848,6 +877,7 @@ func StartRunners(
 		listerReadyToRun.channels,
 		listerReadyToCancel.channels,
 		pingPeriod,
+		pingTimeout,
 		hangingTaskTimeout,
 		config.GetExceptHangingTaskTypes(),
 		host,
@@ -898,6 +928,7 @@ func StartRunners(
 		listerStallingWhileRunning.channels,
 		listerStallingWhileCancelling.channels,
 		pingPeriod,
+		pingTimeout,
 		hangingTaskTimeout,
 		config.GetExceptHangingTaskTypes(),
 		host,

@@ -79,7 +79,7 @@ func nodeTableDescription() persistence.CreateTableDescription {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Updates heartbeat timestamp and the current number of inflight tasks.
-func (s *storageYDB) heartbeat(
+func (s *storageYDB) heartbeatNode(
 	ctx context.Context,
 	session *persistence.Session,
 	host string,
@@ -188,7 +188,7 @@ func (s *storageYDB) getNode(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) Heartbeat(
+func (s *storageYDB) HeartbeatNode(
 	ctx context.Context,
 	host string,
 	ts time.Time,
@@ -196,7 +196,7 @@ func (s *storageYDB) Heartbeat(
 ) error {
 
 	return s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
-		return s.heartbeat(ctx, session, host, ts, inflightTasks)
+		return s.heartbeatNode(ctx, session, host, ts, inflightTasks)
 	})
 }
 
