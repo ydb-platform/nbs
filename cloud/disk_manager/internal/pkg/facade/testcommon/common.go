@@ -15,7 +15,6 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -174,10 +173,10 @@ func CancelOperation(
 	require.True(t, operation.Done)
 
 	switch result := operation.Result.(type) {
-	case *operation_proto.Operation_Error:
+	case *disk_manager.Operation_Error:
 		status := grpc_status.FromProto(result.Error)
 		require.Equal(t, grpc_codes.Canceled, status.Code())
-	case *operation_proto.Operation_Response:
+	case *disk_manager.Operation_Response:
 	default:
 		require.True(t, false)
 	}

@@ -5,7 +5,7 @@ import (
 	"math"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/api/operation"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -32,20 +32,20 @@ type privateService struct {
 func (s *privateService) ScheduleBlankOperation(
 	ctx context.Context,
 	req *empty.Empty,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.taskScheduler.ScheduleBlankTask(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) RebaseOverlayDisk(
 	ctx context.Context,
 	req *api.RebaseOverlayDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.poolService.RebaseOverlayDisk(
 		ctx,
@@ -63,13 +63,13 @@ func (s *privateService) RebaseOverlayDisk(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) RetireBaseDisk(
 	ctx context.Context,
 	req *api.RetireBaseDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.poolService.RetireBaseDisk(
 		ctx,
@@ -85,13 +85,13 @@ func (s *privateService) RetireBaseDisk(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) RetireBaseDisks(
 	ctx context.Context,
 	req *api.RetireBaseDisksRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.poolService.RetireBaseDisks(
 		ctx,
@@ -105,26 +105,26 @@ func (s *privateService) RetireBaseDisks(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) OptimizeBaseDisks(
 	ctx context.Context,
 	req *empty.Empty,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.poolService.OptimizeBaseDisks(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) ConfigurePool(
 	ctx context.Context,
 	req *api.ConfigurePoolRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	// NBS-1375.
 	if !s.nbsFactory.HasClient(req.ZoneId) {
@@ -154,13 +154,13 @@ func (s *privateService) ConfigurePool(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) DeletePool(
 	ctx context.Context,
 	req *api.DeletePoolRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.poolService.DeletePool(
 		ctx,
@@ -173,7 +173,7 @@ func (s *privateService) DeletePool(
 		return nil, err
 	}
 
-	return s.taskScheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *privateService) ListDisks(

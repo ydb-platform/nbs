@@ -3,7 +3,6 @@ package facade
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -13,47 +12,47 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type filesystemService struct {
-	scheduler tasks.Scheduler
-	service   filesystem.Service
+	taskScheduler tasks.Scheduler
+	service       filesystem.Service
 }
 
 func (s *filesystemService) Create(
 	ctx context.Context,
 	req *disk_manager.CreateFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.CreateFilesystem(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *filesystemService) Delete(
 	ctx context.Context,
 	req *disk_manager.DeleteFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.DeleteFilesystem(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *filesystemService) Resize(
 	ctx context.Context,
 	req *disk_manager.ResizeFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.ResizeFilesystem(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *filesystemService) DescribeModel(
@@ -68,12 +67,12 @@ func (s *filesystemService) DescribeModel(
 
 func RegisterFilesystemService(
 	server *grpc.Server,
-	scheduler tasks.Scheduler,
+	taskScheduler tasks.Scheduler,
 	service filesystem.Service,
 ) {
 
 	disk_manager.RegisterFilesystemServiceServer(server, &filesystemService{
-		scheduler: scheduler,
-		service:   service,
+		taskScheduler: taskScheduler,
+		service:       service,
 	})
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
-	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -272,7 +271,7 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 
 	diskSize := 2 * imageSize
 
-	var operations []*operation_proto.Operation
+	var operations []*disk_manager.Operation
 	for i := 0; i < 20; i++ {
 		diskID := fmt.Sprintf("%v%v", t.Name(), i)
 

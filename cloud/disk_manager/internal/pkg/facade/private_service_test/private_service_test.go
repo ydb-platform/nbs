@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -66,7 +65,7 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	var operations []*operation_proto.Operation
+	var operations []*disk_manager.Operation
 
 	diskCount := 21
 	for i := 0; i < diskCount; i++ {
@@ -252,7 +251,7 @@ func TestPrivateServiceOptimizeBaseDisks(t *testing.T) {
 		true, // pooled
 	)
 
-	var operations []*operation_proto.Operation
+	var operations []*disk_manager.Operation
 
 	diskCount := 21
 	for i := 0; i < diskCount; i++ {

@@ -3,7 +3,6 @@ package facade
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -14,86 +13,86 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type diskService struct {
-	scheduler tasks.Scheduler
-	service   disks.Service
+	taskScheduler tasks.Scheduler
+	service       disks.Service
 }
 
 func (s *diskService) Create(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.CreateDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) Delete(
 	ctx context.Context,
 	req *disk_manager.DeleteDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.DeleteDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) Resize(
 	ctx context.Context,
 	req *disk_manager.ResizeDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.ResizeDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) Alter(
 	ctx context.Context,
 	req *disk_manager.AlterDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.AlterDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) Assign(
 	ctx context.Context,
 	req *disk_manager.AssignDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.AssignDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) Unassign(
 	ctx context.Context,
 	req *disk_manager.UnassignDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.UnassignDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) DescribeModel(
@@ -115,14 +114,14 @@ func (s *diskService) Stat(
 func (s *diskService) Migrate(
 	ctx context.Context,
 	req *disk_manager.MigrateDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.MigrateDisk(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *diskService) SendMigrationSignal(
@@ -150,12 +149,12 @@ func (s *diskService) Describe(
 
 func RegisterDiskService(
 	server *grpc.Server,
-	scheduler tasks.Scheduler,
+	taskScheduler tasks.Scheduler,
 	service disks.Service,
 ) {
 
 	disk_manager.RegisterDiskServiceServer(server, &diskService{
-		scheduler: scheduler,
-		service:   service,
+		taskScheduler: taskScheduler,
+		service:       service,
 	})
 }

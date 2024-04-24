@@ -11,7 +11,6 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/empty"
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
@@ -30,8 +29,8 @@ type WaitableClient interface {
 	WaitOperation(
 		ctx context.Context,
 		operationID string,
-		callback func(context.Context, *operation.Operation) error,
-	) (*operation.Operation, error)
+		callback func(context.Context, *disk_manager.Operation) error,
+	) (*disk_manager.Operation, error)
 }
 
 func WaitOperation(
@@ -55,7 +54,7 @@ func WaitResponse(
 	o, err := client.WaitOperation(
 		ctx,
 		operationID,
-		func(context.Context, *operation.Operation) error { return nil },
+		func(context.Context, *disk_manager.Operation) error { return nil },
 	)
 	if err != nil {
 		return err
@@ -81,14 +80,14 @@ func WaitResponse(
 
 func parseOperationResponse(
 	ctx context.Context,
-	o *operation.Operation,
+	o *disk_manager.Operation,
 	response proto.Message,
 ) error {
 
 	switch result := o.Result.(type) {
-	case *operation.Operation_Error:
+	case *disk_manager.Operation_Error:
 		return grpc_status.ErrorProto(result.Error)
-	case *operation.Operation_Response:
+	case *disk_manager.Operation_Response:
 		if response != nil {
 			return ptypes.UnmarshalAny(result.Response, response)
 		}
@@ -158,38 +157,38 @@ type PrivateClient interface {
 	WaitOperation(
 		ctx context.Context,
 		operationID string,
-		callback func(context.Context, *operation.Operation) error,
-	) (*operation.Operation, error)
+		callback func(context.Context, *disk_manager.Operation) error,
+	) (*disk_manager.Operation, error)
 
 	// Used for testing.
-	ScheduleBlankOperation(ctx context.Context) (*operation.Operation, error)
+	ScheduleBlankOperation(ctx context.Context) (*disk_manager.Operation, error)
 
 	RebaseOverlayDisk(
 		ctx context.Context,
 		req *api.RebaseOverlayDiskRequest,
-	) (*operation.Operation, error)
+	) (*disk_manager.Operation, error)
 
 	RetireBaseDisk(
 		ctx context.Context,
 		req *api.RetireBaseDiskRequest,
-	) (*operation.Operation, error)
+	) (*disk_manager.Operation, error)
 
 	RetireBaseDisks(
 		ctx context.Context,
 		req *api.RetireBaseDisksRequest,
-	) (*operation.Operation, error)
+	) (*disk_manager.Operation, error)
 
-	OptimizeBaseDisks(ctx context.Context) (*operation.Operation, error)
+	OptimizeBaseDisks(ctx context.Context) (*disk_manager.Operation, error)
 
 	ConfigurePool(
 		ctx context.Context,
 		req *api.ConfigurePoolRequest,
-	) (*operation.Operation, error)
+	) (*disk_manager.Operation, error)
 
 	DeletePool(
 		ctx context.Context,
 		req *api.DeletePoolRequest,
-	) (*operation.Operation, error)
+	) (*disk_manager.Operation, error)
 
 	ListDisks(
 		ctx context.Context,
@@ -233,8 +232,8 @@ type privateClient struct {
 func (c *privateClient) WaitOperation(
 	ctx context.Context,
 	operationID string,
-	callback func(context.Context, *operation.Operation) error,
-) (*operation.Operation, error) {
+	callback func(context.Context, *disk_manager.Operation) error,
+) (*disk_manager.Operation, error) {
 
 	for {
 		o, err := c.operationServiceClient.Get(ctx, &disk_manager.GetOperationRequest{
@@ -265,7 +264,7 @@ func (c *privateClient) WaitOperation(
 
 func (c *privateClient) ScheduleBlankOperation(
 	ctx context.Context,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.ScheduleBlankOperation(ctx, &empty.Empty{})
 }
@@ -273,7 +272,7 @@ func (c *privateClient) ScheduleBlankOperation(
 func (c *privateClient) RebaseOverlayDisk(
 	ctx context.Context,
 	req *api.RebaseOverlayDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.RebaseOverlayDisk(ctx, req)
 }
@@ -281,7 +280,7 @@ func (c *privateClient) RebaseOverlayDisk(
 func (c *privateClient) RetireBaseDisk(
 	ctx context.Context,
 	req *api.RetireBaseDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.RetireBaseDisk(ctx, req)
 }
@@ -289,14 +288,14 @@ func (c *privateClient) RetireBaseDisk(
 func (c *privateClient) RetireBaseDisks(
 	ctx context.Context,
 	req *api.RetireBaseDisksRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.RetireBaseDisks(ctx, req)
 }
 
 func (c *privateClient) OptimizeBaseDisks(
 	ctx context.Context,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.OptimizeBaseDisks(ctx, &empty.Empty{})
 }
@@ -304,7 +303,7 @@ func (c *privateClient) OptimizeBaseDisks(
 func (c *privateClient) ConfigurePool(
 	ctx context.Context,
 	req *api.ConfigurePoolRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.ConfigurePool(ctx, req)
 }
@@ -312,7 +311,7 @@ func (c *privateClient) ConfigurePool(
 func (c *privateClient) DeletePool(
 	ctx context.Context,
 	req *api.DeletePoolRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.privateServiceClient.DeletePool(ctx, req)
 }

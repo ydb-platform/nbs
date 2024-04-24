@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
-import "cloud/api/operation/operation.proto";
 import "cloud/disk_manager/api/disk.proto";
 import "cloud/disk_manager/api/image.proto";
+import "cloud/disk_manager/api/operation.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
@@ -14,17 +14,17 @@ service ImageService {
     // Returns operation with:
     // metadata: CreateImageMetadata
     // response: CreateImageResponse
-    rpc Create(CreateImageRequest) returns (.cloud.operation.Operation);
+    rpc Create(CreateImageRequest) returns (Operation);
 
     // Returns operation with:
     // metadata: UpdateImageMetadata
     // response: google.protobuf.Empty
-    rpc Update(UpdateImageRequest) returns (.cloud.operation.Operation);
+    rpc Update(UpdateImageRequest) returns (Operation);
 
     // Returns operation with:
     // metadata: DeleteImageMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeleteImageRequest) returns (.cloud.operation.Operation);
+    rpc Delete(DeleteImageRequest) returns (Operation);
 }
 
 message CreateImageRequest {

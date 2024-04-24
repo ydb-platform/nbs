@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
-import "cloud/api/operation/operation.proto";
-import "google/protobuf/timestamp.proto";
 import "cloud/disk_manager/api/disk.proto";
+import "cloud/disk_manager/api/operation.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
@@ -16,12 +16,12 @@ service SnapshotService {
     // Returns operation with:
     // metadata: CreateSnapshotMetadata
     // response: CreateSnapshotResponse
-    rpc Create(CreateSnapshotRequest) returns (.cloud.operation.Operation);
+    rpc Create(CreateSnapshotRequest) returns (Operation);
 
     // Returns operation with:
     // metadata: DeleteSnapshotMetadata
     // response: DeleteSnapshotResponse
-    rpc Delete(DeleteSnapshotRequest) returns (.cloud.operation.Operation);
+    rpc Delete(DeleteSnapshotRequest) returns (Operation);
 }
 
 message CreateSnapshotRequest {
