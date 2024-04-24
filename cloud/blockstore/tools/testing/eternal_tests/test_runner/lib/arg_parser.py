@@ -1,6 +1,8 @@
 import argparse
 import sys
 
+from .test_configs import get_test_case_description
+
 from cloud.blockstore.pylibs import common
 
 
@@ -14,7 +16,7 @@ class ParseHelper:
         self.args = argparse.Namespace()
 
     def parse_load_options(self):
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
         parser.add_argument(
             '--refill',
@@ -45,7 +47,7 @@ class ParseHelper:
         self.args = argparse.Namespace(**vars(self.args), **vars(args))
 
     def parse_run_test_options(self):
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
         parser.add_argument(
             '--placement-group-name',
@@ -71,7 +73,14 @@ class ParseHelper:
         self.args = argparse.Namespace(**vars(self.args), **vars(args))
 
     def parse_command(self):
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(description='Examples:' +
+                                                     '\n\t./yc-nbs-run-eternal-load-tests setup-test ' +
+                                                     '--cluster <cluster> ' +
+                                                     '--cluster-config-path <config-path> ' +
+                                                     '--test-case eternal-640gb-verify-checkpoint ' +
+                                                     '--no-generate-ycp-config ' +
+                                                     '--zone-id a',
+                                         formatter_class=argparse.RawTextHelpFormatter)
         parser.add_argument('command', choices=self.commands)
 
         verbose_quite_group = parser.add_mutually_exclusive_group()
@@ -86,7 +95,7 @@ class ParseHelper:
             '--test-case',
             type=str,
             required=True,
-            help='specify the test case or <all>, if you want to manage all test-cases')
+            help='specify the test case or <all>, if you want to manage all test-cases' + get_test_case_description())
 
         parser.add_argument(
             '--file-path',

@@ -590,3 +590,11 @@ def get_test_config(args: Args, db: bool) -> [(str, ITestConfig)]:
         if args.test_case == 'all':
             return generate_all_test_configs(args)
         return generate_test_config(args, args.test_case)
+
+
+def get_test_case_description():
+    return "\nDisk test cases:\n\t" + '\n\t'.join(_DISK_CONFIGS.keys()) + \
+           "\nFilesystem test cases:\n\t" + '\n\t'.join(_FS_CONFIGS.keys()) + \
+           "\nLoad test cases:\n\t" + '\n\t'.join(_LOAD_CONFIGS.keys()) + \
+           "\nIPC test cases:\n\t" + '\n\t'.join(_IPC_TYPE.keys()) + \
+           "\nDB test cases:\n\t" + '\n\t'.join(_DB.keys())
