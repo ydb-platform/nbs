@@ -22,7 +22,8 @@ config:
     9999
     1111
     zone1
-    
+    CustomValue
+    Default
 
 
 /generated-configs/cluster1/zone1/target1/cfg/file.cfg:
@@ -31,6 +32,8 @@ localhost
 9999
 1111
 zone1
+CustomValue
+Default
 
 /generated-configs/cluster1/zone1/target1/cfg/nbs-auth.txt:
 UseBlackBox: true
@@ -69,7 +72,8 @@ config:
     9999
     1111
     zone1
-    
+    CustomValue
+    Default
 
 
 /generated-configs/cluster1/zone1/target2/cfg/nbs-auth.txt:
@@ -128,7 +132,8 @@ config:
     222
     1111
     zone2
-    
+    Default
+    Default
 
 
 /generated-configs/cluster1/zone2/target1/cfg/file.cfg:
@@ -137,6 +142,8 @@ localhost
 1234
 1111
 zone2
+Default
+Default
 
 /generated-configs/cluster1/zone2/target1/cfg/nbs-auth.txt:
 UseBlackBox: false
@@ -175,7 +182,8 @@ config:
     1234
     1111
     zone2
-    
+    Default
+    Default
 
 
 /generated-configs/cluster1/zone2/target2/cfg/nbs-auth.txt:
