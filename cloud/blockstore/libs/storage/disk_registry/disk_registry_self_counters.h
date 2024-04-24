@@ -20,6 +20,11 @@ struct TDiskRegistrySelfCounters
     {
         TCounterPtr FreeBytes;
         TCounterPtr TotalBytes;
+        TCounterPtr BrokenBytes;
+        TCounterPtr DecommissionedBytes;
+        TCounterPtr SuspendedBytes;
+        TCounterPtr DirtyBytes;
+        TCounterPtr AllocatedBytes;
         TCounterPtr AllocatedDevices;
         TCounterPtr DirtyDevices;
         TCounterPtr DevicesInOnlineState;
@@ -37,6 +42,11 @@ struct TDiskRegistrySelfCounters
 
     TCounterPtr FreeBytes;
     TCounterPtr TotalBytes;
+    TCounterPtr BrokenBytes;
+    TCounterPtr DecommissionedBytes;
+    TCounterPtr SuspendedBytes;
+    TCounterPtr DirtyBytes;
+    TCounterPtr AllocatedBytes;
     TCounterPtr AllocatedDisks;
     TCounterPtr AllocatedDevices;
     TCounterPtr DirtyDevices;
