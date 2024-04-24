@@ -3787,25 +3787,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         // Steal the acquire response.
         // We will return it later to complete the shadow disk acquiring.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
         {
+            Y_UNUSED(runtime);
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
             {
                 stolenAcquireResponse.reset(event.Release());
-                return TTestActorRuntime::EEventAction::DROP;
+                return true;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
-        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
 
         // Reboot volume tablet.
-        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-        volume.ReconnectPipe();
+        volume.RebootTablet();
 
         // Check that the acquire response was stolen.
         UNIT_ASSERT(stolenAcquireResponse);
-        runtime->SetObserverFunc(oldFilter);
+        runtime->SetEventFilter(oldFilter);
 
         // We check that attempts to write to the disk are blocked. Since the
         // shadow disk is partially filled, and the shadow disk acquiring has
@@ -3896,25 +3897,26 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Steal the acquire response.
         std::unique_ptr<IEventHandle> stolenAcquireResponse;
-        auto stealAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        auto stealAcquireResponse = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
         {
+            Y_UNUSED(runtime);
             if (event->GetTypeRewrite() ==
                 TEvDiskRegistry::EvAcquireDiskResponse)
             {
                 stolenAcquireResponse.reset(event.Release());
-                return TTestActorRuntime::EEventAction::DROP;
+                return true;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
-        auto oldFilter = runtime->SetObserverFunc(stealAcquireResponse);
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
 
         // Reboot volume tablet.
-        NKikimr::RebootTablet(*runtime, TestTabletId, volume.GetSender());
-        volume.ReconnectPipe();
+        volume.RebootTablet();
 
         // Check that the acquire response was stolen.
         UNIT_ASSERT(stolenAcquireResponse);
-        runtime->SetObserverFunc(oldFilter);
+        runtime->SetEventFilter(oldFilter);
 
         // We check that attempts to write to the disk are blocked. Since the
         // shadow disk is partially filled, and the shadow disk acquiring has
@@ -4209,15 +4211,16 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         acquireClientId = "";
         releaseClientId = "";
 
-        // Connecting a new client should not lead to reacquiring.
+        // Connecting a new client should lead to reacquiring with the same
+        // ShadowDiskClientId.
         auto clientInfo3 = CreateVolumeClientInfo(
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             0);
         volume.RemoveClient(clientInfo2.GetClientId());
         volume.AddClient(clientInfo3);
-        UNIT_ASSERT_VALUES_EQUAL("", acquireClientId);
-        UNIT_ASSERT_VALUES_EQUAL("", releaseClientId);
+        UNIT_ASSERT_VALUES_EQUAL(ShadowDiskClientId, acquireClientId);
+        UNIT_ASSERT_VALUES_EQUAL(AnyWriterClientId, releaseClientId);
     }
 
     Y_UNIT_TEST(ShouldAcquireShadowDiskEvenIfReleaseFailed)
@@ -4381,6 +4384,175 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::MakeOneBlock(3),
             clientInfo.GetClientId(),
             GetBlockContent(1));
+    }
+
+    Y_UNIT_TEST(ShouldUseShadowDiskDevicesWithRightOrder)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVector<TString> describedDevices;
+        TVector<TString> allocatedDevices;
+        auto getDeviceUUIDs = [](const TDevices& devices) -> auto
+        {
+            TVector<TString> result;
+            for (const auto& deviceInfo: devices) {
+                result.push_back(deviceInfo.GetDeviceUUID());
+            }
+            return result;
+        };
+        auto patchAcquireResponse = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDescribeDiskResponse)
+            {
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
+                describedDevices = getDeviceUUIDs(msg->Record.GetDevices());
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
+                auto* devices = msg->Record.MutableDevices();
+                for (size_t i = 0; i < describedDevices.size(); ++i) {
+                    devices->at(i).SetDeviceUUID(
+                        describedDevices[describedDevices.size() - i - 1]);
+                }
+            }
+            if (event->GetTypeRewrite() ==
+                TEvVolumePrivate::EvShadowDiskAcquired)
+            {
+                auto* msg =
+                    event->Get<TEvVolumePrivate::TEvShadowDiskAcquired>();
+                allocatedDevices = getDeviceUUIDs(msg->Devices);
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(patchAcquireResponse);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768 * 2);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        UNIT_ASSERT_EQUAL(2, describedDevices.size());
+        UNIT_ASSERT_EQUAL(2, allocatedDevices.size());
+        UNIT_ASSERT_EQUAL(describedDevices, allocatedDevices);
+    }
+
+    Y_UNIT_TEST(ShouldReceivePoisonTakenMessage)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768 * 2);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto checkVolumeActorReceivesPoisonTakenMessage = [&]()
+        {
+            TActorId volumeActorId = ResolveTablet(*runtime, TestTabletId);
+            Cout << "volumeActorId = " << volumeActorId << Endl;
+
+            bool poisonTaken = false;
+            auto trackPoisonTaken = [&](TTestActorRuntimeBase& runtime,
+                                        TAutoPtr<IEventHandle>& event) -> bool
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvents::TSystem::PoisonTaken &&
+                    event->Recipient == volumeActorId)
+                {
+                    poisonTaken = true;
+                }
+                return false;
+            };
+            auto oldFilter = runtime->SetEventFilter(trackPoisonTaken);
+
+            // Reboot volume tablet.
+            volume.RebootTablet();
+
+            // Check volume got PoisonTaken message.
+            UNIT_ASSERT(poisonTaken);
+            runtime->SetEventFilter(oldFilter);
+        };
+
+        // Check that the volume actor receives the TEvPoisonTaken message when
+        // the checkpoint does not exist.
+        checkVolumeActorReceivesPoisonTakenMessage();
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Check that the volume actor receives the TEvPoisonTaken message when
+        // the checkpoint exist.
+        checkVolumeActorReceivesPoisonTakenMessage();
+
+        // Check that the volume actor receives the TEvPoisonTaken message when
+        // TAcquireShadowDiskActor is waiting for shadow disk acquiring.
+        {
+            std::unique_ptr<IEventHandle> stolenAcquireResponse;
+            auto stealAcquireResponse =
+                [&](TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event) -> bool
+            {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvAcquireDiskResponse)
+                {
+                    stolenAcquireResponse.reset(event.Release());
+                    return true;
+                }
+                return false;
+            };
+            auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
+
+            // Reboot volume tablet.
+            volume.RebootTablet();
+
+            UNIT_ASSERT(stolenAcquireResponse);
+            runtime->SetEventFilter(oldFilter);
+        }
+        checkVolumeActorReceivesPoisonTakenMessage();
     }
 }
 
