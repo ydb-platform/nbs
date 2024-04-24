@@ -165,7 +165,7 @@ struct TEvIndexTabletPrivate
         const TSet<ui32> MixedBlocksRanges;
         const ui64 CommitId;
 
-        explicit TIndexOperationCompleted(
+        TIndexOperationCompleted(
                 TSet<ui32> mixedBlocksRanges,
                 ui64 commitId)
             : MixedBlocksRanges(std::move(mixedBlocksRanges))
