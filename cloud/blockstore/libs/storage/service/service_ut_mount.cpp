@@ -4777,7 +4777,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TServiceClient service(runtime, nodeIdx);
 
-        uint64_t fillGeneration = 1;
+        ui64 fillGeneration = 1;
         {
             auto request = service.CreateCreateVolumeRequest();
             request->Record.SetFillGeneration(fillGeneration);
@@ -5218,6 +5218,290 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, sessionActorDeathCnt);
+    }
+
+    Y_UNIT_TEST(ShouldRestartVolumeTabletOnLocalMountIfNeeded)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service1(runtime, nodeIdx);
+        TServiceClient service2(runtime, nodeIdx);
+
+        ui64 fillGeneration = 1;
+
+        {
+            auto request = service1.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(fillGeneration);
+            service1.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service1.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+        }
+
+        auto mountVolume =
+            [&](TServiceClient& service,
+                const ui64 mountSeqNumber,
+                const ui64 fillSeqNumber,
+                const ui64 fillGeneration,
+                const NProto::EVolumeAccessMode accessMode =
+                    NProto::VOLUME_ACCESS_READ_WRITE) -> std::pair<ui64, ui64>
+        {
+            auto statResponseBefore = service1.StatVolume(DefaultDiskId);
+
+            auto response = service.MountVolume(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                accessMode,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED,
+                mountSeqNumber,
+                NProto::TEncryptionDesc(),
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            auto statResponseAfter = service1.StatVolume(DefaultDiskId);
+
+            return {
+                statResponseBefore->Record.GetVolumeGeneration(),
+                statResponseAfter->Record.GetVolumeGeneration()};
+        };
+
+        ui64 mountSeqNumber = 0;
+        ui64 fillSeqNumber = 0;
+
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service1,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        ++fillSeqNumber;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service1,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service1,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                generationBefore,
+                generationAfter,
+                "volume should not restart");
+        }
+
+        ++fillSeqNumber;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service1,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        service1.UnmountVolume(DefaultDiskId);
+
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service2,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        {
+            NPrivateProto::TFinishFillDiskRequest request;
+            request.SetDiskId(DefaultDiskId);
+            request.SetConfigVersion(1);
+            request.SetFillGeneration(1);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service1.ExecuteAction("FinishFillDisk", buf);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        fillGeneration = 0;
+        fillSeqNumber = 0;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service2,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        ++mountSeqNumber;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service2,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service2,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                generationBefore,
+                generationAfter,
+                "volume should not restart");
+        }
+
+        ++mountSeqNumber;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service2,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration);
+            UNIT_ASSERT_LE_C(
+                generationBefore + 1,
+                generationAfter,
+                "volume should restart");
+        }
+
+        ++mountSeqNumber;
+        {
+            auto [generationBefore, generationAfter] = mountVolume(
+                service1,
+                mountSeqNumber,
+                fillSeqNumber,
+                fillGeneration,
+                NProto::VOLUME_ACCESS_READ_ONLY);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                generationBefore,
+                generationAfter,
+                "volume should not restart");
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleMountRequestsSingleClient)
+    {
+        TTestEnv env(1, 1);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        ui64 fillGeneration = 10;
+
+        {
+            auto request = service.CreateCreateVolumeRequest();
+            request->Record.SetFillGeneration(fillGeneration);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+        }
+
+        auto mountVolume = [&](const ui64 mountSeqNumber,
+                               const ui64 fillSeqNumber,
+                               const ui64 fillGeneration,
+                               EWellKnownResultCodes expectedResult)
+        {
+            auto statResponseBefore = service.StatVolume(DefaultDiskId);
+
+            service.SendMountVolumeRequest(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                NProto::MF_THROTTLING_DISABLED,
+                mountSeqNumber,
+                NProto::TEncryptionDesc(),
+                fillSeqNumber,
+                fillGeneration);
+
+            auto response = service.RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedResult,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            auto statResponseAfter = service.StatVolume(DefaultDiskId);
+        };
+
+        ui64 mountSeqNumber = 10;
+        ui64 fillSeqNumber = 10;
+
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_ALREADY);
+        mountVolume(
+            mountSeqNumber,
+            fillSeqNumber - 1,
+            fillGeneration,
+            E_PRECONDITION_FAILED);
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_OK);
+        mountVolume(mountSeqNumber, fillSeqNumber, fillGeneration, S_ALREADY);
+        mountVolume(
+            mountSeqNumber,
+            fillSeqNumber,
+            fillGeneration - 1,
+            E_PRECONDITION_FAILED);
     }
 }
 
