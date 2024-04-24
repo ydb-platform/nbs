@@ -511,6 +511,7 @@ func (g *ConfigGenerator) lookupCustomKey(
 	zone string,
 	seed bool,
 ) string {
+
 	if seed {
 		seedOverrides := g.spec.ServiceSpec.Clusters[cluster].ZoneCfgOverrideSeed[zone].CustomOverrides
 		if value, ok := seedOverrides[key]; ok {
@@ -522,9 +523,11 @@ func (g *ConfigGenerator) lookupCustomKey(
 	if value, ok := zoneConfig.CustomOverrides[key]; ok {
 		return value
 	}
+
 	if value, ok := g.spec.ServiceSpec.DefaultOverride.CustomOverrides[key]; ok {
 		return value
 	}
+
 	g.LogDbg(ctx, "key %v not found in custom overrides for cluster %v, zone %v", key, cluster, zone)
 	return defaultValue
 }
