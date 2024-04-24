@@ -1130,6 +1130,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             counters.BytesCount.Value);
     }
 
+    Y_UNIT_TEST(ShouldReportScrubbingCounter)
+    {
+        using namespace NMonitoring;
+
+        TTestBasicRuntime runtime;
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+
+        auto& counter = env.StorageStatsServiceState->Counters.Cumulative.ScrubbingThroughput;
+
+        runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+
+        UNIT_ASSERT_VALUES_EQUAL(2 * 4_MB, counter.Value);
+    }
+
     Y_UNIT_TEST(ShouldFindChecksumMismatch)
     {
         using namespace NMonitoring;
@@ -1144,12 +1167,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         });
 
         ui32 rangeCount = 0;
-        runtime.SetObserverFunc([&] (auto& event) {
+        runtime.SetScheduledEventFilter([&] (auto& runtime, auto& event, auto&& delay, auto&& deadline) {
+            Y_UNUSED(runtime);
+            Y_UNUSED(delay);
+            Y_UNUSED(deadline);
             if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
-                rangeCount++;
+                ++rangeCount;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         });
 
         TDynamicCountersPtr counters = new TDynamicCounters();
@@ -1162,11 +1188,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteReplica(1, range1, 'B');
         env.WriteReplica(2, range1, 'B');
 
-        const auto range2 = TBlockRange64::WithLength(5130, 100);
+        const auto range2 = TBlockRange64::WithLength(4096, 100);
         env.WriteMirror(range2, 'A');
         env.WriteReplica(2, range2, 'B');
 
-        while (rangeCount < 7) {
+        while (rangeCount < 6) {
             runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
         }
 
@@ -1174,6 +1200,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
 
         UNIT_ASSERT_VALUES_EQUAL(2, mirroredDiskChecksumMismatch->Val());
+
+        const auto range3 = TBlockRange64::WithLength(1025, 50);
+        env.WriteMirror(range3, 'A');
+        env.WriteReplica(1, range3, 'B');
+
+        rangeCount = 0;
+        while (rangeCount < 6) {
+            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(5, mirroredDiskChecksumMismatch->Val());
     }
 
     Y_UNIT_TEST(ShouldPostponeScrubbingIfIntersectingWritePending)
@@ -1201,21 +1237,29 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         ui32 rangeCount = 0;
         TAutoPtr<IEventHandle> delayedRequest;
-        runtime.SetObserverFunc([&] (auto& event) {
+        runtime.SetScheduledEventFilter([&] (auto& runtime, auto& event, auto&& delay, auto&& deadline) {
+            Y_UNUSED(runtime);
+            Y_UNUSED(delay);
+            Y_UNUSED(deadline);
             if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
-                rangeCount++;
+                ++rangeCount;
                 if (delayedRequest && rangeCount > 5) {
                     runtime.Send(delayedRequest.Release());
                 }
             }
+
+            return false;
+        });
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
             if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
                 if (!delayedRequest) {
                     delayedRequest = event.Release();
-                    return TTestActorRuntime::EEventAction::DROP;
+                    return true;
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         });
         env.WriteActor(env.ActorId, range, 'D');
 
@@ -1238,7 +1282,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
 
-
         TTestBasicRuntime runtime;
         runtime.SetRegistrationObserverFunc(
             [] (auto& runtime, const auto& parentId, const auto& actorId)
@@ -1257,62 +1300,70 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         enum {
             INIT,
-            REQUESTS_RECIEVED,
+            REQUESTS_RECEIVED,
             CHECKSUM_SENT,
             FINISH
         } state = INIT;
 
-        ui32 ranges = 0;
+        ui32 rangeCount = 0;
         TAutoPtr<IEventHandle> delayedWriteRequest;
         TAutoPtr<IEventHandle> delayedChecksumRequest;
-        runtime.SetObserverFunc([&] (auto& event) {
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
             switch (state) {
                 case INIT: {
                     if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
                         if (!delayedWriteRequest) {
                             delayedWriteRequest = event.Release();
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                     }
                     if (event->GetTypeRewrite() == TEvDiskAgent::EvChecksumDeviceBlocksRequest) {
                         if (!delayedChecksumRequest) {
                             delayedChecksumRequest = event.Release();
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                     }
                     if (delayedWriteRequest && delayedChecksumRequest) {
-                        state = REQUESTS_RECIEVED;
+                        state = REQUESTS_RECEIVED;
                     }
                     break;
                 }
-                case REQUESTS_RECIEVED: {
-                    runtime.Send(delayedChecksumRequest.Release());
+                case REQUESTS_RECEIVED: {
                     state = CHECKSUM_SENT;
+                    runtime.Send(delayedChecksumRequest.Release());
                     break;
                 }
                 case CHECKSUM_SENT: {
                     if (event->GetTypeRewrite() == TEvDiskAgent::EvChecksumDeviceBlocksResponse) {
-                        runtime.Send(delayedWriteRequest.Release());
                         state = FINISH;
+                        runtime.Send(delayedWriteRequest.Release());
                     }
                     break;
                 }
-                case FINISH: {
-                    if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
-                        ranges++;
-                    }
+                default:
                     break;
-                }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         });
+        runtime.SetScheduledEventFilter([&] (auto& runtime, auto& event, auto&& delay, auto&& deadline) {
+            Y_UNUSED(runtime);
+            Y_UNUSED(delay);
+            Y_UNUSED(deadline);
+            if (state == FINISH && event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
+                ++rangeCount;
+            }
+
+            return false;
+        });
+
 
         runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
 
         env.WriteActor(env.ActorId, range, 'D');
 
-        while (ranges < 5) {
+        while (rangeCount < 5) {
             runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
         }
 

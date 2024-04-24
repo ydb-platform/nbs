@@ -960,7 +960,7 @@ message TStorageServiceConfig
     // service actor load. Set in ms.
     optional uint32 ServiceSelfPingInterval = 361;
 
-    // Enable data scrubbing for mirrores disks.
+    // Enable data scrubbing for mirrored disks.
     optional bool DataScrubbingEnabled = 362;
     // Interval between scrubbing ranges in milliseconds
     optional uint32 ScrubbingInterval = 363;

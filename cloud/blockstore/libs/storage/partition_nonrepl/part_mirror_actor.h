@@ -59,10 +59,12 @@ private:
 
     NProto::TError Status;
 
+    bool ScrubbingScheduled = false;
     ui64 ScrubbingRangeId = 0;
     TBlockRange64 ScrubbingRange;
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
     bool WriteIntersectsWithScrubbing = false;
+    ui64 ScrubbingThroughput = 0;
 
 public:
     TMirrorPartitionActor(

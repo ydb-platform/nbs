@@ -128,9 +128,10 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
 
     bool equal = true;
-    for (size_t i = 0; i < checksums.size(); i++) {
+    for (size_t i = 1; i < checksums.size(); i++) {
         if (checksums[i] != checksums[0]) {
             equal = false;
+            break;
         }
     }
 
@@ -236,9 +237,12 @@ void TMirrorPartitionActor::HandleUpdateCounters(
 void TMirrorPartitionActor::ScheduleScrubbingNextRange(
     const TActorContext& ctx)
 {
-    ctx.Schedule(
-        Config->GetScrubbingInterval(),
-        new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
+    if (!ScrubbingScheduled) {
+        ctx.Schedule(
+            Config->GetScrubbingInterval(),
+            new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
+        ScrubbingScheduled = true;
+    }
 }
 
 void TMirrorPartitionActor::HandleScrubbingNextRange(
@@ -247,6 +251,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 {
     Y_UNUSED(ev);
 
+    ScrubbingScheduled = false;
     WriteIntersectsWithScrubbing = false;
     ScrubbingRange =
         RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
@@ -275,13 +280,6 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         }
     }
 
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::PARTITION,
-        "[%s] Scrubbing range %s",
-        DiskId.c_str(),
-        DescribeRange(ScrubbingRange).c_str());
-
     TVector<TReplicaDescriptor> replicas;
     const auto& replicaInfos = State.GetReplicaInfos();
     const auto& replicaActors = State.GetReplicaActors();
@@ -295,10 +293,26 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
     }
 
     if (replicas.empty()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Skipping scrubbing for range %s, devices not ready for reading",
+            DiskId.c_str(),
+            DescribeRange(ScrubbingRange).c_str());
+
         ++ScrubbingRangeId;
         ScheduleScrubbingNextRange(ctx);
+        return;
     }
 
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Scrubbing range %s",
+        DiskId.c_str(),
+        DescribeRange(ScrubbingRange).c_str());
+
+    ScrubbingThroughput += ResyncRangeSize;
     ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, ScrubbingRange);
 }
@@ -310,7 +324,16 @@ void TMirrorPartitionActor::HandleChecksumUndelivery(
     Y_UNUSED(ev);
 
     ChecksumRangeActorCompanion.HandleChecksumUndelivery(ctx);
-    ScheduleScrubbingNextRange(ctx);
+    if (ChecksumRangeActorCompanion.IsFinished()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
+            DiskId.c_str(),
+            DescribeRange(ScrubbingRange).c_str(),
+            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
+        ScheduleScrubbingNextRange(ctx);
+    }
 }
 
 void TMirrorPartitionActor::HandleChecksumResponse(
@@ -323,7 +346,16 @@ void TMirrorPartitionActor::HandleChecksumResponse(
         return;
     }
 
-    if (HasError(ChecksumRangeActorCompanion.GetError())) {
+    if (ChecksumRangeActorCompanion.IsFinished()
+            && HasError(ChecksumRangeActorCompanion.GetError()))
+    {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
+            DiskId.c_str(),
+            DescribeRange(ScrubbingRange).c_str(),
+            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
         ScheduleScrubbingNextRange(ctx);
         return;
     }

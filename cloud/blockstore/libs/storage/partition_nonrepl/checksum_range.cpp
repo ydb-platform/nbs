@@ -20,7 +20,7 @@ TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
 
 bool TChecksumRangeActorCompanion::IsFinished() const
 {
-    return Finished;
+    return CalculatedChecksumsCount == Replicas.size();
 }
 
 const TVector<ui64>& TChecksumRangeActorCompanion::GetChecksums() const
@@ -84,33 +84,30 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
     const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    ++CalculatedChecksumsCount;
     auto* msg = ev->Get();
-
-    Error = msg->Record.GetError();
-
-    if (HasError(Error)) {
+    if (HasError(msg->Record.GetError())) {
         LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Checksum error %s",
             Replicas[0].Name.c_str(),
             FormatError(Error).c_str());
 
+        Error = msg->Record.GetError();
         ChecksumDuration = ctx.Now() - ChecksumStartTs;
-        Finished = true;
         return;
     }
 
     Checksums[ev->Cookie] = msg->Record.GetChecksum();
-    if (++CalculatedChecksumsCount == Replicas.size()) {
+    if (CalculatedChecksumsCount == Replicas.size()) {
         ChecksumDuration = ctx.Now() - ChecksumStartTs;
-        Finished = true;
     }
 }
 
 void TChecksumRangeActorCompanion::HandleChecksumUndelivery(
     const NActors::TActorContext& ctx)
 {
+    ++CalculatedChecksumsCount;
     ChecksumDuration = ctx.Now() - ChecksumStartTs;
-
     Error = MakeError(E_REJECTED, "ChecksumBlocks request undelivered");
 }
 

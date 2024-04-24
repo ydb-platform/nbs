@@ -228,18 +228,15 @@ void TResyncRangeActor::HandleChecksumResponse(
 {
     ChecksumRangeActorCompanion.HandleChecksumResponse(ev, ctx);
 
-    if (!ChecksumRangeActorCompanion.IsFinished()) {
-        return;
-    }
-
     Error = ChecksumRangeActorCompanion.GetError();
-
     if (HasError(Error)) {
         Done(ctx);
         return;
     }
 
-    CompareChecksums(ctx);
+    if (ChecksumRangeActorCompanion.IsFinished()) {
+        CompareChecksums(ctx);
+    }
 }
 
 void TResyncRangeActor::HandleReadUndelivery(

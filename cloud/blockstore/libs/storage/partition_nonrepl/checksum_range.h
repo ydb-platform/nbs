@@ -19,7 +19,6 @@ private:
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
     ui32 CalculatedChecksumsCount = 0;
-    bool Finished = false;
     TVector<ui64> Checksums;
     NProto::TError Error;
 
