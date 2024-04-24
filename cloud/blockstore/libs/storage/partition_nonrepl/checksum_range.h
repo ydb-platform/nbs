@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/events.h>
+#include <library/cpp/actors/core/events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

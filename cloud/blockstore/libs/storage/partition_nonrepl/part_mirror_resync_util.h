@@ -2,7 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 
-#include <contrib/ydb/library/actors/core/actorid.h>
+#include <library/cpp/actors/core/actorid.h>
 
 #include <util/generic/size_literals.h>
 
