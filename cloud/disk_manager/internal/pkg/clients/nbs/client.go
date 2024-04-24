@@ -411,8 +411,7 @@ func areOverlayDisksSupported(mediaKind core_protos.EStorageMediaKind) bool {
 func canBeBaseDisk(volume *protos.TVolume) bool {
 	return areOverlayDisksSupported(volume.StorageMediaKind) &&
 		volume.EncryptionDesc.Mode == protos.EEncryptionMode_NO_ENCRYPTION && // NBS-3297
-		len(volume.BaseDiskId) == 0 && // overlay disk can't be used as base disk
-		volume.PartitionsCount == 1
+		len(volume.BaseDiskId) == 0 // overlay disk can't be used as base disk
 }
 
 ////////////////////////////////////////////////////////////////////////////////
