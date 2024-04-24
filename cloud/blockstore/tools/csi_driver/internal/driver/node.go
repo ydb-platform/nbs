@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 
@@ -32,10 +33,17 @@ const vhostIpc = nbsapi.EClientIpcType_IPC_VHOST
 const nbdIpc = nbsapi.EClientIpcType_IPC_NBD
 
 var capabilities = []*csi.NodeServiceCapability{
-	&csi.NodeServiceCapability{
+	{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
+			},
+		},
+	},
+	{
+		Type: &csi.NodeServiceCapability_Rpc{
+			Rpc: &csi.NodeServiceCapability_RPC{
+				Type: csi.NodeServiceCapability_RPC_VOLUME_MOUNT_GROUP,
 			},
 		},
 	},
@@ -180,7 +188,7 @@ func (s *nodeService) NodePublishVolume(
 			}
 		} else {
 			if nfsBackend {
-				err = status.Error(codes.InvalidArgument,
+				return nil, status.Error(codes.InvalidArgument,
 					"FileStore can't be mounted to container as a filesystem")
 			} else {
 				err = s.nodePublishDiskAsFilesystem(ctx, req)
@@ -188,17 +196,18 @@ func (s *nodeService) NodePublishVolume(
 		}
 	case *csi.VolumeCapability_Block:
 		if nfsBackend {
-			err = status.Error(codes.InvalidArgument,
+			return nil, status.Error(codes.InvalidArgument,
 				"'Block' volume mode is not supported for nfs backend")
 		} else {
 			err = s.nodePublishDiskAsBlockDevice(ctx, req)
 		}
 	default:
-		err = status.Error(codes.InvalidArgument, "Unknown access type")
+		return nil, status.Error(codes.InvalidArgument, "Unknown access type")
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal,
+			"Failed to publish volume: %+v", err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -223,7 +232,9 @@ func (s *nodeService) NodeUnpublishVolume(
 	}
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
-		return nil, err
+		return nil, status.Errorf(
+			codes.InvalidArgument,
+			"Failed to unpublish volume: %+v", err)
 	}
 
 	return &csi.NodeUnpublishVolumeResponse{}, nil
@@ -257,8 +268,7 @@ func (s *nodeService) nodePublishDiskAsVhostSocket(
 
 	_, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, vhostIpc)
 	if err != nil {
-		return status.Errorf(codes.Internal,
-			"Failed to start NBS endpoint: %+v", err)
+		return fmt.Errorf("failed to start NBS endpoint: %+v", err)
 	}
 
 	return s.mountSocketDir(req)
@@ -270,12 +280,11 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 
 	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
 	if err != nil {
-		return status.Errorf(codes.Internal,
-			"Failed to start NBS endpoint: %+v", err)
+		return fmt.Errorf("failed to start NBS endpoint: %+v", err)
 	}
 
 	if resp.NbdDeviceFile == "" {
-		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
@@ -295,7 +304,8 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return err
 	}
 
-	if err := os.MkdirAll(req.TargetPath, 0755); err != nil {
+	targetPerm := os.FileMode(0775)
+	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
 		return fmt.Errorf("failed to create target directory: %v", err)
 	}
 
@@ -305,12 +315,26 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mountIfNeeded(
+
+	err = s.mountIfNeeded(
 		req.VolumeId,
 		resp.NbdDeviceFile,
 		req.TargetPath,
 		fsType,
 		mountOptions)
+	if err != nil {
+		return err
+	}
+
+	if mnt.VolumeMountGroup != "" {
+		cmd := exec.Command("chown", "-R", ":"+mnt.VolumeMountGroup, req.TargetPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to chown %s to %q: %v, output %q",
+				mnt.VolumeMountGroup, req.TargetPath, err, out)
+		}
+	}
+
+	return os.Chmod(req.TargetPath, targetPerm)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -319,12 +343,11 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 
 	resp, err := s.startNbsEndpoint(ctx, s.getPodId(req), req.VolumeId, nbdIpc)
 	if err != nil {
-		return status.Errorf(codes.Internal,
-			"Failed to start NBS endpoint: %+v", err)
+		return fmt.Errorf("failed to start NBS endpoint: %+v", err)
 	}
 
 	if resp.NbdDeviceFile == "" {
-		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
+		return fmt.Errorf("NbdDeviceFile shouldn't be empty")
 	}
 
 	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
@@ -338,7 +361,7 @@ func (s *nodeService) startNbsEndpoint(
 	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
 
 	endpointDir := filepath.Join(s.podSocketsDir, podId, volumeId)
-	if err := os.MkdirAll(endpointDir, 0755); err != nil {
+	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return nil, err
 	}
 
@@ -368,12 +391,12 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	req *csi.NodePublishVolumeRequest) error {
 
 	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
-	if err := os.MkdirAll(endpointDir, 0755); err != nil {
+	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
 
 	if s.nfsClient == nil {
-		return status.Errorf(codes.Internal, "NFS client wasn't created")
+		return fmt.Errorf("NFS client wasn't created")
 	}
 
 	socketPath := filepath.Join(s.nbsSocketsDir, s.getPodId(req), req.VolumeId, nfsSocketName)
@@ -387,8 +410,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		},
 	})
 	if err != nil {
-		return status.Errorf(codes.Internal,
-			"Failed to start NFS endpoint: %+v", err)
+		return fmt.Errorf("failed to start NFS endpoint: %+v", err)
 	}
 
 	return s.mountSocketDir(req)
@@ -423,8 +445,7 @@ func (s *nodeService) nodeUnpublishVolume(
 			UnixSocketPath: filepath.Join(nodeSocketDir, nbsSocketName),
 		})
 		if err != nil {
-			return status.Errorf(codes.Internal,
-				"Failed to stop nbs endpoint: %+v", err)
+			return fmt.Errorf("failed to stop nbs endpoint: %+v", err)
 		}
 	}
 
@@ -433,8 +454,7 @@ func (s *nodeService) nodeUnpublishVolume(
 			SocketPath: filepath.Join(nodeSocketDir, nfsSocketName),
 		})
 		if err != nil {
-			return status.Errorf(codes.Internal,
-				"Failed to stop nfs endpoint: %+v", err)
+			return fmt.Errorf("failed to stop nfs endpoint: %+v", err)
 		}
 	}
 
@@ -456,13 +476,14 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 	// then it will be created automatically with the PersistentVolumeClaim size."
 	// So, let's create an empty disk.img to avoid automatic creation and save disk space.
 	diskImgPath := filepath.Join(endpointDir, "disk.img")
-	file, err := os.OpenFile(diskImgPath, os.O_CREATE, 0644)
+	file, err := os.OpenFile(diskImgPath, os.O_CREATE, os.FileMode(0644))
 	if err != nil {
-		return status.Errorf(codes.Internal, "Failed to create disk.img: %+v", err)
+		return fmt.Errorf("failed to create disk.img: %+v", err)
 	}
 	file.Close()
 
-	if err := os.MkdirAll(req.TargetPath, 0755); err != nil {
+	targetPerm := os.FileMode(0775)
+	if err := os.MkdirAll(req.TargetPath, targetPerm); err != nil {
 		return fmt.Errorf("failed to create target directory: %v", err)
 	}
 
@@ -473,12 +494,17 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mountIfNeeded(
+	err = s.mountIfNeeded(
 		req.VolumeId,
 		endpointDir,
 		req.TargetPath,
 		"",
 		mountOptions)
+	if err != nil {
+		return fmt.Errorf("failed to mount: %+v", err)
+	}
+
+	return os.Chmod(req.TargetPath, targetPerm)
 }
 
 func (s *nodeService) mountBlockDevice(
@@ -486,19 +512,24 @@ func (s *nodeService) mountBlockDevice(
 	source string,
 	target string) error {
 
-	err := os.MkdirAll(filepath.Dir(target), 0750)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(target), os.FileMode(0750)); err != nil {
 		return fmt.Errorf("failed to create target directory: %v", err)
 	}
 
-	file, err := os.OpenFile(target, os.O_CREATE, 0660)
+	targetPerm := os.FileMode(0660)
+	file, err := os.OpenFile(target, os.O_CREATE, targetPerm)
 	if err != nil {
 		return fmt.Errorf("failed to create target file: %v", err)
 	}
 	file.Close()
 
 	mountOptions := []string{"bind"}
-	return s.mountIfNeeded(volumeId, source, target, "", mountOptions)
+	err = s.mountIfNeeded(volumeId, source, target, "", mountOptions)
+	if err != nil {
+		return fmt.Errorf("failed to mount: %+v", err)
+	}
+
+	return os.Chmod(target, targetPerm)
 }
 
 func (s *nodeService) mountIfNeeded(
