@@ -42,7 +42,7 @@ void TPartitionActor::HandleReadBlob(
         "ReadBlob",
         requestInfo->CallContext->RequestId);
 
-    const auto blob = msg->BlobId;
+    const auto& blob = msg->BlobId;
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,

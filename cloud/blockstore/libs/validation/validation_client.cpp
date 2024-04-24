@@ -891,7 +891,7 @@ bool TValidationClient::HandleRequest(
     Y_ABORT_UNLESS(blocks.size() == range->Size());
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
-    auto sgList = request->Sglist;
+    const auto& sgList = request->Sglist;
 
     auto f = Client->ReadBlocksLocal(std::move(callContext), request);
 
