@@ -32,6 +32,7 @@ target_link_libraries(libs-storage-partition_nonrepl PUBLIC
 target_sources(libs-storage-partition_nonrepl PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/config.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/copy_range.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/checksum_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/replica_info.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/resync_range.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/partition_nonrepl/migration_timeout_calculator.cpp
