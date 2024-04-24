@@ -31,8 +31,10 @@
 #define PRE() TAG(TPre)
 #define TABLE() TAG(TTable)
 #define TABLE_CLASS(cls) TAG_CLASS(TTable, cls)
+#define TABLE_CLASS_ID(cls, id) TAG_CLASS_ID(TTable, cls, id)
 #define TABLE_SORTABLE() TABLE_CLASS("table-sortable")
 #define TABLE_SORTABLE_CLASS(cls) TABLE_CLASS(cls " table-sortable")
+#define TABLE_SORTABLE_CLASS_ID(cls, id) TABLE_CLASS_ID(cls " table-sortable", id)
 #define TABLEHEAD() TAG(TTableHead)
 #define TABLEHEAD_CLASS(cls) TAG_CLASS(TTableHead, cls)
 #define TABLEBODY() TAG(TTableBody)
@@ -228,6 +230,7 @@ namespace NMonitoring {
     extern const char DListTag[3];
     extern const char DTermTag[3];
     extern const char DDescTag[3];
+    extern const char InputTag[6];
 
     typedef TTag<HtmlTag> THtml;
     typedef TTag<HeadTag> THead;
@@ -259,4 +262,5 @@ namespace NMonitoring {
     typedef TTag<DListTag> DLIST;
     typedef TTag<DTermTag> DTERM;
     typedef TTag<DDescTag> DDESC;
+    typedef TTag<InputTag> TInput;
 }
