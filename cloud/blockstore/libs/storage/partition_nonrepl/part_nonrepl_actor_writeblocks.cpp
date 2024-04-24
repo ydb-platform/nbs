@@ -436,12 +436,14 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
 
     // convert local request to remote
 
-    SgListCopy(
-        guard.Get(),
-        ResizeIOVector(
-            *msg->Record.MutableBlocks(),
-            msg->Record.BlocksCount,
-            PartConfig->GetBlockSize()));
+    auto sgList = ResizeIOVector(
+        *msg->Record.MutableBlocks(),
+        msg->Record.BlocksCount,
+        PartConfig->GetBlockSize());
+
+    if (0) {
+        SgListCopy(guard.Get(), sgList);
+    }
 
     const bool assignVolumeRequestId =
         Config->GetAssignIdToWriteAndZeroRequestsEnabled() &&

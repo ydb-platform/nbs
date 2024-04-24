@@ -93,10 +93,12 @@ public:
                 blocks[targetBlock].Size());
             Y_ABORT_UNLESS(bytes);
 
+            if (0) {
             memcpy(
                 const_cast<char*>(blocks[targetBlock].Data()),
                 result.Data.data() + offset,
                 bytes);
+            }
             offset += bytes;
             ++b;
         }

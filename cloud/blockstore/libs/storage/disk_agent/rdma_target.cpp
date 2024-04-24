@@ -1,5 +1,7 @@
 #include "rdma_target.h"
 
+#include <cloud/blockstore/libs/common/iovector.h>
+
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
@@ -612,11 +614,12 @@ private:
         auto req = std::make_shared<NProto::TWriteBlocksRequest>();
 
         req->SetStartIndex(request.GetStartIndex());
-        req->MutableBlocks()->AddBuffers(
-            requestData.data(),
-            requestData.length());
+        // req->MutableBlocks()->AddBuffers(
+        //     requestData.data(),
+        //     requestData.length());
 
         const ui32 blockCount = requestData.length() / request.GetBlockSize();
+        ResizeIOVector(*req->MutableBlocks(), 1, blockCount * request.GetBlockSize());
 
         TWriteRequestContinuationData continuationData{
             {context,

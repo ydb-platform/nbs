@@ -957,7 +957,7 @@ IStorageProviderPtr CreateAioStorageProvider(
     EAioSubmitQueueOpt submitQueueOpt)
 {
     ITaskQueuePtr submitQueue = submitQueueOpt == EAioSubmitQueueOpt::Use
-                                    ? CreateThreadPool("AIO.SQ", 1)
+                                    ? CreateThreadPool("AIO.SQ", 1  )
                                     : CreateTaskQueueStub();
     submitQueue->Start();
 

@@ -344,9 +344,11 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
                     requestBlocksCount,
                     requestBlockSize);
 
+                if (0) {
                 size_t bytesCopied =
                     SgListCopy({buffer.get(), bytesCount}, sgList);
                 Y_ABORT_UNLESS(bytesCopied == bytesCount);
+                }
             }
 
             response->MergeFrom(localResponse);
@@ -384,8 +386,8 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
 
     if (buffer) {
         TSgList bufferSgList = {{ buffer.get(), bytesCount }};
-        size_t bytesCopied = SgListCopy(sgList, bufferSgList);
-        Y_ABORT_UNLESS(bytesCopied == bytesCount);
+        // size_t bytesCopied = SgListCopy(sgList, bufferSgList);
+        // Y_ABORT_UNLESS(bytesCopied == bytesCount);
         sgList = std::move(bufferSgList);
     }
 

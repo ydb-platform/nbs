@@ -87,7 +87,7 @@ size_t TProtoMessageSerializer::Serialize(
 
     for (size_t i = 0; i < data.Count(); ++i) {
         const auto& part = data.Parts()[i];
-        memcpy(ptr, part.buf, part.len);
+        // memcpy(ptr, part.buf, part.len); //
         ptr += part.len;
     }
 

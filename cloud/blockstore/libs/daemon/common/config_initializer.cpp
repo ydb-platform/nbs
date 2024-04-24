@@ -109,6 +109,7 @@ void TConfigInitializerCommon::InitRdmaConfig()
         }
     }
 
+    rdmaConfig.MutableClient()->SetPollerThreads(5);
     RdmaConfig =
         std::make_shared<NRdma::TRdmaConfig>(rdmaConfig);
 }
