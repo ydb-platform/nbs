@@ -1,6 +1,7 @@
 #include "profile_log.h"
 
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/storage/core/libs/common/join_range.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -39,15 +40,14 @@ using TBlockInfos =
 
 TString BlockInfosToString(const TBlockInfos& blockInfos)
 {
-    TStringBuilder sb;
-    for (int i = 0; i < blockInfos.size(); ++i) {
-        if (i) {
-            sb << " ";
-        }
-
-        sb << blockInfos[i].GetBlockIndex() << ":" << blockInfos[i].GetChecksum();
-    }
-    return sb;
+    return JoinRangeWithTransform(
+        blockInfos.begin(),
+        blockInfos.end(),
+        " ",
+        [](TStringBuilder& stream, const auto& blockInfo) {
+            stream << blockInfo.GetBlockIndex() << ":"
+                   << blockInfo.GetChecksum();
+        });
 }
 
 struct TEventProcessor

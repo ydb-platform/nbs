@@ -1,11 +1,10 @@
 #include "disk_registry_actor.h"
 
+#include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
-#include <cloud/blockstore/libs/kikimr/events.h>
-
-#include <util/string/join.h>
 #include <util/generic/cast.h>
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

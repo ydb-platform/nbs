@@ -3,8 +3,9 @@
 #include "helpers.h"
 #include "profile_log_events.h"
 
-#include <contrib/ydb/core/base/blobstorage.h>
+#include <cloud/storage/core/libs/common/join_range.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/stream/str.h>
@@ -50,14 +51,12 @@ struct TReadBlobRequest
 
 TString DumpBlobIds(const TVector<TReadBlobRequest>& requests)
 {
-    TStringStream out;
-
-    out << requests[0].BlobId;
-    for (size_t i = 1; i < requests.size(); ++i) {
-        out << ", " << requests[i].BlobId;
-    }
-
-    return out.Str();
+    return JoinRangeWithTransform(
+        requests.begin(),
+        requests.end(),
+        ", ",
+        [](TStringBuilder& stream, const auto& blob)
+        { stream << blob.BlobId; });
 }
 
 ////////////////////////////////////////////////////////////////////////////////

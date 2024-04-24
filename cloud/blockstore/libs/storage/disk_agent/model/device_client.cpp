@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/join_range.h>
 
 #include <util/string/builder.h>
 
@@ -305,14 +305,12 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
     }
 
     if (!acquired) {
-        TStringBuilder allReaders;
-        for (const auto& reader: deviceState->ReaderSessions) {
-            bool isFirst = allReaders.Empty();
-            allReaders << reader.Id.Quote();
-            if (!isFirst) {
-                allReaders << ", ";
-            }
-        }
+        TString allReaders = JoinRangeWithTransform(
+            deviceState->ReaderSessions.begin(),
+            deviceState->ReaderSessions.end(),
+            ", ",
+            [](TStringBuilder& stream, const auto& v) { stream << v.Id; });
+
         return MakeError(
             E_BS_INVALID_SESSION,
             TStringBuilder()

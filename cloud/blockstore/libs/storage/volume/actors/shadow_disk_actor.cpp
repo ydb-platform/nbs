@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/storage/core/libs/common/join_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 using namespace NActors;
@@ -47,15 +48,12 @@ void ForwardMessageToActor(
 
 TString GetDeviceUUIDs(const TDevices& devices)
 {
-    TString result;
-    for (const auto& device: devices) {
-        if (result.empty()) {
-            result += device.GetDeviceUUID();
-        } else {
-            result += ", " + device.GetDeviceUUID();
-        }
-    }
-    return result;
+    return JoinRangeWithTransform(
+        devices.begin(),
+        devices.end(),
+        ", ",
+        [](TStringBuilder& stream, const auto& device)
+        { stream << device.GetDeviceUUID(); });
 }
 
 bool CheckDeviceUUIDsIdentical(
