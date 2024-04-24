@@ -51,7 +51,7 @@ void TMirrorPartitionResyncFastPathActor::Bootstrap(const TActorContext& ctx)
 void TMirrorPartitionResyncFastPathActor::ChecksumBlocks(
     const TActorContext& ctx)
 {
-    ReadBlocks(ctx, 0);
+    ReadBlocks(ctx);
     for (size_t i = 1; i < Replicas.size(); ++i) {
         ChecksumReplicaBlocks(ctx, i);
     }
@@ -70,38 +70,34 @@ void TMirrorPartitionResyncFastPathActor::ChecksumReplicaBlocks(
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(TString(BackgroundOpsClientId));
 
-    TAutoPtr<IEventHandle> event(new IEventHandle(
-        Replicas[ idx ].ActorId,
+    auto event = std::make_unique<IEventHandle>(
+        Replicas[idx].ActorId,
         ctx.SelfID,
-        request.get(),
+        request.release(),
         IEventHandle::FlagForwardOnNondelivery,
         idx,          // cookie
         &ctx.SelfID   // forwardOnNondelivery
-        ));
-    Y_UNUSED(request.release());
+    );
 
-    ctx.Send(event);
+    ctx.Send(std::move(event));
 }
 
 void TMirrorPartitionResyncFastPathActor::CompareChecksums(
     const TActorContext& ctx)
 {
-    ui64 firstChecksum = 0;
-    int firstIdx = -1;
+    ui64 firstChecksum = Checksums[0];
     for (const auto& [idx, checksum]: Checksums) {
-        if (firstIdx < 0) {
-            firstIdx = idx;
-            firstChecksum = checksum;
-        } else if (firstChecksum != checksum) {
+        if (firstChecksum != checksum) {
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Resync range %s: checksum mismatch, %lu (%d) != %lu (%d)"
+                "[%s] Resync range %s: checksum mismatch, %lu (0) != %lu (%d)"
                 ", fast path reading is not available",
                 Replicas[0].Name.c_str(),
                 DescribeRange(Range).c_str(),
-                firstChecksum, firstIdx,
-                checksum, idx);
+                firstChecksum,
+                checksum,
+                idx);
             Error = MakeError(E_REJECTED, "Checksum mismatch detected");
             Done(ctx);
             return;
@@ -111,9 +107,7 @@ void TMirrorPartitionResyncFastPathActor::CompareChecksums(
     Done(ctx);
 }
 
-void TMirrorPartitionResyncFastPathActor::ReadBlocks(
-    const TActorContext& ctx,
-    int idx)
+void TMirrorPartitionResyncFastPathActor::ReadBlocks(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
     request->Record.SetStartIndex(Range.Start);
@@ -130,14 +124,13 @@ void TMirrorPartitionResyncFastPathActor::ReadBlocks(
     headers->SetClientId(std::move(clientId));
 
     auto event = std::make_unique<IEventHandle>(
-        Replicas[ idx ].ActorId,
+        Replicas[0].ActorId,
         ctx.SelfID,
-        request.get(),
+        request.release(),
         IEventHandle::FlagForwardOnNondelivery,
-        idx,          // cookie
+        0,            // cookie
         &ctx.SelfID   // forwardOnNondelivery
-        );
-    Y_UNUSED(request.release());
+    );
 
     ctx.Send(std::move(event));
 }
@@ -148,7 +141,7 @@ void TMirrorPartitionResyncFastPathActor::CalculateChecksum()
         TBlockChecksum checksum;
         const TSgList& sgList = guard.Get();
         for (auto blockData: sgList) {
-           checksum.Extend(blockData.Data(), blockData.Size());
+            checksum.Extend(blockData.Data(), blockData.Size());
         }
         Checksums.insert({0, checksum.GetValue()});
     }
