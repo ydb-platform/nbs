@@ -396,11 +396,7 @@ void TIndexTabletActor::HandleAddDataCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.AddData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.AddData.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.AddData.Time.Record(msg->Time);
+    Metrics.AddData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

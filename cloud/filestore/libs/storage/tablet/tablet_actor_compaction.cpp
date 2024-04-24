@@ -273,12 +273,14 @@ void TCompactionActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvCompactionCompleted>(error);
-        response->CommitId = CommitId;
-        response->MixedBlocksRanges = {RangeId};
-        response->Count = 1;
-        response->Size = OperationSize;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        using TCompletion = TEvIndexTabletPrivate::TEvCompactionCompleted;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            TSet<ui32>({RangeId}),
+            CommitId,
+            1,
+            OperationSize,
+            ctx.Now() - RequestInfo->StartedTs);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

@@ -28,7 +28,8 @@ NProto::TError ValidateRequest(const NProto::TCreateHandleRequest& request)
     if (HasFlag(request.GetFlags(), NProto::TCreateHandleRequest::E_TRUNCATE) &&
         !HasFlag(request.GetFlags(), NProto::TCreateHandleRequest::E_WRITE))
     {
-        // POSIX: The result of using O_TRUNC without either O_RDWR o O_WRONLY is undefined
+        // POSIX: The result of using O_TRUNC without either O_RDWR o O_WRONLY
+        // is undefined
         return ErrorInvalidArgument();
     }
 
@@ -43,7 +44,8 @@ void TIndexTabletActor::HandleCreateHandle(
     const TEvService::TEvCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(ev, ctx, ValidateRequest);
+    auto* session =
+        AcceptRequest<TEvService::TCreateHandleMethod>(ev, ctx, ValidateRequest);
     if (!session) {
         return;
     }

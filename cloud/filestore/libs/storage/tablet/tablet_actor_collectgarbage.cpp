@@ -284,10 +284,11 @@ void TCollectGarbageActor::ReplyAndDie(
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvCollectGarbageCompleted;
-        auto response = std::make_unique<TCompletion>(error);
-        response->Count = 1;
-        response->Size = OperationSize;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            1,
+            OperationSize,
+            ctx.Now() - RequestInfo->StartedTs);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

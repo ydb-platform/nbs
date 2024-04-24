@@ -154,11 +154,7 @@ void TIndexTabletActor::HandleWriteDataCompleted(
     WorkerActors.erase(ev->Sender);
     EnqueueBlobIndexOpIfNeeded(ctx);
 
-    Metrics.WriteData.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.WriteData.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.WriteData.Time.Record(msg->Time);
+    Metrics.WriteData.Update(msg->Count, msg->Size, msg->Time);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

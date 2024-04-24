@@ -198,7 +198,8 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         CommitDupCacheEntry(args.SessionId, args.RequestId);
     }
 
-    auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvUnlinkNodeResponse>(args.Error);
     CompleteResponse<TEvService::TUnlinkNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,

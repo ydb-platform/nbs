@@ -215,12 +215,13 @@ void TWriteBlobActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobCompleted>(error);
-        response->Count = Requests.size();
-        response->Size = TotalSize;
-        response->Time = t;
-        response->Results = std::move(WriteResults);
+        using TCompletion = TEvIndexTabletPrivate::TEvWriteBlobCompleted;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            Requests.size(),
+            TotalSize,
+            t,
+            std::move(WriteResults));
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -231,7 +232,8 @@ void TWriteBlobActor::ReplyAndDie(
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobResponse>(error);
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -355,11 +357,7 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
 
     WorkerActors.erase(ev->Sender);
 
-    Metrics.WriteBlob.Count.fetch_add(msg->Count, std::memory_order_relaxed);
-    Metrics.WriteBlob.RequestBytes.fetch_add(
-        msg->Size,
-        std::memory_order_relaxed);
-    Metrics.WriteBlob.Time.Record(msg->Time);
+    Metrics.WriteBlob.Update(msg->Count, msg->Size, msg->Time);
 
     const auto validFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     for (const auto& result: msg->Results) {
