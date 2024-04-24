@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -163,7 +162,7 @@ func parseConfigs(
 func waitOperation(
 	ctx context.Context,
 	client client.Client,
-	operation *operation_proto.Operation,
+	operation *disk_manager.Operation,
 ) error {
 
 	err := internal_client.WaitOperation(ctx, client, operation.Id)
@@ -305,7 +304,7 @@ func sendCreateDiskFromImageRequest(
 	diskSize uint64,
 	blockSize uint64,
 	folderID string,
-) (*operation_proto.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	req := &disk_manager.CreateDiskRequest{
 		Src: &disk_manager.CreateDiskRequest_SrcImageId{
@@ -424,7 +423,7 @@ func sendDeleteDiskRequest(
 	client client.Client,
 	zoneID string,
 	diskID string,
-) (*operation_proto.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	req := &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
@@ -460,7 +459,7 @@ func sendConfigurePoolRequest(
 	zoneID string,
 	imageID string,
 	useImageSize bool,
-) (*operation_proto.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	req := &api.ConfigurePoolRequest{
 		ImageId:      imageID,
@@ -607,7 +606,7 @@ func sendDeleteImageRequest(
 	ctx context.Context,
 	client client.Client,
 	imageID string,
-) (*operation_proto.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	req := &disk_manager.DeleteImageRequest{
 		ImageId: imageID,
@@ -677,7 +676,7 @@ func sendDeleteSnapshotRequest(
 	ctx context.Context,
 	client client.Client,
 	snapshotID string,
-) (*operation_proto.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	req := &disk_manager.DeleteSnapshotRequest{
 		SnapshotId: snapshotID,
@@ -716,7 +715,7 @@ func cleanupResources(
 	rs resources,
 ) error {
 
-	operations := make([]*operation_proto.Operation, 0)
+	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
 		operation, err := sendDeleteDiskRequest(ctx, client, rs.ZoneID, diskID)
 		if err != nil {
@@ -1041,7 +1040,7 @@ func testCreateDisksFromImage(
 		return resources{}, err
 	}
 
-	operations := make([]*operation_proto.Operation, 0)
+	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
 		operation, err := sendCreateDiskFromImageRequest(
 			ctx,
@@ -1114,7 +1113,7 @@ func testRetireBaseDisks(
 		return resources{}, err
 	}
 
-	operations := make([]*operation_proto.Operation, 0)
+	operations := make([]*disk_manager.Operation, 0)
 	for _, diskID := range rs.Disks {
 		operation, err := sendCreateDiskFromImageRequest(
 			ctx,

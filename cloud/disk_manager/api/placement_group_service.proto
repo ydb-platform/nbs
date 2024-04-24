@@ -2,25 +2,25 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
-import "cloud/api/operation/operation.proto";
-import "google/protobuf/empty.proto";
+import "cloud/disk_manager/api/operation.proto";
 import "cloud/disk_manager/api/placement_group.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
 
 service PlacementGroupService {
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Create(CreatePlacementGroupRequest) returns (.cloud.operation.Operation);
+    rpc Create(CreatePlacementGroupRequest) returns (Operation);
 
     // Returns operation with:
     // metadata: DeletePlacementGroupMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeletePlacementGroupRequest) returns (.cloud.operation.Operation);
+    rpc Delete(DeletePlacementGroupRequest) returns (Operation);
 
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Alter(AlterPlacementGroupMembershipRequest) returns (.cloud.operation.Operation);
+    rpc Alter(AlterPlacementGroupMembershipRequest) returns (Operation);
 
     rpc List(ListPlacementGroupsRequest) returns (ListPlacementGroupsResponse) {}
 

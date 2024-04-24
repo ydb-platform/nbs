@@ -3,7 +3,6 @@ package facade
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -13,47 +12,47 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type placementGroupService struct {
-	scheduler tasks.Scheduler
-	service   placementgroup.Service
+	taskScheduler tasks.Scheduler
+	service       placementgroup.Service
 }
 
 func (s *placementGroupService) Create(
 	ctx context.Context,
 	req *disk_manager.CreatePlacementGroupRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.CreatePlacementGroup(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *placementGroupService) Delete(
 	ctx context.Context,
 	req *disk_manager.DeletePlacementGroupRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.DeletePlacementGroup(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *placementGroupService) Alter(
 	ctx context.Context,
 	req *disk_manager.AlterPlacementGroupMembershipRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	taskID, err := s.service.AlterPlacementGroupMembership(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scheduler.GetOperation(ctx, taskID)
+	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
 func (s *placementGroupService) List(
@@ -76,12 +75,12 @@ func (s *placementGroupService) Describe(
 
 func RegisterPlacementGroupService(
 	server *grpc.Server,
-	scheduler tasks.Scheduler,
+	taskScheduler tasks.Scheduler,
 	service placementgroup.Service,
 ) {
 
 	disk_manager.RegisterPlacementGroupServiceServer(server, &placementGroupService{
-		scheduler: scheduler,
-		service:   service,
+		taskScheduler: taskScheduler,
+		service:       service,
 	})
 }

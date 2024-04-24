@@ -10,7 +10,6 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/api/operation
     cloud/disk_manager/api
 )
 

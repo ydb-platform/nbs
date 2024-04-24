@@ -30,6 +30,7 @@ RECURSE(
     errors
     headers
     logging
+    operation
     persistence
     storage
 )

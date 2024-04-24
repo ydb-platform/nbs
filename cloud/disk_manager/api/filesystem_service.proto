@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package cloud.disk_manager;
 
-import "cloud/api/operation/operation.proto";
+import "cloud/disk_manager/api/operation.proto";
 import "google/protobuf/empty.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
@@ -10,16 +10,16 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 service FilesystemService {
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Create(CreateFilesystemRequest) returns (.cloud.operation.Operation);
+    rpc Create(CreateFilesystemRequest) returns (Operation);
 
     // Returns operation with:
     // metadata: DeleteFilesystemMetadata
     // response: google.protobuf.Empty
-    rpc Delete(DeleteFilesystemRequest) returns (.cloud.operation.Operation);
+    rpc Delete(DeleteFilesystemRequest) returns (Operation);
 
     // Returns operation with:
     // response: google.protobuf.Empty
-    rpc Resize(ResizeFilesystemRequest) returns (.cloud.operation.Operation);
+    rpc Resize(ResizeFilesystemRequest) returns (Operation);
 
     rpc DescribeModel(DescribeFilesystemModelRequest) returns (FilesystemModel) {}
 }

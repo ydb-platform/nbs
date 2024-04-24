@@ -6,7 +6,6 @@ import (
 	"time"
 
 	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/config"
 	"google.golang.org/grpc"
@@ -79,7 +78,7 @@ type client struct {
 func (c *client) CreateDisk(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Create(ctx, req)
 }
@@ -87,7 +86,7 @@ func (c *client) CreateDisk(
 func (c *client) DeleteDisk(
 	ctx context.Context,
 	req *disk_manager.DeleteDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Delete(ctx, req)
 }
@@ -95,7 +94,7 @@ func (c *client) DeleteDisk(
 func (c *client) ResizeDisk(
 	ctx context.Context,
 	req *disk_manager.ResizeDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Resize(ctx, req)
 }
@@ -103,7 +102,7 @@ func (c *client) ResizeDisk(
 func (c *client) AlterDisk(
 	ctx context.Context,
 	req *disk_manager.AlterDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Alter(ctx, req)
 }
@@ -111,7 +110,7 @@ func (c *client) AlterDisk(
 func (c *client) AssignDisk(
 	ctx context.Context,
 	req *disk_manager.AssignDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Assign(ctx, req)
 }
@@ -119,7 +118,7 @@ func (c *client) AssignDisk(
 func (c *client) UnassignDisk(
 	ctx context.Context,
 	req *disk_manager.UnassignDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Unassign(ctx, req)
 }
@@ -143,7 +142,7 @@ func (c *client) StatDisk(
 func (c *client) MigrateDisk(
 	ctx context.Context,
 	req *disk_manager.MigrateDiskRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.diskServiceClient.Migrate(ctx, req)
 }
@@ -168,7 +167,7 @@ func (c *client) DescribeDisk(
 func (c *client) CreateImage(
 	ctx context.Context,
 	req *disk_manager.CreateImageRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.imageServiceClient.Create(ctx, req)
 }
@@ -176,7 +175,7 @@ func (c *client) CreateImage(
 func (c *client) UpdateImage(
 	ctx context.Context,
 	req *disk_manager.UpdateImageRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.imageServiceClient.Update(ctx, req)
 }
@@ -184,7 +183,7 @@ func (c *client) UpdateImage(
 func (c *client) DeleteImage(
 	ctx context.Context,
 	req *disk_manager.DeleteImageRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.imageServiceClient.Delete(ctx, req)
 }
@@ -192,7 +191,7 @@ func (c *client) DeleteImage(
 func (c *client) GetOperation(
 	ctx context.Context,
 	req *disk_manager.GetOperationRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.operationServiceClient.Get(ctx, req)
 }
@@ -200,7 +199,7 @@ func (c *client) GetOperation(
 func (c *client) CancelOperation(
 	ctx context.Context,
 	req *disk_manager.CancelOperationRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.operationServiceClient.Cancel(ctx, req)
 }
@@ -208,8 +207,8 @@ func (c *client) CancelOperation(
 func (c *client) WaitOperation(
 	ctx context.Context,
 	operationID string,
-	callback func(context.Context, *operation.Operation) error,
-) (*operation.Operation, error) {
+	callback func(context.Context, *disk_manager.Operation) error,
+) (*disk_manager.Operation, error) {
 
 	for {
 		o, err := c.operationServiceClient.Get(ctx, &disk_manager.GetOperationRequest{
@@ -241,7 +240,7 @@ func (c *client) WaitOperation(
 func (c *client) CreatePlacementGroup(
 	ctx context.Context,
 	req *disk_manager.CreatePlacementGroupRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.placementGroupServiceClient.Create(ctx, req)
 }
@@ -249,7 +248,7 @@ func (c *client) CreatePlacementGroup(
 func (c *client) DeletePlacementGroup(
 	ctx context.Context,
 	req *disk_manager.DeletePlacementGroupRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.placementGroupServiceClient.Delete(ctx, req)
 }
@@ -257,7 +256,7 @@ func (c *client) DeletePlacementGroup(
 func (c *client) AlterPlacementGroupMembership(
 	ctx context.Context,
 	req *disk_manager.AlterPlacementGroupMembershipRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.placementGroupServiceClient.Alter(ctx, req)
 }
@@ -281,7 +280,7 @@ func (c *client) DescribePlacementGroup(
 func (c *client) CreateSnapshot(
 	ctx context.Context,
 	req *disk_manager.CreateSnapshotRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.snapshotServiceClient.Create(ctx, req)
 }
@@ -289,7 +288,7 @@ func (c *client) CreateSnapshot(
 func (c *client) DeleteSnapshot(
 	ctx context.Context,
 	req *disk_manager.DeleteSnapshotRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.snapshotServiceClient.Delete(ctx, req)
 }
@@ -301,7 +300,7 @@ func (c *client) Close() error {
 func (c *client) CreateFilesystem(
 	ctx context.Context,
 	req *disk_manager.CreateFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.filesystemServiceClient.Create(ctx, req)
 }
@@ -309,7 +308,7 @@ func (c *client) CreateFilesystem(
 func (c *client) DeleteFilesystem(
 	ctx context.Context,
 	req *disk_manager.DeleteFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.filesystemServiceClient.Delete(ctx, req)
 }
@@ -317,7 +316,7 @@ func (c *client) DeleteFilesystem(
 func (c *client) ResizeFilesystem(
 	ctx context.Context,
 	req *disk_manager.ResizeFilesystemRequest,
-) (*operation.Operation, error) {
+) (*disk_manager.Operation, error) {
 
 	return c.filesystemServiceClient.Resize(ctx, req)
 }

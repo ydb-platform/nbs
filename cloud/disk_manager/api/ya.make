@@ -3,7 +3,14 @@ PROTO_LIBRARY()
 GRPC()
 ONLY_TAGS(GO_PROTO)
 
-USE_COMMON_GOOGLE_APIS()
+USE_COMMON_GOOGLE_APIS(
+    api/annotations
+    rpc/code
+    rpc/errdetails
+    rpc/status
+    type/timeofday
+    type/dayofweek
+)
 
 SRCS(
     disk.proto
@@ -12,14 +19,11 @@ SRCS(
     image.proto
     image_service.proto
     filesystem_service.proto
+    operation.proto
     operation_service.proto
     placement_group.proto
     placement_group_service.proto
     snapshot_service.proto
-)
-
-PEERDIR(
-    cloud/api/operation
 )
 
 END()

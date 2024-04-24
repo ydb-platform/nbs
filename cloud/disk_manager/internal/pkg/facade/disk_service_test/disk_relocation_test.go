@@ -7,7 +7,6 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
-	operation_proto "github.com/ydb-platform/nbs/cloud/api/operation"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
@@ -293,7 +292,7 @@ func migrateDiskInParallel(
 	)
 	require.NoError(t, err)
 
-	var operations []*operation_proto.Operation
+	var operations []*disk_manager.Operation
 	zoneByOperationID := make(map[string]string)
 
 	for i := 0; i < 6; i++ {
@@ -463,7 +462,7 @@ func waitForMigrationStatus(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
-	operation *operation_proto.Operation,
+	operation *disk_manager.Operation,
 	status disk_manager.MigrateDiskMetadata_Status,
 ) {
 
@@ -499,7 +498,7 @@ func waitForMigrationStatusOrError(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
-	operation *operation_proto.Operation,
+	operation *disk_manager.Operation,
 	status disk_manager.MigrateDiskMetadata_Status,
 ) {
 
@@ -947,7 +946,7 @@ func TestDiskServiceMigrateEmptyOverlayDiskInParallelWithRetireBaseDisks(
 
 	// Need to schedule RetireBaseDisks task after migration was started.
 	retireErr := make(chan error)
-	retireOperation := make(chan *operation_proto.Operation)
+	retireOperation := make(chan *disk_manager.Operation)
 	go func() {
 		// Need to add some variance for better testing.
 		testcommon.WaitForRandomDuration(1*time.Second, 2*time.Second)

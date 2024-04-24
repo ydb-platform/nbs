@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package api;
 
-import "cloud/api/operation/operation.proto";
 import "cloud/disk_manager/api/disk.proto";
+import "cloud/disk_manager/api/operation.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -11,19 +11,19 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/api
 
 service PrivateService {
     // Schedules blank (no op) operation, used for testing.
-    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (cloud.operation.Operation);
+    rpc ScheduleBlankOperation(google.protobuf.Empty) returns (cloud.disk_manager.Operation);
 
-    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (cloud.operation.Operation);
+    rpc RebaseOverlayDisk(RebaseOverlayDiskRequest) returns (cloud.disk_manager.Operation);
 
-    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (cloud.operation.Operation);
+    rpc RetireBaseDisk(RetireBaseDiskRequest) returns (cloud.disk_manager.Operation);
 
-    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (cloud.operation.Operation);
+    rpc RetireBaseDisks(RetireBaseDisksRequest) returns (cloud.disk_manager.Operation);
 
-    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (cloud.operation.Operation);
+    rpc OptimizeBaseDisks(google.protobuf.Empty) returns (cloud.disk_manager.Operation);
 
-    rpc ConfigurePool(ConfigurePoolRequest) returns (cloud.operation.Operation);
+    rpc ConfigurePool(ConfigurePoolRequest) returns (cloud.disk_manager.Operation);
 
-    rpc DeletePool(DeletePoolRequest) returns (cloud.operation.Operation);
+    rpc DeletePool(DeletePoolRequest) returns (cloud.disk_manager.Operation);
 
     // Lists all existing disk ids in specified |folder_id|.
     // Lists all existing disk ids if |folder_id| is not set.
