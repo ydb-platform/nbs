@@ -1107,12 +1107,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Count drain requests.
         ui32 drainRequestCount = 0;
-        auto monitorDrainRequest = [&](TAutoPtr<IEventHandle>& event)
+        auto monitorDrainRequest =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() == TEvPartition::EvDrainRequest) {
                 ++drainRequestCount;
             }
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime->SetObserverFunc(monitorDrainRequest);
 
@@ -1265,7 +1266,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             // from TNonreplicatedPartitionMigrationCommonActor. This will delay
             // the drain execution.
             std::unique_ptr<IEventHandle> stolenResponse;
-            auto stealWriteResponse = [&](TAutoPtr<IEventHandle>& event)
+            auto stealWriteResponse = [&](TTestActorRuntimeBase& runtime,
+                                          TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
                     TEvNonreplPartitionPrivate::EvWriteOrZeroCompleted)
@@ -1273,7 +1275,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     stolenResponse.reset(event.Release());
                     return TTestActorRuntime::EEventAction::DROP;
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             };
             auto oldObserverFunc = runtime->SetObserverFunc(stealWriteResponse);
 
@@ -3910,7 +3912,11 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 return true;
             }
             return false;
+        };
+        auto oldFilter = runtime->SetEventFilter(stealAcquireResponse);
+
         // Reboot volume tablet.
+        volume.RebootTablet();
 
         // Check that the acquire response was stolen.
         UNIT_ASSERT(stolenAcquireResponse);
@@ -4320,7 +4326,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     TEvDiskRegistry::TEvAllocateCheckpointResponse>(MakeError(
                     E_BS_DISK_ALLOCATION_FAILED,
                     "can't allocate disk"));
-                runtime->Send(
+                runtime.Send(
                     new IEventHandle(
                         event->Sender,
                         event->Recipient,
@@ -4330,7 +4336,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     0);
                 return TTestActorRuntime::EEventAction::DROP;
             }
-            return TTestActorRuntime::DefaultObserverFunc(runtime,m event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime->SetObserverFunc(makeErrorOnShadowDiskAllocation);
 
