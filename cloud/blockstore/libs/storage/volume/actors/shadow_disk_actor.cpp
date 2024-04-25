@@ -62,16 +62,15 @@ bool CheckDeviceUUIDsIdentical(
     const TDevices& described,
     const TDevices& acquired)
 {
-    if (described.size() != acquired.size()) {
-        return false;
+    TSet<TString> acquiredDevices;
+    for (const auto& d: acquired) {
+        acquiredDevices.insert(d.GetDeviceUUID());
     }
 
-    for (int i = 0; i < described.size(); ++i) {
-        if (described[i].GetDeviceUUID() != acquired[i].GetDeviceUUID()) {
-            return false;
-        }
-    }
-    return true;
+    return AllOf(
+        described,
+        [&](const auto& d)
+        { return acquiredDevices.contains(d.GetDeviceUUID()); });
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -152,6 +151,10 @@ private:
     void HandleReleaseDiskResponse(
         const TEvDiskRegistry::TEvReleaseDiskResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
@@ -255,9 +258,10 @@ void TAcquireShadowDiskActor::AcquireShadowDisk(
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Acquiring shadow disk "
-                << ShadowDiskId.Quote() << " by clientId " << RwClientId.Quote()
-                << " with timeout " << TotalTimeout.ToString());
+            "Acquiring shadow disk " << ShadowDiskId.Quote() << " by clientId "
+                                     << RwClientId.Quote() << " with timeout "
+                                     << TotalTimeout.ToString() << " for "
+                                     << (ReadOnlyMount ? "read" : "write"));
     }
 
     NCloud::Send(
@@ -351,7 +355,7 @@ void TAcquireShadowDiskActor::ReplyAndDie(
     auto response =
         std::make_unique<TEvVolumePrivate::TEvShadowDiskAcquired>(error);
     if (!HasError(error)) {
-        response->Devices.Swap(&AcquiredShadowDiskDevices);
+        response->Devices.Swap(&ShadowDiskDevices);
         response->ClientId = RwClientId;
     }
 
@@ -376,6 +380,7 @@ STFUNC(TAcquireShadowDiskActor::Work)
         HFunc(
             TEvDiskRegistry::TEvReleaseDiskResponse,
             HandleReleaseDiskResponse);
+        HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
         default:
@@ -460,6 +465,14 @@ void TAcquireShadowDiskActor::HandleWakeup(
         "Acquire timeout. Shadow disk " << ShadowDiskId.Quote());
 
     ReplyAndDie(ctx, MakeError(E_TIMEOUT));
+}
+
+void TAcquireShadowDiskActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    NCloud::Reply(ctx, *ev, std::make_unique<TEvents::TEvPoisonTaken>());
+    ReplyAndDie(ctx, MakeError(E_REJECTED));
 }
 
 void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
@@ -669,8 +682,7 @@ void TShadowDiskActor::OnMigrationProgress(
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillProgressUpdate,
-            migrationIndex,
-            SrcConfig->GetBlockCount());
+            migrationIndex);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -685,8 +697,7 @@ void TShadowDiskActor::OnMigrationFinished(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillCompleted,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount());
+            ProcessedBlockCount);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -699,8 +710,7 @@ void TShadowDiskActor::OnMigrationError(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillError,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount());
+            ProcessedBlockCount);
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -738,6 +748,8 @@ void TShadowDiskActor::AcquireShadowDisk(
         } break;
     }
 
+    CurrentShadowDiskClientId =
+        MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
     AcquireActorId = NCloud::Register(
         ctx,
         std::make_unique<TAcquireShadowDiskActor>(
@@ -747,7 +759,7 @@ void TShadowDiskActor::AcquireShadowDisk(
             acquireReason,
             ReadOnlyMount(),
             AreWritesToSrcDiskImpossible(),
-            MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount()),
+            CurrentShadowDiskClientId,
             MountSeqNumber,
             Generation,
             SelfId()));
@@ -775,17 +787,6 @@ void TShadowDiskActor::HandleShadowDiskAcquired(
             SetErrorState(ctx);
         }
         return;
-    }
-
-    auto newShadowDiskClientId = ev->Get()->ClientId;
-    if (CurrentShadowDiskClientId != newShadowDiskClientId) {
-        LOG_INFO_S(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "Shadow disk " << ShadowDiskId.Quote() << " acquired by new client "
-                           << newShadowDiskClientId.Quote() << " old "
-                           << CurrentShadowDiskClientId.Quote());
-        CurrentShadowDiskClientId = newShadowDiskClientId;
     }
 
     if (acquireReason == EAcquireReason::FirstAcquire) {
@@ -869,8 +870,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 CheckpointId,
                 EReason::FillProgressUpdate,
-                GetNextProcessingRange().Start,
-                SrcConfig->GetBlockCount()));
+                GetNextProcessingRange().Start));
     }
 
     STORAGE_CHECK_PRECONDITION(Acquired());
@@ -895,8 +895,7 @@ void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillError,
-            ProcessedBlockCount,
-            SrcConfig->GetBlockCount()));
+            ProcessedBlockCount));
 }
 
 bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const
@@ -1189,20 +1188,13 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
         return true;
     }
 
-    auto newShadowDiskClientid =
-        MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
-    if (CurrentShadowDiskClientId == newShadowDiskClientid) {
-        // The ClientID that should be used to acquire the shadow disk has
-        // not changed. There is no need to reacquire.
-        return true;
-    }
-
     // Reacquire shadow disk with new clientId.
     AcquireShadowDisk(ctx, EAcquireReason::ForcedReAcquire);
 
-    // It is necessary to handle the EvRWClientIdChanged message in the base class
-    // TNonreplicatedPartitionMigrationCommonActor too.
-    ev->Get()->RWClientId = newShadowDiskClientid;
+    // It is necessary to handle the EvRWClientIdChanged message in the base
+    // class TNonreplicatedPartitionMigrationCommonActor too.
+    ev->Get()->RWClientId =
+        MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
     return false;
 }
 

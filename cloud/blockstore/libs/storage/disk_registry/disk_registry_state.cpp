@@ -244,21 +244,13 @@ void SetDeviceErrorState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString TCheckpointInfo::UniqueId() const
+TString TCheckpointInfo::Id() const
 {
-    return MakeUniqueId(SourceDiskId, CheckpointId);
+    return MakeId(SourceDiskId, CheckpointId);
 }
 
 // static
-TString TCheckpointInfo::MakeUniqueId(
-    const TString& sourceDiskId,
-    const TString& checkpointId)
-{
-    return sourceDiskId + "-" + checkpointId;
-}
-
-// static
-TString TCheckpointInfo::MakeShadowDiskId(
+TString TCheckpointInfo::MakeId(
     const TString& sourceDiskId,
     const TString& checkpointId)
 {
@@ -552,7 +544,7 @@ void TDiskRegistryState::ProcessCheckpoints()
                 checkpointReplica.GetSourceDiskId(),
                 checkpointReplica.GetCheckpointId(),
                 diskId};
-            Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
+            Checkpoints[checkpointInfo.Id()] = std::move(checkpointInfo);
         }
     }
 }
@@ -2039,9 +2031,10 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         return MakeError(E_ARGUMENT, "Can't create checkpoint for checkpoint");
     }
 
-    auto shadowDiskId =
-        TCheckpointInfo::MakeShadowDiskId(sourceDiskId, checkpointId);
-    auto checkpointMediaKind = GetCheckpointShadowDiskType(diskInfo.MediaKind);
+    const auto shadowDiskId =
+        TCheckpointInfo::MakeId(sourceDiskId, checkpointId);
+    const auto checkpointMediaKind =
+        GetCheckpointShadowDiskType(diskInfo.MediaKind);
 
     TAllocateDiskParams diskParams{
         shadowDiskId,
@@ -2095,16 +2088,17 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         sourceDiskId,
         checkpointId,
         shadowDiskId};
-    Checkpoints[checkpointInfo.UniqueId()] = std::move(checkpointInfo);
+    Checkpoints[checkpointInfo.Id()] = std::move(checkpointInfo);
     return error;
 }
 
 NProto::TError TDiskRegistryState::DeallocateCheckpoint(
     TDiskRegistryDatabase& db,
     const TDiskId& sourceDiskId,
-    const TCheckpointId& checkpointId)
+    const TCheckpointId& checkpointId,
+    TDiskId* shadowDiskId)
 {
-    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto id = TCheckpointInfo::MakeId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
     if (!checkpointInfo) {
         return MakeError(
@@ -2114,12 +2108,12 @@ NProto::TError TDiskRegistryState::DeallocateCheckpoint(
                 << sourceDiskId.Quote() << " not found");
     }
 
-    const auto shadowDiskId = checkpointInfo->ShadowDiskId;
+    *shadowDiskId = checkpointInfo->ShadowDiskId;
 
     Checkpoints.erase(id);
 
-    MarkDiskForCleanup(db, shadowDiskId);
-    return DeallocateDisk(db, shadowDiskId);
+    MarkDiskForCleanup(db, *shadowDiskId);
+    return DeallocateDisk(db, *shadowDiskId);
 }
 
 NProto::TError TDiskRegistryState::GetCheckpointDataState(
@@ -2127,7 +2121,7 @@ NProto::TError TDiskRegistryState::GetCheckpointDataState(
     const TCheckpointId& checkpointId,
     NProto::ECheckpointState* checkpointState) const
 {
-    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto id = TCheckpointInfo::MakeId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
     if (!checkpointInfo) {
         return MakeError(
@@ -2159,7 +2153,7 @@ NProto::TError TDiskRegistryState::SetCheckpointDataState(
     const TCheckpointId& checkpointId,
     NProto::ECheckpointState checkpointState)
 {
-    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto id = TCheckpointInfo::MakeId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
     if (!checkpointInfo) {
         return MakeError(
@@ -2500,13 +2494,16 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
         TWellKnownEntityTypes::DISK,
         params.DiskId);
 
+    const bool isShadowDiskAllocation =
+        !checkpointParams.GetCheckpointId().Empty();
+
     auto onError = [&] {
         const bool isNewDisk = disk.Devices.empty();
 
         if (isNewDisk) {
             Disks.erase(params.DiskId);
 
-            if (!params.MasterDiskId) {
+            if (!params.MasterDiskId && !isShadowDiskAllocation) {
                 // failed to allocate storage for the new volume, need to
                 // destroy this volume
                 AddToBrokenDisks(now, db, params.DiskId);
@@ -3104,7 +3101,7 @@ NProto::TError TDiskRegistryState::GetShadowDiskId(
     const TCheckpointId& checkpointId,
     TDiskId* shadowDiskId) const
 {
-    auto id = TCheckpointInfo::MakeUniqueId(sourceDiskId, checkpointId);
+    const auto id = TCheckpointInfo::MakeId(sourceDiskId, checkpointId);
     const auto* checkpointInfo = Checkpoints.FindPtr(id);
     if (!checkpointInfo) {
         return MakeError(

@@ -1348,6 +1348,7 @@ struct TTxDiskRegistry
         const TString CheckpointId;
 
         NProto::TError Error;
+        TString ShadowDiskId;
 
         TDeallocateCheckpoint(
                 TRequestInfoPtr requestInfo,

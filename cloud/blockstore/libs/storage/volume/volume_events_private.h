@@ -157,16 +157,19 @@ struct TEvVolumePrivate
         TRequestInfoPtr RequestInfo;
         ui64 RequestId;
         bool Completed;
+        std::optional<TString> Error;
         TString ShadowDiskId;
 
         TUpdateCheckpointRequestRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
+                std::optional<TString> error,
                 TString shadowDiskId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
+            , Error(std::move(error))
             , ShadowDiskId(std::move(shadowDiskId))
         {
         }
@@ -248,17 +251,14 @@ struct TEvVolumePrivate
         TString CheckpointId;
         EReason Reason = EReason::FillError;
         ui64 ProcessedBlockCount = 0;
-        ui64 TotalBlockCount = 0;
 
         TUpdateShadowDiskStateRequest(
                 TString checkpointId,
                 EReason reason,
-                ui64 processedBlockCount,
-                ui64 totalBlockCount)
+                ui64 processedBlockCount)
             : CheckpointId(std::move(checkpointId))
             , Reason(reason)
             , ProcessedBlockCount(processedBlockCount)
-            , TotalBlockCount(totalBlockCount)
         {}
     };
 

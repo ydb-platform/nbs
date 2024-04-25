@@ -107,7 +107,9 @@ void TNonreplicatedPartitionMigrationActor::OnMigrationProgress(
     NCloud::Send(
         ctx,
         SrcConfig->GetParentActorId(),
-        std::make_unique<TEvVolume::TEvUpdateMigrationState>(migrationIndex));
+        std::make_unique<TEvVolume::TEvUpdateMigrationState>(
+            migrationIndex,
+            GetBlockCountNeedToBeProcessed()));
 
     UpdatingMigrationState = true;
 }

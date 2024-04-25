@@ -40,26 +40,20 @@ IOutputStream& operator <<(
     }
 }
 
-IOutputStream& operator<<(
-    IOutputStream& out,
-    const TActiveCheckpointInfo& checkpointInfo)
+IOutputStream& operator<<(IOutputStream& out, EShadowDiskState state)
 {
-    switch (checkpointInfo.Type) {
-        case ECheckpointType::Light: {
-            out << "no data (is light)";
-        } break;
-        case ECheckpointType::Normal: {
-            out << "normal (" << checkpointInfo.Data << ")";
-        } break;
-    }
-    if (checkpointInfo.ShadowDiskId) {
-        out << "<br/>";
-        out << " shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
-        out << " state: " << ToString(checkpointInfo.ShadowDiskState);
-        if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
-            out << " blocks: " << checkpointInfo.ProcessedBlockCount << "/"
-                << checkpointInfo.TotalBlockCount;
-        }
+    switch (state) {
+        case EShadowDiskState::None:
+        case EShadowDiskState::New:
+        case EShadowDiskState::Preparing:
+            out << ToString(state);
+            break;
+        case EShadowDiskState::Ready:
+            out << "<font color=green>" << ToString(state) << "</font>";
+            break;
+        case EShadowDiskState::Error:
+            out << "<font color=red>" << ToString(state) << "</font>";
+            break;
     }
     return out;
 }
@@ -100,19 +94,109 @@ IOutputStream& operator <<(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void OutputProgress(
+    ui64 blocks,
+    ui64 totalBlocks,
+    ui32 blockSize,
+    std::optional<ui64> blocksToProcess,
+    IOutputStream& out)
+{
+    TString processedSize = "?";
+    TString sizeToProcess = "?";
+    TString totalSize = FormatByteSize(totalBlocks * blockSize);
+    TString readyPercent = "?";
+    if (blocksToProcess) {
+        processedSize =
+            FormatByteSize((totalBlocks - *blocksToProcess) * blockSize);
+        sizeToProcess = FormatByteSize(*blocksToProcess * blockSize);
+
+        // Calculate the percentage with an accuracy of up to tenths of a
+        // percent.
+        readyPercent =
+            (TStringBuilder()
+             << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);
+    }
+
+    out << blocks << " (<font color=green>" << processedSize
+        << "</font> + <font color=red>" << sizeToProcess
+        << "</font> = " << totalSize << ", " << readyPercent << "%)";
+}
+
+
 void RenderCheckpointRequest(
     IOutputStream& out,
     const TCheckpointRequest& request)
 {
-    if (request.ShadowDiskId.empty()) {
-        return;
+    HTML(out)
+    {
+        if (request.ShadowDiskId) {
+            DIV()
+            {
+                out << "Shadow disk: " << request.ShadowDiskId.Quote();
+            }
+        }
+
+        DIV()
+        {
+            out << "State: " << request.ShadowDiskState;
+            if (request.ShadowDiskState == EShadowDiskState::Preparing) {
+                out << ", processed blocks: "
+                    << request.ShadowDiskProcessedBlockCount;
+            }
+        }
+
+        if (request.CheckpointError) {
+            DIV()
+            {
+                out << "Error: " << request.CheckpointError;
+            }
+        }
     }
+}
 
-    out << "shadow disk: " << request.ShadowDiskId.Quote()
-        << ", " << ToString(request.ShadowDiskState);
-
-    if (request.ShadowDiskState == EShadowDiskState::Preparing) {
-        out << " processed blocks: " << request.ShadowDiskProcessedBlockCount;
+void RenderCheckpointInfo(
+    ui64 blocksCount,
+    ui32 blockSize,
+    const TActiveCheckpointInfo& checkpointInfo,
+    IOutputStream& out)
+{
+    HTML(out)
+    {
+        DIV()
+        {
+            switch (checkpointInfo.Type) {
+                case ECheckpointType::Light: {
+                    out << "no data (light)";
+                } break;
+                case ECheckpointType::Normal: {
+                    out << "normal (" << checkpointInfo.Data << ")";
+                } break;
+            }
+        }
+        if (checkpointInfo.IsShadowDiskBased()) {
+            DIV()
+            {
+                out << " Shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
+            }
+            DIV()
+            {
+                out << " State: " << checkpointInfo.ShadowDiskState;
+            }
+            if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
+                DIV()
+                {
+                    out << "Block: ";
+                    OutputProgress(
+                        checkpointInfo.ProcessedBlockCount,
+                        blocksCount,
+                        blockSize,
+                        blocksCount - checkpointInfo.ProcessedBlockCount,
+                        out);
+                }
+            }
+        }
     }
 }
 
@@ -310,26 +394,6 @@ void OutputClientInfo(
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-void OutputProgress(
-    ui64 blocks,
-    ui64 totalBlocks,
-    ui32 blockSize,
-    IOutputStream& out)
-{
-    out << blocks;
-    out << " ("
-        << FormatByteSize(blocks * blockSize)
-        << ")";
-    out << " / ";
-    out << totalBlocks;
-    out << " ("
-        << FormatByteSize(totalBlocks * blockSize)
-        << ")";
-    out << " = ";
-    out << (100 * blocks / totalBlocks) << "%";
-}
 
 } // namespace
 
@@ -664,7 +728,15 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                 {
                     TABLER() {
                         TABLED() { out << r; }
-                        TABLED() { out << checkpointInfo; }
+                        TABLED() {
+                            RenderCheckpointInfo(
+                                GetBlocksCount(),
+                                State->GetMeta()
+                                    .GetVolumeConfig()
+                                    .GetBlockSize(),
+                                checkpointInfo,
+                                out);
+                        }
                         TABLED() {
                             BuildDeleteCheckpointButton(
                                 out,
@@ -1393,6 +1465,7 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
                             migrationIndex,
                             totalBlocks,
                             blockSize,
+                            State->GetBlockCountToMigrate(),
                             out);
                     }
                 }
@@ -1437,6 +1510,7 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
                             resyncIndex,
                             totalBlocks,
                             blockSize,
+                            totalBlocks - resyncIndex,
                             out);
                     }
                 }

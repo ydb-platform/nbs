@@ -140,7 +140,8 @@ void TDiskRegistryActor::ExecuteDeallocateCheckpoint(
     args.Error = State->DeallocateCheckpoint(
         db,
         args.SourceDiskId,
-        args.CheckpointId);
+        args.CheckpointId,
+        &args.ShadowDiskId);
 }
 
 void TDiskRegistryActor::CompleteDeallocateCheckpoint(
@@ -151,11 +152,15 @@ void TDiskRegistryActor::CompleteDeallocateCheckpoint(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] DeallocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s",
+            "[%lu] DeallocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s, "
+            "ShadowDiskId=%s",
             TabletID(),
             FormatError(args.Error).c_str(),
             args.SourceDiskId.Quote().c_str(),
-            args.SourceDiskId.Quote().c_str());
+            args.CheckpointId.Quote().c_str(),
+            args.ShadowDiskId.Quote().c_str());
+    } else {
+        OnDiskDeallocated(args.ShadowDiskId);
     }
 
     auto response =
@@ -163,6 +168,7 @@ void TDiskRegistryActor::CompleteDeallocateCheckpoint(
             std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    SecureErase(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

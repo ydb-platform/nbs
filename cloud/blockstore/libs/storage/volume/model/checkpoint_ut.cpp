@@ -29,7 +29,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Rejected,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 2,
@@ -37,7 +38,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 3,
@@ -45,14 +47,16 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
             TCheckpointRequest{
                 4,
                 "checkpoint-1",
                 TInstant::Now(),
                 ECheckpointRequestType::DeleteData,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 5,
@@ -60,21 +64,24 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
             TCheckpointRequest{
                 6,
                 "checkpoint-4",
                 TInstant::Now(),
                 ECheckpointRequestType::DeleteData,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
             TCheckpointRequest{
                 7,
                 "checkpoint-4",
                 TInstant::Now(),
                 ECheckpointRequestType::Delete,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 10,
@@ -82,7 +89,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 11,
@@ -90,7 +98,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Received,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 8,
@@ -98,14 +107,16 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::DeleteData,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
             TCheckpointRequest{
                 9,
                 "checkpoint-4",
                 TInstant::Now(),
                 ECheckpointRequestType::Delete,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 12,
@@ -113,7 +124,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 TInstant::Now(),
                 ECheckpointRequestType::CreateWithoutData,
                 ECheckpointRequestState::Completed,
-                ECheckpointType::Normal},
+                ECheckpointType::Normal,
+                false},
 
             TCheckpointRequest{
                 13,
@@ -124,8 +136,20 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 ECheckpointType::Normal,
                 "shadow-disk-6",
                 EShadowDiskState::Preparing,
-                512},
+                512,
+                TString()},
 
+            TCheckpointRequest{
+                14,
+                "checkpoint-7",
+                TInstant::Now(),
+                ECheckpointRequestType::Create,
+                ECheckpointRequestState::Completed,
+                ECheckpointType::Normal,
+                TString(),
+                EShadowDiskState::Error,
+                0,
+                "disk-error"},
         };
         TCheckpointStore store(
             TVector<TCheckpointRequest>{
@@ -140,27 +164,26 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(10, requestId);
         auto checkpoints = store.GetActiveCheckpoints();
-        UNIT_ASSERT_VALUES_EQUAL(4, checkpoints.size());
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(true, checkpoints.contains("checkpoint-5"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            store.DoesCheckpointHaveData("checkpoint-2"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.DoesCheckpointHaveData("checkpoint-1"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            false,
-            store.DoesCheckpointHaveData("checkpoint-5"));
+        UNIT_ASSERT_VALUES_EQUAL(5, checkpoints.size());
+        UNIT_ASSERT(checkpoints.contains("checkpoint-1"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-2"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-5"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-6"));
+        UNIT_ASSERT(checkpoints.contains("checkpoint-7"));
+        UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-1"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-2"));
+        UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-5"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-6"));
+        UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-7"));
 
         // The checkpoint without the shadow disk has the correct state.
+        UNIT_ASSERT(!checkpoints["checkpoint-1"].IsShadowDiskBased());
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-1"].ShadowDiskState,
             EShadowDiskState::None);
 
         // Checkpoint with the shadow disk loads the state.
+        UNIT_ASSERT(checkpoints["checkpoint-6"].IsShadowDiskBased());
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ShadowDiskId,
             "shadow-disk-6");
@@ -170,17 +193,24 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(
             checkpoints["checkpoint-6"].ProcessedBlockCount,
             512);
+
+        // Checkpoint with disk error.
+        UNIT_ASSERT(checkpoints["checkpoint-7"].IsShadowDiskBased());
+        UNIT_ASSERT_VALUES_EQUAL(
+            EShadowDiskState::Error,
+            checkpoints["checkpoint-7"].ShadowDiskState);
     }
 
     Y_UNIT_TEST(CreateFail)
     {
         TCheckpointStore store({}, "disk-1");
 
-        const auto& request = store.CreateNew(
+        const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
             TInstant::Now(),
             ECheckpointRequestType::Create,
-            ECheckpointType::Normal);
+            ECheckpointType::Normal,
+            false);
 
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -197,7 +227,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
         store.SetCheckpointRequestInProgress(requestId);
-        UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
+        UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
@@ -220,15 +250,17 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
     {
         TCheckpointStore store({}, "disk-1");
 
-        const auto& request = store.CreateNew(
+        const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
             TInstant::Now(),
             ECheckpointRequestType::Create,
-            ECheckpointType::Normal);
+            ECheckpointType::Normal,
+            false);
         store.SetCheckpointRequestSaved(request.RequestId);
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         store.SetCheckpointRequestInProgress(requestId);
+        UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         store.SetCheckpointRequestFinished(
             requestId,
             true,
@@ -250,15 +282,17 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         TCheckpointStore store({}, "disk-1");
         const TString checkpointId = "checkpoint";
 
-        const auto& request = store.CreateNew(
+        const auto& request = store.MakeCreateCheckpointRequest(
             checkpointId,
             TInstant::Now(),
             ECheckpointRequestType::Create,
-            ECheckpointType::Normal);
+            ECheckpointType::Normal,
+            true);
         store.SetCheckpointRequestSaved(request.RequestId);
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         store.SetCheckpointRequestInProgress(requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         store.SetCheckpointRequestFinished(
             requestId,
             true,
@@ -283,15 +317,13 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::New);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 0);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 0);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->HasShadowActor, false);
 
         // Advance fill progress
         store.SetShadowDiskState(
             checkpointId,
             EShadowDiskState::Preparing,
-            512,
-            1024);
+            512);
 
         checkpoint = store.GetCheckpoint(checkpointId);
 
@@ -299,13 +331,11 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::Preparing);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 512);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 1024);
 
         // Finish fill progress
         store.SetShadowDiskState(
             checkpointId,
             EShadowDiskState::Ready,
-            1024,
             1024);
 
         checkpoint = store.GetCheckpoint(checkpointId);
@@ -314,7 +344,6 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoint->ShadowDiskState,
             EShadowDiskState::Ready);
         UNIT_ASSERT_VALUES_EQUAL(checkpoint->ProcessedBlockCount, 1024);
-        UNIT_ASSERT_VALUES_EQUAL(checkpoint->TotalBlockCount, 1024);
 
         // Check actor created mark
         UNIT_ASSERT_VALUES_EQUAL(store.HasShadowActor(checkpointId), false);
@@ -330,11 +359,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         // repeat create checkpoint.
         for (int i = 0; i < 10; ++i) {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeCreateCheckpointRequest(
                 "checkpoint",
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
-                ECheckpointType::Normal);
+                ECheckpointType::Normal,
+                false);
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -368,11 +398,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         // repeat delete data.
         for (int i = 0; i < 10; ++i) {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeDeleteCheckpointDataRequest(
                 "checkpoint",
-                TInstant::Now(),
-                ECheckpointRequestType::DeleteData,
-                ECheckpointType::Normal);
+                TInstant::Now());
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -408,11 +436,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         // repeat delete checkpoint.
         for (int i = 0; i < 10; ++i) {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeDeleteCheckpointRequest(
                 "checkpoint",
-                TInstant::Now(),
-                ECheckpointRequestType::Delete,
-                ECheckpointType::Normal);
+                TInstant::Now());
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
@@ -446,11 +472,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         auto createCheckpoint = [&](TString checkpointId)
         {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeCreateCheckpointRequest(
                 checkpointId,
                 TInstant::Now(),
                 ECheckpointRequestType::Create,
-                ECheckpointType::Normal);
+                ECheckpointType::Normal,
+                false);
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -483,11 +510,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         auto createCheckpointWithoutData = [&](TString checkpointId)
         {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeCreateCheckpointRequest(
                 checkpointId,
                 TInstant::Now(),
                 ECheckpointRequestType::CreateWithoutData,
-                ECheckpointType::Normal);
+                ECheckpointType::Normal,
+                false);
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -519,11 +547,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         auto deleteCheckpointData = [&](TString checkpointId)
         {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeDeleteCheckpointDataRequest(
                 checkpointId,
-                TInstant::Now(),
-                ECheckpointRequestType::DeleteData,
-                ECheckpointType::Normal);
+                TInstant::Now());
 
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -555,11 +581,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         auto deleteCheckpoint = [&](TString checkpointId)
         {
-            const auto& request = store.CreateNew(
+            const auto& request = store.MakeDeleteCheckpointRequest(
                 checkpointId,
-                TInstant::Now(),
-                ECheckpointRequestType::Delete,
-                ECheckpointType::Normal);
+                TInstant::Now());
             store.SetCheckpointRequestSaved(request.RequestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());

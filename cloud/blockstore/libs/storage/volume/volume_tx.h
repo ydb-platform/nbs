@@ -428,18 +428,21 @@ struct TTxVolume
         const bool Completed;
         const TString ShadowDiskId;
         const EShadowDiskState ShadowDiskState;
+        const std::optional<TString> ErrorMessage;
 
         TUpdateCheckpointRequest(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 bool completed,
                 TString shadowDiskId,
-                EShadowDiskState shadowDiskState)
+                EShadowDiskState shadowDiskState,
+                std::optional<TString> errorMessage)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
             , ShadowDiskId(std::move(shadowDiskId))
             , ShadowDiskState(shadowDiskState)
+            , ErrorMessage(std::move(errorMessage))
         {}
 
         void Clear()
@@ -458,19 +461,16 @@ struct TTxVolume
         const ui64 RequestId;
         const EShadowDiskState ShadowDiskState;
         const ui64 ProcessedBlockCount;
-        const ui64 TotalBlockCount;
 
         TUpdateShadowDiskState(
                 TRequestInfoPtr requestInfo,
                 ui64 requestId,
                 EShadowDiskState shadowDiskState,
-                ui64 processedBlockCount,
-                ui64 totalBlockCount)
+                ui64 processedBlockCount)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , ShadowDiskState(shadowDiskState)
             , ProcessedBlockCount(processedBlockCount)
-            , TotalBlockCount(totalBlockCount)
         {}
 
         void Clear()

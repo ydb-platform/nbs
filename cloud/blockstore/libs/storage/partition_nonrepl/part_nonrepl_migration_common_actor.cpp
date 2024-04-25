@@ -63,6 +63,12 @@ TBlockRange64 TNonreplicatedPartitionMigrationCommonActor::
     return ProcessingBlocks.BuildProcessingRange();
 }
 
+ui64 TNonreplicatedPartitionMigrationCommonActor::
+    GetBlockCountNeedToBeProcessed() const
+{
+    return ProcessingBlocks.GetBlockCountNeedToBeProcessed();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TNonreplicatedPartitionMigrationCommonActor::HandlePoisonPill(

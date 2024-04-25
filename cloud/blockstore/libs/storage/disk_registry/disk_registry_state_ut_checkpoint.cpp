@@ -177,28 +177,28 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
     Y_UNIT_TEST(ShouldCreateCheckpointForMirrorDisk8192)
     {
         for (ui32 blockSize: AvailableBlockSizes) {
-        DoShouldCreateCheckpointForDiskRegistryBasedDisk(
-            [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
-            {
-                TVector<TDeviceConfig> devices;
-                TVector<TVector<TDeviceConfig>> replicas;
-                TVector<NProto::TDeviceMigration> migrations;
-                TVector<TString> deviceReplacementIds;
-                auto error = AllocateMirroredDisk(
-                    db,
-                    state,
-                    "disk-1",
-                    30_GB,
-                    1,
-                    devices,
-                    replicas,
-                    migrations,
-                    deviceReplacementIds,
-                    TInstant::Seconds(100),
-                    NProto::STORAGE_MEDIA_SSD_MIRROR2,
-                    blockSize);
-                UNIT_ASSERT_SUCCESS(error);
-            });
+            DoShouldCreateCheckpointForDiskRegistryBasedDisk(
+                [&](TDiskRegistryState& state, TDiskRegistryDatabase db)
+                {
+                    TVector<TDeviceConfig> devices;
+                    TVector<TVector<TDeviceConfig>> replicas;
+                    TVector<NProto::TDeviceMigration> migrations;
+                    TVector<TString> deviceReplacementIds;
+                    auto error = AllocateMirroredDisk(
+                        db,
+                        state,
+                        "disk-1",
+                        30_GB,
+                        1,
+                        devices,
+                        replicas,
+                        migrations,
+                        deviceReplacementIds,
+                        TInstant::Seconds(100),
+                        NProto::STORAGE_MEDIA_SSD_MIRROR2,
+                        blockSize);
+                    UNIT_ASSERT_SUCCESS(error);
+                });
         }
     }
 
@@ -245,6 +245,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     E_BS_DISK_ALLOCATION_FAILED,
                     error.GetCode());
+            });
+
+        executor.ReadTx(
+            [&](TDiskRegistryDatabase db) mutable
+            {
+                // A shadow disk that could not be created should not be
+                // included in the list of broken disks.
+                TVector<TBrokenDiskInfo> diskInfos;
+                UNIT_ASSERT(db.ReadBrokenDisks(diskInfos));
+                UNIT_ASSERT_VALUES_EQUAL(0, diskInfos.size());
             });
     }
 
@@ -358,8 +368,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_SUCCESS(error);
             });
 
@@ -369,8 +382,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, error.GetCode());
             });
 
@@ -457,8 +473,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCheckpointTest)
             {
                 TVector<TDeviceConfig> devices;
                 TString shadowDiskId;
-                auto error =
-                    state.DeallocateCheckpoint(db, "disk-1", "checkpoint-1");
+                auto error = state.DeallocateCheckpoint(
+                    db,
+                    "disk-1",
+                    "checkpoint-1",
+                    &shadowDiskId);
                 UNIT_ASSERT_SUCCESS(error);
             });
 

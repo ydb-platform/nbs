@@ -525,14 +525,12 @@ std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
 TVolumeClient::CreateUpdateShadowDiskStateRequest(
     TString checkpointId,
     TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
-    ui64 processedBlockCount,
-    ui64 totalBlockCount)
+    ui64 processedBlockCount)
 {
     return make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
         std::move(checkpointId),
         reason,
-        processedBlockCount,
-        totalBlockCount);
+        processedBlockCount);
 }
 
 void TVolumeClient::SendRemoteHttpInfo(

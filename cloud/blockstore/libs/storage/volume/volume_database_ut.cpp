@@ -254,38 +254,44 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TInstant::Seconds(111),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                true});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 2,
                 "yyy",
                 TInstant::Seconds(222),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 3,
                 "zzz",
                 TInstant::Seconds(333),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                true});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 4,
                 "xxx",
                 TInstant::Seconds(444),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.UpdateCheckpointRequest(
                 1,
                 true,
                 "shadow-disk-id",
-                EShadowDiskState::New);
+                EShadowDiskState::New,
+                TString());
             db.UpdateCheckpointRequest(
                 3,
                 false,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                "Error message");
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -324,6 +330,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(3, requests[2].RequestId);
             UNIT_ASSERT_VALUES_EQUAL("zzz", requests[2].CheckpointId);
             UNIT_ASSERT_VALUES_EQUAL("", requests[2].ShadowDiskId);
+            UNIT_ASSERT_VALUES_EQUAL("Error message", requests[2].CheckpointError);
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(333),
                 requests[2].Timestamp
@@ -360,12 +367,14 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                     TInstant::Seconds(111),
                     ECheckpointRequestType::Create,
                     ECheckpointRequestState::Saved,
-                    ECheckpointType::Normal});
+                    ECheckpointType::Normal,
+                    false});
                 db.UpdateCheckpointRequest(
                     1,
                     true,
                     "shadow-disk-id",
-                    EShadowDiskState::New);
+                    EShadowDiskState::New,
+                    TString());
             });
 
         executor.ReadTx(
@@ -583,48 +592,56 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TInstant::Seconds(111),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 2,
                 "yyy",
                 TInstant::Seconds(222),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 3,
                 "xxx",
                 TInstant::Seconds(333),
                 ECheckpointRequestType::Delete,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.WriteCheckpointRequest(TCheckpointRequest{
                 4,
                 "yyy",
                 TInstant::Seconds(444),
                 ECheckpointRequestType::Delete,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.UpdateCheckpointRequest(
                 1,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 2,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 3,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
             db.UpdateCheckpointRequest(
                 4,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
@@ -767,12 +784,14 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TInstant::Seconds(555),
                 ECheckpointRequestType::Create,
                 ECheckpointRequestState::Saved,
-                ECheckpointType::Normal});
+                ECheckpointType::Normal,
+                false});
             db.UpdateCheckpointRequest(
                 5,
                 true,
                 "",
-                EShadowDiskState::None);
+                EShadowDiskState::None,
+                TString());
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {

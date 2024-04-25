@@ -8,6 +8,24 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TActiveCheckpointInfo::IsShadowDiskBased() const
+{
+    return ShadowDiskState != EShadowDiskState::None;
+}
+
+bool TActiveCheckpointInfo::ShouldBlockWrites() const
+{
+    if (Type == ECheckpointType::Light) {
+        return false;
+    }
+    if (Data == ECheckpointData::DataDeleted) {
+        return false;
+    }
+    return !IsShadowDiskBased();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCheckpointStore::TCheckpointStore(
     TVector<TCheckpointRequest> checkpointRequests,
     const TString& diskID)
@@ -22,25 +40,53 @@ TCheckpointStore::TCheckpointStore(
     }
 }
 
-const TCheckpointRequest& TCheckpointStore::CreateNew(
+const TCheckpointRequest& TCheckpointStore::MakeCreateCheckpointRequest(
     TString checkpointId,
     TInstant timestamp,
     ECheckpointRequestType reqType,
-    ECheckpointType type)
+    ECheckpointType type,
+    bool useShadowDisk)
 {
-    if (!CheckpointRequests.empty()) {
-        const auto& lastReq = CheckpointRequests.rbegin()->second;
-        timestamp =
-            Max(timestamp, lastReq.Timestamp + TDuration::MicroSeconds(1));
-    }
-
-    return AddCheckpointRequest(TCheckpointRequest{
+    return AddCheckpointRequest(TCheckpointRequest(
         ++LastCheckpointRequestId,
         std::move(checkpointId),
-        timestamp,
+        GetCorrectedTimestamp(timestamp),
         reqType,
         ECheckpointRequestState::Received,
-        type});
+        type,
+        useShadowDisk));
+}
+
+const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointRequest(
+    const TString& checkpointId,
+    TInstant timestamp)
+{
+    auto checkpointInfo = GetCheckpoint(checkpointId);
+
+    return AddCheckpointRequest(TCheckpointRequest(
+        ++LastCheckpointRequestId,
+        checkpointId,
+        GetCorrectedTimestamp(timestamp),
+        ECheckpointRequestType::Delete,
+        ECheckpointRequestState::Received,
+        checkpointInfo ? checkpointInfo->Type : ECheckpointType::Normal,
+        checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
+}
+
+const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
+    const TString& checkpointId,
+    TInstant timestamp)
+{
+    auto checkpointInfo = GetCheckpoint(checkpointId);
+
+    return AddCheckpointRequest(TCheckpointRequest(
+        ++LastCheckpointRequestId,
+        checkpointId,
+        GetCorrectedTimestamp(timestamp),
+        ECheckpointRequestType::DeleteData,
+        ECheckpointRequestState::Received,
+        checkpointInfo ? checkpointInfo->Type : ECheckpointType::Normal,
+        checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
 void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
@@ -61,11 +107,15 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
     CheckpointBeingCreated =
         checkpointRequest.ReqType == ECheckpointRequestType::Create ||
         checkpointRequest.ReqType == ECheckpointRequestType::CreateWithoutData;
+
+    CheckpointBlockingWritesBeingCreated =
+        CheckpointBeingCreated &&
+        checkpointRequest.ShadowDiskState == EShadowDiskState::None;
 }
 
 void TCheckpointStore::SetCheckpointRequestFinished(
     ui64 requestId,
-    bool success,
+    bool completed,
     TString shadowDiskId,
     EShadowDiskState shadowDiskState)
 {
@@ -74,29 +124,31 @@ void TCheckpointStore::SetCheckpointRequestFinished(
         auto& checkpointRequest = GetRequest(requestId);
         Y_DEBUG_ABORT_UNLESS(
             checkpointRequest.State == ECheckpointRequestState::Saved);
-        checkpointRequest.State = success ? ECheckpointRequestState::Completed
-                                          : ECheckpointRequestState::Rejected;
+        if (shadowDiskState != EShadowDiskState::None || shadowDiskId) {
+            Y_DEBUG_ABORT_UNLESS(
+                checkpointRequest.ShadowDiskState != EShadowDiskState::None);
+        }
+        checkpointRequest.State = completed ? ECheckpointRequestState::Completed
+                                            : ECheckpointRequestState::Rejected;
         checkpointRequest.ShadowDiskId = std::move(shadowDiskId);
         checkpointRequest.ShadowDiskState = shadowDiskState;
         Apply(checkpointRequest);
     }
     CheckpointRequestInProgress = 0;
     CheckpointBeingCreated = false;
+    CheckpointBlockingWritesBeingCreated = false;
 }
 
 void TCheckpointStore::SetShadowDiskState(
     const TString& checkpointId,
     EShadowDiskState shadowDiskState,
-    ui64 processedBlockCount,
-    ui64 totalBlockCount)
+    ui64 processedBlockCount)
 {
+    Y_DEBUG_ABORT_UNLESS(shadowDiskState != EShadowDiskState::None);
+
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
-        if (shadowDiskState == EShadowDiskState::Ready) {
-            checkpointData->Data = ECheckpointData::DataPresent;
-        }
         checkpointData->ShadowDiskState = shadowDiskState;
         checkpointData->ProcessedBlockCount = processedBlockCount;
-        checkpointData->TotalBlockCount = totalBlockCount;
 
         if (auto* checkpointRequest =
                 CheckpointRequests.FindPtr(checkpointData->RequestId))
@@ -142,7 +194,8 @@ bool TCheckpointStore::IsCheckpointBeingCreated() const
 
 bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
 {
-    return CheckpointBlockingWritesExists;
+    return CheckpointBlockingWritesBeingCreated ||
+           CheckpointBlockingWritesExists;
 }
 
 bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
@@ -297,11 +350,7 @@ void TCheckpointStore::CalcCheckpointsState()
 {
     CheckpointBlockingWritesExists = AnyOf(
         ActiveCheckpoints,
-        [](const auto& it)
-        {
-            return it.second.Data == ECheckpointData::DataPresent &&
-                   it.second.ShadowDiskId.empty();
-        });
+        [](const auto& it) { return it.second.ShouldBlockWrites(); });
 }
 
 void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
@@ -327,6 +376,16 @@ void TCheckpointStore::Apply(const TCheckpointRequest& checkpointRequest)
             break;
         }
     }
+}
+
+TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
+{
+    if (!CheckpointRequests.empty()) {
+        const auto& lastReq = CheckpointRequests.rbegin()->second;
+        timestamp =
+            Max(timestamp, lastReq.Timestamp + TDuration::MicroSeconds(1));
+    }
+    return timestamp;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
