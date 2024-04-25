@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
-
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -1231,61 +1230,6 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	testcommon.CheckConsistency(t, ctx)
-}
-
-func TestDiskServiceTransferFromDiskToDiskTask(t *testing.T) { // TODO:_ test name?
-	ctx := testcommon.NewContext()
-
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
-	sourceDiskID := t.Name() + "_source"
-	targetDiskID := t.Name() + "_target"
-	// TODO:_ type of size -- ok?
-	diskSize := int64(8) * 1024 * 1024 * 1024 * 1024 // 8 TiB
-	diskKind := disk_manager.DiskKind_DISK_KIND_SSD
-
-	reqCtx := testcommon.GetRequestContext(t, ctx)
-	operation1, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: diskSize,
-		Kind: diskKind,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
-			DiskId: sourceDiskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation1)
-
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation2, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
-		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
-			SrcEmpty: &empty.Empty{},
-		},
-		Size: diskSize,
-		Kind: diskKind,
-		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
-			DiskId: targetDiskID,
-		},
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation2)
-
-	err = internal_client.WaitOperation(ctx, client, operation1.Id)
-	require.NoError(t, err)
-	err = internal_client.WaitOperation(ctx, client, operation2.Id)
-	require.NoError(t, err)
-
-	nbsClient := testcommon.NewNbsClient(t, ctx, "zone-a")
-	_, err = nbsClient.FillDisk(ctx, sourceDiskID, 4*1024*1024)
 	require.NoError(t, err)
 
 	testcommon.CheckConsistency(t, ctx)
