@@ -17,11 +17,17 @@ struct TDefaultCache: TReadAheadCache
     static constexpr ui32 MaxResultsPerNode = 32;
     static constexpr ui32 RangeSize = 1_MB;
     static constexpr ui32 MaxGap = 20;
+    static constexpr ui32 MaxHandlesPerNode = 128;
 
     TDefaultCache()
         : TReadAheadCache(TDefaultAllocator::Instance())
     {
-        Reset(MaxNodes, MaxResultsPerNode, RangeSize, MaxGap);
+        Reset(
+            MaxNodes,
+            MaxResultsPerNode,
+            RangeSize,
+            MaxGap,
+            MaxHandlesPerNode);
     }
 };
 
@@ -315,7 +321,7 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
     Y_UNIT_TEST(ShouldCacheResultsByHandle)
     {
         TReadAheadCache cache(TDefaultAllocator::Instance());
-        cache.Reset(32, 4, 1_MB, 20);
+        cache.Reset(32, 4, 1_MB, 20, 64);
 
         RegisterResult(cache, 111, Handle1, 0, 1_MB);
         RegisterResult(cache, 111, Handle2, 1_MB, 1_MB);
@@ -469,6 +475,50 @@ Y_UNIT_TEST_SUITE(TReadAheadTest)
         UNIT_ASSERT_VALUES_EQUAL(
             Expected(lastNodeId, lastOffset, 1_MB, 0),
             FillResult(cache, lastNodeId, lastOffset, 1_MB));
+    }
+
+    Y_UNIT_TEST(ShouldEvictHandles)
+    {
+        TDefaultCache cache;
+
+        const ui64 nodeId = 1;
+        ui64 handle = 1;
+        while (handle < TDefaultCache::MaxHandlesPerNode + 1) {
+            RegisterResult(cache, nodeId, handle, handle * 1_MB, 1_MB);
+
+            ++handle;
+        }
+
+        while (handle < 2 * TDefaultCache::MaxHandlesPerNode + 1) {
+            RegisterResult(cache, nodeId, handle, handle * 1_MB, 1_MB);
+
+            ++handle;
+        }
+
+        const ui64 firstHandle = handle - TDefaultCache::MaxHandlesPerNode;
+        const ui64 lastHandle = handle - 1;
+
+        // nothing should be cached for the handles with id < firstHandle
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(cache, nodeId, 1, 1 * 1_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            FillResult(
+                cache,
+                nodeId,
+                firstHandle - 1,
+                (firstHandle - 1) * 1_MB,
+                1_MB));
+
+        // results for the handles with id >= firstHandle should be cached
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(nodeId, firstHandle * 1_MB, 1_MB, 0),
+            FillResult(cache, nodeId, firstHandle, firstHandle * 1_MB, 1_MB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Expected(nodeId, lastHandle * 1_MB, 1_MB, 0),
+            FillResult(cache, nodeId, lastHandle, lastHandle * 1_MB, 1_MB));
     }
 
     Y_UNIT_TEST(ShouldFilterResult)
