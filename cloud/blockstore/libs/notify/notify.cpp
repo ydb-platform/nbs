@@ -144,7 +144,7 @@ public:
                 return IamClient->GetTokenAsync().Apply(
                     [weakPtr = weak_from_this()](const auto& future) -> TResultOrError<TString>
                     {
-                        auto response = future.GetValue();
+                        const auto& response = future.GetValue();
 
                         if (HasError(response)) {
                             return response.GetError();
