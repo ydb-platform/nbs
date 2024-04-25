@@ -106,6 +106,7 @@ public:
 
 class TService final
     : public IService
+    , public std::enable_shared_from_this<TService>
 {
 private:
     const TNotifyConfigPtr Config;
@@ -114,9 +115,9 @@ private:
     TLog Log;
 
 public:
-    explicit TService(
-        TNotifyConfigPtr config,
-        NCloud::NIamClient::IIamTokenClientPtr iamClient)
+    TService(
+            TNotifyConfigPtr config,
+            NCloud::NIamClient::IIamTokenClientPtr iamClient)
         : Config(std::move(config))
         , IamClient(std::move(iamClient))
     {}
@@ -141,7 +142,7 @@ public:
                     << "IAM client is missing");
             } else {
                 return IamClient->GetTokenAsync().Apply(
-                    [this](const auto& future) -> TResultOrError<TString>
+                    [weakPtr = weak_from_this()](const auto& future) -> TResultOrError<TString>
                     {
                         auto response = future.GetValue();
 
@@ -151,10 +152,14 @@ public:
 
                         auto tokenInfo = response.GetResult();
                         if (tokenInfo.Token.empty()) {
-                            STORAGE_WARN(
-                                "missing iam-token "
-                                << "Got error while requesting token: "
-                                << "iam token is empty");
+                            auto self = weakPtr.lock();
+                            if (self) {
+                                auto& Log = self->Log;
+                                STORAGE_WARN(
+                                    "missing iam-token "
+                                    << "Got error while requesting token: "
+                                    << "iam token is empty");
+                            }
                             return MakeError(E_ARGUMENT, "empty iam token");
                         };
 
@@ -195,7 +200,7 @@ public:
         auto p = NewPromise<NProto::TError>();
 
         GetIamToken().Subscribe(
-            [this, p, event = data.Event, v = std::move(v)](
+            [weakPtr= weak_from_this(), p, event = data.Event, v = std::move(v)](
                 TFuture<TResultOrError<TString>> future) mutable
             {
                 auto [token, error] = future.ExtractValue();
@@ -203,9 +208,17 @@ public:
                     p.SetValue(error);
                     return;
                 }
+                auto self = weakPtr.lock();
 
-                HttpsClient.Post(
-                    Config->GetEndpoint(),
+                if (!self) {
+                    p.SetValue(MakeError(
+                        E_REJECTED,
+                        "Object of the Notify class was destroyed before request sending"));
+                    return;
+                }
+
+                self->HttpsClient.Post(
+                    self->Config->GetEndpoint(),
                     v.GetStringRobust(),
                     "application/json",
                     token,

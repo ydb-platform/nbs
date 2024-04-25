@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <util/generic/string.h>
 
@@ -26,7 +25,7 @@ public:
         const TString& endpoint,
         const TString& data,
         const TString& contentType,
-        const TString& iamToken,
+        const TString& authHeader,
         const THttpsCallback& callback);
 
 private:
