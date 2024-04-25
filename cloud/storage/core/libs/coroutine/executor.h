@@ -43,7 +43,7 @@ public:
     template <typename T>
     const T& WaitFor(const NThreading::TFuture<T>& future)
     {
-        struct TRequestCancelled : T
+        struct TRequestCancelled: T
         {
             TRequestCancelled()
                 : T(TErrorResponse(E_REJECTED, "request cancelled"))
@@ -54,6 +54,15 @@ public:
             return Default<TRequestCancelled>();
         }
         return future.GetValue();
+    }
+
+    template <typename T>
+    T WaitFor(NThreading::TFuture<T>&& future)
+    {
+        if (!future.HasValue() && !WaitForI(future)) {
+            return TErrorResponse(E_REJECTED, "request cancelled");
+        }
+        return future.ExtractValue();
     }
 
     void WaitFor(NThreading::TFuture<void> future)
