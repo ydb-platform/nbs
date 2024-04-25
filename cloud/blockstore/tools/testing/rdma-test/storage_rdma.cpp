@@ -330,12 +330,13 @@ IStoragePtr CreateRdmaStorage(
     NRdma::IClientPtr client,
     ITaskQueuePtr taskQueue,
     const TString& address,
-    ui32 port)
+    ui32 port,
+    TDuration timeout)
 {
     auto storage = TRdmaStorage::Create(std::move(taskQueue));
 
     auto startEndpoint = client->StartEndpoint(address, port);
-    storage->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
+    storage->Init(startEndpoint.GetValue(timeout));
 
     return storage;
 }

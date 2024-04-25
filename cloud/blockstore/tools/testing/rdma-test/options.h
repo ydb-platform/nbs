@@ -50,6 +50,7 @@ struct TOptions
     ui32 QueueSize = 256;
     ui32 PollerThreads = 1;
     EWaitMode WaitMode = EWaitMode::Poll;
+    ui32 ConnectTimeout = 5;
 
     // storage options
     EStorageKind StorageKind = EStorageKind::Null;

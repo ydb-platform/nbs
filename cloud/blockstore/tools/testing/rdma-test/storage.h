@@ -66,7 +66,8 @@ IStoragePtr CreateRdmaStorage(
     NRdma::IClientPtr client,
     ITaskQueuePtr taskQueue,
     const TString& address,
-    ui32 port);
+    ui32 port,
+    TDuration timeout);
 
 size_t CopyMemory(const TSgList& dst, TStringBuf src);
 size_t CopyMemory(TStringBuf dst, const TSgList& src);

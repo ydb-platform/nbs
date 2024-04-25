@@ -59,6 +59,11 @@ void TOptions::Parse(int argc, char** argv)
             WaitMode = FromString<EWaitMode>(s);
         });
 
+    opts.AddLongOption("connect-timeout")
+        .RequiredArgument("SEC")
+        .DefaultValue(ToString(ConnectTimeout))
+        .StoreResult(&ConnectTimeout);
+
     // device geometry
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")

@@ -198,7 +198,8 @@ IRunnablePtr TBootstrap::CreateTest()
             Client,
             ThreadPool,
             Options->Host,
-            Options->Port);
+            Options->Port,
+            TDuration::Seconds(Options->ConnectTimeout));
         break;
     }
 
