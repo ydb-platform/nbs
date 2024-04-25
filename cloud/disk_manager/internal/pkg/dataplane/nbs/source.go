@@ -88,6 +88,9 @@ func (s *diskSource) generateChunkIndices(
 			blockCount = uint32(totalBlockCount - blockIndex)
 		}
 
+		// TODO:_ remove this
+		logging.Info(ctx, "Sending GetChangedBlocks request for diskID = %v, blockIndex = %v", s.diskID, blockIndex)
+
 		blockMask, err := s.client.GetChangedBlocks(
 			ctx,
 			s.diskID,
@@ -122,6 +125,8 @@ func (s *diskSource) generateChunkIndices(
 				i++
 			}
 
+			logging.Info(ctx, "Calling UpdateDefaultMilestoneValue with value %v", chunkIndex)
+			s.chunkIndices.UpdateDefaultMilestoneValue(chunkIndex) // TODO:_ don't we do this too often?
 			chunkIndex++
 		}
 

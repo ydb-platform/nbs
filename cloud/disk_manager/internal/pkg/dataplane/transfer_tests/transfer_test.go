@@ -155,6 +155,7 @@ func createDisk(
 	ctx context.Context,
 	factory nbs_client.Factory,
 	disk *types.Disk,
+	blockCount uint64, // TODO:_ ambiguous name
 ) {
 
 	client, err := factory.GetClient(ctx, disk.ZoneId)
@@ -577,11 +578,11 @@ func TestTransferFromDiskToDisk(t *testing.T) {
 
 			diskID1 := fmt.Sprintf("%v_%v", toDiskID(t), 1)
 			disk1 := &types.Disk{ZoneId: "zone", DiskId: diskID1}
-			createDisk(t, ctx, factory, disk1)
+			createDisk(t, ctx, factory, disk1, blockCount)
 
 			diskID2 := fmt.Sprintf("%v_%v", toDiskID(t), 2)
 			disk2 := &types.Disk{ZoneId: "zone", DiskId: diskID2}
-			createDisk(t, ctx, factory, disk2)
+			createDisk(t, ctx, factory, disk2, blockCount)
 
 			from := Resource{
 				newSource: func() dataplane_common.Source {
@@ -641,7 +642,7 @@ func TestTransferFromDiskToSnapshot(t *testing.T) {
 
 			diskID := toDiskID(t)
 			disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
-			createDisk(t, ctx, factory, disk)
+			createDisk(t, ctx, factory, disk, blockCount)
 
 			snapshotID := t.Name()
 
@@ -698,7 +699,7 @@ func TestTransferFromSnapshotToDisk(t *testing.T) {
 
 			diskID := toDiskID(t)
 			disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
-			createDisk(t, ctx, factory, disk)
+			createDisk(t, ctx, factory, disk, blockCount)
 
 			snapshotID := t.Name()
 
@@ -803,7 +804,7 @@ func TestTransferFromDiskToIncrementalSnapshot(t *testing.T) {
 			diskID := toDiskID(t)
 			disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
 
-			createDisk(t, ctx, factory, disk)
+			createDisk(t, ctx, factory, disk, blockCount)
 			from, baseChunks := fillDisk(t, ctx, factory, disk, "base")
 
 			baseSnapshotID := t.Name() + "_base"
@@ -873,7 +874,7 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 	diskID := toDiskID(t)
 	disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
 
-	createDisk(t, ctx, factory, disk)
+	createDisk(t, ctx, factory, disk, blockCount)
 	from, baseChunks := fillDiskRange(
 		t,
 		ctx,
@@ -934,4 +935,65 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 	// TODO: check transferred chunk count.
 	_ = transfer(t, ctx, from, to, true)
 	to.checkChunks(t, ctx, expectedChunks)
+}
+
+func TestTransferFromDiskToDiskWithSmallAmountOfChangedBlocksOnBigDisk(t *testing.T) { // TODO:_ test name
+	// TODO:_ test cases?
+	ctx, cancel := context.WithCancel(newContext()) // TODO:_ not to cancel context since we have no testcases?
+	defer cancel()
+
+	factory := newFactory(t, ctx)
+
+	diskSize := uint64(128) * 4096 * 4096 * 4096
+	blockCount := diskSize / uint64(blockSize)
+
+	diskID1 := fmt.Sprintf("%v_%v", toDiskID(t), 1)
+	disk1 := &types.Disk{ZoneId: "zone", DiskId: diskID1}
+	createDisk(t, ctx, factory, disk1, blockCount)
+
+	diskID2 := fmt.Sprintf("%v_%v", toDiskID(t), 2)
+	disk2 := &types.Disk{ZoneId: "zone", DiskId: diskID2}
+	createDisk(t, ctx, factory, disk2, blockCount)
+
+	from := Resource{
+		newSource: func() dataplane_common.Source {
+			return newDiskSource(t, ctx, factory, disk1)
+		},
+		newTarget: func() dataplane_common.Target {
+			target, err := nbs.NewDiskTarget(
+				ctx,
+				factory,
+				disk1,
+				nil,
+				chunkSize,
+				false, // ignoreZeroChunks
+				0,     // fillGeneration
+				0,     // fillSeqNumber
+			)
+			require.NoError(t, err)
+			return target
+		},
+	}
+
+	to := Resource{
+		newSource: func() dataplane_common.Source {
+			return newDiskSource(t, ctx, factory, disk2)
+		},
+		newTarget: func() dataplane_common.Target {
+			target, err := nbs.NewDiskTarget(
+				ctx,
+				factory,
+				disk2,
+				nil,
+				chunkSize,
+				false, // ignoreZeroChunks
+				0,     // fillGeneration
+				0,     // fillSeqNumber
+			)
+			require.NoError(t, err)
+			return target
+		},
+	}
+
+	fillAndTransfer(t, ctx, from, to, true)
 }

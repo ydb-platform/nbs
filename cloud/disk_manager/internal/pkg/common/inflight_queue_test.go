@@ -66,3 +66,45 @@ func TestInflightQueueAdd(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context canceled")
 }
+
+func TestInflightQueueMilestone(t *testing.T) {
+	ctx := newContext()
+	milestone := Milestone{Value: 10, ProcessedValueCount: 100}
+	inflightLimit := 10
+	processedValues := make(chan uint32, inflightLimit)
+
+	queue := NewInflightQueue(
+		milestone,
+		processedValues,
+		ChannelWithCancellation{}, // holeValues
+		inflightLimit,
+	)
+
+	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: 100})
+
+	queue.Add(ctx, 10)
+	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: 100})
+	processedValues <- 10
+	require.Equal(t, queue.Milestone(), Milestone{Value: 11, ProcessedValueCount: 101})
+
+	queue.Add(ctx, 13)
+	queue.Add(ctx, 15)
+	queue.Add(ctx, 16)
+	processedValues <- 13
+	require.Equal(t, queue.Milestone(), Milestone{Value: 15, ProcessedValueCount: 102})
+	processedValues <- 15
+	require.Equal(t, queue.Milestone(), Milestone{Value: 16, ProcessedValueCount: 103})
+	processedValues <- 16
+	require.Equal(t, queue.Milestone(), Milestone{Value: 17, ProcessedValueCount: 103})
+
+	queue.UpdateDefaultMilestoneValue(20)
+	require.Equal(t, queue.Milestone(), Milestone{Value: 20, ProcessedValueCount: 103})
+
+	queue.Add(ctx, 22)
+	queue.Add(ctx, 25)
+	queue.UpdateDefaultMilestoneValue(30)
+	processedValues <- 22
+	require.Equal(t, queue.Milestone(), Milestone{Value: 25, ProcessedValueCount: 104})
+	processedValues <- 25
+	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: 105})
+}
