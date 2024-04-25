@@ -2,7 +2,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -161,47 +160,15 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 		}
 	}
 
-	fmt.Printf("valueProcessed: value = %v, toRemoveCount = %v\n", value, toRemoveCount)
-
-	// q.updateMilestoneOnDrain(toRemoveCount)
-
-	if toRemoveCount == 0 {
-		// TODO:_ check default milestone here!!!
-		fmt.Printf("valueProcessed: toRemoveCount == 0; q.defaultMilestoneValue = %v, q.milestone.Value = %v\n", q.defaultMilestoneValue, q.milestone.Value)
-		if q.defaultMilestoneValue > q.milestone.Value {
-			q.milestone.Value = q.defaultMilestoneValue
-		}
-		// TODO:_ dedup? Make separate method like 'update milestone'?
-		return
-	}
-
-	newMilestoneValue := uint32(0)
-	if toRemoveCount >= len(q.items) {
-		lastItemValue := q.items[len(q.items)-1].value
-		newMilestoneValue = lastItemValue + 1
-		fmt.Printf("valueProcessed: toRemoveCount >= len(q.items)\n")
-		if q.defaultMilestoneValue > newMilestoneValue {
-			fmt.Printf("valueProcessed: q.defaultMilestoneValue > newMilestoneValue\n")
-			newMilestoneValue = q.defaultMilestoneValue
-		}
-	} else {
-		fmt.Printf("valueProcessed: toRemoveCount < len(q.items)\n")
-		newMilestoneValue = q.items[toRemoveCount].value
-	}
-	fmt.Printf("valueProcessed: q.defaultMilestoneValue = %v, newMilestoneValue = %v\n", q.defaultMilestoneValue, newMilestoneValue)
-
-	q.milestone.Value = newMilestoneValue
-	q.milestone.ProcessedValueCount += uint32(toRemoveCount)
-
-	// Remove processed (not in-flight) items from the head.
+	q.updateMilestoneOnDrain(toRemoveCount)
 	q.items = q.items[toRemoveCount:]
 }
 
 func (q *InflightQueue) updateMilestoneOnDrain(toRemoveCount int) {
-	newMilestoneValue := uint32(0)
+	newMilestoneValue := q.milestone.Value
 
 	if toRemoveCount >= len(q.items) {
-		if toRemoveCount > 0 {
+		if len(q.items) > 0 {
 			lastItemValue := q.items[len(q.items)-1].value
 			newMilestoneValue = lastItemValue + 1
 		}
