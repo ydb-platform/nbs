@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -80,31 +81,42 @@ func TestInflightQueueMilestone(t *testing.T) {
 		inflightLimit,
 	)
 
-	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: 100})
+	expectedProcessedValueCount := uint32(100)
+	sendProcessedValue := func(value uint32) {
+		processedValues <- value
+		expectedProcessedValueCount++
+		// Wait for the queue to handle processed value
+		for queue.Milestone().ProcessedValueCount != expectedProcessedValueCount {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	require.Equal(t, queue.Milestone().Value, 10)
 
 	queue.Add(ctx, 10)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: 100})
-	processedValues <- 10
-	require.Equal(t, queue.Milestone(), Milestone{Value: 11, ProcessedValueCount: 101})
+	require.Equal(t, queue.Milestone().Value, 10)
+	sendProcessedValue(10)
+	require.Equal(t, queue.Milestone().Value, 11)
 
 	queue.Add(ctx, 13)
 	queue.Add(ctx, 15)
 	queue.Add(ctx, 16)
-	processedValues <- 13
-	require.Equal(t, queue.Milestone(), Milestone{Value: 15, ProcessedValueCount: 102})
-	processedValues <- 15
-	require.Equal(t, queue.Milestone(), Milestone{Value: 16, ProcessedValueCount: 103})
-	processedValues <- 16
-	require.Equal(t, queue.Milestone(), Milestone{Value: 17, ProcessedValueCount: 103})
+	sendProcessedValue(13)
+	require.Equal(t, queue.Milestone().Value, 15)
+	sendProcessedValue(15)
+	require.Equal(t, queue.Milestone().Value, 16)
+	sendProcessedValue(16)
+	require.Equal(t, queue.Milestone().Value, 17)
 
 	queue.UpdateDefaultMilestoneValue(20)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 20, ProcessedValueCount: 103})
+	require.Equal(t, queue.Milestone().Value, 20)
 
 	queue.Add(ctx, 22)
 	queue.Add(ctx, 25)
 	queue.UpdateDefaultMilestoneValue(30)
-	processedValues <- 22
-	require.Equal(t, queue.Milestone(), Milestone{Value: 25, ProcessedValueCount: 104})
-	processedValues <- 25
-	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: 105})
+
+	sendProcessedValue(22)
+	require.Equal(t, queue.Milestone().Value, 25)
+	sendProcessedValue(25)
+	require.Equal(t, queue.Milestone().Value, 30)
 }

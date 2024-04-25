@@ -22,7 +22,7 @@ type item struct {
 
 type InflightQueue struct {
 	milestone             Milestone
-	defaultMilestoneValue uint32 // TODO:_ think about initialization of this value
+	defaultMilestoneValue uint32
 	processedValues       <-chan uint32
 	holeValues            ChannelWithCancellation
 	inflightLimit         int
@@ -161,7 +161,9 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 		}
 	}
 
-	// q.updateMilestone(toRemoveCount)
+	fmt.Printf("valueProcessed: value = %v, toRemoveCount = %v\n", value, toRemoveCount)
+
+	// q.updateMilestoneOnDrain(toRemoveCount)
 
 	if toRemoveCount == 0 {
 		// TODO:_ check default milestone here!!!
@@ -195,7 +197,7 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 	q.items = q.items[toRemoveCount:]
 }
 
-func (q *InflightQueue) updateMilestone(toRemoveCount int) {
+func (q *InflightQueue) updateMilestoneOnDrain(toRemoveCount int) {
 	newMilestoneValue := uint32(0)
 
 	if toRemoveCount >= len(q.items) {
