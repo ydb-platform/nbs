@@ -111,7 +111,7 @@ void TDiskAgentActor::RenderDevices(IOutputStream& out) const
                     TABLED() { out << config.GetTransportId(); }
                     TABLED() {
                         if (config.HasRdmaEndpoint()) {
-                            const auto& e = config.GetRdmaEndpoint();
+                            auto e = config.GetRdmaEndpoint();
                             out << e.GetHost() << ":" << e.GetPort();
                         }
                     }

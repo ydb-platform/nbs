@@ -35,37 +35,37 @@ public:
 
     // TODO
 
-    const auto& GetMemoryDevices() const
+    auto GetMemoryDevices() const
     {
         return Config.GetMemoryDevices();
     }
 
-    const auto& GetFileDevices() const
+    auto GetFileDevices() const
     {
         return Config.GetFileDevices();
     }
 
-    const auto& GetNVMeDevices() const
+    auto GetNVMeDevices() const
     {
         return Config.GetNvmeDevices();
     }
 
-    const auto& GetNVMeTarget() const
+    auto GetNVMeTarget()
     {
         return Config.GetNvmeTarget();
     }
 
-    const auto& GetRdmaEndpoint() const
+    auto GetRdmaEndpoint()
     {
         return Config.GetRdmaTarget().GetEndpoint();
     }
 
-    const auto& DeprecatedGetRdmaTarget() const
+    auto DeprecatedGetRdmaTarget()
     {
         return Config.GetRdmaTarget();
     }
 
-    auto DeprecatedHasRdmaTarget() const
+    auto DeprecatedHasRdmaTarget()
     {
         return Config.HasRdmaTarget();
     }
