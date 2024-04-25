@@ -21,7 +21,7 @@ public:
         return Config.GetClientEnabled();
     }
 
-    auto GetClient() const
+    const auto& GetClient() const
     {
         return Config.GetClient();
     }
@@ -31,7 +31,7 @@ public:
         return Config.GetServerEnabled();
     }
 
-    auto GetServer() const
+    const auto& GetServer() const
     {
         return Config.GetServer();
     }

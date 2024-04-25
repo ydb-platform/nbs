@@ -750,7 +750,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it != Endpoints.end()) {
-        auto endpoint = it->second;
+        const auto& endpoint = it->second;
 
         if (!NFs::Exists(socketPath)) {
             // restart listener endpoint to recreate the socket
@@ -878,7 +878,7 @@ NProto::TError TEndpointManager::AlterEndpoint(
         newReq.GetMountSeqNumber(),
         newReq.GetHeaders());
 
-    if (auto error = Executor->WaitFor(future); HasError(error)) {
+    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         return error;
     }
 
