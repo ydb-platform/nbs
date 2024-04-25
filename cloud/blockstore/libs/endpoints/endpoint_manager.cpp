@@ -615,9 +615,8 @@ private:
             std::move(ctx),
             request.GetUnixSocketPath(),
             request.GetHeaders());
-
-        auto error = Executor->WaitFor(future);
-        if (HasError(error)) {
+        
+        if (const auto& error = Executor->WaitFor(future); HasError(error)) {
             STORAGE_ERROR("Failed to remove session: " << FormatError(error));
         }
     }
@@ -658,7 +657,7 @@ private:
                 auto response = TErrorResponse(E_REJECTED, TStringBuilder()
                     << "endpoint " << socketPath.Quote()
                     << " is " << GetProcessName(st) << " now");
-                promise.SetValue(response);
+                promise.SetValue(std::move(response));
                 return promise;
             }
 
@@ -666,12 +665,12 @@ private:
                 auto response = TErrorResponse(E_REJECTED, TStringBuilder()
                     << "endpoint " << socketPath.Quote()
                     << " is " << GetProcessName(st) << " now with other args");
-                promise.SetValue(response);
+                promise.SetValue(std::move(response));
                 return promise;
             }
 
             auto response = Executor->WaitFor(state->Result);
-            promise.SetValue(response);
+            promise.SetValue(std::move(response));
             return promise;
         }
 
@@ -1244,9 +1243,8 @@ void TEndpointManager::CloseEndpointSocket(
         socketPath);
     const auto& listener = listenerIt->second;
 
-    auto future = listener->StopEndpoint(socketPath);
-    auto error = Executor->WaitFor(future);
-    if (HasError(error)) {
+    auto future = listener->StopEndpoint(socketPath);    
+    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
         STORAGE_ERROR("Failed to close socket " << socketPath.Quote()
             << ", error: " << FormatError(error));
     }
