@@ -91,6 +91,7 @@ private:
     ui32 MaxResultsPerNode = 0;
     ui32 RangeSize = 0;
     ui32 MaxGapPercentage = 0;
+    ui32 MaxHandlesPerNode = 0;
 
 public:
     explicit TReadAheadCache(IAllocator* allocator);
@@ -100,7 +101,8 @@ public:
         ui32 maxNodes,
         ui32 maxResultsPerNode,
         ui32 rangeSize,
-        ui32 maxGapPercentage);
+        ui32 maxGapPercentage,
+        ui32 maxHandlesPerNode);
 
     bool TryFillResult(
         ui64 nodeId,
