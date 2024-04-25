@@ -33,7 +33,7 @@ protected:
 
     ui32 BatchSize = 4 * 1024 * 1024;
     ui32 BatchBlocksCount = 0;
-    ui32 ChangedBlocksCount = CHAR_BIT * 1024 * 1024;
+    ui32 ChangedBlocksCount = 1024 * 1024;
 
     ui32 TabletVersion = 0;
     ui32 BlockSize = 0;
