@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-export instance_cores=16
+export instance_cores=6
 export instance_ram=16
 
 export disk_size_gib=256

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-export instance_cores=4
+export instance_cores=2
 export instance_ram=4
 
 export disk_size_gib=8
