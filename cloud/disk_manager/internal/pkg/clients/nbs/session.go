@@ -110,6 +110,34 @@ func NewROSession(
 	)
 }
 
+func NewLocalROSession(
+	ctx context.Context,
+	nbs *nbs_client.DiscoveryClient,
+	metricsRegistry metrics.Registry,
+	diskID string,
+	mountFlags uint32,
+	encryptionSpec *protos.TEncryptionSpec,
+	rediscoverPeriodMin time.Duration,
+	rediscoverPeriodMax time.Duration,
+) (*Session, error) {
+
+	mountOpts := nbs_client.MountVolumeOpts{
+		MountFlags:     mountFlags,
+		EncryptionSpec: encryptionSpec,
+		AccessMode:     protos.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY,
+		MountMode:      protos.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+	}
+	return newSession(
+		ctx,
+		nbs,
+		metricsRegistry,
+		diskID,
+		mountOpts,
+		rediscoverPeriodMin,
+		rediscoverPeriodMax,
+	)
+}
+
 func NewRWSession(
 	ctx context.Context,
 	nbs *nbs_client.DiscoveryClient,

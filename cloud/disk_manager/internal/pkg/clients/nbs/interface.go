@@ -231,6 +231,12 @@ type Client interface {
 		encryption *types.EncryptionDesc,
 	) (*Session, error)
 
+	MountLocalRO(
+		ctx context.Context,
+		diskID string,
+		encryption *types.EncryptionDesc,
+	) (*Session, error)
+
 	MountRW(
 		ctx context.Context,
 		diskID string,

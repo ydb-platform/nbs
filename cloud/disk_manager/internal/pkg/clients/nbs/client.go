@@ -1181,6 +1181,36 @@ func (c *client) MountRO(
 	)
 }
 
+func (c *client) MountLocalRO(
+	ctx context.Context,
+	diskID string,
+	encryption *types.EncryptionDesc,
+) (session *Session, err error) {
+
+	defer c.metrics.StatRequest("MountLocalRO")(&err)
+
+	mountFlags, err := c.getMountFlags(ctx, diskID)
+	if err != nil {
+		return nil, err
+	}
+
+	encryptionSpec, err := getEncryptionSpec(encryption)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewLocalROSession(
+		ctx,
+		c.nbs,
+		c.sessionMetricsRegistry,
+		diskID,
+		mountFlags,
+		encryptionSpec,
+		c.sessionRediscoverPeriodMin,
+		c.sessionRediscoverPeriodMax,
+	)
+}
+
 func (c *client) MountRW(
 	ctx context.Context,
 	diskID string,
