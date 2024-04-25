@@ -2,11 +2,22 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 
+#include <library/cpp/actors/core/actorid.h>
+
 #include <util/generic/size_literals.h>
 
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TReplicaDescriptor
+{
+    TString Name;
+    ui32 ReplicaIndex = 0;
+    NActors::TActorId ActorId;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

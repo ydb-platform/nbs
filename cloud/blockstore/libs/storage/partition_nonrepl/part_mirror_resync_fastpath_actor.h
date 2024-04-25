@@ -19,11 +19,6 @@ namespace NCloud::NBlockStore::NStorage {
 // for all replicas are equal.
 // Otherwise returns an error - the recipient is supposed to fall back to
 // slow path.
-
-// TODO: implement this logic via a single hop. Right now it retrieves
-// block checksums and then does the actual read operation.
-// In fact we can do a parallel read + (n - 1) * checksum
-// (or even read + n * checksum for simplicity).
 class TMirrorPartitionResyncFastPathActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionResyncFastPathActor>
 {
@@ -31,7 +26,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const ui32 BlockSize;
     const TBlockRange64 Range;
-    const TVector<TResyncReplica> Replicas;
+    const TVector<TReplicaDescriptor> Replicas;
     const TString ClientId;
     TGuardedSgList SgList;
 
@@ -44,7 +39,7 @@ public:
         ui32 blockSize,
         TBlockRange64 range,
         TGuardedSgList sgList,
-        TVector<TResyncReplica> replicas,
+        TVector<TReplicaDescriptor> replicas,
         TString clientId);
 
     void Bootstrap(const NActors::TActorContext& ctx);
@@ -52,9 +47,9 @@ public:
 private:
     void ChecksumBlocks(const NActors::TActorContext& ctx);
     void ChecksumReplicaBlocks(const NActors::TActorContext& ctx, int idx);
-    void ReadReplicaBlocks(const NActors::TActorContext& ctx, int idx);
     void CompareChecksums(const NActors::TActorContext& ctx);
-    void ReadBlocks(const NActors::TActorContext& ctx, int idx);
+    void CalculateChecksum();
+    void ReadBlocks(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx);
 
 private:

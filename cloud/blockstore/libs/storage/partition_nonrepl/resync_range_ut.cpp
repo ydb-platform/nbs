@@ -36,7 +36,7 @@ namespace {
 struct TTestEnv
 {
     TTestActorRuntime& Runtime;
-    TVector<TResyncReplica> Replicas;
+    TVector<TReplicaDescriptor> Replicas;
     TActorId VolumeActorId;
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
@@ -174,7 +174,7 @@ struct TTestEnv
                 actorId,
                 TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
             );
-            Replicas.push_back({name, actorId});
+            Replicas.push_back({name, static_cast<ui32>(i), actorId});
         }
 
         auto dummy = std::make_unique<TDummyActor>();
@@ -237,7 +237,7 @@ struct TTestEnv
             MakeIntrusive<TCallContext>()
         );
 
-        TVector<TResyncReplica> replicas;
+        TVector<TReplicaDescriptor> replicas;
         for (int idx: idxs) {
             replicas.push_back(Replicas[idx]);
         }
