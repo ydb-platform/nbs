@@ -212,7 +212,7 @@ void TReadBlobActor::HandleGetResult(
         return;
     }
 
-    const auto& blobId = Request->BlobId;
+    auto blobId = Request->BlobId;
     size_t blocksCount = Request->BlobOffsets.size();
 
     if (auto guard = Request->Sglist.Acquire()) {
@@ -362,7 +362,7 @@ void TPartitionActor::HandleReadBlob(
         "ReadBlob",
         requestInfo->CallContext->RequestId);
 
-    const auto& blob = msg->BlobId;
+    const auto blob = msg->BlobId;
 
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,

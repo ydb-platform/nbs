@@ -63,7 +63,7 @@ private:
         }
 
         auto iamFuture = IamTokenClient->GetTokenAsync();
-        const auto& iamResponse = Executor->WaitFor(iamFuture);
+        auto iamResponse = Executor->WaitFor(iamFuture);
         if (HasError(iamResponse)) {
             const auto& err = iamResponse.GetError();
             return MakeError(err.GetCode(), TStringBuilder()
@@ -75,7 +75,7 @@ private:
             diskId,
             kmsKey.GetTaskId(),
             iamResponse.GetResult().Token);
-        const auto& computeResponse = Executor->WaitFor(computeFuture);
+        auto computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
             const auto& err = computeResponse.GetError();
             return MakeError(err.GetCode(), TStringBuilder()

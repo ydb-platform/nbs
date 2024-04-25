@@ -207,13 +207,13 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
     if (auto error = msg->GetError();
         FAILED(error.GetCode()))
     {
-        return ReplyAndDie(ctx, std::move(error));
+        return ReplyAndDie(ctx, error);
     }
 
     if (auto error = ValidateDescribeBlocksResponse(msg->Record);
         FAILED(error.GetCode()))
     {
-        return ReplyAndDie(ctx, std::move(error));
+        return ReplyAndDie(ctx, error);
     }
 
     ProcessDescribeBlocksResponse(std::move(msg->Record));

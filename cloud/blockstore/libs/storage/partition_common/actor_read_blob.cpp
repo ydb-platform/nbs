@@ -163,7 +163,7 @@ void TReadBlobActor::HandleGetResult(
         return;
     }
 
-    const auto& blobId = Request->BlobId;
+    auto blobId = Request->BlobId;
     size_t blocksCount = Request->BlobOffsets.size();
 
     if (auto guard = Request->Sglist.Acquire()) {
