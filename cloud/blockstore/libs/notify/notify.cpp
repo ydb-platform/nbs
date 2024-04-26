@@ -200,7 +200,7 @@ public:
         auto p = NewPromise<NProto::TError>();
 
         GetIamToken().Subscribe(
-            [weakPtr= weak_from_this(), p, event = data.Event, v = std::move(v)](
+            [weakPtr = weak_from_this(), p, event = data.Event, v = std::move(v)](
                 TFuture<TResultOrError<TString>> future) mutable
             {
                 auto [token, error] = future.ExtractValue();
