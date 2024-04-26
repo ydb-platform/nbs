@@ -240,6 +240,16 @@ func (c *ClientMock) MountRO(
 	return args.Get(0).(*nbs.Session), args.Error(1)
 }
 
+func (c *ClientMock) MountLocalRO(
+	ctx context.Context,
+	diskID string,
+	encryption *types.EncryptionDesc,
+) (*nbs.Session, error) {
+
+	args := c.Called(ctx, diskID, encryption)
+	return args.Get(0).(*nbs.Session), args.Error(1)
+}
+
 func (c *ClientMock) MountRW(
 	ctx context.Context,
 	diskID string,
