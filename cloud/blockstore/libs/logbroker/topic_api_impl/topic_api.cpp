@@ -96,15 +96,16 @@ public:
         , Logging(std::move(logging))
     {}
 
-    TFuture<NProto::TError>
-    Write(TVector<TMessage> messages, TInstant now) override
+    TFuture<NProto::TError> Write(
+        TVector<TMessage> messages,
+        TInstant now) override
     {
         if (messages.empty()) {
             return MakeFuture(MakeError(S_OK));
         }
 
         if (WriteInProgress.test_and_set()) {
-            return MakeFuture(MakeError(E_REJECTED, "Write in progress"));
+            return MakeFuture(MakeError(E_TRY_AGAIN, "Write in progress"));
         }
 
         Y_DEBUG_ABORT_UNLESS(!Batch);
