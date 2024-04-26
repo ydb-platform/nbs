@@ -92,11 +92,13 @@ func (q *InflightQueue) Milestone() Milestone {
 	return q.milestone
 }
 
+// Default milestone value should be used when
+// there are no inflight items.
 func (q *InflightQueue) UpdateDefaultMilestoneValue(value uint32) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.defaultMilestoneValue = value
-	if len(q.items) == 0 {
+	if len(q.items) == 0 && q.defaultMilestoneValue > q.milestone.Value {
 		q.milestone.Value = q.defaultMilestoneValue
 	}
 }
@@ -161,6 +163,8 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 	}
 
 	q.updateMilestoneOnDrain(toRemoveCount)
+
+	// Remove processed (not in-flight) items from the head.
 	q.items = q.items[toRemoveCount:]
 }
 

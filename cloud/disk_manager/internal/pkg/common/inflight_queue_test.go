@@ -119,4 +119,8 @@ func TestInflightQueueMilestone(t *testing.T) {
 	require.Equal(t, queue.Milestone(), Milestone{Value: 25, ProcessedValueCount: expectedProcessedValueCount})
 	sendProcessedValue(25)
 	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount})
+
+	// Milestone value should not decrease
+	queue.UpdateDefaultMilestoneValue(0)
+	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount})
 }
