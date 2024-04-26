@@ -117,11 +117,13 @@ void TWriteDataActor::ReplyAndDie(
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvWriteDataCompleted;
-        auto response = std::make_unique<TCompletion>(error);
-        response->CommitId = CommitId;
-        response->Count = 1;
-        response->Size = BlobsSize;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            TSet<ui32>(),
+            CommitId,
+            1,
+            BlobsSize,
+            ctx.Now() - RequestInfo->StartedTs);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

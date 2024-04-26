@@ -90,11 +90,12 @@ void TAddDataActor::ReplyAndDie(
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvAddDataCompleted;
-        auto response = std::make_unique<TCompletion>(error);
-        response->CommitId = CommitId;
-        response->Count = 1;
-        response->Size = BlobsSize;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            1,
+            BlobsSize,
+            ctx.Now() - RequestInfo->StartedTs,
+            CommitId);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 

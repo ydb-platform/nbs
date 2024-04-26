@@ -51,7 +51,8 @@ void TIndexTabletActor::NotifySessionEvent(
                 seqNo);
 
             for (const auto& s: session->GetSubSessions()) {
-                auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>();
+                auto response =
+                    std::make_unique<TEvService::TEvGetSessionEventsResponse>();
 
                 auto* ev = response->Record.AddEvents();
                 ev->CopyFrom(event);

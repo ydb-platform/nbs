@@ -351,7 +351,8 @@ void TIndexTabletActor::HandleGetStorageStats(
     const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
 
     auto* stats = response->Record.MutableStats();
 

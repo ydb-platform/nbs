@@ -13,7 +13,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateRequest(const NProto::TSetNodeAttrRequest& request, ui32 blockSize)
+NProto::TError ValidateRequest(
+    const NProto::TSetNodeAttrRequest& request,
+    ui32 blockSize)
 {
     if (request.GetNodeId() == InvalidNodeId || request.GetFlags() == 0) {
         return ErrorInvalidArgument();

@@ -218,6 +218,7 @@ struct TCompactionMap::TImpl
     TTreeByCleanupScore GroupByCleanupScore;
 
     ui32 UsedRangesCount = 0;
+    ui32 AllocatedRangesCount = 0;
 
     TImpl(IAllocator* alloc)
         : Alloc(alloc)
@@ -355,9 +356,10 @@ private:
     TGroup* LinkGroup(ui32 groupIndex)
     {
         auto block = Alloc->Allocate(sizeof(TGroup));
-        auto group = new (block.Data) TGroup(groupIndex);
+        auto* group = new (block.Data) TGroup(groupIndex);
         Groups.PushBack(group);
         GroupByGroupIndex.Insert(group);
+        AllocatedRangesCount += GroupSize;
 
         return group;
     }
@@ -371,6 +373,7 @@ private:
 
         std::destroy_at(group);
         Alloc->Release({group, sizeof(*group)});
+        AllocatedRangesCount -= GroupSize;
     }
 };
 
@@ -422,7 +425,7 @@ TCompactionCounter TCompactionMap::GetTopCleanupScore() const
 
 TVector<ui32> TCompactionMap::GetNonEmptyCompactionRanges() const
 {
-    TVector<ui32> result(Reserve(Impl->Groups.Size() * GroupSize));
+    TVector<ui32> result(Reserve(Impl->AllocatedRangesCount));
     for (const auto& group: Impl->Groups) {
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
             if (group.Stats[i].BlobsCount > 0 || group.Stats[i].DeletionsCount > 0) {
@@ -448,7 +451,7 @@ TCompactionMapStats TCompactionMap::GetStats(ui32 topSize) const
 {
     TCompactionMapStats stats = {
         .UsedRangesCount = Impl->UsedRangesCount,
-        .AllocatedRangesCount = Impl->Groups.Size() * TCompactionMap::GroupSize,
+        .AllocatedRangesCount = Impl->AllocatedRangesCount,
     };
 
     if (!topSize) {

@@ -167,13 +167,15 @@ void TDestroyCheckpointActor::ReplyAndDie(
 {
     {
         // notify tablet
-        auto response = std::make_unique<TEvIndexTabletPrivate::TEvDeleteCheckpointCompleted>(error);
+        using TCompletion = TEvIndexTabletPrivate::TEvDeleteCheckpointCompleted;
+        auto response = std::make_unique<TCompletion>(error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
     if (RequestInfo->Sender != Tablet) {
         // reply to caller
-        auto response = std::make_unique<TEvService::TEvDestroyCheckpointResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvDestroyCheckpointResponse>(error);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
 
@@ -185,7 +187,9 @@ STFUNC(TDestroyCheckpointActor::StateMarkCheckpointDeleted)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvDeleteCheckpointResponse, MarkCheckpointDeleted_HandleDeleteCheckpointResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDeleteCheckpointResponse,
+            MarkCheckpointDeleted_HandleDeleteCheckpointResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -198,7 +202,9 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpointNodes)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvDeleteCheckpointResponse, RemoveCheckpointNodes_HandleDeleteCheckpointResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDeleteCheckpointResponse,
+            RemoveCheckpointNodes_HandleDeleteCheckpointResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -211,7 +217,9 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpointBlobs)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvDeleteCheckpointResponse, RemoveCheckpointBlobs_HandleDeleteCheckpointResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDeleteCheckpointResponse,
+            RemoveCheckpointBlobs_HandleDeleteCheckpointResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -224,7 +232,9 @@ STFUNC(TDestroyCheckpointActor::StateRemoveCheckpoint)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTabletPrivate::TEvDeleteCheckpointResponse, RemoveCheckpoint_HandleDeleteCheckpointResponse);
+        HFunc(
+            TEvIndexTabletPrivate::TEvDeleteCheckpointResponse,
+            RemoveCheckpoint_HandleDeleteCheckpointResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
@@ -240,7 +250,8 @@ void TIndexTabletActor::RestartCheckpointDestruction(const TActorContext& ctx)
 {
     for (const auto* checkpoint: GetCheckpoints()) {
         if (checkpoint->GetDeleted()) {
-            auto request = std::make_unique<TEvService::TEvDestroyCheckpointRequest>();
+            auto request =
+                std::make_unique<TEvService::TEvDestroyCheckpointRequest>();
             request->Record.SetCheckpointId(checkpoint->GetCheckpointId());
 
             NCloud::Send(ctx, ctx.SelfID, std::move(request));
@@ -273,7 +284,8 @@ void TIndexTabletActor::HandleDestroyCheckpoint(
 
     auto* checkpoint = FindCheckpoint(checkpointId);
     if (!checkpoint) {
-        auto response = std::make_unique<TEvService::TEvDestroyCheckpointResponse>(
+        using TResponse = TEvService::TEvDestroyCheckpointResponse;
+        auto response = std::make_unique<TResponse>(
             ErrorInvalidCheckpoint(checkpointId));
 
         NCloud::Reply(ctx, *ev, std::move(response));

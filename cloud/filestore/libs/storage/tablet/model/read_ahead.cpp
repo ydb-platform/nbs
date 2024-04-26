@@ -64,12 +64,14 @@ void TReadAheadCache::Reset(
     ui32 maxNodes,
     ui32 maxResultsPerNode,
     ui32 rangeSize,
-    ui32 maxGapPercentage)
+    ui32 maxGapPercentage,
+    ui32 maxHandlesPerNode)
 {
     MaxNodes = maxNodes;
     MaxResultsPerNode = maxResultsPerNode;
     RangeSize = rangeSize;
     MaxGapPercentage = maxGapPercentage;
+    MaxHandlesPerNode = maxHandlesPerNode;
     NodeStates.clear();
 }
 
@@ -183,7 +185,16 @@ TReadAheadCache::THandleState& TReadAheadCache::Access(ui64 nodeId, ui64 handle)
         NodeStates.clear();
     }
 
-    auto& handleState = NodeStates[nodeId].HandleStates[handle];
+    auto& nodeState = NodeStates[nodeId];
+    // TODO: LRU eviction
+    // +1 needed for the NoHandle entry
+    if (nodeState.HandleStates.size() >= MaxHandlesPerNode + 1
+            && !nodeState.HandleStates.contains(handle))
+    {
+        nodeState.HandleStates.clear();
+    }
+
+    auto& handleState = nodeState.HandleStates[handle];
     if (!handleState.DescribeResults.Capacity()) {
         handleState.DescribeResults.Reset(MaxResultsPerNode);
     }

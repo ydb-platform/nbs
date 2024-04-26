@@ -421,14 +421,16 @@ void TFlushBytesActor::ReplyAndDie(
 
     {
         // notify tablet
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesCompleted>(error);
-        response->CollectCommitId = CollectCommitId;
-        response->ChunkId = ChunkId;
-        response->CallContext = RequestInfo->CallContext;
-        response->MixedBlocksRanges = std::move(MixedBlocksRanges);
-        response->Size = OperationSize;
-        response->Time = ctx.Now() - RequestInfo->StartedTs;
+        using TCompletion = TEvIndexTabletPrivate::TEvFlushBytesCompleted;
+        auto response = std::make_unique<TCompletion>(
+            error,
+            1,
+            OperationSize,
+            ctx.Now() - RequestInfo->StartedTs,
+            RequestInfo->CallContext,
+            std::move(MixedBlocksRanges),
+            CollectCommitId,
+            ChunkId);
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
