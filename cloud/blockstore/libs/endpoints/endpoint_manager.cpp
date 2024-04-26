@@ -669,10 +669,10 @@ private:
                 return promise;
             }
 
-            // we need a copy here because `it` may be invalidated after WaitFor
-            // returns
+            // we need a copy here because `it` may be invalidated during the
+            // execution of WaitFor
             auto future = state->Result;
-            promise.SetValue(Executor->WaitFor(std::move(future)));
+            promise.SetValue(Executor->WaitFor(future));
             return promise;
         }
 
@@ -884,10 +884,8 @@ NProto::TError TEndpointManager::AlterEndpoint(
         return error;
     }
 
-    auto [sessionInfo, error] = Executor->WaitFor(SessionManager->GetSession(
-        ctx,
-        socketPath,
-        newReq.GetHeaders()));
+    auto [sessionInfo, error] = Executor->ExtractResponse(
+        SessionManager->GetSession(ctx, socketPath, newReq.GetHeaders()));
 
     if (HasError(error)) {
         return error;

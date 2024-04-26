@@ -57,13 +57,7 @@ public:
     }
 
     template <typename T>
-    T WaitFor(NThreading::TFuture<T>&& future)
-    {
-        if (!future.HasValue() && !WaitForI(future)) {
-            return TErrorResponse(E_REJECTED, "request cancelled");
-        }
-        return future.ExtractValue();
-    }
+    void WaitFor(NThreading::TFuture<T>&& future) = delete;
 
     void WaitFor(NThreading::TFuture<void> future)
     {
