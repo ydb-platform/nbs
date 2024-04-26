@@ -12,12 +12,12 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletDatabase::InitSchema(bool useDefaultCompactionPolicy)
+void TIndexTabletDatabase::InitSchema(bool useNoneCompactionPolicy)
 {
     Materialize<TIndexTabletSchema>();
 
     TSchemaInitializer<TIndexTabletSchema::TTables>::InitStorage(
-        useDefaultCompactionPolicy,
+        useNoneCompactionPolicy,
         Database.Alter());
 }
 

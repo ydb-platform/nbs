@@ -289,6 +289,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct DeletionMarkers: TTableSchema<13>
@@ -310,6 +311,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct NewBlobs: TTableSchema<14>
@@ -416,6 +418,7 @@ struct TIndexTabletSchema
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
+        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
     };
 
     struct SessionDupCache: TTableSchema<21>
