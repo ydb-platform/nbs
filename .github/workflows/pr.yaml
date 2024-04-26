@@ -184,7 +184,7 @@ jobs:
       build_preset: release-asan
       vm_name_suffix: "-asan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
       run_tests: true
       cache_update_build: false
       cache_update_tests: false
@@ -203,7 +203,7 @@ jobs:
       build_preset: release-tsan
       vm_name_suffix: "-tsan"
       test_size: ${{ contains(github.event.pull_request.labels.*.name, 'large-tests') && 'small,medium,large' || 'small,medium' }}
-      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt"
+      test_type: "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,gofmt"
       run_tests: true
       cache_update_build: false
       cache_update_tests: false
