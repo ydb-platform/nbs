@@ -39,8 +39,19 @@ func parseProcMapsLine(line string) (*procMapsItem, error) {
 		&item.inode,
 		&item.pathname,
 	)
-	if err != nil && (err != io.EOF || n < 6) {
-		return nil, err
+	if err != nil {
+		// Line from /proc/[pid]/maps might not contain pathname.
+		// In this case we get io.EOF here.
+		// So we should handle io.EOF error separately.
+		if err != io.EOF {
+			return nil, err
+		}
+		// Regardless of pathname, line from /proc/<pid>/maps
+		// should contain at least 6 fields.
+		// See `man proc` for more info.
+		if n < 6 {
+			return nil, err
+		}
 	}
 	return &item, nil
 }
