@@ -669,8 +669,10 @@ private:
                 return promise;
             }
 
-            auto response = Executor->WaitFor(state->Result);
-            promise.SetValue(std::move(response));
+            // we need a copy here because `it` may be invalidated after WaitFor
+            // returns
+            auto future = state->Result;
+            promise.SetValue(Executor->WaitFor(std::move(future)));
             return promise;
         }
 
