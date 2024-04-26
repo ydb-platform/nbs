@@ -125,6 +125,20 @@ void GenerateVolumeActionsJS(IOutputStream& out)
     )html";
 }
 
+void OnShowRecentPGCheckboxClickedActionsJS(IOutputStream& out)
+{
+    out << R"html(
+        <script type='text/javascript'>
+        function onShowRecentPGCheckboxClicked() {
+            var checkBox = document.getElementById("showRecentPGCheckbox");
+
+            document.getElementById("TotalPGTable").hidden = checkBox.checked;
+            document.getElementById("RecentPGTable").hidden = !checkBox.checked;
+        }
+        </script>
+    )html";
+}
+
 void DumpSize(IOutputStream& out, size_t size)
 {
     if (size) {
@@ -1514,16 +1528,44 @@ void TDiskRegistryActor::RenderPlacementGroupList(
         return;
     }
 
-    auto brokenGroups = State->GatherBrokenGroupsInfo(
-        Now(),
-        Config->GetPlacementGroupAlertPeriod());
-
     HTML(out) {
         TAG(TH3) {
             out << "PlacementGroups";
             DumpSize(out, State->GetPlacementGroups());
         }
 
+        OnShowRecentPGCheckboxClickedActionsJS(out);
+        DIV() {
+            TAG_ATTRS(
+                TInput,
+                {{"type", "checkbox"},
+                 {"id", "showRecentPGCheckbox"},
+                 {"onclick", "onShowRecentPGCheckboxClicked()"}})
+            {}
+            LABEL() {
+                auto period = Config->GetPlacementGroupAlertPeriod();
+                out << "Treat only recently broken partitions as broken"
+                    << " (period=" << period.ToString() << ")";
+            }
+        }
+        TAG_ATTRS(TDiv, {{"id", "TotalPGTable"}}) {
+            RenderPlacementGroupTable(out, false);
+        }
+        TAG_ATTRS(TDiv, {{"id", "RecentPGTable"}, {"hidden", "true"}}) {
+            RenderPlacementGroupTable(out, true);
+        }
+    }
+}
+
+void TDiskRegistryActor::RenderPlacementGroupTable(
+    IOutputStream& out,
+    bool showRecent) const
+{
+    auto brokenGroups = State->GatherBrokenGroupsInfo(
+        Now(),
+        Config->GetPlacementGroupAlertPeriod());
+
+    HTML(out) {
         TABLE_SORTABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
@@ -1542,9 +1584,12 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                         strategy == NProto::PLACEMENT_STRATEGY_PARTITION;
 
                     auto brokenGroupInfo = brokenGroups.FindPtr(groupId);
-                    const size_t brokenPartitionsCount = brokenGroupInfo
+                    size_t brokenPartitionsCount = 0;
+                    if (brokenGroupInfo) {
+                        brokenPartitionsCount = showRecent
                             ? brokenGroupInfo->Recently.GetBrokenPartitionCount()
-                            : 0;
+                            : brokenGroupInfo->Total.GetBrokenPartitionCount();
+                    }
 
                     TABLED() {
                         const auto* color = brokenPartitionsCount == 0
@@ -1617,7 +1662,7 @@ void TDiskRegistryActor::RenderPlacementGroupList(
                                         }
 
                                         const auto brokenDisks = brokenGroupInfo
-                                            ? brokenGroupInfo->Recently.GetBrokenDisks()
+                                            ? brokenGroupInfo->Total.GetBrokenDisks()
                                             : THashSet<TString>();
 
                                         const auto sortedDisks =
