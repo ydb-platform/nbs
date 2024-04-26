@@ -959,4 +959,10 @@ message TStorageServiceConfig
     // Service actor self ping measurement interval. Used to evaluate
     // service actor load. Set in ms.
     optional uint32 ServiceSelfPingInterval = 361;
+
+    // Max migration io depth.
+    optional uint32 MaxMigrationIoDepth = 362;
+
+    // Max shadow disk fill io depth.
+    optional uint32 MaxShadowDiskFillIoDepth = 363;
 }

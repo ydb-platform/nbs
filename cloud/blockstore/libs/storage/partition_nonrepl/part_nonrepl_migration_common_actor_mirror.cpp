@@ -24,7 +24,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     }
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    ContinueMigrationIfNeeded(ctx);
+    ScheduleRangeMigration(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,12 +55,38 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
 
     const auto range = BuildRequestBlockRange(*msg, BlockSize);
 
-    if (ProcessingBlocks.IsProcessingStarted()) {
-        const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
+    auto checkOverlapsWithMigration = [&](TBlockRange64 migrationRange) -> bool
+    {
         if (range.Overlaps(migrationRange)) {
-            replyError(E_REJECTED, TStringBuilder()
-                << "Request " << TMethod::Name
-                << " intersects with currently migrated range");
+            replyError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Request " << TMethod::Name << DescribeRange(range)
+                    << " intersects with currently migrated range "
+                    << DescribeRange(migrationRange));
+            return true;
+        }
+        return false;
+    };
+
+    // Check overlapping with inflight migrations.
+    for (const auto [_, migrationRange]: MigrationsInProgress) {
+        if (checkOverlapsWithMigration(migrationRange)) {
+            return;
+        }
+    }
+
+    // Check overlapping with a range that will be migrated next.
+    if (MigrationsInProgress.empty() && !DeferredMigrations.empty()) {
+        if (checkOverlapsWithMigration(DeferredMigrations.begin()->second)) {
+            return;
+        }
+    } else if (
+        MigrationsInProgress.empty() && IsMigrationAllowed() &&
+        ProcessingBlocks.IsProcessingStarted())
+    {
+        if (checkOverlapsWithMigration(ProcessingBlocks.BuildProcessingRange()))
+        {
             return;
         }
     }
