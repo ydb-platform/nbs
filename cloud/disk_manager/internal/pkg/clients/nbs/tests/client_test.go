@@ -1507,22 +1507,7 @@ func TestReadFromProxyOverlayDiskWithMultipartitionBaseDisk(t *testing.T) {
 		diskID,
 		"cp",
 	)
-	// Now it is not allowed to create proxy overlay disks for multipartition
-	// disks.
-	require.False(t, created)
-	require.NoError(t, err)
-
-	// We need to create proxy overlay disk manually.
-	err = client.Create(ctx, nbs.CreateDiskParams{
-		ID:                   proxyOverlayDiskID,
-		BaseDiskID:           diskID,
-		BaseDiskCheckpointID: "cp",
-		BlocksCount:          1024,
-		BlockSize:            4096,
-		Kind:                 types.DiskKind_DISK_KIND_SSD,
-		PartitionsCount:      1,
-		IsSystem:             true,
-	})
+	require.True(t, created)
 	require.NoError(t, err)
 
 	err = client.ValidateCrc32(ctx, proxyOverlayDiskID, diskContentInfo)
