@@ -10,7 +10,7 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 {
-    Y_UNIT_TEST(ShouldDestroyOverlayDiskIfBaseDiskIsDestroyed)
+    Y_UNIT_TEST(ShouldBeAbleToDestroyOverlayDiskIfBaseDiskIsAlreadyDestroyed)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
