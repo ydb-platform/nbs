@@ -29,7 +29,9 @@ void TDiskAgentActor::HandleHttpInfo(
     TStringStream out;
 
     HTML(out) {
-        if (CurrentStateFunc() == &TThis::StateIdle) {
+        if (CurrentStateFunc() == &TThis::StateInit) {
+            DIV() { out << "Initialization in progress"; }
+        } else if (CurrentStateFunc() == &TThis::StateIdle) {
             DIV() { out << "Unregistered (Idle)"; }
         } else {
             if (RegistrationInProgress) {
