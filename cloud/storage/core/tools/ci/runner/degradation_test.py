@@ -124,6 +124,7 @@ def generate_reports_local(
         for test_tag, history in by_all_time.items():
             if filter_name is not None and filter_name in test_tag:
                 continue
+            item_reports = []
             for getter, sensor_name in [
                 (lambda x: x.read_iops, "read_iops"),
                 (lambda x: x.write_iops, "write_iops"),
@@ -141,7 +142,12 @@ def generate_reports_local(
                     date=today,
                     description=f"{suite_kind} {test_tag} {sensor_name}",
                 )
-                reports.append(report)
+                item_reports.append(report)
+            for _, group in itertools.groupby(
+                item_reports,
+                key=lambda x: (x["improved"], x["degraded"])
+            ):
+                reports.append(list(group)[0])
 
 
 def get_monitoring_results(

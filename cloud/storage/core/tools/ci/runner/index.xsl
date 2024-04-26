@@ -304,6 +304,20 @@
                         </img>
                     </a>
                 </p>
+                <p>
+                    <a href="https://github.com/ydb-platform/nbs/actions/workflows/nightly-asan.yaml">
+                        <img src="https://github.com/ydb-platform/nbs/actions/workflows/nightly-asan.yaml/badge.svg?branch=main"
+                             alt="Nightly build (ASAN)">
+                        </img>
+                    </a>
+                </p>
+                <p>
+                    <a href="https://github.com/ydb-platform/nbs/actions/workflows/nightly-tsan.yaml">
+                        <img src="https://github.com/ydb-platform/nbs/actions/workflows/nightly-tsan.yaml/badge.svg?branch=main"
+                             alt="Nightly build (TSAN)">
+                        </img>
+                    </a>
+                </p>
                 <xsl:apply-templates select="tests"/>
             </div>
             <div style="border-top: 1px dashed black; margin-bottom: 20px">
