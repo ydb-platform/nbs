@@ -845,7 +845,7 @@ IBlockStorePtr TPlugin::CreateClientEndpoint(
             mountConfig.GetEncryptionSpec(),
             diskId);
 
-        auto clientOrError = future.GetValue();
+        const auto& clientOrError = future.GetValue();
         if (HasError(clientOrError)) {
             const auto& error = clientOrError.GetError();
             ythrow TServiceError(error.GetCode()) << error.GetMessage();

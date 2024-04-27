@@ -179,7 +179,7 @@ protected:
             MakeIntrusive<TCallContext>(requestId), std::move(request));
 
         ChangedBlocks = future.Subscribe([=](const auto& future) {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 STORAGE_ERROR(FormatError(response.GetError()));
                 ShouldContinue.ShouldStop(1);
@@ -272,7 +272,7 @@ protected:
             std::move(request));
 
         future.Subscribe([=, holder = std::move(holder)](const auto& future) mutable {
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 STORAGE_ERROR(FormatError(response.GetError()));
                 ShouldContinue.ShouldStop(1);
@@ -304,7 +304,7 @@ protected:
         Write[bucket].Subscribe([=, holder = std::move(holder)](const auto& future) mutable {
             holder.Extract();
 
-            auto response = future.GetValue();
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 STORAGE_ERROR(FormatError(response.GetError()));
                 ShouldContinue.ShouldStop(1);
