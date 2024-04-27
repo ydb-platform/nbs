@@ -1383,6 +1383,7 @@ struct TTxIndexTablet
         const ui64 ReadCommitId;
         const ui64 ChunkId;
         const TVector<TBytes> Bytes;
+        const TVector<TBytes> DeletionMarkers;
 
         ui64 CollectCommitId = InvalidCommitId;
 
@@ -1393,12 +1394,14 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 ui64 readCommitId,
                 ui64 chunkId,
-                TVector<TBytes> bytes)
+                TVector<TBytes> bytes,
+                TVector<TBytes> deletionMarkers)
             : TProfileAware(EFileStoreSystemRequest::FlushBytes)
             , RequestInfo(std::move(requestInfo))
             , ReadCommitId(readCommitId)
             , ChunkId(chunkId)
             , Bytes(std::move(bytes))
+            , DeletionMarkers(std::move(deletionMarkers))
         {}
 
         void Clear()

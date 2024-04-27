@@ -351,12 +351,19 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
         offset,
         len);
 
+    IncrementDeletedFreshBytesCount(db, len);
+
     InvalidateReadAheadCache(nodeId);
 }
 
-TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes)
+TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(
+    TVector<TBytes>* bytes,
+    TVector<TBytes>* deletionMarkers)
 {
-    return Impl->FreshBytes.StartCleanup(GetCurrentCommitId(), bytes);
+    return Impl->FreshBytes.StartCleanup(
+        GetCurrentCommitId(),
+        bytes,
+        deletionMarkers);
 }
 
 ui32 TIndexTabletState::FinishFlushBytes(
@@ -365,9 +372,14 @@ ui32 TIndexTabletState::FinishFlushBytes(
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     ui32 sz = 0;
-    Impl->FreshBytes.VisitTop([&] (const TBytes& bytes) {
+    ui32 deletedSz = 0;
+    Impl->FreshBytes.VisitTop([&] (const TBytes& bytes, bool isDeletionMarker) {
         db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
-        sz += bytes.Length;
+        if (isDeletionMarker) {
+            deletedSz += bytes.Length;
+        } else {
+            sz += bytes.Length;
+        }
 
         auto* range = profileLogRequest.AddRanges();
         range->SetNodeId(bytes.NodeId);
@@ -376,10 +388,11 @@ ui32 TIndexTabletState::FinishFlushBytes(
     });
 
     DecrementFreshBytesCount(db, sz);
+    DecrementDeletedFreshBytesCount(db, deletedSz);
 
     Impl->FreshBytes.FinishCleanup(chunkId);
 
-    return sz;
+    return sz + deletedSz;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

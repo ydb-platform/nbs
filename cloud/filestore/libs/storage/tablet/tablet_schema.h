@@ -57,6 +57,9 @@ struct TIndexTabletSchema
 
         struct StorageConfig        : ProtoColumn<23, NProto::TStorageConfig> {};
 
+        struct DeletedFreshBytesCount
+            : Column<24, NKikimr::NScheme::NTypeIds::Uint64> {};
+
         using TKey = TableKey<Id>;
 
         using TColumns = TableColumns<
@@ -82,7 +85,8 @@ struct TIndexTabletSchema
             FreshBytesCount,
             UsedBlocksCount,
             AttrsUsedBytesCount,
-            StorageConfig
+            StorageConfig,
+            DeletedFreshBytesCount
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

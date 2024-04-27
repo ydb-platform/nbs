@@ -5025,6 +5025,62 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldTrimFreshBytesDeletionMarkers)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBytesThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // initializing the first block to write fresh bytes then
+        // otherwise those 1_KB of fresh bytes would be extended to a whole
+        // block
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, 1_KB, 'a');
+        tablet.FlushBytes();
+        tablet.DestroyHandle(handle);
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.FlushBytes();
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"filesystem", "test"}}, 1_KB},
+                {{
+                    {"sensor", "FlushBytes.Count"},
+                    {"filesystem", "test"}}, 1},
+                {{
+                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"filesystem", "test"}}, 5_KB},
+                {{
+                    {"sensor", "TrimBytes.Count"},
+                    {"filesystem", "test"}}, 2},
+            });
+        }
+    }
+
 #undef TABLET_TEST
 }
 

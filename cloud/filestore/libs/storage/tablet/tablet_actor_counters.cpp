@@ -109,6 +109,7 @@ void TIndexTabletActor::TMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletionMarkersCount, EMetricType::MT_ABSOLUTE);
@@ -205,6 +206,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
     Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(MixedBlobsCount, stats.GetMixedBlobsCount());
     Store(DeletionMarkersCount, stats.GetDeletionMarkersCount());
