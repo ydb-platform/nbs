@@ -153,12 +153,14 @@ void TServer::Start(const TOptions& options)
     Y_ABORT_UNLESS(Handler, "vhd_register_blockdev: Can't register device");
 
     if (!options.NoChmod) {
-        if (int err = Chmod(SocketPath.c_str(), options.SocketAccessMode)) {
+        if (Chmod(
+                SocketPath.c_str(),
+                static_cast<int>(options.SocketAccessMode)) != 0)
+        {
             Y_ABORT(
                 "failed to chmod socket %s: %s",
                 SocketPath.c_str(),
-                strerror(err)
-            );
+                strerror(errno));
         }
     }
 
