@@ -935,8 +935,6 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     const auto& checkpointRequest =
         State->GetCheckpointStore().MakeCreateCheckpointRequest(
             msg.Record.GetCheckpointId(),
@@ -948,13 +946,12 @@ bool TVolumeActor::HandleRequest<TCreateCheckpointMethod>(
                 msg.Record.GetIsLight(),
                 msg.Record.GetCheckpointType()),
             Config->GetUseShadowDisksForNonreplDiskCheckpoints());
-    ExecuteTx<TSaveCheckpointRequest>(
-        ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
 
+    CheckpointRequests.insert(
+        {checkpointRequest.RequestId,
+        {std::move(requestInfo), isTraced, traceTs}});
+
+    ProcessNextCheckpointRequest(ctx);
     return true;
 }
 
@@ -975,19 +972,16 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     auto& checkpointStore = State->GetCheckpointStore();
     const auto& checkpointId = msg.Record.GetCheckpointId();
     const auto& checkpointRequest =
         checkpointStore.MakeDeleteCheckpointRequest(checkpointId, ctx.Now());
-    ExecuteTx<TSaveCheckpointRequest>(
-        ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
 
+    CheckpointRequests.insert(
+        {checkpointRequest.RequestId,
+        {std::move(requestInfo), isTraced, traceTs}});
+
+    ProcessNextCheckpointRequest(ctx);
     return true;
 }
 
@@ -1008,19 +1002,16 @@ bool TVolumeActor::HandleRequest<TDeleteCheckpointDataMethod>(
         ev->Cookie,
         msg.CallContext);
 
-    AddTransaction(*requestInfo);
-
     const auto& checkpointRequest =
         State->GetCheckpointStore().MakeDeleteCheckpointDataRequest(
             msg.Record.GetCheckpointId(),
             ctx.Now());
-    ExecuteTx<TSaveCheckpointRequest>(
-        ctx,
-        std::move(requestInfo),
-        checkpointRequest.RequestId,
-        isTraced,
-        traceTs);
 
+    CheckpointRequests.insert(
+        {checkpointRequest.RequestId,
+        {std::move(requestInfo), isTraced, traceTs}});
+
+    ProcessNextCheckpointRequest(ctx);
     return true;
 }
 
@@ -1120,8 +1111,31 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
         return;
     }
 
-    const TCheckpointRequest& request =
+    State->GetCheckpointStore().SetCheckpointRequestInProgress(
+        readyToExecuteRequestId);
+
+    auto checkpointRequestCopy =
         State->GetCheckpointStore().GetRequestById(readyToExecuteRequestId);
+
+    if (checkpointRequestCopy.State == ECheckpointRequestState::Received) {
+        const TCheckpointRequestInfo* requestInfo =
+            CheckpointRequests.FindPtr(readyToExecuteRequestId);
+
+        AddTransaction(*requestInfo->RequestInfo);
+
+        ExecuteTx<TSaveCheckpointRequest>(
+            ctx,
+            requestInfo->RequestInfo,
+            readyToExecuteRequestId);
+    } else {
+        ProcessCheckpointRequest(ctx, readyToExecuteRequestId);
+    }
+}
+
+void TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 requestId)
+{
+    const TCheckpointRequest& request =
+        State->GetCheckpointStore().GetRequestById(requestId);
 
     TCheckpointRequestInfo emptyRequestInfo(
         CreateRequestInfo(
@@ -1131,7 +1145,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
         false,
         GetCycleCount());
     const TCheckpointRequestInfo* requestInfo =
-        CheckpointRequests.FindPtr(readyToExecuteRequestId);
+        CheckpointRequests.FindPtr(requestId);
     if (!requestInfo) {
         requestInfo = &emptyRequestInfo;
     }
@@ -1163,7 +1177,7 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
     }
 
     State->GetCheckpointStore().SetCheckpointRequestInProgress(
-        readyToExecuteRequestId);
+        requestId);
 
     TActorId actorId;
     switch (request.ReqType) {
@@ -1295,11 +1309,8 @@ void TVolumeActor::CompleteSaveCheckpointRequest(
 
     State->GetCheckpointStore().SetCheckpointRequestSaved(args.RequestId);
 
-    CheckpointRequests.insert(
-        {args.RequestId, {args.RequestInfo, args.IsTraced, args.TraceTs}});
-
     RemoveTransaction(*args.RequestInfo);
-    ProcessNextCheckpointRequest(ctx);
+    ProcessCheckpointRequest(ctx, args.RequestId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

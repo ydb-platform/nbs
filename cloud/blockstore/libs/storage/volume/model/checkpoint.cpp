@@ -101,6 +101,7 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Received ||
         checkpointRequest.State == ECheckpointRequestState::Saved);
 
     CheckpointRequestInProgress = requestId;
@@ -211,9 +212,13 @@ bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
     Y_DEBUG_ABORT_UNLESS(requestId);
 
     for (const auto& [key, checkpointRequest]: CheckpointRequests) {
-        if (checkpointRequest.State != ECheckpointRequestState::Saved) {
+        if (
+            checkpointRequest.State != ECheckpointRequestState::Received &&
+            checkpointRequest.State != ECheckpointRequestState::Saved)
+        {
             continue;
         }
+
         Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
         if (requestId) {
             *requestId = checkpointRequest.RequestId;
