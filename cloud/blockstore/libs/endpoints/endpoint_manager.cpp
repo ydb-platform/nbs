@@ -1016,7 +1016,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     auto& responseEndpoints = *response.MutableEndpoints();
     responseEndpoints.Reserve(Endpoints.size());
 
-    for (auto [_, endpoint]: Endpoints) {
+    for (const auto& [_, endpoint]: Endpoints) {
         responseEndpoints.Add()->CopyFrom(*endpoint.Request);
     }
 
