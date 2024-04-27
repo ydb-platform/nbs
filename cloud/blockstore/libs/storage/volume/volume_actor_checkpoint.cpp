@@ -1114,10 +1114,10 @@ void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
     State->GetCheckpointStore().SetCheckpointRequestInProgress(
         readyToExecuteRequestId);
 
-    auto checkpointRequestCopy =
+    const TCheckpointRequest& request =
         State->GetCheckpointStore().GetRequestById(readyToExecuteRequestId);
 
-    if (checkpointRequestCopy.State == ECheckpointRequestState::Received) {
+    if (request.State == ECheckpointRequestState::Received) {
         const TCheckpointRequestInfo* requestInfo =
             CheckpointRequests.FindPtr(readyToExecuteRequestId);
 
