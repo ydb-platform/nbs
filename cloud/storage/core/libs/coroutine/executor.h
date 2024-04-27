@@ -41,7 +41,7 @@ public:
     TContExecutor* GetContExecutor();
 
     template <typename T>
-    const T& WaitFor(NThreading::TFuture<T> future)
+    const T& WaitFor(const NThreading::TFuture<T>& future)
     {
         struct TRequestCancelled: T
         {
@@ -57,13 +57,7 @@ public:
     }
 
     template <typename T>
-    T WaitFor(NThreading::TFuture<T>&& future)
-    {
-        if (!future.HasValue() && !WaitForI(future)) {
-            return TErrorResponse(E_REJECTED, "request cancelled");
-        }
-        return future.ExtractValue();
-    }
+    void WaitFor(NThreading::TFuture<T>&& future) = delete;
 
     void WaitFor(NThreading::TFuture<void> future)
     {
