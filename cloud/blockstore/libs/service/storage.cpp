@@ -423,7 +423,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
         {
             inflightWrites->UnregisterRequest(id);
 
-            auto localResponse = f.GetValue();
+            const auto& localResponse = f.GetValue();
 
             guardedSgList.Close();
             // It is required to transfer buffer and request here to extend the
