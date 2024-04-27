@@ -337,7 +337,8 @@ void TBootstrap::Stop()
     }
 
     if (Session) {
-        auto response = Session->UnmountVolume().GetValue(WaitTimeout);
+        auto future = Session->UnmountVolume();
+        const auto& response = future.GetValue(WaitTimeout);
         CheckError(response);
     }
 
@@ -466,7 +467,8 @@ void TBootstrap::InitClientSession()
 
 void TBootstrap::StartNbdServer(TNetworkAddress listenAddress)
 {
-    auto mountResponse = Session->MountVolume().GetValue(WaitTimeout);
+    auto mountFuture = Session->MountVolume();
+    const auto& mountResponse = mountFuture.GetValue(WaitTimeout);
     CheckError(mountResponse);
 
     TStorageOptions options;
