@@ -5027,6 +5027,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST(ShouldTrimFreshBytesDeletionMarkers)
     {
+        const auto block = tabletConfig.BlockSize;
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetFlushBytesThreshold(1_GB);
 
@@ -5051,7 +5053,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // initializing the first block to write fresh bytes then
         // otherwise those 1_KB of fresh bytes would be extended to a whole
         // block
-        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.WriteData(handle, 0, block, 'a');
         tablet.WriteData(handle, 0, 1_KB, 'a');
         tablet.FlushBytes();
         tablet.DestroyHandle(handle);
@@ -5073,7 +5075,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                     {"filesystem", "test"}}, 1},
                 {{
                     {"sensor", "TrimBytes.RequestBytes"},
-                    {"filesystem", "test"}}, 5_KB},
+                    {"filesystem", "test"}}, block + 1_KB},
                 {{
                     {"sensor", "TrimBytes.Count"},
                     {"filesystem", "test"}}, 2},

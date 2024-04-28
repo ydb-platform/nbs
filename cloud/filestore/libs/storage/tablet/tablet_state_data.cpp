@@ -388,6 +388,8 @@ ui32 TIndexTabletState::FinishFlushBytes(
     });
 
     DecrementFreshBytesCount(db, sz);
+    // Min() needed for backwards compat
+    deletedSz = Min<ui32>(deletedSz, GetDeletedFreshBytesCount());
     DecrementDeletedFreshBytesCount(db, deletedSz);
 
     Impl->FreshBytes.FinishCleanup(chunkId);
