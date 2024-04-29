@@ -231,4 +231,44 @@ message TStorageConfig
     optional uint32 CleanupThresholdAverage = 342;
     // Enables the aforementioned threshold.
     optional bool NewCleanupEnabled = 343;
+
+    // Enables GenerateBlobIds + WriteBlob + AddData instead of WriteBlob
+    // for writing.
+    optional bool ThreeStageWriteEnabled = 344;
+
+    // When issuing blob ids, the tablet acquires a collect barrier. In order
+    // to release it in case of a client disconnect, this timeout is used.
+    optional uint32 GenerateBlobIdsReleaseCollectBarrierTimeout = 345;
+
+    // If ThreeStageWriteEnabled is true, writes that exceed this threshold
+    // will use the three-stage write path. Similar to WriteBlobThreshold
+    optional uint32 ThreeStageWriteThreshold = 346;
+
+    // ReadAhead cache params. Used upon DescribeData requests.
+    // If ReadAheadCacheRangeSize is not 0 the requested ranges may be widened
+    // to this value and the results will be cached to serve future describe
+    // requests. The requested range is widened if the previous 32 DescribeData
+    // requests represent a pattern which is similar to sequential. The similar
+    // part is controlled by the ReadAheadMaxGapPercentage parameter which
+    // regulates the maximum number of skipped bytes in an otherwise sequential
+    // pattern.
+    optional uint32 ReadAheadCacheMaxNodes = 347;
+    optional uint32 ReadAheadCacheMaxResultsPerNode = 348;
+    optional uint32 ReadAheadCacheRangeSize = 349;
+    optional uint32 ReadAheadMaxGapPercentage = 350;
+    optional uint32 ReadAheadCacheMaxHandlesPerNode = 351;
+
+    // If set to true, tablets will use the compaction policy, described in their
+    // schemas. If set to false, tablets will use the old compaction policy, which
+    // is None, thus making the table use schema, set for this table beforehand.
+    // If no schema is set, the table will use the default schema.
+    //
+    // Thus, enabling `NewLocalDBCompactionPolicyEnabled` flag will make some
+    // tables use the new, three-generations compaction policy, for all the tablets,
+    // that have been restarted after the flag was set to true.
+    //
+    // Disabling this flag afterwards is not supposed to affect these tables, as
+    // they will return to using the None compaction policy, which does not trigger
+    // `SetCompactionPolicy` alter operation.
+    optional bool NewLocalDBCompactionPolicyEnabled = 352;
 }

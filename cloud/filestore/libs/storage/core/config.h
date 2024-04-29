@@ -191,6 +191,16 @@ public:
 
     ui32 GetMaxBackpressureErrorsBeforeSuicide() const;
 
+    TDuration GetGenerateBlobIdsReleaseCollectBarrierTimeout() const;
+
+    ui32 GetReadAheadCacheMaxNodes() const;
+    ui32 GetReadAheadCacheMaxResultsPerNode() const;
+    ui32 GetReadAheadCacheRangeSize() const;
+    ui32 GetReadAheadMaxGapPercentage() const;
+    ui32 GetReadAheadCacheMaxHandlesPerNode() const;
+
+    bool GetNewLocalDBCompactionPolicyEnabled() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

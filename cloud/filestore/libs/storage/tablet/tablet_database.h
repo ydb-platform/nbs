@@ -64,7 +64,7 @@ public:
         : NKikimr::NIceDb::TNiceDb(database)
     {}
 
-    void InitSchema(bool useDefaultCompactionPolicy);
+    void InitSchema(bool useNoneCompactionPolicy);
 
     //
     // FileSystem
