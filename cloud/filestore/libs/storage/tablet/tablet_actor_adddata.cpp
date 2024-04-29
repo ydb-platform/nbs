@@ -208,9 +208,14 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         "GenerateBlobIds",
         DumpMessage(msg->Record).c_str());
 
+    const ui32 blockSize = GetBlockSize();
+    const TByteRange range(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        blockSize);
+
     // It is up to the client to provide an aligned range, but we still verify
     // it and reject the request if it is not aligned.
-    const ui32 blockSize = GetBlockSize();
     if (msg->Record.GetLength() % blockSize != 0 ||
         msg->Record.GetOffset() % blockSize != 0)
     {
@@ -226,17 +231,26 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         return RebootTabletOnCommitOverflow(ctx, "GenerateBlobIds");
     }
 
+    auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
+    {
+        return ValidateWriteRequest(ctx, request, range);
+    };
+
+    const bool accepted = AcceptRequest<TEvIndexTablet::TGenerateBlobIdsMethod>(
+        ev,
+        ctx,
+        validator);
+
+    if (!accepted) {
+        return;
+    }
+
     // We schedule this event for the case if the client does not call AddData.
     // Thus we ensure that the collect barrier will be released eventually.
     ctx.Schedule(
         Config->GetGenerateBlobIdsReleaseCollectBarrierTimeout(),
         new TEvIndexTabletPrivate::TEvReleaseCollectBarrier(commitId, 1));
     AcquireCollectBarrier(commitId);
-
-    TByteRange range(
-        msg->Record.GetOffset(),
-        msg->Record.GetLength(),
-        blockSize);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>();
