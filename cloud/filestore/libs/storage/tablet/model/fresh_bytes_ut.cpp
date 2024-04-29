@@ -5,8 +5,6 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
-#include <util/generic/size_literals.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
@@ -103,7 +101,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         }
 
         TVector<TBytes> bytes;
-        auto info = freshBytes.StartCleanup(17, &bytes);
+        TVector<TBytes> deletionMarkers;
+        auto info = freshBytes.StartCleanup(17, &bytes, &deletionMarkers);
 
         COMPARE_BYTES(
             TVector<TBytes>({
@@ -114,7 +113,29 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 {2, 100, 5, 14, InvalidCommitId},
                 {2, 1000, 3, 15, InvalidCommitId},
             }), bytes);
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {2, 100, 3, 16, InvalidCommitId},
+            }), deletionMarkers);
         UNIT_ASSERT_VALUES_EQUAL(17, info.ClosingCommitId);
+
+        TVector<TBytes> visitedBytes;
+        TVector<TBytes> visitedDeletionMarkers;
+        auto visitTop = [&] () {
+            visitedBytes.clear();
+            visitedDeletionMarkers.clear();
+            freshBytes.VisitTop([&] (const TBytes& bytes, bool isDel) {
+                if (isDel) {
+                    visitedDeletionMarkers.push_back(bytes);
+                } else {
+                    visitedBytes.push_back(bytes);
+                }
+            });
+        };
+
+        visitTop();
+        COMPARE_BYTES(bytes, visitedBytes);
+        COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
 
         freshBytes.FinishCleanup(info.ChunkId);
 
@@ -131,6 +152,27 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(TVector<TBytes>(), visitor.Bytes);
             UNIT_ASSERT_VALUES_EQUAL(TString(), visitor.Data);
         }
+
+        freshBytes.AddDeletionMarker(2, 100, 1024, 18);
+        freshBytes.AddDeletionMarker(3, 1000, 200, 19);
+
+        bytes.clear();
+        deletionMarkers.clear();
+        info = freshBytes.StartCleanup(19, &bytes, &deletionMarkers);
+
+        COMPARE_BYTES(TVector<TBytes>(), bytes);
+        COMPARE_BYTES(
+            TVector<TBytes>({
+                {2, 100, 1024, 18, InvalidCommitId},
+                {3, 1000, 200, 19, InvalidCommitId},
+            }), deletionMarkers);
+        UNIT_ASSERT_VALUES_EQUAL(19, info.ClosingCommitId);
+
+        visitTop();
+        COMPARE_BYTES(bytes, visitedBytes);
+        COMPARE_BYTES(deletionMarkers, visitedDeletionMarkers);
+
+        freshBytes.FinishCleanup(info.ChunkId);
     }
 
     Y_UNIT_TEST(ShouldInsertIntervalInTheMiddleOfAnotherInterval)
@@ -176,7 +218,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         freshBytes.AddBytes(465, 0, TStringBuf(data.data(), dataSize), commitId);
 
         TVector<TBytes> entries;
-        freshBytes.StartCleanup(commitId, &entries);
+        TVector<TBytes> deletionMarkers;
+        freshBytes.StartCleanup(commitId, &entries, &deletionMarkers);
 
         for (auto& entry: entries) {
             UNIT_ASSERT_VALUES_EQUAL(entry.Length, dataSize);

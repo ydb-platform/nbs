@@ -692,7 +692,9 @@ public:
         ui64 offset,
         ui64 len);
 
-    TFlushBytesCleanupInfo StartFlushBytes(TVector<TBytes>* bytes);
+    TFlushBytesCleanupInfo StartFlushBytes(
+        TVector<TBytes>* bytes,
+        TVector<TBytes>* deletionMarkers);
     ui32 FinishFlushBytes(
         TIndexTabletDatabase& db,
         ui64 chunkId,
