@@ -17,7 +17,7 @@ IActorPtr CreateIndexTablet(
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
     NMetrics::IMetricsRegistryPtr metricsRegistry,
-    bool useDefaultCompactionPolicy)
+    bool useNoneCompactionPolicy)
 {
     return std::make_unique<TIndexTabletActor>(
         owner,
@@ -26,7 +26,7 @@ IActorPtr CreateIndexTablet(
         std::move(profileLog),
         std::move(traceSerializer),
         std::move(metricsRegistry),
-        useDefaultCompactionPolicy);
+        useNoneCompactionPolicy);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

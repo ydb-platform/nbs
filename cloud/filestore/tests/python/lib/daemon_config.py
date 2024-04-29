@@ -98,6 +98,10 @@ class NfsDaemonConfigGenerator:
     def working_dir(self):
         return self.__working_dir
 
+    @property
+    def configs_dir(self):
+        return self.__configs_dir
+
     def __generate_domains_txt(self, domains_txt):
         config = TDomainsConfig()
         if domains_txt is not None:

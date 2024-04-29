@@ -201,7 +201,7 @@ private:
 
     TStorageConfigPtr Config;
 
-    const bool UseDefaultCompactionPolicy;
+    const bool UseNoneCompactionPolicy;
 
     struct TCompactionStateLoadStatus
     {
@@ -225,7 +225,7 @@ public:
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
         NMetrics::IMetricsRegistryPtr metricsRegistry,
-        bool useDefaultCompactionPolicy);
+        bool useNoneCompactionPolicy);
     ~TIndexTabletActor() override;
 
     static constexpr ui32 LogComponent = TFileStoreComponents::TABLET;
