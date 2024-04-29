@@ -109,6 +109,7 @@ def start(argv):
     set_env("NFS_SERVER_PORT", str(nfs_configurator.port))
     set_env("NFS_MON_PORT", str(nfs_configurator.mon_port))
     set_env("NFS_DOMAIN", str(domain))
+    set_env("NFS_CONFIG_DIR", str(nfs_configurator.configs_dir))
     if access_service_port:
         set_env("NFS_SERVER_SECURE_PORT", str(server_config.ServerConfig.SecurePort))
 
