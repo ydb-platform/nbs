@@ -552,6 +552,9 @@ void TIndexTabletActor::HandleFlushBytes(
         msg->CallContext);
 
     TVector<TBytes> bytes;
+    // deletionMarkers won't be needed in the transactions - the actual localdb
+    // cleanup will use the markers stored in TFreshBytes via the FinishCleanup
+    // call which uses TFreshBytes::VisitTop
     TVector<TBytes> deletionMarkers;
     auto cleanupInfo = StartFlushBytes(&bytes, &deletionMarkers);
 
@@ -584,8 +587,7 @@ void TIndexTabletActor::HandleFlushBytes(
         std::move(requestInfo),
         cleanupInfo.ClosingCommitId,
         cleanupInfo.ChunkId,
-        std::move(bytes),
-        std::move(deletionMarkers)
+        std::move(bytes)
     );
 }
 
