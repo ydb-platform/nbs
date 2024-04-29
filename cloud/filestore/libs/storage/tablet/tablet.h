@@ -20,6 +20,7 @@ NActors::IActorPtr CreateIndexTablet(
     TStorageConfigPtr config,
     IProfileLogPtr profileLog,
     ITraceSerializerPtr traceSerializer,
-    NMetrics::IMetricsRegistryPtr metricsRegistry);
+    NMetrics::IMetricsRegistryPtr metricsRegistry,
+    bool useNoneCompactionPolicy);
 
 }   // namespace NCloud::NFileStore::NStorage

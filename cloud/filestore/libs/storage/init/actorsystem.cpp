@@ -208,13 +208,18 @@ public:
                 TTabletStorageInfo* storage)
             {
                 Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
+                bool useNoneCompactionPolicy = true;
+                if (config->GetNewLocalDBCompactionPolicyEnabled()) {
+                    useNoneCompactionPolicy = false;
+                }
                 auto actor = CreateIndexTablet(
                     owner,
                     storage,
                     config,
                     std::move(profileLog),
                     std::move(traceSerializer),
-                    std::move(metricsRegistry));
+                    std::move(metricsRegistry),
+                    useNoneCompactionPolicy);
                 return actor.release();
             };
 

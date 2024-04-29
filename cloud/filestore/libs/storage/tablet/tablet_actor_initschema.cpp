@@ -31,7 +31,7 @@ void TIndexTabletActor::ExecuteTx_InitSchema(
 
     TIndexTabletDatabase db(tx.DB);
 
-    db.InitSchema();
+    db.InitSchema(args.UseNoneCompactionPolicy);
 }
 
 void TIndexTabletActor::CompleteTx_InitSchema(

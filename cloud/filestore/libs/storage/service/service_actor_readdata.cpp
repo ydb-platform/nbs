@@ -417,8 +417,15 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.empty() ||
             response.Buffer.size() % BlockSize != 0)
         {
-            const auto error =
-                FormatError(MakeError(E_FAIL, "invalid response received"));
+            const auto error = FormatError(MakeError(
+                E_FAIL,
+                Sprintf(
+                    "invalid response received: "
+                    "expected blobId: %s, response blobId: %s, buffer size: "
+                    "%lu",
+                    blobId.ToString().c_str(),
+                    response.Id.ToString().c_str(),
+                    response.Buffer.size())));
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
@@ -521,6 +528,7 @@ void TReadDataActor::HandleReadDataResponse(
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     response->Record = std::move(msg->Record);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    Die(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
