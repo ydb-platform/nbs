@@ -368,6 +368,12 @@ TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
     const TByteRange& range);
 
 template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TGenerateBlobIdsRequest>(
+    const TActorContext& ctx,
+    const NProtoPrivate::TGenerateBlobIdsRequest& request,
+    const TByteRange& range);
+
+template NProto::TError
 TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
     const TActorContext& ctx,
     const NProtoPrivate::TAddDataRequest& request,
