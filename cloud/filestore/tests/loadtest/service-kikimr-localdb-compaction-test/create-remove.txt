@@ -19,6 +19,6 @@ Tests {
             }
         }
         IODepth: 64
-        TestDuration: 60
+        TestDuration: 120
     }
 }

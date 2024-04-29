@@ -11,7 +11,7 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/filestore/tests/compaction_policy
+    arcadia/cloud/filestore/tests/loadtes/service-kikimr-localdb-compaction-test
 )
 
 PEERDIR(
@@ -19,7 +19,7 @@ PEERDIR(
     cloud/filestore/tests/python/lib
 )
 
-SET(NFS_RESTART_INTERVAL 5)
+SET(NFS_RESTART_INTERVAL 20)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 

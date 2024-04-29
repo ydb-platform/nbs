@@ -209,7 +209,7 @@ public:
             {
                 Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::FileStore);
                 bool useNoneCompactionPolicy = true;
-                if (config->GetNewCompactionPolicyEnabled()) {
+                if (config->GetNewLocalDBCompactionPolicyEnabled()) {
                     useNoneCompactionPolicy = false;
                 }
                 auto actor = CreateIndexTablet(

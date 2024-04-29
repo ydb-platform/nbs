@@ -152,7 +152,7 @@ namespace {
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide,             ui32,      1000       )\
                                                                                \
-    xxx(NewCompactionPolicyEnabled,                     bool,      false      )\
+    xxx(NewLocalDBCompactionPolicyEnabled,              bool,      false      )\
                                                                                \
     xxx(GenerateBlobIdsReleaseCollectBarrierTimeout,                           \
         TDuration,                                                             \

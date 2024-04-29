@@ -201,7 +201,7 @@ public:
     ui32 GetReadAheadMaxGapPercentage() const;
     ui32 GetReadAheadCacheMaxHandlesPerNode() const;
 
-    bool GetNewCompactionPolicyEnabled() const;
+    bool GetNewLocalDBCompactionPolicyEnabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

@@ -263,12 +263,12 @@ message TStorageConfig
     // is None, thus making the table use schema, set for this table beforehand.
     // If no schema is set, the table will use the default schema.
     //
-    // Thus, enabling `NewCompactionPolicyEnabled` flag will make some tables use
-    // the new, three-generations compaction policy, for all the tablets, that have
-    // been restarted after the flag was set to true.
+    // Thus, enabling `NewLocalDBCompactionPolicyEnabled` flag will make some
+    // tables use the new, three-generations compaction policy, for all the tablets,
+    // that have been restarted after the flag was set to true.
     //
-    // Disabling this flag afterwards is not supposed to affect these tables, as they
-    // will return to using the None compaction policy, which does not trigger
+    // Disabling this flag afterwards is not supposed to affect these tables, as
+    // they will return to using the None compaction policy, which does not trigger
     // `SetCompactionPolicy` alter operation.
-    optional bool NewCompactionPolicyEnabled = 352;
+    optional bool NewLocalDBCompactionPolicyEnabled = 352;
 }
