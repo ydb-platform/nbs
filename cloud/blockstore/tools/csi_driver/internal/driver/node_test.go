@@ -33,7 +33,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	nbsSocketsDir := "/test/sockets/folder"
 	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
-	targetPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	nbsSocketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nbs.sock")
 	nfsSocketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nfs.sock")
 
@@ -43,7 +43,8 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 		true, // vmMode
 		nbsSocketsDir,
 		podSocketsDir,
-		targetPathPattern,
+		targetFsPathPattern,
+		"", // targetBlkPathPattern
 		nbsClient,
 		nfsClient,
 		mounter,
@@ -110,14 +111,17 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 
 	fileInfo, err := os.Stat(sourcePath)
 	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(filepath.Join(sourcePath, "disk.img"))
 	assert.False(t, os.IsNotExist(err))
+	assert.False(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0644), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
@@ -170,7 +174,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
-	targetPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
+	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	podSocketsDir := filepath.Join(tempDir, "sockets")
 	nbsSocketsDir := "/test/sockets/folder"
 	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
@@ -182,7 +186,8 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		false, // vmMode
 		nbsSocketsDir,
 		podSocketsDir,
-		targetPathPattern,
+		targetFsPathPattern,
+		"", // targetBlkPathPattern
 		nbsClient,
 		nil,
 		mounter,
@@ -239,11 +244,130 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	fileInfo, err := os.Stat(sourcePath)
 	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
 
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
 	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
+
+	mounter.On("CleanupMountPoint", targetPath).Return(nil)
+
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		UnixSocketPath: socketPath,
+	}).Return(&nbs.TStopEndpointResponse{}, nil)
+
+	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
+		VolumeId:   diskID,
+		TargetPath: targetPath,
+	})
+	require.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(podSocketsDir, podID))
+	assert.True(t, os.IsNotExist(err))
+
+	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+		VolumeId:          diskID,
+		StagingTargetPath: "testStagingTargetPath",
+	})
+	require.NoError(t, err)
+}
+
+func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
+	tempDir := os.TempDir()
+
+	nbsClient := mocks.NewNbsClientMock()
+	mounter := mounter.NewMock()
+
+	ipcType := nbs.EClientIpcType_IPC_NBD
+	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
+	err := os.MkdirAll(nbdDeviceFile, 0755)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	clientID := "testClientId"
+	podID := "test-pod-id-13"
+	diskID := "test-disk-id-42"
+	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
+	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
+	podSocketsDir := filepath.Join(tempDir, "sockets")
+	nbsSocketsDir := "/test/sockets/folder"
+	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
+	socketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nbs.sock")
+
+	nodeService := newNodeService(
+		"testNodeId",
+		clientID,
+		false, // vmMode
+		nbsSocketsDir,
+		podSocketsDir,
+		"", // targetFsPathPattern
+		targetBlkPathPattern,
+		nbsClient,
+		nil,
+		mounter,
+	)
+
+	_, err = nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          diskID,
+		StagingTargetPath: "testStagingTargetPath",
+		VolumeCapability:  &csi.VolumeCapability{},
+	})
+	require.NoError(t, err)
+
+	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		UnixSocketPath:   socketPath,
+		DiskId:           diskID,
+		ClientId:         clientID,
+		DeviceName:       diskID,
+		IpcType:          ipcType,
+		VhostQueuesCount: 8,
+		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+		Persistent:       true,
+		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+			true,
+		},
+		ClientProfile: &nbs.TClientProfile{
+			HostType: &hostType,
+		},
+	}).Return(&nbs.TStartEndpointResponse{
+		NbdDeviceFile: nbdDeviceFile,
+	}, nil)
+
+	mounter.On("IsMountPoint", targetPath).Return(false, nil)
+
+	mounter.On("Mount", nbdDeviceFile, targetPath, "", []string{"bind"}).Return(nil)
+
+	_, err = nodeService.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+		VolumeId:          diskID,
+		StagingTargetPath: "testStagingTargetPath",
+		TargetPath:        targetPath,
+		VolumeCapability: &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Block{
+				Block: &csi.VolumeCapability_BlockVolume{},
+			},
+		},
+		VolumeContext: map[string]string{},
+	})
+	require.NoError(t, err)
+
+	fileInfo, err := os.Stat(sourcePath)
+	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
+
+	fileInfo, err = os.Stat(filepath.Dir(targetPath))
+	assert.False(t, os.IsNotExist(err))
+	assert.True(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0750), fileInfo.Mode().Perm())
+
+	fileInfo, err = os.Stat(targetPath)
+	assert.False(t, os.IsNotExist(err))
+	assert.False(t, fileInfo.IsDir())
+	assert.Equal(t, fs.FileMode(0660), fileInfo.Mode().Perm())
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 

@@ -105,7 +105,8 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.VMMode,
 			cfg.NbsSocketsDir,
 			cfg.PodSocketsDir,
-			NodeTargetPathPattern,
+			NodeFsTargetPathPattern,
+			NodeBlkTargetPathPattern,
 			nbsClient,
 			nfsEndpointClient,
 			mounter.NewMounter()))

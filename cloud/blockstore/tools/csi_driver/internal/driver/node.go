@@ -20,7 +20,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const NodeTargetPathPattern = "/var/lib/kubelet/pods/([a-z0-9-]+)/volumes/kubernetes.io~csi/([a-z0-9-]+)/mount"
+const NodeFsTargetPathPattern = "/var/lib/kubelet/pods/([a-z0-9-]+)/volumes/kubernetes.io~csi/([a-z0-9-]+)/mount"
+const NodeBlkTargetPathPattern = "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)"
 
 const topologyNodeKey = "topology.nbs.csi/node"
 
@@ -45,12 +46,13 @@ var capabilities = []*csi.NodeServiceCapability{
 type nodeService struct {
 	csi.NodeServer
 
-	nodeID            string
-	clientID          string
-	vmMode            bool
-	nbsSocketsDir     string
-	podSocketsDir     string
-	targetPathPattern string
+	nodeID              string
+	clientID            string
+	vmMode              bool
+	nbsSocketsDir       string
+	podSocketsDir       string
+	targetFsPathRegexp  *regexp.Regexp
+	targetBlkPathRegexp *regexp.Regexp
 
 	nbsClient nbsclient.ClientIface
 	nfsClient nfsclient.EndpointClientIface
@@ -63,21 +65,23 @@ func newNodeService(
 	vmMode bool,
 	nbsSocketsDir string,
 	podSocketsDir string,
-	targetPathPattern string,
+	targetFsPathPattern string,
+	targetBlkPathPattern string,
 	nbsClient nbsclient.ClientIface,
 	nfsClient nfsclient.EndpointClientIface,
 	mounter mounter.Interface) csi.NodeServer {
 
 	return &nodeService{
-		nodeID:            nodeID,
-		clientID:          clientID,
-		vmMode:            vmMode,
-		nbsSocketsDir:     nbsSocketsDir,
-		podSocketsDir:     podSocketsDir,
-		nbsClient:         nbsClient,
-		nfsClient:         nfsClient,
-		mounter:           mounter,
-		targetPathPattern: targetPathPattern,
+		nodeID:              nodeID,
+		clientID:            clientID,
+		vmMode:              vmMode,
+		nbsSocketsDir:       nbsSocketsDir,
+		podSocketsDir:       podSocketsDir,
+		nbsClient:           nbsClient,
+		nfsClient:           nfsClient,
+		mounter:             mounter,
+		targetFsPathRegexp:  regexp.MustCompile(targetFsPathPattern),
+		targetBlkPathRegexp: regexp.MustCompile(targetBlkPathPattern),
 	}
 }
 
@@ -399,9 +403,12 @@ func (s *nodeService) nodeUnpublishVolume(
 	}
 
 	// no other way to get podId from NodeUnpublishVolumeRequest
-	podId, _, err := s.parseTargetPath(req.TargetPath)
+	podId, _, err := s.parseFsTargetPath(req.TargetPath)
 	if err != nil {
-		return err
+		podId, _, err = s.parseBlkTargetPath(req.TargetPath)
+		if err != nil {
+			return err
+		}
 	}
 
 	podSocketDir := filepath.Join(s.podSocketsDir, podId, req.VolumeId)
@@ -543,25 +550,47 @@ func (s *nodeService) makeFilesystemIfNeeded(
 
 func (s *nodeService) getPodId(req *csi.NodePublishVolumeRequest) string {
 	// another way to get podId is: return req.VolumeContext["csi.storage.k8s.io/pod.uid"]
-	podId, _, err := s.parseTargetPath(req.TargetPath)
-	if err != nil {
-		return ""
+
+	switch req.VolumeCapability.GetAccessType().(type) {
+	case *csi.VolumeCapability_Mount:
+		podId, _, err := s.parseFsTargetPath(req.TargetPath)
+		if err != nil {
+			return ""
+		}
+		return podId
+	case *csi.VolumeCapability_Block:
+		podId, _, err := s.parseBlkTargetPath(req.TargetPath)
+		if err != nil {
+			return ""
+		}
+		return podId
 	}
 
-	return podId
+	return ""
 }
 
-func (s *nodeService) parseTargetPath(targetPath string) (string, string, error) {
-	re := regexp.MustCompile(s.targetPathPattern)
-	matches := re.FindStringSubmatch(targetPath)
+func (s *nodeService) parseFsTargetPath(targetPath string) (string, string, error) {
+	matches := s.targetFsPathRegexp.FindStringSubmatch(targetPath)
 
 	if len(matches) <= 2 {
 		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
 	}
 
 	podID := matches[1]
-	volumeID := matches[2]
-	return podID, volumeID, nil
+	pvcID := matches[2]
+	return podID, pvcID, nil
+}
+
+func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, error) {
+	matches := s.targetBlkPathRegexp.FindStringSubmatch(targetPath)
+
+	if len(matches) <= 2 {
+		return "", "", fmt.Errorf("failed to parse TargetPath: %q", targetPath)
+	}
+
+	pvcID := matches[1]
+	podID := matches[2]
+	return podID, pvcID, nil
 }
 
 func logVolume(volumeId string, format string, v ...any) {
