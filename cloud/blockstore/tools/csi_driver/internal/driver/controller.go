@@ -91,20 +91,13 @@ func (c *nbsServerControllerService) CreateVolume(
 		)
 	}
 
-	volumeContext := make(map[string]string)
-	parameters := make(map[string]string)
-	if req.Parameters != nil {
-		for key, value := range req.Parameters {
-			if key == "backend" {
-				volumeContext[key] = value
-			} else {
-				parameters[key] = value
-			}
-		}
+	parameters := req.Parameters
+	if parameters == nil {
+		parameters = make(map[string]string)
 	}
 
 	var err error
-	if volumeContext["backend"] == "nfs" {
+	if parameters["backend"] == "nfs" {
 		err = c.createFileStore(ctx, req.Name, requiredBytes)
 	} else {
 		err = c.createDisk(ctx, req.Name, requiredBytes, parameters)
@@ -119,7 +112,7 @@ func (c *nbsServerControllerService) CreateVolume(
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
 		CapacityBytes: requiredBytes,
 		VolumeId:      req.Name,
-		VolumeContext: volumeContext,
+		VolumeContext: parameters,
 	}}, nil
 }
 

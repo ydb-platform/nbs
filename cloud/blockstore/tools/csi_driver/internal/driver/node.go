@@ -274,15 +274,20 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
 	}
 
-	log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
 
-	fsType := "ext4"
 	mnt := req.VolumeCapability.GetMount()
+
+	fsType := req.VolumeContext["fsType"]
 	if mnt != nil && mnt.FsType != "" {
 		fsType = mnt.FsType
 	}
+	if fsType == "" {
+		fsType = "ext4"
+	}
 
-	if err := s.makeFilesystemIfNeeded(resp.NbdDeviceFile, fsType); err != nil {
+	err = s.makeFilesystemIfNeeded(req.VolumeId, resp.NbdDeviceFile, fsType)
+	if err != nil {
 		return err
 	}
 
@@ -296,7 +301,12 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mountIfNeeded(resp.NbdDeviceFile, req.TargetPath, fsType, mountOptions)
+	return s.mountIfNeeded(
+		req.VolumeId,
+		resp.NbdDeviceFile,
+		req.TargetPath,
+		fsType,
+		mountOptions)
 }
 
 func (s *nodeService) nodePublishDiskAsBlockDevice(
@@ -313,8 +323,8 @@ func (s *nodeService) nodePublishDiskAsBlockDevice(
 		return status.Error(codes.Internal, "NbdDeviceFile shouldn't be empty")
 	}
 
-	log.Printf("Endpoint started with device file: %q", resp.NbdDeviceFile)
-	return s.mountBlockDevice(resp.NbdDeviceFile, req.TargetPath)
+	logVolume(req.VolumeId, "endpoint started with device: %q", resp.NbdDeviceFile)
+	return s.mountBlockDevice(req.VolumeId, resp.NbdDeviceFile, req.TargetPath)
 }
 
 func (s *nodeService) startNbsEndpoint(
@@ -456,10 +466,19 @@ func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 			mountOptions = append(mountOptions, flag)
 		}
 	}
-	return s.mountIfNeeded(endpointDir, req.TargetPath, "", mountOptions)
+	return s.mountIfNeeded(
+		req.VolumeId,
+		endpointDir,
+		req.TargetPath,
+		"",
+		mountOptions)
 }
 
-func (s *nodeService) mountBlockDevice(source string, target string) error {
+func (s *nodeService) mountBlockDevice(
+	volumeId string,
+	source string,
+	target string) error {
+
 	err := os.MkdirAll(filepath.Dir(target), 0750)
 	if err != nil {
 		return fmt.Errorf("failed to create target directory: %v", err)
@@ -472,10 +491,11 @@ func (s *nodeService) mountBlockDevice(source string, target string) error {
 	file.Close()
 
 	mountOptions := []string{"bind"}
-	return s.mountIfNeeded(source, target, "", mountOptions)
+	return s.mountIfNeeded(volumeId, source, target, "", mountOptions)
 }
 
 func (s *nodeService) mountIfNeeded(
+	volumeId string,
 	source string,
 	target string,
 	fsType string,
@@ -487,14 +507,19 @@ func (s *nodeService) mountIfNeeded(
 	}
 
 	if mounted {
-		log.Printf("Target path %q is already mounted", target)
+		logVolume(volumeId, "target path %q is already mounted", target)
 		return nil
 	}
 
+	logVolume(volumeId, "mount source %q to target %q, fsType: %q, options: %v",
+		source, target, fsType, options)
 	return s.mounter.Mount(source, target, fsType, options)
 }
 
-func (s *nodeService) makeFilesystemIfNeeded(deviceName, fsType string) error {
+func (s *nodeService) makeFilesystemIfNeeded(
+	volumeId string,
+	deviceName string,
+	fsType string) error {
 
 	existed, err := s.mounter.IsFilesystemExisted(deviceName)
 	if err != nil {
@@ -502,17 +527,17 @@ func (s *nodeService) makeFilesystemIfNeeded(deviceName, fsType string) error {
 	}
 
 	if existed {
-		log.Printf("filesystem exists on device: %q", deviceName)
+		logVolume(volumeId, "filesystem exists on device: %q", deviceName)
 		return nil
 	}
 
-	log.Printf("making filesystem %q on device %q", fsType, deviceName)
+	logVolume(volumeId, "making filesystem %q on device %q", fsType, deviceName)
 	err = s.mounter.MakeFilesystem(deviceName, fsType)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("succeeded making filesystem: %q")
+	logVolume(volumeId, "succeeded making filesystem")
 	return nil
 }
 
@@ -537,4 +562,9 @@ func (s *nodeService) parseTargetPath(targetPath string) (string, string, error)
 	podID := matches[1]
 	volumeID := matches[2]
 	return podID, volumeID, nil
+}
+
+func logVolume(volumeId string, format string, v ...any) {
+	msg := fmt.Sprintf(format, v...)
+	log.Printf("[%s]: %s", volumeId, msg)
 }
