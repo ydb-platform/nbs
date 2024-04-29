@@ -331,7 +331,9 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
             BlobIndexOps.Push(EBlobIndexOp::Cleanup);
         }
 
-        if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()) {
+        if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
+                || GetDeletedFreshBytesCount() >= Config->GetFlushBytesThreshold())
+        {
             BlobIndexOps.Push(EBlobIndexOp::FlushBytes);
         }
     }

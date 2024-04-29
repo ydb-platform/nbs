@@ -482,7 +482,7 @@ void TIndexTabletActor::HandleFlushBytes(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [] (
+    auto reply = [] (
         const TActorContext& ctx,
         auto& ev,
         const NProto::TError& error)
@@ -511,7 +511,7 @@ void TIndexTabletActor::HandleFlushBytes(
             FlushState.Complete();
         }
 
-        replyError(
+        reply(
             ctx,
             *ev,
             MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
@@ -525,7 +525,7 @@ void TIndexTabletActor::HandleFlushBytes(
             FlushState.Complete();
         }
 
-        replyError(
+        reply(
             ctx,
             *ev,
             MakeError(S_FALSE, "cleanup/compaction is in progress")
@@ -537,11 +537,7 @@ void TIndexTabletActor::HandleFlushBytes(
     if (!FlushState.Start()) {
         BlobIndexOpState.Complete();
 
-        replyError(
-            ctx,
-            *ev,
-            MakeError(S_FALSE, "flush is in progress")
-        );
+        reply(ctx, *ev, MakeError(S_FALSE, "flush is in progress"));
 
         return;
     }
@@ -556,17 +552,32 @@ void TIndexTabletActor::HandleFlushBytes(
         msg->CallContext);
 
     TVector<TBytes> bytes;
-    auto cleanupInfo = StartFlushBytes(&bytes);
+    // deletionMarkers won't be needed in the transactions - the actual localdb
+    // cleanup will use the markers stored in TFreshBytes via the FinishCleanup
+    // call which uses TFreshBytes::VisitTop
+    TVector<TBytes> deletionMarkers;
+    auto cleanupInfo = StartFlushBytes(&bytes, &deletionMarkers);
 
     if (bytes.empty()) {
-        FlushState.Complete();
-        BlobIndexOpState.Complete();
+        if (deletionMarkers.empty()) {
+            FlushState.Complete();
+            BlobIndexOpState.Complete();
 
-        replyError(
+            reply(ctx, *ev, MakeError(S_ALREADY, "no bytes to flush"));
+
+            return;
+        }
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s FlushBytes: only deletion markers found, trimming",
+            LogTag.c_str());
+
+        reply(ctx, *ev, {});
+
+        ExecuteTx<TTrimBytes>(
             ctx,
-            *ev,
-            MakeError(S_ALREADY, "no bytes to flush")
-        );
+            std::move(requestInfo),
+            cleanupInfo.ChunkId);
 
         return;
     }
@@ -836,7 +847,6 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
     const TEvIndexTabletPrivate::TEvFlushBytesCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    // RECEIVED FROM TFlushBytesActor!
     const auto* msg = ev->Get();
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
@@ -904,9 +914,10 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         ProfileLog);
 
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        "%s TrimBytes completed (%lu)",
+        "%s TrimBytes completed (%lu, %u)",
         LogTag.c_str(),
-        args.ChunkId);
+        args.ChunkId,
+        args.TrimmedBytes);
 
     FILESTORE_TRACK(
         ResponseSent_Tablet,

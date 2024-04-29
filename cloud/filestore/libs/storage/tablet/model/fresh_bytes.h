@@ -16,7 +16,8 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TChunkVisitor = std::function<void(const TBytes& bytes)>;
+using TChunkVisitor =
+    std::function<void(const TBytes& bytes, bool isDeletionMarker)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -59,6 +60,7 @@ private:
     {
         TMap<TKey, TRef, TLess<TKey>, TStlAllocator> Refs;
         TDeque<TElement, TStlAllocator> Data;
+        TDeque<TBytes, TStlAllocator> DeletionMarkers;
         ui64 FirstCommitId = InvalidCommitId;
         ui64 TotalBytes = 0;
         ui64 Id = 0;
@@ -67,6 +69,7 @@ private:
         explicit TChunk(IAllocator* allocator)
             : Refs(allocator)
             , Data(allocator)
+            , DeletionMarkers(allocator)
         {}
     };
 
@@ -93,7 +96,10 @@ public:
 
     void OnCheckpoint(ui64 commitId);
 
-    TFlushBytesCleanupInfo StartCleanup(ui64 commitId, TVector<TBytes>* entries);
+    TFlushBytesCleanupInfo StartCleanup(
+        ui64 commitId,
+        TVector<TBytes>* entries,
+        TVector<TBytes>* deletionMarkers);
     void VisitTop(const TChunkVisitor& visitor);
     void FinishCleanup(ui64 chunkId);
 

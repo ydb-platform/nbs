@@ -98,6 +98,7 @@ private:
 
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> DeletedFreshBytesCount{0};
         std::atomic<i64> MixedBytesCount{0};
         std::atomic<i64> MixedBlobsCount{0};
         std::atomic<i64> DeletionMarkersCount{0};

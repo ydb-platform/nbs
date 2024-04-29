@@ -45,6 +45,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
     xxx(FreshBytesCount,        __VA_ARGS__)                                   \
     xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
+    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
 // FILESTORE_FILESYSTEM_STATS
 
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
