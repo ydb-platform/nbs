@@ -311,6 +311,20 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             UNIT_ASSERT_VALUES_EQUAL(stats.TopRangesByCompactionScore[1].Stats.DeletionsCount, 444);
         }
     }
+
+    Y_UNIT_TEST(ShouldTrackTotalBlobsCountAndDeletionsCount)
+    {
+        TCompactionMap compactionMap(TDefaultAllocator::Instance());
+
+        compactionMap.Update(1, 10, 20);
+        compactionMap.Update(2, 5, 40);
+        compactionMap.Update(2, 15, 50);
+        compactionMap.Update(100, 7, 100);
+
+        auto stats = compactionMap.GetStats(1);
+        UNIT_ASSERT_VALUES_EQUAL(32, stats.TotalBlobsCount);
+        UNIT_ASSERT_VALUES_EQUAL(170, stats.TotalDeletionsCount);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
