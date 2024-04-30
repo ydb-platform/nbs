@@ -1,5 +1,4 @@
 import logging
-import time
 
 from cloud.blockstore.tests.python.lib.rdma import setup_rdma
 
@@ -41,14 +40,11 @@ def check_rdma_connectivity(h1, h2, rdma_port=9999, timeout=10):
         "--storage", "Rdma",
         "--verbose", "debug",
         "--test-duration", str(timeout),
+        "--connect-timeout", "120",
     ]
 
     p2 = h2.execute(target_cmd, wait=False)
-
-    # wait for target to start listening
-    time.sleep(5)
-
-    h1.execute(initiator_cmd, timeout=timeout + EXECUTE_EXTRA_TIMEOUT_SECS)
+    h1.execute(initiator_cmd)
 
     p2.terminate()
 
