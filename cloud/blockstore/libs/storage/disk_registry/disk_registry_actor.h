@@ -262,6 +262,7 @@ private:
     void RenderDisksToNotify(IOutputStream& out) const;
     void RenderUserNotifications(IOutputStream& out) const;
     void RenderPlacementGroupList(IOutputStream& out, ui32 limit) const;
+    void RenderPlacementGroupTable(IOutputStream& out, bool showRecent) const;
     void RenderRacks(IOutputStream& out, ui32 limit) const;
     void RenderPoolRacks(IOutputStream& out, const TString& poolName) const;
     void RenderAgentList(TInstant now, IOutputStream& out, ui32 limit) const;
