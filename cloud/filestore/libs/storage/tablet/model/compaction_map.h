@@ -33,6 +33,8 @@ struct TCompactionMapStats
 {
     ui64 UsedRangesCount = 0;
     ui64 AllocatedRangesCount = 0;
+    ui64 TotalBlobsCount = 0;
+    ui64 TotalDeletionsCount = 0;
 
     TVector<TCompactionRangeInfo> TopRangesByCleanupScore;
     TVector<TCompactionRangeInfo> TopRangesByCompactionScore;
