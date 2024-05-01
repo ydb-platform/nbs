@@ -34,11 +34,11 @@ func (m *mounter) CleanupMountPoint(target string) error {
 
 func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 	if _, err := exec.LookPath("blkid"); err != nil {
-		return false, fmt.Errorf("failed to find 'blkid' tool: %v", err)
+		return false, fmt.Errorf("failed to find 'blkid' tool: %w", err)
 	}
 
 	if _, err := os.Stat(device); os.IsNotExist(err) {
-		return false, fmt.Errorf("failed to find device %q: %v", device, err)
+		return false, fmt.Errorf("failed to find device %q: %w", device, err)
 	}
 
 	out, err := exec.Command("blkid", device).CombinedOutput()
@@ -57,7 +57,7 @@ func (m *mounter) MakeFilesystem(device string, fsType string) error {
 	options = append(options, device)
 	out, err := exec.Command("mkfs", options...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to make filesystem: %v, output %q", err, out)
+		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
 	}
 
 	return nil

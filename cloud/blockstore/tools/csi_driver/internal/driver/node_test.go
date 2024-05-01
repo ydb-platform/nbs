@@ -3,8 +3,12 @@ package driver
 import (
 	"context"
 	"io/fs"
+	"log"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -122,7 +126,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
 	assert.True(t, fileInfo.IsDir())
-	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
+	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 
@@ -161,12 +165,24 @@ func TestPublishUnpublishFilestoreForKubevirt(t *testing.T) {
 func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	tempDir := os.TempDir()
 
+	groupId := ""
+	currentUser, err := user.Current()
+	require.NoError(t, err)
+	groups, err := currentUser.GroupIds()
+	require.NoError(t, err)
+	for _, group := range groups {
+		if group != "" && group != "0" {
+			groupId = group
+		}
+	}
+	log.Printf("groupId: %s", groupId)
+
 	nbsClient := mocks.NewNbsClientMock()
 	mounter := mounter.NewMock()
 
 	ipcType := nbs.EClientIpcType_IPC_NBD
 	nbdDeviceFile := filepath.Join(tempDir, "dev", "nbd3")
-	err := os.MkdirAll(nbdDeviceFile, 0755)
+	err = os.MkdirAll(nbdDeviceFile, fs.FileMode(0755))
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -235,7 +251,9 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		TargetPath:        targetPath,
 		VolumeCapability: &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{
-				Mount: &csi.VolumeCapability_MountVolume{},
+				Mount: &csi.VolumeCapability_MountVolume{
+					VolumeMountGroup: groupId,
+				},
 			},
 		},
 		VolumeContext: map[string]string{},
@@ -250,7 +268,13 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	fileInfo, err = os.Stat(targetPath)
 	assert.False(t, os.IsNotExist(err))
 	assert.True(t, fileInfo.IsDir())
-	assert.Equal(t, fs.FileMode(0755), fileInfo.Mode().Perm())
+	assert.Equal(t, fs.FileMode(0775), fileInfo.Mode().Perm())
+
+	output, err := exec.Command("ls", "-ldn", targetPath).CombinedOutput()
+	assert.False(t, os.IsNotExist(err))
+	log.Printf("Target path: %s", output)
+	fields := strings.Fields(string(output))
+	assert.Equal(t, groupId, fields[3])
 
 	mounter.On("CleanupMountPoint", targetPath).Return(nil)
 

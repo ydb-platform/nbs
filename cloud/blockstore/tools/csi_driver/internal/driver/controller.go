@@ -106,7 +106,7 @@ func (c *nbsServerControllerService) CreateVolume(
 	if err != nil {
 		// TODO (issues/464): return codes.AlreadyExists if volume exists
 		return nil, status.Errorf(
-			codes.Internal, "Failed to create volume: %+v", err)
+			codes.Internal, "Failed to create volume: %w", err)
 	}
 
 	return &csi.CreateVolumeResponse{Volume: &csi.Volume{
@@ -176,7 +176,7 @@ func (c *nbsServerControllerService) DeleteVolume(
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
-				"Failed to destroy disk: %+v", err)
+				"Failed to destroy disk: %w", err)
 		}
 	}
 
@@ -187,7 +187,7 @@ func (c *nbsServerControllerService) DeleteVolume(
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
-				"Failed to destroy filestore: %+v", err)
+				"Failed to destroy filestore: %w", err)
 		}
 	}
 
