@@ -43,4 +43,6 @@ TVector<TString> FindLoopbackDevices(
 
 int RemoveLoopbackDevice(const TString& loopDevice);
 
+TString FindFreeNbdDevice(const TString& sysBlockDir = "/sys/block");
+
 }   // namespace NCloud::NBlockStore::NBD

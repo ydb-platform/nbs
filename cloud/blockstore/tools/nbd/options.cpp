@@ -1,5 +1,7 @@
 #include "options.h"
 
+#include <cloud/blockstore/libs/nbd/utils.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 
 #include <util/generic/map.h>
@@ -190,8 +192,8 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&ListenUnixSocketPath);
 
-    opts.AddLongOption("connect-device")
-        .RequiredArgument("STR")
+    const auto& device = opts.AddLongOption("connect-device")
+        .OptionalArgument("STR")
         .StoreResult(&ConnectDevice);
 
     opts.AddLongOption("null-blocksize")
@@ -235,6 +237,12 @@ void TOptions::Parse(int argc, char** argv)
     if (DeviceMode == EDeviceMode::Endpoint) {
         Y_ENSURE(ListenUnixSocketPath,
             "'--listen-path' option is required for endpoint device-mode");
+    }
+
+    if (res.Has(&device) && ConnectDevice.empty()) {
+        ConnectDevice = FindFreeNbdDevice();
+        Y_ENSURE(ConnectDevice,
+            "unable to find free nbd device");
     }
 }
 
