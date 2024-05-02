@@ -412,7 +412,8 @@ two{labels="l2", project="solomon", } 42 1500000000000
 )");
     }
 
-    Y_UNIT_TEST(FirstCharacterShouldNotBeReplaced) {
+    Y_UNIT_TEST(FirstCharacterShouldNotBeReplaced) 
+    {
         auto result = EncodeToString([](IMetricEncoder* e) {
             e->OnStreamBegin();
             const TVector<std::pair<TString, double>> sensors = {
@@ -460,7 +461,8 @@ _0123abc 123
 )");
     }
 
-    Y_UNIT_TEST(InvalidCharactersShouldBeReplaced) {
+    Y_UNIT_TEST(InvalidCharactersShouldBeReplaced)
+    {
         auto result = EncodeToString([](IMetricEncoder* e) {
             e->OnStreamBegin();
             const TVector<std::pair<TString, double>> sensors = {
