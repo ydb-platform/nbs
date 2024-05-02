@@ -56,7 +56,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		t.request.SrcDisk.DiskId, // proxyDiskID
+		"", // proxyDiskID
 		t.request.SrcDiskBaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,
