@@ -346,8 +346,7 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 			},
 			FillGeneration: t.state.FillGeneration,
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
-			IgnoreBaseDisk:      len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
-			UseProxyOverlayDisk: t.disksConfig.GetUseProxyOverlayDiskInReplicateDiskTask(),
+			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
 		},
 		"",
 		"",
