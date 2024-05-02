@@ -353,7 +353,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(store.HasShadowActor(checkpointId), false);
     }
 
-    Y_UNIT_TEST(SetInProgressBeforeSave) {
+    Y_UNIT_TEST(SetInProgressBeforeSave)
+    {
         TCheckpointStore store({}, "disk-1");
 
         const auto& request = store.MakeCreateCheckpointRequest(
