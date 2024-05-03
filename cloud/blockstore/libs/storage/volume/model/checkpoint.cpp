@@ -216,9 +216,7 @@ bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
             checkpointRequest.State == ECheckpointRequestState::Saved)
         {
             Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
-            if (requestId) {
-                *requestId = checkpointRequest.RequestId;
-            }
+            *requestId = checkpointRequest.RequestId;
             return true;
         }
     }
