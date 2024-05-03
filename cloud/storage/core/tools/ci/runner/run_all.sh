@@ -27,8 +27,11 @@ cwd=$(pwd)
 cd $nbspath &&
 git reset --hard &&
 git pull &&
-git submodule update --init --recursive ||
-(echo "failed to fetch changes from git repository"; exit)
+git submodule update --init --recursive
+if [ ! $? -eq 0 ]; then
+    echo "failed to fetch changes from git repository"
+    exit
+fi
 
 "${nbspath}/ya" gc cache
 
