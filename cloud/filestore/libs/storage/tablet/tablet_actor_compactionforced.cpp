@@ -42,7 +42,7 @@ private:
     const TString LogTag;
     const TDuration RetryTimeout;
 
-    const TIndexTabletState::TForcedRangeOperationStatePtr State;
+    TIndexTabletState::TForcedRangeOperationState State;
     const TRequestInfoPtr RequestInfo;
 
 public:
@@ -50,7 +50,7 @@ public:
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedRangeOperationStatePtr state,
+        TIndexTabletState::TForcedRangeOperationState state,
         TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
@@ -74,7 +74,9 @@ private:
 
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProto::TError& error = {});
+        const NProto::TError& error);
+
+    void ReportProgress(const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,7 +87,7 @@ TForcedOperationActor<TResponseType, TRequestConstructor>::
         TActorId tablet,
         TString logTag,
         TDuration retry,
-        TIndexTabletState::TForcedRangeOperationStatePtr state,
+        TIndexTabletState::TForcedRangeOperationState state,
         TRequestInfoPtr requestInfo)
     : Tablet(tablet)
     , LogTag(std::move(logTag))
@@ -112,7 +114,7 @@ template <typename TResponseType, typename TRequestConstructor>
 void TForcedOperationActor<TResponseType, TRequestConstructor>::
     SendRangeOperationRequest(const TActorContext& ctx)
 {
-    auto request = TRequestConstructor()(State->GetCurrentRange());
+    auto request = TRequestConstructor()(State.GetCurrentRange());
 
     ctx.Send(Tablet, request.release());
 }
@@ -150,10 +152,11 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
         return ReplyAndDie(ctx, msg->Error);
     }
 
-    if (!State->Progress()) {
+    if (!State.Progress()) {
         return ReplyAndDie(ctx, {});
     }
 
+    ReportProgress(ctx);
     SendRangeOperationRequest(ctx);
 }
 
@@ -199,6 +202,14 @@ void TForcedOperationActor<TResponseType, TRequestConstructor>::
     }
 
     TBase::Die(ctx);
+}
+
+template <typename TResponseType, typename TRequestConstructor>
+void TForcedOperationActor<TResponseType, TRequestConstructor>::
+    ReportProgress(const TActorContext& ctx)
+{
+    using TEvent = TEvIndexTabletPrivate::TEvForcedRangeOperationProgress;
+    NCloud::Send(ctx, Tablet, std::make_unique<TEvent>(State.Current));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -290,11 +301,11 @@ void TIndexTabletActor::HandleForcedRangeOperation(
 
     // will loose original request info in case of enqueueing external request
     if (IsForcedRangeOperationRunning()) {
-        EnqueueForcedRangeOperation(std::move(msg->Ranges), msg->Mode);
+        EnqueueForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
         return;
     }
 
-    StartForcedRangeOperation(std::move(msg->Ranges));
+    StartForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
 
     std::unique_ptr<IActor> actor;
 
@@ -304,7 +315,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GetForcedRangeOperationState(),
+                *GetForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 
@@ -313,7 +324,7 @@ void TIndexTabletActor::HandleForcedRangeOperation(
                 ctx.SelfID,
                 LogTag,
                 Config->GetCompactionRetryTimeout(),
-                GetForcedRangeOperationState(),
+                *GetForcedRangeOperationState(),
                 std::move(requestInfo));
             break;
 
@@ -340,6 +351,17 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
 
     CompleteForcedRangeOperation();
     EnqueueForcedRangeOperationIfNeeded(ctx);
+}
+
+void TIndexTabletActor::HandleForcedRangeOperationProgress(
+    const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    if (IsForcedRangeOperationRunning()) {
+        UpdateForcedRangeOperationProgress(ev->Get()->Current);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

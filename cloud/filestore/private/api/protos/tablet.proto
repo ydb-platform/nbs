@@ -454,3 +454,37 @@ message TAddDataResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ForcedOperation request/response.
+
+message TForcedOperationRequest
+{
+    enum EForcedOperationType
+    {
+        E_COMPACTION = 0;
+        E_CLEANUP = 1;
+    };
+
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Operation type.
+    EForcedOperationType OpType = 3;
+
+    // Enables processing of all ranges - even the ranges whose compaction
+    // stats are zero.
+    bool ProcessAllRanges = 4;
+}
+
+message TForcedOperationResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Affected range count.
+    uint64 RangeCount = 2;
+}
