@@ -249,11 +249,14 @@ func NewDiskSource(
 	dontReadFromCheckpoint bool,
 ) (dataplane_common.Source, error) {
 
-	if len(proxyDiskID) == 0 {
-		proxyDiskID = diskID
+	var session *nbs.Session
+	var err error
+	if len(proxyDiskID) != 0 {
+		session, err = client.MountLocalRO(ctx, proxyDiskID, encryption)
+	} else {
+		session, err = client.MountRO(ctx, diskID, encryption)
 	}
 
-	session, err := client.MountRO(ctx, proxyDiskID, encryption)
 	if err != nil {
 		return nil, err
 	}
