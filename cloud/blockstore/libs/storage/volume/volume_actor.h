@@ -653,6 +653,10 @@ private:
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
+    void ProcessCheckpointRequest(
+        const NActors::TActorContext& ctx,
+        ui64 requestId);
+
     void HandleUpdateShadowDiskStateRequest(
         const TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
