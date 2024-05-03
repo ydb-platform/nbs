@@ -872,7 +872,7 @@ message TStorageServiceConfig
     // Period of compaction changing (in ms)
     optional uint32 CompactionCountPerRunChangingPeriod = 336;
 
-    // Timeout in seconds before switching all disks associated
+    // Timeout in milliseconds before switching all disks associated
     // with the disconnected agent to read only mode
     optional uint32 NonReplicatedDiskSwitchToReadOnlyTimeout = 337;
 
