@@ -397,18 +397,12 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 RequestId;
-        const bool IsTraced;
-        const ui64 TraceTs;
 
         TSaveCheckpointRequest(
                 TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                bool isTraced,
-                ui64 traceTs)
+                ui64 requestId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
-            , IsTraced(isTraced)
-            , TraceTs(traceTs)
         {}
 
         void Clear()
