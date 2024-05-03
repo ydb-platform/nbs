@@ -2061,7 +2061,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         auto config = CreateDefaultStorageConfig();
-        config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(5);  // 5 seconds
+        config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(
+            TDuration{5s}.MilliSeconds());
         auto runtime = TTestRuntimeBuilder()
             .With(config)
             .WithAgents(agents)
@@ -2086,7 +2087,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 return TTestActorRuntime::DefaultObserverFunc(runtime, event);
             });
 
-        auto disconnectServer = [&]() {
+        auto disconnectServer = [&] {
             auto event = new TEvTabletPipe::TEvServerDisconnected(
                 TestTabletId,
                 *serverId,
@@ -2095,7 +2096,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         RegisterAndWaitForAgents(*runtime, agents);
-        Y_ABORT_UNLESS(sender && recipient && serverId);
+        UNIT_ASSERT(sender && recipient && serverId);
 
         {
             const auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
@@ -2104,12 +2105,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         {
             disconnectServer();
-            runtime->DispatchEvents({}, 100ms);  // Schedule SwitchToReadOnly
-            runtime->AdvanceCurrentTime(60s);
-            runtime->DispatchEvents({}, 100ms);  // Handle SwitchToReadOnly
+            runtime->AdvanceCurrentTime(5s);
+            runtime->DispatchEvents(
+            {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                 TEvDiskRegistryPrivate::
+                     EvSwitchAgentDisksToReadOnlyResponse)}});
 
             auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
-            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_ERROR_READ_ONLY, true);
+            EXPECT_DISK_STATE(
+                response,
+                4,
+                NProto::VOLUME_IO_ERROR_READ_ONLY,
+                true);
         }
 
         {
@@ -2118,6 +2125,59 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
             EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSwitchToReadOnlyOnAgentFailureAfterTabletReboot)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB)
+            })
+        };
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(
+            TDuration{5s}.MilliSeconds());
+        auto runtime = TTestRuntimeBuilder()
+            .With(config)
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, agents));
+
+        RegisterAndWaitForAgents(*runtime, agents);
+
+        {
+            const auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            EXPECT_DISK_STATE(response, 2, NProto::VOLUME_IO_OK, false);
+        }
+
+        diskRegistry.RebootTablet();
+
+        runtime->EnableScheduleForActor(
+            NKikimr::ResolveTablet(*runtime, TestTabletId));
+
+        diskRegistry.WaitReady();
+
+        runtime->AdvanceCurrentTime(5s);
+
+        runtime->DispatchEvents(
+            {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                 TEvDiskRegistryPrivate::
+                     EvSwitchAgentDisksToReadOnlyResponse)}});
+
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 20_GB);
+            EXPECT_DISK_STATE(
+                response,
+                2,
+                NProto::VOLUME_IO_ERROR_READ_ONLY,
+                true);
         }
     }
 
