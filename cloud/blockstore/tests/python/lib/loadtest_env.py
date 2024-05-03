@@ -180,6 +180,10 @@ class LocalLoadTest:
         return self.nbs.stderr_file_name
 
     @property
+    def nbs_profile_log_path(self):
+        return self.nbs.profile_log_path
+
+    @property
     def access_service(self):
         return self.nbs.access_service
 
