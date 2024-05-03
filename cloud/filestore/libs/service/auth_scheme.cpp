@@ -19,33 +19,35 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::SubscribeSession:
         case EFileStoreRequest::GetSessionEvents:
         case EFileStoreRequest::GetSessionEventsStream:
+            return CreatePermissionList({EPermission::Update});
         case EFileStoreRequest::ResolvePath:
+        case EFileStoreRequest::ListNodes:
+        case EFileStoreRequest::GetNodeAttr:
+        case EFileStoreRequest::GetNodeXAttr:
+        case EFileStoreRequest::ListNodeXAttr:
+        case EFileStoreRequest::ReadData:
+        case EFileStoreRequest::TestLock:
+        case EFileStoreRequest::DescribeData:
+        case EFileStoreRequest::ReadBlob:
+            return CreatePermissionList({EPermission::Read});
         case EFileStoreRequest::CreateNode:
         case EFileStoreRequest::UnlinkNode:
         case EFileStoreRequest::RenameNode:
         case EFileStoreRequest::AccessNode:
         case EFileStoreRequest::ReadLink:
-        case EFileStoreRequest::ListNodes:
         case EFileStoreRequest::SetNodeAttr:
-        case EFileStoreRequest::GetNodeAttr:
         case EFileStoreRequest::SetNodeXAttr:
-        case EFileStoreRequest::GetNodeXAttr:
-        case EFileStoreRequest::ListNodeXAttr:
         case EFileStoreRequest::RemoveNodeXAttr:
         case EFileStoreRequest::CreateHandle:
         case EFileStoreRequest::DestroyHandle:
-        case EFileStoreRequest::ReadData:
         case EFileStoreRequest::WriteData:
         case EFileStoreRequest::AllocateData:
         case EFileStoreRequest::AcquireLock:
         case EFileStoreRequest::ReleaseLock:
-        case EFileStoreRequest::TestLock:
-        case EFileStoreRequest::DescribeData:
         case EFileStoreRequest::GenerateBlobIds:
-        case EFileStoreRequest::ReadBlob:
         case EFileStoreRequest::WriteBlob:
         case EFileStoreRequest::AddData:
-            return CreatePermissionList({});
+            return CreatePermissionList({EPermission::Write});
 
         case EFileStoreRequest::AddClusterNode:
         case EFileStoreRequest::AddClusterClients:
