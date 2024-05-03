@@ -412,8 +412,7 @@ two{labels="l2", project="solomon", } 42 1500000000000
 )");
     }
 
-    Y_UNIT_TEST(FirstCharacterShouldNotBeReplaced) 
-    {
+    Y_UNIT_TEST(FirstCharacterShouldNotBeReplaced) {
         auto result = EncodeToString([](IMetricEncoder* e) {
             e->OnStreamBegin();
             const TVector<std::pair<TString, double>> sensors = {
@@ -461,8 +460,7 @@ _0123abc 123
 )");
     }
 
-    Y_UNIT_TEST(InvalidCharactersShouldBeReplaced)
-    {
+    Y_UNIT_TEST(InvalidCharactersShouldBeReplaced) {
         auto result = EncodeToString([](IMetricEncoder* e) {
             e->OnStreamBegin();
             const TVector<std::pair<TString, double>> sensors = {
@@ -495,5 +493,23 @@ _0_0 0
 _99_9 99.9
 
 )");
+    }
+
+    Y_UNIT_TEST(ShouldNotFailOnMetricWithoutSensorLabel) {
+        auto result = EncodeToString([](IMetricEncoder* e) {
+            e->OnStreamBegin();
+            e->OnStreamEnd();
+            { // no values
+                e->OnMetricBegin(EMetricType::GAUGE);
+                {
+                    e->OnLabelsBegin();
+                    e->OnLabel("name", "cpuUsage");
+                    e->OnLabelsEnd();
+                }
+                e->OnInt64(TInstant::Zero(), 0);
+                e->OnMetricEnd();
+            }
+        });
+        UNIT_ASSERT_STRINGS_EQUAL(result, "\n");
     }
 }
