@@ -55,15 +55,15 @@ void TNonreplicatedPartitionMigrationCommonActor::StartRangeMigration(
         return;
     }
 
-    if (!ProcessingBlocks.IsProcessingStarted()) {
-        // Migration of last range already started.
+    if (!ProcessingBlocks.IsProcessing()) {
+        // Migration of last range has already started.
         return;
     }
 
     const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
 
     // Check migration intersects with inflight requests.
-    if (IsOverlapsWithInflightWriteAndZero(migrationRange)) {
+    if (OverlapsWithInflightWriteAndZero(migrationRange)) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -84,7 +84,7 @@ bool TNonreplicatedPartitionMigrationCommonActor::StartDeferredMigration(
     Y_DEBUG_ABORT_UNLESS(IsMigrationAllowed() && !IsIoDepthLimitReached());
 
     for (auto [key, range] : DeferredMigrations) {
-        if (IsOverlapsWithInflightWriteAndZero(range)) {
+        if (OverlapsWithInflightWriteAndZero(range)) {
             continue;
         }
         MigrateRange(ctx, range);
@@ -141,7 +141,7 @@ bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
 }
 
 bool TNonreplicatedPartitionMigrationCommonActor::
-    IsOverlapsWithInflightWriteAndZero(TBlockRange64 range) const
+    OverlapsWithInflightWriteAndZero(TBlockRange64 range) const
 {
     for (const auto& [key, requestInfo]:
          WriteAndZeroRequestsInProgress.AllRequests())
@@ -242,19 +242,16 @@ void TNonreplicatedPartitionMigrationCommonActor::
         ProcessingBlocks.GetLastReportedProcessingIndex() +
         Config->GetMigrationIndexCachingInterval();
 
-    if (migratedRange.Contains(nextCachedProgress - 1)) {
-        // Perhaps we have just migrated a range that has been deferred for a
-        // long time, and the current cached range has already overtaken it.
-        CachedMigrationProgressAchieved = std::max(
-            migratedRange.End + 1,
-            CachedMigrationProgressAchieved.value_or(0));
+    if (migratedRange.Contains(nextCachedProgress - 1) ||
+        migratedRange.Start > nextCachedProgress)
+    {
+        CachedMigrationProgressAchieved = nextCachedProgress;
     }
 
     if (!CachedMigrationProgressAchieved) {
         return;
     }
 
-    Cout << "CachedMigrationProgressAchieved=" << *CachedMigrationProgressAchieved << Endl;
     for (const auto& [id, range]: MigrationsInProgress) {
         if (range.End < *CachedMigrationProgressAchieved) {
             return;
@@ -275,7 +272,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::
     NotifyMigrationFinishedIfNeeded(const TActorContext& ctx)
 {
-    if (ProcessingBlocks.IsProcessingStarted() ||
+    if (ProcessingBlocks.IsProcessing() ||
         !MigrationsInProgress.empty() || !DeferredMigrations.empty())
     {
         return;
@@ -289,14 +286,14 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     const TActorContext& ctx)
 {
-    if (MigrateRangeScheduled || !IsMigrationAllowed() ||
+    if (MigrationRangeScheduled || !IsMigrationAllowed() ||
         IsIoDepthLimitReached())
     {
         return;
     }
 
     auto delayBetweenMigrations =
-        ProcessingBlocks.IsProcessingStarted()
+        ProcessingBlocks.IsProcessing()
             ? MigrationOwner->CalculateMigrationTimeout(
                   ProcessingBlocks.BuildProcessingRange())
             : LastUsedDelay;
@@ -317,7 +314,7 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         DiskId.c_str(),
         delayBetweenMigrations.ToString().Quote().c_str());
 
-    MigrateRangeScheduled = true;
+    MigrationRangeScheduled = true;
     ctx.Schedule(
         delayBetweenMigrations,
         new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
@@ -329,7 +326,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
 {
     Y_UNUSED(ev);
 
-    MigrateRangeScheduled = false;
+    MigrationRangeScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
         return;

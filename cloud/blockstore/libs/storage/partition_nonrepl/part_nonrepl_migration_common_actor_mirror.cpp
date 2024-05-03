@@ -77,13 +77,16 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
     }
 
     // Check overlapping with a range that will be migrated next.
+    // We need to ensure priority for the migration process, otherwise if the
+    // client continuously writes to one block, the migration progress will
+    // stall on this block.
     if (MigrationsInProgress.empty() && !DeferredMigrations.empty()) {
         if (checkOverlapsWithMigration(DeferredMigrations.begin()->second)) {
             return;
         }
     } else if (
         MigrationsInProgress.empty() && IsMigrationAllowed() &&
-        ProcessingBlocks.IsProcessingStarted())
+        ProcessingBlocks.IsProcessing())
     {
         if (checkOverlapsWithMigration(ProcessingBlocks.BuildProcessingRange()))
         {

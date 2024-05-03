@@ -96,11 +96,17 @@ private:
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationEnabled = false;
-    bool MigrateRangeScheduled = false;
+    bool MigrationRangeScheduled = false;
     TInstant LastRangeMigrationStartTs;
     TDuration LastUsedDelay;
     TMap<ui64, TBlockRange64> MigrationsInProgress;
     TMap<ui64, TBlockRange64> DeferredMigrations;
+
+    // When we migrated a block whose range contains or exceeds a persistently
+    // stored offset of the progress of the entire migration, we remember this
+    // offset and wait for all blocks with addresses less than this offset to
+    // migrate. After that, we save the execution progress persistently by
+    // calling MigrationOwner->OnMigrationProgress().
     std::optional<ui64> CachedMigrationProgressAchieved;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
@@ -167,7 +173,7 @@ public:
 private:
     bool IsMigrationAllowed() const;
     bool IsIoDepthLimitReached() const;
-    bool IsOverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
+    bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
 
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
