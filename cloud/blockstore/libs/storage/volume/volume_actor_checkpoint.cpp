@@ -1176,8 +1176,7 @@ void TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
             ToString(actorId).c_str());
     }
 
-    State->GetCheckpointStore().SetCheckpointRequestInProgress(
-        requestId);
+    State->GetCheckpointStore().SetCheckpointRequestInProgress(requestId);
 
     TActorId actorId;
     switch (request.ReqType) {
