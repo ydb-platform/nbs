@@ -149,6 +149,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateForcedOperationActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateReassignTabletActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

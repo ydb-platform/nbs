@@ -445,6 +445,18 @@ TVector<ui32> TCompactionMap::GetNonEmptyCompactionRanges() const
     return result;
 }
 
+TVector<ui32> TCompactionMap::GetAllCompactionRanges() const
+{
+    TVector<ui32> result(Reserve(Impl->AllocatedRangesCount));
+    for (const auto& group: Impl->Groups) {
+        for (ui32 i = 0; i < group.Stats.size(); ++i) {
+            result.push_back(i + group.GroupIndex);
+        }
+    }
+
+    return result;
+}
+
 TVector<TCompactionRangeInfo> TCompactionMap::GetTopRangesByCompactionScore(ui32 topSize) const
 {
     return Impl->GetTopRangesByCompactionScore(topSize);
