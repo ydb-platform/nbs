@@ -3237,6 +3237,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
 
+        // Read during secure erase from BackgroundOps client doesn't generate
+        // critical event
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ReadDeviceBlocks(
+                runtime,
+                diskAgent,
+                "uuid",
+                0,
+                1,
+                TString(BackgroundOpsClientId))
+                    ->Record.GetError()
+                    .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 3);
+
         // Write zero during secure erase from HealthCheck client generates
         // critical event
         UNIT_ASSERT_VALUES_EQUAL(
@@ -3251,6 +3266,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                     ->Record.GetError()
                     .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 4);
+
+        // Write zero during secure erase from BackgroundOps client generates
+        // critical event
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ZeroDeviceBlocks(
+                runtime,
+                diskAgent,
+                "uuid",
+                0,
+                1,
+                TString(BackgroundOpsClientId))
+                    ->Record.GetError()
+                    .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(counter->Val(), 5);
 
         spdk->SecureEraseResult.SetValue(NProto::TError());
         runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(10));
