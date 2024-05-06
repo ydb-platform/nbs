@@ -21,9 +21,9 @@ TMirrorPartitionState::TMirrorPartitionState(
         TMigrations migrations,
         TVector<TDevices> replicaDevices)
     : Config(std::move(config))
+    , PartConfig(std::move(partConfig))
     , RWClientId(std::move(rwClientId))
     , Migrations(std::move(migrations))
-    , PartConfig(std::move(partConfig))
 {
     ReplicaInfos.push_back({PartConfig->Fork(PartConfig->GetDevices()), {}});
     for (auto& devices: replicaDevices) {

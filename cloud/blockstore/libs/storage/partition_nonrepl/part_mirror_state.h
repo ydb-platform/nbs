@@ -19,6 +19,7 @@ class TMirrorPartitionState
 {
 private:
     const TStorageConfigPtr Config;
+    const TNonreplicatedPartitionConfigPtr PartConfig;
     TString RWClientId;
 
     TMigrations Migrations;
@@ -28,8 +29,6 @@ private:
     ui32 ReadReplicaIndex = 0;
 
     bool MigrationConfigPrepared = false;
-
-    TNonreplicatedPartitionConfigPtr PartConfig;
 
 public:
     TMirrorPartitionState(
