@@ -67,8 +67,6 @@ func run(
 	newAuthorizer auth.NewAuthorizer,
 ) error {
 
-	var err error
-
 	ignoreSigpipe()
 
 	// Use cancellable context.
@@ -83,6 +81,13 @@ func run(
 
 	logger := logging.NewLogger(config.LoggingConfig)
 	ctx = logging.SetLogger(ctx, logger)
+
+	logging.Info(ctx, "Locking process memory")
+	err := util.LockProcessMemory()
+	if err != nil {
+		logging.Error(ctx, "Failed to lock process memory: %v", err)
+		return err
+	}
 
 	if len(hostname) == 0 {
 		hostname, err = os.Hostname()
