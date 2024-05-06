@@ -167,6 +167,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
     REGISTER_REQUEST(Compaction);
+    REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
     REGISTER_REQUEST(Cleanup);
     REGISTER_REQUEST(Flush);
     REGISTER_REQUEST(FlushBytes);
