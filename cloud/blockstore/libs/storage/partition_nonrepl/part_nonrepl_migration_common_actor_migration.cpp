@@ -70,7 +70,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
 
     LastRangeMigrationStartTs = ctx.Now();
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Migrating range: %s",
@@ -236,7 +236,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     Y_DEBUG_ABORT_UNLESS(erasedCount == 1);
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
             "[%s] Range migration failed: %s, error: %s",
             DiskId.c_str(),
             DescribeRange(msg->Range).c_str(),
@@ -255,7 +255,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Range %s migrated",
@@ -341,7 +341,7 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
         "[%s] Schedule migrating next range after %s",
