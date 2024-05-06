@@ -1658,6 +1658,11 @@ func (s *storageYDB) overlayDiskRebasedTx(
 		)
 	}
 
+	if slot.baseDiskID == info.TargetBaseDiskID {
+		// Nothing to do.
+		return nil
+	}
+
 	if slot.generation != info.SlotGeneration {
 		err = tx.Commit(ctx)
 		if err != nil {
@@ -1669,11 +1674,6 @@ func (s *storageYDB) overlayDiskRebasedTx(
 			info.SlotGeneration,
 			slot.generation,
 		)
-	}
-
-	if slot.baseDiskID == info.TargetBaseDiskID {
-		// Nothing to do.
-		return nil
 	}
 
 	if slot.targetBaseDiskID != info.TargetBaseDiskID {
