@@ -216,7 +216,9 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
     });
 
     TVector<TPartialBlobId> blobIds;
-    for (auto it: StringSplitter(params.Get("blobs")).SplitBySet(" ,;").SkipEmpty()) {
+    for (const auto& it:
+         StringSplitter(params.Get("blobs")).SplitBySet(" ,;").SkipEmpty())
+    {
         TString part(it);
 
         TLogoBlobID blobId;

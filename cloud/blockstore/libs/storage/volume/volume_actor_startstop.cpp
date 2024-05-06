@@ -137,7 +137,7 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 
     const auto& volumeConfig = GetNewestConfig();
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
-    const auto volumeParams = State->GetVolumeParams();
+    const auto& volumeParams = State->GetVolumeParams();
 
     State->SetBlockCountToMigrate(std::nullopt);
 
@@ -491,35 +491,47 @@ void TVolumeActor::HandleBootExternalResponse(
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
 
-    auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto factory = [config = std::move(config),
+                    partitionConfig = std::move(partitionConfig),
+                    diagnosticsConfig = std::move(diagnosticsConfig),
+                    profileLog = std::move(profileLog),
+                    blockDigestGenerator = std::move(blockDigestGenerator),
+                    storageAccessMode = storageAccessMode,
+                    siblingCount = siblingCount,
+                    selfId = selfId](
+                       const TActorId& owner,
+                       TTabletStorageInfo* storage) mutable
+    {
         Y_ABORT_UNLESS(
             storage->TabletType == TTabletTypes::BlockStorePartition ||
             storage->TabletType == TTabletTypes::BlockStorePartition2);
 
         if (storage->TabletType == TTabletTypes::BlockStorePartition) {
             return NPartition::CreatePartitionTablet(
-                owner,
-                storage,
-                config,
-                diagnosticsConfig,
-                profileLog,
-                blockDigestGenerator,
-                std::move(partitionConfig),
-                storageAccessMode,
-                siblingCount,
-                selfId).release();
+                       owner,
+                       storage,
+                       std::move(config),
+                       std::move(diagnosticsConfig),
+                       std::move(profileLog),
+                       std::move(blockDigestGenerator),
+                       std::move(partitionConfig),
+                       storageAccessMode,
+                       siblingCount,
+                       selfId)
+                .release();
         } else {
             return NPartition2::CreatePartitionTablet(
-                owner,
-                storage,
-                config,
-                diagnosticsConfig,
-                profileLog,
-                blockDigestGenerator,
-                std::move(partitionConfig),
-                storageAccessMode,
-                siblingCount,
-                selfId).release();
+                       owner,
+                       storage,
+                       std::move(config),
+                       std::move(diagnosticsConfig),
+                       std::move(profileLog),
+                       std::move(blockDigestGenerator),
+                       std::move(partitionConfig),
+                       storageAccessMode,
+                       siblingCount,
+                       selfId)
+                .release();
         }
     };
 

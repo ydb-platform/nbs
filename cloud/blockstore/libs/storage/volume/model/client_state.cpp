@@ -150,7 +150,7 @@ TAddPipeResult TVolumeClientState::AddPipe(
 
 bool TVolumeClientState::AnyPipeAlive() const
 {
-    for (const auto p: Pipes) {
+    for (const auto& p: Pipes) {
         if (p.second.State != TVolumeClientState::EPipeState::DEACTIVATED) {
             return true;
         }

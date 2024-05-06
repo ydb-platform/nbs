@@ -168,7 +168,7 @@ void TReadBlobActor::HandleGetResult(
         return;
     }
 
-    auto blobId = Request->BlobId;
+    const auto& blobId = Request->BlobId;
     size_t blocksCount = Request->BlobOffsets.size();
     TVector<ui32> blockChecksums;
 
