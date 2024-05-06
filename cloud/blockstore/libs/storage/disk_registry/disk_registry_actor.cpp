@@ -508,7 +508,15 @@ void TDiskRegistryActor::ScheduleSwitchAgentDisksToReadOnly(
     auto request = std::make_unique<
         TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest>(
         std::move(agentId));
-    ctx.Schedule(deadline, request.release());
+
+    // ctx.Schedule does not set `sender`, but we need `sender` to be able to
+    // intercept TEvSwitchAgentDisksToReadOnlyResponse in tests
+    auto eh = std::make_unique<IEventHandle>(
+        ctx.SelfID, // recipient
+        ctx.SelfID, // sender
+        request.release());
+
+    ctx.ExecutorThread.Schedule(deadline, eh.release());
 }
 
 void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnlyReshedule(
@@ -569,6 +577,9 @@ STFUNC(TDiskRegistryActor::StateInit)
         HFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest,
             HandleSwitchAgentDisksToReadOnlyReshedule);
 
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
+
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskRegistry)
 
         default:
@@ -604,6 +615,9 @@ STFUNC(TDiskRegistryActor::StateWork)
         IgnoreFunc(TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse);
 
         IgnoreFunc(TEvDiskAgent::TEvAcquireDevicesResponse);
+
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
         HFunc(TEvDiskRegistry::TEvBackupDiskRegistryStateResponse,
             HandleBackupDiskRegistryStateResponse);
@@ -691,6 +705,8 @@ STFUNC(TDiskRegistryActor::StateRestore)
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup,
             TDiskRegistryActor::HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly);
 
+        IgnoreFunc(TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
@@ -755,6 +771,9 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(TEvDiskRegistryPrivate::TEvCleanupDisksResponse,
             HandleCleanupDisksResponse);
 
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
+
         default:
             if (!RejectRequests(ev)) {
                 LogUnexpectedEvent(
@@ -780,6 +799,9 @@ STFUNC(TDiskRegistryActor::StateZombie)
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup);
+
+        IgnoreFunc(
+            TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);
 
         default:
             if (!RejectRequests(ev)) {

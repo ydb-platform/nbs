@@ -20,16 +20,12 @@ void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnly(
 {
     auto* msg = ev->Get();
 
-    auto it = AgentRegInfo.find(msg->AgentId);
-    if (it == AgentRegInfo.end()) {
-        ReportDiskRegistryAgentNotFound(
-            TStringBuilder()
-            << "HandleSwitchAgentDisksToReadOnly:AgentId: " << msg->AgentId);
-        return;
-    }
-
-    if (it->second.Connected) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    if (auto it = AgentRegInfo.find(msg->AgentId);
+        it != AgentRegInfo.end() && it->second.Connected)
+    {
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Ignoring SwitchAgentDisksToReadOnly request"
             " since AgentId=%s reconnected",
             TabletID(),
