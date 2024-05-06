@@ -5141,6 +5141,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto block = tabletConfig.BlockSize;
 
         NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * block);
         TTestEnv env({}, std::move(storageConfig));
 
         env.CreateSubDomain("nfs");
