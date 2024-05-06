@@ -142,7 +142,7 @@ public:
 
     void Stop() override
     {
-        std::unique_lock lock {DriverMutex};
+        std::lock_guard lock {DriverMutex};
 
         if (Driver) {
             Driver->Stop(false);
