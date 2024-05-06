@@ -151,16 +151,17 @@ void TProfileLog::ScheduleFlush()
 
     Scheduler->Schedule(
         Timer->Now() + Settings.TimeThreshold,
-        [weakPtr = std::move(weakPtr)] {
+        [weakPtr = std::move(weakPtr)]
+        {
             if (auto p = weakPtr.lock()) {
                 p->DoFlush();
                 p->ScheduleFlush();
             }
-        }
-    );
+        });
 }
 
-bool TProfileLog::Flush() {
+bool TProfileLog::Flush()
+{
     if (AtomicGet(ShouldStop)) {
         return false;
     }
