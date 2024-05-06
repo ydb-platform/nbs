@@ -258,15 +258,13 @@ func (t *replicateDiskTask) replicate(
 
 	t.state.ChunkCount = chunkCount
 
-	ignoreZeroChunks := true
-
 	target, err := nbs.NewDiskTarget(
 		ctx,
 		t.nbsFactory,
 		t.request.DstDisk,
 		diskParams.EncryptionDesc,
 		chunkSize,
-		ignoreZeroChunks,
+		false, // ignoreZeroChunks
 		t.request.FillGeneration,
 		t.state.FillSeqNumber,
 	)
