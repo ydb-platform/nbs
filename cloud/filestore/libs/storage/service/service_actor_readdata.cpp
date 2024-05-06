@@ -413,10 +413,7 @@ void TReadDataActor::HandleReadBlobResponse(
 
         const auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
 
-        if (response.Id != blobId ||
-            response.Buffer.empty() ||
-            response.Buffer.size() % BlockSize != 0)
-        {
+        if (response.Id != blobId || response.Buffer.empty()) {
             const auto error = FormatError(MakeError(
                 E_FAIL,
                 Sprintf(
