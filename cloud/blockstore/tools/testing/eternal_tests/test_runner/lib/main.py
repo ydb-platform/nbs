@@ -21,7 +21,7 @@ def get_template(name: str) -> Template:
 
 
 class EternalTestHelper:
-    _VM_NAME = '%s-test-vm-%s'
+    _VM_PREFIX = "%s-test-vm-%s"
     _DISK_NAME = '%s-test-disk-%s-%s'
     _FS_NAME = '%s-test-fs-%s'
 
@@ -67,6 +67,8 @@ class EternalTestHelper:
                           f'/usr/share/sysbench/oltp-custom.lua run '
                           f'--threads=32 --time=999999999 --report-interval=30 >> {_DB_REPORT_PATH} 2>&1')
 
+    _FIO_BIN_PATH = '/usr/bin/fio'
+
     class Command:
         execute: Callable[[], None]
         parse_arguments: Callable[[ParseHelper], None]
@@ -103,9 +105,9 @@ class EternalTestHelper:
         self.helpers = self.module_factories.make_helpers(self.args.dry_run)
 
         if self.args.test_case == 'all':
-            self.all_test_configs = get_test_config(self.args, 'db' in self.args.command)
+            self.all_test_configs = get_test_config(self.args)
         else:
-            self.test_config: ITestConfig = get_test_config(self.args, 'db' in self.args.command)
+            self.test_config: ITestConfig = get_test_config(self.args)
 
             if self.test_config is None:
                 raise Error('Unknown test case')
@@ -124,12 +126,25 @@ class EternalTestHelper:
         instances = self.ycp.list_instances()
         if self.args.dry_run:
             return instances[0]
-        name = self._VM_NAME % (self.args.test_case, self.args.zone_id[-1])
+        name = self._VM_PREFIX % (self.args.test_case, self.args.zone_id[-1])
         for instance in instances:
             if instance.name == name:
                 return instance
 
         raise RuntimeError("instance {} not found out of {}".format(name, len(instances)))
+
+    def find_instances(self) -> [Ycp.Instance]:
+        instances = self.ycp.list_instances()
+        if self.args.dry_run:
+            return instances
+        prefix = self._VM_PREFIX % (self.args.test_case, self.args.zone_id[-1])
+        matching_instances = []
+        for instance in instances:
+            if instance.name.startswith(prefix):
+                matching_instances.append(instance)
+        if len(matching_instances) > 0:
+            return matching_instances
+        raise RuntimeError(f"no instance matching prefix {prefix} found")
 
     def copy_load_config_to_instance(self, instance_ip: str, load_config: LoadConfig):
         json = get_template('test-config.json').substitute(
@@ -221,9 +236,9 @@ class EternalTestHelper:
                 raise Error(f'{command} is still running')
 
     def exec_pkill_on_instance(self, instance_ip: str, command: str):
-        self.logger.info(f'Rinning pkill {command} on instance <{instance_ip}>')
+        self.logger.info(f'Running pkill {command} on instance <{instance_ip}>')
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, _ = ssh.exec_command(f'pkill {command}')
+            _, stdout, _ = ssh.exec_command(f'pkill -f {command}')
             stdout.channel.recv_exit_status()
             self._wait_until_killing(instance_ip, command)
 
@@ -329,6 +344,24 @@ class EternalTestHelper:
             self.ycp.delete_instance(instance)
             raise Error('Cannot create disk')
 
+    def find_fs(self):
+        try:
+            self.logger.info('Finding fs')
+            fss = self.ycp.list_filesystems()
+            if self.args.dry_run:
+                return fss[0]
+            return next(
+                (
+                    fs
+                    for fs in fss
+                    if fs.name == self._FS_NAME % (self.args.test_case, self.args.zone_id[-1])
+                ),
+                None,
+            )
+        except YcpWrapper.Error as e:
+            self.logger.info(f'Error occurs while finding fs {e}')
+            raise Error('Cannot find fs')
+
     def create_fs(self, instance: Ycp.Instance):
         try:
             with self.ycp.create_fs(
@@ -360,8 +393,16 @@ class EternalTestHelper:
                                   f'{"".join(stderr.readlines())}')
                 raise Error(f'failed to mount fs with exit code {exit_code}')
 
-    def create_and_configure_vm(self) -> Ycp.Instance:
+    def create_and_configure_vm(self, vm_idx=None, skip_fs_create=False) -> Ycp.Instance:
+        """
+        Creates and configures a virtual machine (VM) for both disk and fs configurations.
 
+        Args:
+            vm_idx (int, optional): Index of the VM. Relevant only for fs tests with multiple VMs.
+                If provided, it will be appended to the VM name. Defaults to None.
+            skip_fs_create (bool, optional): For fs tests, if True, skips creating the fs. Instead,
+                it lookups the existing fs and attaches it to the VM. Defaults to False.
+        """
         local_disk_size = None
         placement_group_name = self.test_config.ycp_config.placement_group_name
 
@@ -370,8 +411,11 @@ class EternalTestHelper:
             local_disk_size = disk_config.block_count * disk_config.bs
             placement_group_name = getattr(self.args, 'placement_group_name', None)
 
+        name = self._VM_PREFIX % (self.args.test_case, self.args.zone_id[-1])
+        if vm_idx is not None:
+            name += f"-{vm_idx}"
         with self.ycp.create_instance(
-                name=self._VM_NAME % (self.args.test_case, self.args.zone_id[-1]),
+                name=name,
                 cores=8,
                 memory=8,
                 image_name=self.test_config.ycp_config.image_name,
@@ -409,7 +453,12 @@ class EternalTestHelper:
                         self.ycp.delete_disk(disk)
                         raise Error('Cannot attach disk')
             else:
-                fs = self.create_fs(instance)
+                if skip_fs_create:
+                    fs = self.find_fs()
+                    if fs is None:
+                        raise Error('Cannot find fs')
+                else:
+                    fs = self.create_fs(instance)
                 try:
                     with self.ycp.attach_fs(
                             instance,
@@ -424,6 +473,17 @@ class EternalTestHelper:
                     raise Error('Cannot attach fs')
 
             return instance
+
+    def create_and_configure_vms(self) -> [Ycp.Instance]:
+        instances = []
+        assert (
+            not self.test_config.is_disk_config()
+        ), "using multiple instances is only relevant for fs config"
+        count = self.test_config.fio.client_count
+        self.logger.info(f"Creating {count} instances for test case {self.args.test_case}")
+        for i in range(count):
+            instances.append(self.create_and_configure_vm(i, i != 0))
+        return instances
 
     def handle_new_test_run(self):
         self.logger.info('Starting eternal test')
@@ -503,9 +563,6 @@ class EternalTestHelper:
                     self.args.ycp_requests_template_path)
 
                 instance = self.find_instance()
-                if instance is None:
-                    self.logger.info(f'No instance for test case <{test_case}> on cluster <{self.args.cluster}>')
-                    continue
 
                 self.logger.info(f'Found instance id=<{instance.id}> for test case <{test_case}>')
                 if self.args.force_rerun or not self.check_load_on_instance(instance):
@@ -526,6 +583,20 @@ class EternalTestHelper:
         instance = self.find_instance()
         self.ycp.delete_instance(instance)
 
+    def handle_delete_fio(self):
+        self.logger.info("Deleting fio test vms")
+        instances = self.find_instances()
+        for instance in instances:
+            self.logger.info(f'Deleting instance id=<{instance.id}>')
+            self.ycp.delete_instance(instance)
+
+        fs = self.find_fs()
+        if fs is not None:
+            self.logger.info(f'Deleting fs id=<{fs.id}>')
+            self.ycp.delete_fs(fs)
+        else:
+            raise Error('Cannot find fs')
+
     def handle_add_auto_run(self):
         self.logger.info('Add auto run')
         instance = self.find_instance()
@@ -537,6 +608,42 @@ class EternalTestHelper:
                     f'(crontab -l 2>/dev/null; echo "@reboot {crontab_cmd}") | crontab -')
                 if stderr.channel.recv_exit_status():
                     raise Error(f'Cannot add crontab job: {"".join(stderr.readlines())}')
+
+    def handle_stop_fio(self):
+        self.logger.info("Stopping fio")
+        instances = self.find_instances()
+        for instance in instances:
+            self.exec_pkill_on_instance(instance.ip, self._FIO_BIN_PATH)
+
+    def _run_fio_on_instances(self, instances):
+        self.logger.info("Running fio")
+        config = self.test_config.fs_config
+        self.logger.info(f"Running fio on all {len(instances)} instances")
+        for instance in instances:
+            fio_cmd = self.test_config.fio.construct_bash_command(self._FIO_BIN_PATH, config.mount_path)
+            self.logger.info(f"Fio command {fio_cmd} is to be run on instance <{instance.id}>")
+            self.run_command_in_background(
+                instance.ip,
+                fio_cmd,
+            )
+
+    def handle_setup_fio(self):
+        self.logger.info("Starting fio")
+
+        self.logger.info("Creating and configuring fio vms")
+        instances = self.create_and_configure_vms()
+        # instances = self.find_instances()
+        self._run_fio_on_instances(instances)
+
+    def handle_rerun_fio(self):
+        self.logger.info("Rerunning fio")
+        self.logger.info("Stopping fio")
+        self.handle_stop_fio()
+
+        self.logger.info("Finding fio vms")
+        instances = self.find_instances()
+        self.logger.info(f"Rerunning fio on all {len(instances)} instances")
+        self._run_fio_on_instances(instances)
 
     def rerun_db_load_script_on_instance(self, instance: Ycp.Instance):
         self.logger.info(f'Rerun load script for test case <{self.args.test_case}>')
@@ -632,7 +739,12 @@ class EternalTestHelper:
         'delete-test': Command(handle_delete_test_vm, lambda *args: None),
         'add-auto-run': Command(handle_add_auto_run, ParseHelper.parse_load_options),
 
-        'setup-db-test': Command(handle_setup_new_db_test, ParseHelper.parse_run_test_options)
+        'setup-db-test': Command(handle_setup_new_db_test, ParseHelper.parse_run_test_options),
+
+        'setup-fio': Command(handle_setup_fio, ParseHelper.parse_run_test_options),
+        'rerun-fio': Command(handle_rerun_fio, lambda *args: None),
+        'delete-fio': Command(handle_delete_fio, lambda *args: None),
+        'stop-fio': Command(handle_stop_fio, lambda *args: None),
     }
 
     COMMANDS_WITH_ALL_TEST_CASE = {

@@ -1,4 +1,16 @@
 {
+    "test.test_eternal_load_fio_test_ok[delete-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1]": {
+        "uri": "file://test.test_eternal_load_fio_test_ok_delete-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_fio_test_ok[rerun-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1]": {
+        "uri": "file://test.test_eternal_load_fio_test_ok_rerun-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_fio_test_ok[setup-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1]": {
+        "uri": "file://test.test_eternal_load_fio_test_ok_setup-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1_/testing_out_stuff_results.txt"
+    },
+    "test.test_eternal_load_fio_test_ok[stop-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1]": {
+        "uri": "file://test.test_eternal_load_fio_test_ok_stop-fio-eternal-alternating-seq-rw-1tb-nfs-4kib-4clients-cluster1_/testing_out_stuff_results.txt"
+    },
     "test.test_eternal_load_test[add-auto-run-eternal-1023gb-nonrepl-cluster1]": {
         "uri": "file://test.test_eternal_load_test_add-auto-run-eternal-1023gb-nonrepl-cluster1_/testing_out_stuff_results.txt"
     },
