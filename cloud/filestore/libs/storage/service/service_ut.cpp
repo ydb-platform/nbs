@@ -1905,6 +1905,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             service.ReadData(headers, fs, nodeId, handle, 0, data.Size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
 
+        readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            DefaultBlockSize,
+            data.Size() - DefaultBlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readDataResult->Record.GetBuffer(),
+            data.substr(DefaultBlockSize));
+
         // mix
         auto patch = TString(4_KB, 'c');
         const ui32 patchOffset = 20_KB;
@@ -1923,22 +1934,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             auto subgroup = counters->FindSubgroup("request", "DescribeData");
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
-                4,
+                5,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
         {
             auto subgroup = counters->FindSubgroup("request", "ReadData");
             UNIT_ASSERT(subgroup);
             UNIT_ASSERT_VALUES_EQUAL(
-                4,
+                5,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
         {
             auto subgroup = counters->FindSubgroup("request", "ReadBlob");
             UNIT_ASSERT(subgroup);
-            // 1MB = 4 blobs of 256KB. Read is performed twice.
+            // 1MB = 4 blobs of 256KB. Read is performed thrice
             UNIT_ASSERT_VALUES_EQUAL(
-                8,
+                12,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
     }
