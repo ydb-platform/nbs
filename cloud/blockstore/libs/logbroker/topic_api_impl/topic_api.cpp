@@ -258,7 +258,7 @@ private:
         WaitEvent();
     }
 
-    NYdb::TDriver& GetDriver()
+    const NYdb::TDriver& GetDriver()
     {
         std::unique_lock lock{DriverMutex};
         if (!Driver) {
