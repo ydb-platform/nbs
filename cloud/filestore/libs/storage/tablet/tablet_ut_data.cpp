@@ -5070,6 +5070,53 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldCountDudCompactions)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.Compaction(rangeId);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+        }
+
+        tablet.DestroyHandle(handle);
+
+        auto registry = env.GetRegistry();
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "Compaction.RequestBytes"},
+                {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "Compaction.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "Compaction.DudCount"},
+                {"filesystem", "test"}}, 1},
+        });
+    }
+
 #undef TABLET_TEST
 }
 

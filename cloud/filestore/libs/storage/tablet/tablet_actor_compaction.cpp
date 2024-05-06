@@ -555,6 +555,12 @@ void TIndexTabletActor::CompleteTx_Compaction(
         replyError(ctx, args, MakeError(S_FALSE, "nothing to do"));
 
         BlobIndexOpState.Complete();
+        EnqueueBlobIndexOpIfNeeded(ctx);
+        Metrics.Compaction.Update(
+            1,  // count
+            0,  // requestBytes
+            ctx.Now() - args.RequestInfo->StartedTs);
+        Metrics.Compaction.DudCount.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
