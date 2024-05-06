@@ -148,7 +148,8 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                         self._instance_policy.attach_disk(output_disk),
                     )
                     disk_bytes_count = self._args.disk_size * (1024 ** 3)
-                    byte_count = page_align(disk_bytes_count / self._iodepth)
+                    chunk_size = 4 << 20
+                    byte_count = page_align(disk_bytes_count / self._iodepth, page_size=chunk_size)
                     cmds = []
                     futures = []
                     executor = ThreadPoolExecutor(max_workers=self._iodepth)
@@ -165,19 +166,23 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                                 ssh_key_path=self._args.ssh_key_path,
                             ),
                         )
-                        chunk_size_arg = "" if count == byte_count else " --chunk-size=4096"
+
+                        # non 4MB chunk size aligned remainder of disk
+                        if count != byte_count:
+                            chunk_size = 4096
+
                         cmd = (f'{self._remote_cmp_path} --verbose'
                                f' --bytes={count}'
                                f' --ignore-initial={offset}'
+                               f' --chunk-size={chunk_size}'
                                f' {primary_disk_path}'
-                               f'{chunk_size_arg}'
                                f' {secondary_disk_path}')
                         future = executor.submit(ssh.exec_command, cmd)
                         futures.append(future)
                         cmds.append(cmd)
                         _logger.info(f'Verifying data'
                                      f' <index={i}, offset={offset},'
-                                     f' bytes={byte_count}> on disk'
+                                     f' bytes={count}> on disk'
                                      f' <id={output_disk.id}> on'
                                      f' instance <id={instance.id}>')
 
