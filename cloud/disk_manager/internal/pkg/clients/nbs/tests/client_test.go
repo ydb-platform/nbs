@@ -151,10 +151,10 @@ func writeBlocks(
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	writeBlocksToMountedDisk(t, ctx, session, startIndex, blockCount)
+	writeBlocksToSession(t, ctx, session, startIndex, blockCount)
 }
 
-func writeBlocksToMountedDisk(
+func writeBlocksToSession(
 	t *testing.T,
 	ctx context.Context,
 	session *nbs.Session,
@@ -1314,7 +1314,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
-	writeBlocksToMountedDisk(
+	writeBlocksToSession(
 		t,
 		ctx,
 		session,
@@ -1344,7 +1344,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.Equal(t, 1, len(blockMask))
 	require.Equal(t, uint8(0b11111111), blockMask[0])
 
-	writeBlocksToMountedDisk(
+	writeBlocksToSession(
 		t,
 		ctx,
 		session,
@@ -1371,7 +1371,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, blockMask[0] == uint8(0b00000010))
 
-	writeBlocksToMountedDisk(
+	writeBlocksToSession(
 		t,
 		ctx,
 		session,
