@@ -302,7 +302,7 @@ void TIndexTabletActor::HandleFlush(
             ctx,
             *ev,
             std::move(profileLogRequest),
-            MakeError(S_ALREADY, "flush is in progress"));
+            MakeError(E_TRY_AGAIN, "flush is in progress"));
         return;
     }
 

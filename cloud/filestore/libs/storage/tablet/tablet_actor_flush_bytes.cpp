@@ -528,7 +528,7 @@ void TIndexTabletActor::HandleFlushBytes(
         reply(
             ctx,
             *ev,
-            MakeError(S_FALSE, "cleanup/compaction is in progress")
+            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress")
         );
 
         return;
@@ -537,7 +537,7 @@ void TIndexTabletActor::HandleFlushBytes(
     if (!FlushState.Start()) {
         BlobIndexOpState.Complete();
 
-        reply(ctx, *ev, MakeError(S_FALSE, "flush is in progress"));
+        reply(ctx, *ev, MakeError(E_TRY_AGAIN, "flush is in progress"));
 
         return;
     }
@@ -563,7 +563,7 @@ void TIndexTabletActor::HandleFlushBytes(
             FlushState.Complete();
             BlobIndexOpState.Complete();
 
-            reply(ctx, *ev, MakeError(S_ALREADY, "no bytes to flush"));
+            reply(ctx, *ev, MakeError(S_FALSE, "no bytes to flush"));
 
             return;
         }
