@@ -47,7 +47,7 @@ Y_UNIT_TEST_SUITE(TExecutorTest)
         auto future = executor->Execute([=] () mutable {
             request.SetValue({});
 
-            auto resp = executor->WaitFor(response.GetFuture());
+            auto resp = executor->ExtractResponse(response.GetFuture());
             UNIT_ASSERT(!HasError(resp));
 
             return resp.GetResult();
