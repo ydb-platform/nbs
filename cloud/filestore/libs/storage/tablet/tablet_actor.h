@@ -142,6 +142,11 @@ private:
             }
         };
 
+        struct TCompactionMetrics: TRequestMetrics
+        {
+            std::atomic<i64> DudCount{0};
+        };
+
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
@@ -150,7 +155,7 @@ private:
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
-        TRequestMetrics Compaction;
+        TCompactionMetrics Compaction;
         TRequestMetrics Cleanup;
         TRequestMetrics Flush;
         TRequestMetrics FlushBytes;
