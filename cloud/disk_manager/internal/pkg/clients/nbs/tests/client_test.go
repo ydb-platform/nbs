@@ -998,6 +998,7 @@ func TestGetChangedBytes(t *testing.T) {
 			1, // startIndex
 			2, // blockCount
 		)
+
 		changedBytes, err := client.GetChangedBytes(
 			ctx,
 			diskID,
