@@ -974,12 +974,6 @@ func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
-		OverlayDisk:      slot.OverlayDisk,
-		TargetBaseDiskID: target.ID,
-	})
-	require.NoError(t, err)
-
 	// Wrong generation won't work.
 	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
@@ -990,10 +984,17 @@ func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "wrong generation")
 
+	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
+		OverlayDisk:      slot.OverlayDisk,
+		TargetBaseDiskID: target.ID,
+	})
+	require.NoError(t, err)
+
 	// Check idempotency.
 	err = storage.OverlayDiskRebased(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
 		TargetBaseDiskID: target.ID,
+		SlotGeneration:   100500,
 	})
 	require.NoError(t, err)
 
