@@ -132,7 +132,7 @@ func (m *mockTokenProvider) Token(ctx context.Context) (string, error) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func writeRandomBlocks(
+func writeBlocks(
 	t *testing.T,
 	ctx context.Context,
 	client nbs.Client,
@@ -151,9 +151,20 @@ func writeRandomBlocks(
 	require.NoError(t, err)
 	defer session.Close(ctx)
 
+	writeBlocksToSession(t, ctx, session, startIndex, blockCount)
+}
+
+func writeBlocksToSession(
+	t *testing.T,
+	ctx context.Context,
+	session *nbs.Session,
+	startIndex uint64,
+	blockCount uint32,
+) {
+
 	bytes := make([]byte, blockCount*session.BlockSize())
 	rand.Read(bytes)
-	err = session.Write(ctx, startIndex, bytes)
+	err := session.Write(ctx, startIndex, bytes)
 	require.NoError(t, err)
 }
 
@@ -961,7 +972,7 @@ func TestGetChangedBytes(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		writeRandomBlocks(
+		writeBlocks(
 			t,
 			ctx,
 			client,
@@ -979,7 +990,7 @@ func TestGetChangedBytes(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		writeRandomBlocks(
+		writeBlocks(
 			t,
 			ctx,
 			client,
@@ -1293,11 +1304,20 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	writeRandomBlocks(
+	session, err := client.MountRW(
+		ctx,
+		diskID,
+		0,   // fillGeneration
+		0,   // fillSeqNumber
+		nil, // encryption
+	)
+	require.NoError(t, err)
+	defer session.Close(ctx)
+
+	writeBlocksToSession(
 		t,
 		ctx,
-		client,
-		diskID,
+		session,
 		0, // startIndex
 		1, // blockCount
 	)
@@ -1324,11 +1344,10 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 	require.Equal(t, 1, len(blockMask))
 	require.Equal(t, uint8(0b11111111), blockMask[0])
 
-	writeRandomBlocks(
+	writeBlocksToSession(
 		t,
 		ctx,
-		client,
-		diskID,
+		session,
 		1, // startIndex
 		1, // blockCount
 	)
@@ -1350,14 +1369,12 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 		false, // ignoreBaseDisk
 	)
 	require.NoError(t, err)
-	// May be blockMask of all '1' in case of volume tablet reboot.
-	require.True(t, blockMask[0] == uint8(0b00000010) || blockMask[0] == uint8(0b11111111))
+	require.True(t, blockMask[0] == uint8(0b00000010))
 
-	writeRandomBlocks(
+	writeBlocksToSession(
 		t,
 		ctx,
-		client,
-		diskID,
+		session,
 		2, // startIndex
 		1, // blockCount
 	)
@@ -1387,7 +1404,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 		false, // ignoreBaseDisk
 	)
 	require.NoError(t, err)
-	require.True(t, blockMask[0] == uint8(0b00000100) || blockMask[0] == uint8(0b11111111))
+	require.True(t, blockMask[0] == uint8(0b00000100))
 
 	// Checkpoint creation should be idempotent.
 	err = client.CreateCheckpoint(ctx, nbs.CheckpointParams{
@@ -1407,7 +1424,7 @@ func TestGetChangedBlocksForLightCheckpoints(t *testing.T) {
 		false, // ignoreBaseDisk
 	)
 	require.NoError(t, err)
-	require.True(t, blockMask[0] == uint8(0b00000100) || blockMask[0] == uint8(0b11111111))
+	require.True(t, blockMask[0] == uint8(0b00000100))
 
 	// Should pessimize diff for old light checkpoints.
 	blockMask, err = client.GetChangedBlocks(
