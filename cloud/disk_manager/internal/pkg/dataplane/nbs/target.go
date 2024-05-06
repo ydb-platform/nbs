@@ -24,6 +24,7 @@ func (t *diskTarget) Write(
 ) error {
 
 	if t.ignoreZeroChunks && chunk.Zero {
+		logging.Debug(ctx, "ignoring chunk %v", chunk.Index)
 		return nil
 	}
 
