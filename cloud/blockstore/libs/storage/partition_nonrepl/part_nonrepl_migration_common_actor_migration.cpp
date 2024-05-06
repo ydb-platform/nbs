@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -30,10 +31,10 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     PoisonPillHelper.TakeOwnership(ctx, SrcActorId);
     PoisonPillHelper.TakeOwnership(ctx, DstActorId);
 
-    if (DstActorId) {
-        ProcessingBlocks.SkipProcessedRanges();
-    } else {
+    if (DstActorId == NActors::TActorId{}) {
         ProcessingBlocks.AbortProcessing();
+    } else {
+        ProcessingBlocks.SkipProcessedRanges();
     }
 }
 
@@ -47,59 +48,25 @@ void TNonreplicatedPartitionMigrationCommonActor::StartWork(
 void TNonreplicatedPartitionMigrationCommonActor::StartRangeMigration(
     const NActors::TActorContext& ctx)
 {
-    Y_DEBUG_ABORT_UNLESS(IsMigrationAllowed() && !IsIoDepthLimitReached());
+    STORAGE_CHECK_PRECONDITION(
+        IsMigrationAllowed() && !IsIoDepthLimitReached());
 
-    // Migrate failed ranges first.
-    if (StartDeferredMigration(ctx)) {
-        ScheduleRangeMigration(ctx);
+    auto migrationRange = TakeNextMigrationRange(ctx);
+    if (!migrationRange) {
+        // Migration of the last range has already started.
         return;
     }
 
-    if (!ProcessingBlocks.IsProcessing()) {
-        // Migration of last range has already started.
-        return;
-    }
-
-    const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
-
-    // Check migration intersects with inflight requests.
-    if (OverlapsWithInflightWriteAndZero(migrationRange)) {
-        LOG_DEBUG(
-            ctx,
-            TBlockStoreComponents::PARTITION,
-            "[%s] Range migration rejected, range: %s",
-            DiskId.c_str(),
-            DescribeRange(migrationRange).c_str());
-        return;
-    }
-
-    ProcessingBlocks.AdvanceProcessingIndex();
-    MigrateRange(ctx, migrationRange);
+    MigrateRange(ctx, *migrationRange);
     ScheduleRangeMigration(ctx);
-}
-
-bool TNonreplicatedPartitionMigrationCommonActor::StartDeferredMigration(
-    const NActors::TActorContext& ctx)
-{
-    Y_DEBUG_ABORT_UNLESS(IsMigrationAllowed() && !IsIoDepthLimitReached());
-
-    for (auto [key, range] : DeferredMigrations) {
-        if (OverlapsWithInflightWriteAndZero(range)) {
-            continue;
-        }
-        MigrateRange(ctx, range);
-        DeferredMigrations.erase(key);
-        return true;
-    }
-
-    return false;
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
     const NActors::TActorContext& ctx,
     TBlockRange64 range)
 {
-    Y_DEBUG_ABORT_UNLESS(IsMigrationAllowed() && !IsIoDepthLimitReached());
+    STORAGE_CHECK_PRECONDITION(
+        IsMigrationAllowed() && !IsIoDepthLimitReached());
 
     LastRangeMigrationStartTs = ctx.Now();
 
@@ -151,6 +118,73 @@ bool TNonreplicatedPartitionMigrationCommonActor::
         }
     }
     return false;
+}
+
+std::optional<TBlockRange64>
+TNonreplicatedPartitionMigrationCommonActor::GetNextMigrationRange() const
+{
+    // Attention! It is necessary to keep the logic consistent with
+    // TakeNextMigrationRange().
+
+    if (!IsMigrationAllowed()) {
+        return std::nullopt;
+    }
+
+    // First of all, we are trying to continue the migration range from
+    // DeferredMigrations.
+    if (!DeferredMigrations.empty()) {
+        return DeferredMigrations.begin()->second;
+    }
+
+    // Secondly, we are trying to migrate a new range.
+    if (ProcessingBlocks.IsProcessing()) {
+        return ProcessingBlocks.BuildProcessingRange();
+    }
+
+    return std::nullopt;
+}
+
+std::optional<TBlockRange64>
+TNonreplicatedPartitionMigrationCommonActor::TakeNextMigrationRange(
+    const TActorContext& ctx)
+{
+    // Attention! It is necessary to keep the logic consistent with
+    // GetNextMigrationRange().
+
+    if (!IsMigrationAllowed()) {
+        return std::nullopt;
+    }
+
+    // First of all, we are trying to continue the migration range from
+    // DeferredMigrations.
+    for (auto [key, range]: DeferredMigrations) {
+        // We can only perform migration that does not overlap with user
+        // requests.
+        if (!OverlapsWithInflightWriteAndZero(range)) {
+            DeferredMigrations.erase(key);
+            return range;
+        }
+    }
+
+    // Secondly, we are trying to migrate a new range.
+    if (ProcessingBlocks.IsProcessing()) {
+        auto range = ProcessingBlocks.BuildProcessingRange();
+
+        // Check whether migration intersects with inflight user requests.
+        if (OverlapsWithInflightWriteAndZero(range)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Range migration rejected, range: %s",
+                DiskId.c_str(),
+                DescribeRange(range).c_str());
+            return std::nullopt;
+        }
+        ProcessingBlocks.AdvanceProcessingIndex();
+        return range;
+    }
+
+    return std::nullopt;
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
@@ -286,18 +320,18 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     const TActorContext& ctx)
 {
-    if (MigrationRangeScheduled || !IsMigrationAllowed() ||
-        IsIoDepthLimitReached())
+    if (RangeMigrationScheduled || IsIoDepthLimitReached())
     {
         return;
     }
 
+    auto nextRange = GetNextMigrationRange();
+    if (!nextRange) {
+        return;
+    }
+
     auto delayBetweenMigrations =
-        ProcessingBlocks.IsProcessing()
-            ? MigrationOwner->CalculateMigrationTimeout(
-                  ProcessingBlocks.BuildProcessingRange())
-            : LastUsedDelay;
-    LastUsedDelay = delayBetweenMigrations;
+        MigrationOwner->CalculateMigrationTimeout(*nextRange);
 
     const auto deadline =
         LastRangeMigrationStartTs + delayBetweenMigrations;
@@ -314,7 +348,7 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
         DiskId.c_str(),
         delayBetweenMigrations.ToString().Quote().c_str());
 
-    MigrationRangeScheduled = true;
+    RangeMigrationScheduled = true;
     ctx.Schedule(
         delayBetweenMigrations,
         new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
@@ -326,7 +360,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
 {
     Y_UNUSED(ev);
 
-    MigrationRangeScheduled = false;
+    RangeMigrationScheduled = false;
 
     if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
         return;

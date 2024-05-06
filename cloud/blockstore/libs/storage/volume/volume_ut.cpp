@@ -1089,10 +1089,15 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     }
 
     Y_UNIT_TEST(
-        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests)
+        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_1)
     {
         DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
             1);
+    }
+
+    Y_UNIT_TEST(
+        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_8)
+    {
         DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
             8);
     }
@@ -1323,7 +1328,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, migrationStartedCounter);
-        UNIT_ASSERT_VALUES_EQUAL(60, migrationProgressCounter);
+        UNIT_ASSERT_VALUES_EQUAL(39, migrationProgressCounter);
 
         volume.RebootTablet();
         volume.AddClient(clientInfo);

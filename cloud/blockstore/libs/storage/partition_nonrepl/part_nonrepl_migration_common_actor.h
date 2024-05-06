@@ -96,9 +96,8 @@ private:
 
     TProcessingBlocks ProcessingBlocks;
     bool MigrationEnabled = false;
-    bool MigrationRangeScheduled = false;
+    bool RangeMigrationScheduled = false;
     TInstant LastRangeMigrationStartTs;
-    TDuration LastUsedDelay;
     TMap<ui64, TBlockRange64> MigrationsInProgress;
     TMap<ui64, TBlockRange64> DeferredMigrations;
 
@@ -175,12 +174,15 @@ private:
     bool IsIoDepthLimitReached() const;
     bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
 
+    std::optional<TBlockRange64> GetNextMigrationRange() const;
+    std::optional<TBlockRange64>
+    TakeNextMigrationRange(const NActors::TActorContext& ctx);
+
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
     void ScheduleRangeMigration(const NActors::TActorContext& ctx);
     void StartRangeMigration(const NActors::TActorContext& ctx);
-    bool StartDeferredMigration(const NActors::TActorContext& ctx);
     void MigrateRange(const NActors::TActorContext& ctx, TBlockRange64 range);
 
     void NotifyMigrationProgressIfNeeded(

@@ -76,20 +76,14 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    // Check overlapping with a range that will be migrated next.
-    // We need to ensure priority for the migration process, otherwise if the
-    // client continuously writes to one block, the migration progress will
-    // stall on this block.
-    if (MigrationsInProgress.empty() && !DeferredMigrations.empty()) {
-        if (checkOverlapsWithMigration(DeferredMigrations.begin()->second)) {
-            return;
-        }
-    } else if (
-        MigrationsInProgress.empty() && IsMigrationAllowed() &&
-        ProcessingBlocks.IsProcessing())
-    {
-        if (checkOverlapsWithMigration(ProcessingBlocks.BuildProcessingRange()))
-        {
+    // While at least one migration is in progress, we are not slowing down user requests.
+    if (MigrationsInProgress.empty()) {
+        // Check overlapping with the range that will be migrated next.
+        // We need to ensure priority for the migration process, otherwise if
+        // the client continuously writes to one block, the migration progress
+        // will stall on this block.
+        auto nextRange = GetNextMigrationRange();
+        if (nextRange && checkOverlapsWithMigration(*nextRange)) {
             return;
         }
     }
