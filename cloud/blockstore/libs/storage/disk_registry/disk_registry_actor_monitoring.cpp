@@ -411,7 +411,7 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
 
         DIV() {
             if (device.HasRdmaEndpoint()) {
-                auto e = device.GetRdmaEndpoint();
+                const auto& e = device.GetRdmaEndpoint();
                 out << "Rdma endpoint: " << e.GetHost() << ":" << e.GetPort();
             }
         }

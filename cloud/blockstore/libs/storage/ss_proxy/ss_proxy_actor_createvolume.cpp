@@ -342,7 +342,7 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
 {
     const auto* msg = ev->Get();
 
-    const auto error = msg->GetError();
+    const auto& error = msg->GetError();
 
     // TODO: use E_NOT_FOUND instead of StatusPathDoesNotExist
     if (FAILED(error.GetCode())) {
