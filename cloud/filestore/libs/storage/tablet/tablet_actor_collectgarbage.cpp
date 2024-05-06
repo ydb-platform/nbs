@@ -1,7 +1,6 @@
 #include "tablet_actor.h"
 
 #include "profile_log_events.h"
-#include "tablet_schema.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
@@ -409,7 +408,7 @@ void TIndexTabletActor::HandleCollectGarbage(
         return;
     }
 
-    ui64 collectCommitId = GetCollectCommitId();
+    ui64 collectCommitId = GetCollectCommitId(msg->ConsiderCurrentCommitId);
 
     auto newBlobs = GetNewBlobs(collectCommitId);
     auto garbageBlobs = GetGarbageBlobs(collectCommitId);

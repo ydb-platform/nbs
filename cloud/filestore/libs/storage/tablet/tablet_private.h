@@ -527,6 +527,16 @@ struct TEvIndexTabletPrivate
 
     struct TCollectGarbageRequest
     {
+        // If set to false, will not consider data associated with the current
+        // commitId. By default, is set to false. Is set to true only for
+        // testing purposes, when there is a guarantee that no other concurrent
+        // operations may need to access the data associated with the current
+        // commitId.
+        const bool ConsiderCurrentCommitId = false;
+
+        explicit TCollectGarbageRequest(bool considerCurrentCommitId = false)
+            : ConsiderCurrentCommitId(considerCurrentCommitId)
+        {}
     };
 
     struct TCollectGarbageResponse

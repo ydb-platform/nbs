@@ -994,10 +994,12 @@ bool TIndexTabletState::IsCollectBarrierAcquired(ui64 commitId) const
     return Impl->GarbageQueue.IsCollectBarrierAcquired(commitId);
 }
 
-ui64 TIndexTabletState::GetCollectCommitId() const
+ui64 TIndexTabletState::GetCollectCommitId(bool considerCurrentCommitId) const
 {
     // should not collect after any barrier
-    return Min(GetCurrentCommitId(), Impl->GarbageQueue.GetCollectCommitId());
+    return Min(
+        GetCurrentCommitId() - 1 + considerCurrentCommitId,
+        Impl->GarbageQueue.GetCollectCommitId());
 }
 
 void TIndexTabletState::AddNewBlob(

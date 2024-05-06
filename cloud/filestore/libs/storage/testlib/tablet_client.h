@@ -309,9 +309,11 @@ public:
             mode);
     }
 
-    auto CreateCollectGarbageRequest()
+    auto CreateCollectGarbageRequest(bool considerCurrentCommitId = false)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvCollectGarbageRequest>(
+            considerCurrentCommitId);
     }
 
     auto CreateTruncateRequest(ui64 node, ui64 length)

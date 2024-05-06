@@ -958,7 +958,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
-        tablet.CollectGarbage();
+        tablet.CollectGarbage(true);
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
 
@@ -979,7 +979,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
-        tablet.CollectGarbage();
+        tablet.CollectGarbage(true);
 
         tablet.DestroyHandle(handle);
         tablet.UnlinkNode(RootNodeId, "test", false);
@@ -1059,7 +1059,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);   // new: 2, garbage: 0
         }
 
-        tablet.CollectGarbage();
+        tablet.CollectGarbage(true);
 
         {
             auto response = tablet.GetStorageStats();
@@ -1083,7 +1083,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             );  // new: 1 (x block), garbage: 2 (x block)
         }
 
-        tablet.CollectGarbage();
+        tablet.CollectGarbage(true);
 
         {
             auto response = tablet.GetStorageStats();
@@ -1097,6 +1097,35 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+        }
+
+        tablet.WriteData(handle, 0, block, 'c');
+        tablet.Flush();
+        tablet.Compaction(rangeId);
+
+        tablet.CollectGarbage();
+
+        {
+            // default collect garbage should not consider the result of the last compaction
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 1 * block);   // new: 1, garbage: 0
+        }
+
+        // create a new node to trigger the generation of a new commitId
+        id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        handle = CreateHandle(tablet, id);
+
+        tablet.CollectGarbage();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 0);
         }
 
         tablet.DestroyHandle(handle);
@@ -1120,10 +1149,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_FALSE,
-            response->Error.GetCode(),
-            response->Error.GetMessage());
+        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -2783,10 +2809,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_FALSE,
-            response->Error.GetCode(),
-            response->Error.GetMessage());
+        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -5008,7 +5031,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             ));
         }
 
-        tablet.CollectGarbage();
+        tablet.CollectGarbage(true);
 
         {
             tablet.AdvanceTime(TDuration::Seconds(15));
@@ -5136,12 +5159,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         });
     }
 
-    TABLET_TEST(ShouldRejectBlobIndexOpsWithProperErrorCodeIfAnotherOpIsRunning)
+    TABLET_TEST(CleanupShouldNotInterferwWithCollectGarbage)
     {
         const auto block = tabletConfig.BlockSize;
+        tabletConfig.BlockCount = 1'000'000;
 
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        storageConfig.SetWriteBlobThreshold(0);
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+
         TTestEnv env({}, std::move(storageConfig));
 
         env.CreateSubDomain("nfs");
@@ -5157,96 +5186,56 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        ui64 handle = CreateHandle(tablet, id);
-        tablet.WriteData(handle, 0, 256_KB, '0');
+        auto handle = CreateHandle(tablet, id);
 
-        ui32 rangeId = GetMixedRangeIndex(id, 0);
-        tablet.SendCompactionRequest(rangeId);
-        tablet.SendCleanupRequest(rangeId);
-
-        {
-            auto response = tablet.RecvCompactionResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                response->GetStatus(),
-                response->GetErrorReason());
+        for (int i = 0; i < 2; i++) {
+            tablet.WriteData(handle, 0, BlockGroupSize * block * 3, 'a');
         }
 
+        tablet.Cleanup(GetMixedRangeIndex(id, 0));
+        tablet.CollectGarbage();
+        tablet.Cleanup(GetMixedRangeIndex(id, BlockGroupSize));
+
+        auto& runtime = env.GetRuntime();
+
+        TAutoPtr<IEventHandle> cleanupCompletion, collectGarbageCompletion;
+        // See #652 for more details
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    if (!cleanupCompletion) {
+                        cleanupCompletion = event.Release();
+                    } else if (!collectGarbageCompletion) {
+                        collectGarbageCompletion = event.Release();
+                    }
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendCleanupRequest(GetMixedRangeIndex(id, BlockGroupSize * 2));
+        tablet.SendCollectGarbageRequest();
+
+        // We wait for both Cleanup and CollectGarbage tx to be completed
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return cleanupCompletion && collectGarbageCompletion;
+            }});
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        runtime.Send(cleanupCompletion.Release(), nodeIdx);
         {
             auto response = tablet.RecvCleanupResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
-                response->GetStatus(),
-                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
 
-        tablet.WriteData(handle, 0, 256_KB, '0');
-        tablet.SendCleanupRequest(rangeId);
-        tablet.SendCompactionRequest(rangeId);
-
+        runtime.Send(collectGarbageCompletion.Release(), nodeIdx);
         {
-            auto response = tablet.RecvCleanupResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        {
-            auto response = tablet.RecvCompactionResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        tablet.WriteData(handle, 0, block, '0');
-        tablet.SendFlushRequest();
-        tablet.SendFlushBytesRequest();
-
-        {
-            auto response = tablet.RecvFlushResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        {
-            auto response = tablet.RecvFlushBytesResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        tablet.WriteData(handle, 0, 1_KB, '0');
-        tablet.SendFlushBytesRequest();
-        tablet.SendCompactionRequest(rangeId);
-        tablet.SendCleanupRequest(rangeId);
-
-        {
-            auto response = tablet.RecvFlushBytesResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        {
-            auto response = tablet.RecvCleanupResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
-                response->GetStatus(),
-                response->GetErrorReason());
-        }
-
-        {
-            auto response = tablet.RecvCompactionResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
-                response->GetStatus(),
-                response->GetErrorReason());
+            auto response = tablet.RecvCollectGarbageResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
     }
 
