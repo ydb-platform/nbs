@@ -51,7 +51,7 @@ void TIndexTabletActor::HandleCleanup(
 
     if (!BlobIndexOpState.Start()) {
         replyError(
-            MakeError(S_ALREADY, "cleanup/compaction is in progress"));
+            MakeError(E_TRY_AGAIN, "cleanup/compaction is in progress"));
         return;
     }
 
