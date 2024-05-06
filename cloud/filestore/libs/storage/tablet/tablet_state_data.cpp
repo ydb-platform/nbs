@@ -1099,6 +1099,11 @@ TVector<ui32> TIndexTabletState::GetNonEmptyCompactionRanges() const
     return Impl->CompactionMap.GetNonEmptyCompactionRanges();
 }
 
+TVector<ui32> TIndexTabletState::GetAllCompactionRanges() const
+{
+    return Impl->CompactionMap.GetAllCompactionRanges();
+}
+
 TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCompactionScore(ui32 topSize) const
 {
     return Impl->CompactionMap.GetTopRangesByCompactionScore(topSize);
@@ -1121,10 +1126,10 @@ void TIndexTabletState::LoadCompactionMap(
 }
 
 void TIndexTabletState::EnqueueForcedRangeOperation(
-    TVector<ui32> ranges,
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+    TVector<ui32> ranges)
 {
-    PendingForcedRangeOperations.emplace_back(std::move(ranges), mode);
+    PendingForcedRangeOperations.emplace_back(mode, std::move(ranges));
 }
 
 TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
@@ -1134,22 +1139,23 @@ TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
         return {};
     }
 
-    auto ranges = std::move(PendingForcedRangeOperations.back());
+    auto op = std::move(PendingForcedRangeOperations.back());
     PendingForcedRangeOperations.pop_back();
 
-    return ranges;
+    return op;
 }
 
-void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
+void TIndexTabletState::StartForcedRangeOperation(
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+    TVector<ui32> ranges)
 {
-    TABLET_VERIFY(!ForcedRangeOperationState);
-    ForcedRangeOperationState =
-        std::make_shared<TForcedRangeOperationState>(std::move(ranges));
+    TABLET_VERIFY(!ForcedRangeOperationState.Defined());
+    ForcedRangeOperationState.ConstructInPlace(mode, std::move(ranges));
 }
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
-    ForcedRangeOperationState.reset();
+    ForcedRangeOperationState.Clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

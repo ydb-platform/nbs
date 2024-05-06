@@ -6,7 +6,7 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <library/cpp/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -20,15 +20,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeSessionsActionActor final
-    : public TActorBootstrapped<TDescribeSessionsActionActor>
+class TForcedOperationActionActor final
+    : public TActorBootstrapped<TForcedOperationActionActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
 public:
-    TDescribeSessionsActionActor(
+    TForcedOperationActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -37,28 +37,28 @@ public:
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        const NProtoPrivate::TDescribeSessionsResponse& response);
+        const NProtoPrivate::TForcedOperationResponse& response);
 
 private:
     STFUNC(StateWork);
 
-    void HandleDescribeSessionsResponse(
-        const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
+    void HandleForcedOperationResponse(
+        const TEvIndexTablet::TEvForcedOperationResponse::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeSessionsActionActor::TDescribeSessionsActionActor(
+TForcedOperationActionActor::TForcedOperationActionActor(
         TRequestInfoPtr requestInfo,
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
+void TForcedOperationActionActor::Bootstrap(const TActorContext& ctx)
 {
-    NProtoPrivate::TDescribeSessionsRequest request;
+    NProtoPrivate::TForcedOperationRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
         ReplyAndDie(
             ctx,
@@ -74,7 +74,7 @@ void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     auto requestToTablet =
-        std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+        std::make_unique<TEvIndexTablet::TEvForcedOperationRequest>();
 
     requestToTablet->Record = std::move(request);
 
@@ -86,9 +86,9 @@ void TDescribeSessionsActionActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TDescribeSessionsActionActor::ReplyAndDie(
+void TForcedOperationActionActor::ReplyAndDie(
     const TActorContext& ctx,
-    const NProtoPrivate::TDescribeSessionsResponse& response)
+    const NProtoPrivate::TForcedOperationResponse& response)
 {
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>(
         response.GetError());
@@ -103,8 +103,8 @@ void TDescribeSessionsActionActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDescribeSessionsActionActor::HandleDescribeSessionsResponse(
-    const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
+void TForcedOperationActionActor::HandleForcedOperationResponse(
+    const TEvIndexTablet::TEvForcedOperationResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReplyAndDie(ctx, ev->Get()->Record);
@@ -112,12 +112,12 @@ void TDescribeSessionsActionActor::HandleDescribeSessionsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-STFUNC(TDescribeSessionsActionActor::StateWork)
+STFUNC(TForcedOperationActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(
-            TEvIndexTablet::TEvDescribeSessionsResponse,
-            HandleDescribeSessionsResponse);
+            TEvIndexTablet::TEvForcedOperationResponse,
+            HandleForcedOperationResponse);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::SERVICE);
@@ -127,11 +127,11 @@ STFUNC(TDescribeSessionsActionActor::StateWork)
 
 } // namespace
 
-IActorPtr TStorageServiceActor::CreateDescribeSessionsActionActor(
+IActorPtr TStorageServiceActor::CreateForcedOperationActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return std::make_unique<TDescribeSessionsActionActor>(
+    return std::make_unique<TForcedOperationActionActor>(
         std::move(requestInfo),
         std::move(input));
 }

@@ -322,7 +322,7 @@ void DumpCompactionInfo(
     IOutputStream& out,
     const TIndexTabletState::TForcedRangeOperationState& state)
 {
-    DumpProgress(out, state.Current.load(), state.RangesToCompact.size());
+    DumpProgress(out, state.Current, state.RangesToCompact.size());
 }
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
@@ -1180,7 +1180,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
             ? TEvIndexTabletPrivate::EForcedRangeOperationMode::Cleanup
             : TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
 
-    EnqueueForcedRangeOperation(std::move(ranges), mode);
+    EnqueueForcedRangeOperation(mode, std::move(ranges));
     EnqueueForcedRangeOperationIfNeeded(ctx);
 
     SendHttpResponse(

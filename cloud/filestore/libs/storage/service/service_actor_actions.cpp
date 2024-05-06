@@ -49,6 +49,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateDescribeSessionsActionActor
         },
         {
+            "forcedoperation",
+            &TStorageServiceActor::CreateForcedOperationActionActor
+        },
+        {
             "reassigntablet",
             &TStorageServiceActor::CreateReassignTabletActionActor
         },
