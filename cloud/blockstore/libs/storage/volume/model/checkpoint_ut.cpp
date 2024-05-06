@@ -1,5 +1,7 @@
 #include "checkpoint.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -163,6 +165,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(10, requestId);
+
         auto checkpoints = store.GetActiveCheckpoints();
         UNIT_ASSERT_VALUES_EQUAL(5, checkpoints.size());
         UNIT_ASSERT(checkpoints.contains("checkpoint-1"));
@@ -170,11 +173,20 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT(checkpoints.contains("checkpoint-5"));
         UNIT_ASSERT(checkpoints.contains("checkpoint-6"));
         UNIT_ASSERT(checkpoints.contains("checkpoint-7"));
+
         UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-1"));
         UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-2"));
         UNIT_ASSERT(!store.DoesCheckpointHaveData("checkpoint-5"));
         UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-6"));
         UNIT_ASSERT(store.DoesCheckpointHaveData("checkpoint-7"));
+
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-1"));
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-2"));
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-3"));
+        UNIT_ASSERT(store.IsCheckpointDeleted("checkpoint-4"));
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-5"));
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-6"));
+        UNIT_ASSERT(!store.IsCheckpointDeleted("checkpoint-7"));
 
         // The checkpoint without the shadow disk has the correct state.
         UNIT_ASSERT(!checkpoints["checkpoint-1"].IsShadowDiskBased());
@@ -218,6 +230,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestSaved(request.RequestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
@@ -225,6 +238,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestInProgress(requestId);
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
@@ -232,6 +246,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         store.SetCheckpointRequestFinished(
             requestId,
@@ -244,11 +259,14 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(CreateSuccess)
     {
         TCheckpointStore store({}, "disk-1");
+
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         const auto& request = store.MakeCreateCheckpointRequest(
             "checkpoint",
@@ -275,6 +293,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_EQUAL(
             ECheckpointData::DataPresent,
             checkpoints[request.CheckpointId].Data);
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(CreateWithShadowDisk)
@@ -443,6 +462,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(
                 true,
                 store.DoesCheckpointHaveData(request.CheckpointId));
+            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
         }
 
         // repeat delete data.
@@ -482,6 +502,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 false,
                 store.DoesCheckpointHaveData(request.CheckpointId));
         }
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
         // repeat delete checkpoint.
         for (int i = 0; i < 10; ++i) {
@@ -513,6 +534,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 false,
                 store.DoesCheckpointBlockingWritesExist());
         }
+        UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(MultiCheckpoint)
@@ -652,6 +674,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 EShadowDiskState::None);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+            UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted(checkpointId));
         };
 
         {
@@ -706,7 +729,171 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetActiveCheckpoints().size());
+
+            for (TString checkpointId : {"checkpoint-1", "checkpoint-2", "checkpoint-3", "checkpoint-4"}) {
+                UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted(checkpointId));
+            }
         }
+    }
+
+    Y_UNIT_TEST(CheckpointRequestValidation)
+    {
+        TCheckpointStore store({}, "disk-1");
+
+        auto makeCheckpointRequest =
+            [&] (const TString& checkpointId,
+                ECheckpointRequestType requestType,
+                ECheckpointType checkpointType) -> TCheckpointRequest
+        {
+            switch (requestType) {
+                case ECheckpointRequestType::Create:
+                case ECheckpointRequestType::CreateWithoutData:
+                    return store.MakeCreateCheckpointRequest(
+                        checkpointId,
+                        TInstant::Now(),
+                        requestType,
+                        checkpointType,
+                        false   // useShadowDisk
+                    );
+                case ECheckpointRequestType::DeleteData:
+                    return store.MakeDeleteCheckpointDataRequest(
+                        checkpointId,
+                        TInstant::Now());
+                    break;
+                case ECheckpointRequestType::Delete:
+                    return store.MakeDeleteCheckpointRequest(
+                        checkpointId,
+                        TInstant::Now());
+                    break;
+            }
+        };
+
+        auto executeRequest =
+            [&](const TString& checkpointId,
+                ECheckpointRequestType requestType,
+                ECheckpointType checkpointType,
+                std::optional<EWellKnownResultCodes> expectedErrorCode) -> void
+        {
+            auto request = makeCheckpointRequest(
+                checkpointId,
+                requestType,
+                checkpointType);
+
+            store.SetCheckpointRequestInProgress(request.RequestId);
+
+            auto error = store.ValidateCheckpointRequest(
+                checkpointId,
+                requestType,
+                checkpointType);
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedErrorCode.has_value(), error.has_value());
+            if (error) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    *expectedErrorCode,
+                    static_cast<EWellKnownResultCodes>(error->GetCode()));
+            }
+
+            if (!error) {
+                store.SetCheckpointRequestSaved(request.RequestId);
+                store.SetCheckpointRequestFinished(
+                    request.RequestId,
+                    true,   // completed
+                    TString(),   // ShadowDiskId
+                    EShadowDiskState::None);
+            }
+        };
+
+        struct TStep {
+            ECheckpointRequestType RequestType;
+            std::optional<EWellKnownResultCodes> ExpectedErrorCode;
+        };
+
+        int checkpointIndex = 0;
+
+        auto executeRequests = [&](ECheckpointType checkpointType, const TVector<TStep>& steps)
+        {
+            TString checkpointId = TStringBuilder() << "checkpoint_" << checkpointIndex++;
+
+            for (const TStep& step : steps) {
+                executeRequest(
+                    checkpointId,
+                    step.RequestType,
+                    checkpointType,
+                    step.ExpectedErrorCode);
+            }
+        };
+
+        executeRequests(ECheckpointType::Normal, TVector<TStep>{
+            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::Delete, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::Create, std::nullopt},
+            {ECheckpointRequestType::Create, S_ALREADY},
+            {ECheckpointRequestType::DeleteData, std::nullopt},
+            {ECheckpointRequestType::Create, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, S_ALREADY},
+            {ECheckpointRequestType::Delete, std::nullopt},
+            {ECheckpointRequestType::Delete, S_ALREADY},
+            {ECheckpointRequestType::Create, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+        });
+
+        executeRequests(ECheckpointType::Normal, TVector<TStep>{
+            {ECheckpointRequestType::Create, std::nullopt},
+            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, std::nullopt},
+            {ECheckpointRequestType::CreateWithoutData, S_ALREADY},
+            {ECheckpointRequestType::CreateWithoutData, S_ALREADY},
+            {ECheckpointRequestType::Delete, std::nullopt},
+            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+        });
+
+        executeRequests(ECheckpointType::Normal, TVector<TStep>{
+            {ECheckpointRequestType::CreateWithoutData, std::nullopt},
+            {ECheckpointRequestType::CreateWithoutData, S_ALREADY},
+            {ECheckpointRequestType::Create, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, S_ALREADY},
+            {ECheckpointRequestType::CreateWithoutData, S_ALREADY},
+        });
+
+        for (auto checkpointType : {
+            ECheckpointType::Normal,
+            ECheckpointType::Light})
+        {
+            executeRequests(checkpointType, TVector<TStep>{
+                {ECheckpointRequestType::Delete, E_PRECONDITION_FAILED},
+                {ECheckpointRequestType::Create, std::nullopt},
+                {ECheckpointRequestType::Create, S_ALREADY},
+                {ECheckpointRequestType::Delete, std::nullopt},
+                {ECheckpointRequestType::Create, E_PRECONDITION_FAILED},
+                {ECheckpointRequestType::Delete, S_ALREADY},
+            });
+        }
+
+        executeRequests(ECheckpointType::Light, TVector<TStep>{
+            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::Create, std::nullopt},
+            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::Delete, std::nullopt},
+            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+        });
+
+        executeRequests(ECheckpointType::Light, TVector<TStep>{
+            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::Create, std::nullopt},
+            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+        });
+
+        executeRequest(
+            "",
+            ECheckpointRequestType::Create,
+            ECheckpointType::Normal,
+            E_PRECONDITION_FAILED);
+        executeRequest(
+            "",
+            ECheckpointRequestType::Create,
+            ECheckpointType::Light,
+            E_PRECONDITION_FAILED);
     }
 }
 

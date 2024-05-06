@@ -1,6 +1,9 @@
 #include "checkpoint.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+#include "cloud/storage/core/libs/common/helpers.h"
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/algorithm.h>
 
@@ -199,6 +202,11 @@ bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
            CheckpointBlockingWritesExists;
 }
 
+bool TCheckpointStore::IsCheckpointDeleted(const TString& checkpointId) const
+{
+    return DeletedCheckpoints.contains(checkpointId);
+}
+
 bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
 {
     if (const auto* data = ActiveCheckpoints.FindPtr(checkpointId)) {
@@ -343,6 +351,7 @@ void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
 void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
 {
     ActiveCheckpoints.erase(checkpointId);
+    DeletedCheckpoints.insert(checkpointId);
     CalcCheckpointsState();
 }
 
@@ -386,6 +395,119 @@ TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
             Max(timestamp, lastReq.Timestamp + TDuration::MicroSeconds(1));
     }
     return timestamp;
+}
+
+std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
+    const TString& checkpointId,
+    ECheckpointRequestType requestType,
+    ECheckpointType checkpointType)
+{
+    auto makeErrorInvalid = [](TString message) -> NProto::TError
+    {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        return MakeError(E_PRECONDITION_FAILED, std::move(message), flags);
+    };
+
+    auto makeErrorDuplicate = [](TString message) -> NProto::TError
+    {
+        return MakeError(S_ALREADY, std::move(message));
+    };
+
+    if (checkpointId.empty()) {
+        return makeErrorInvalid("Checkpoint id should not be empty");
+    }
+
+    if (checkpointType != ECheckpointType::Normal &&
+        (requestType == ECheckpointRequestType::DeleteData ||
+         requestType == ECheckpointRequestType::CreateWithoutData))
+    {
+        TString message = TStringBuilder()
+            << ToString(requestType)
+            << "request makes sense for normal checkpoints only";
+        return makeErrorInvalid(std::move(message));
+    }
+
+    const auto actualCheckpointType = GetCheckpointType(checkpointId);
+
+    if (actualCheckpointType && actualCheckpointType != checkpointType) {
+        TString message = TStringBuilder()
+            << "Checkpoint exists and has another type "
+            << ToString(*actualCheckpointType);
+        return makeErrorInvalid(std::move(message));
+    }
+
+    const bool checkpointExists = actualCheckpointType.has_value();
+    const bool checkpointDataPresent = checkpointExists
+        && DoesCheckpointHaveData(checkpointId);
+    const bool checkpointDeleted = IsCheckpointDeleted(checkpointId);
+
+    if (!checkpointExists && !checkpointDeleted) {
+        // Checkpoint never existed.
+        switch (requestType) {
+            case ECheckpointRequestType::Create:
+            case ECheckpointRequestType::CreateWithoutData: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::DeleteData:
+            case ECheckpointRequestType::Delete: {
+                return makeErrorInvalid("Checkpoint does not exist");
+            }
+        }
+    } else if (checkpointExists && checkpointDataPresent) {
+        // Checkpoint exists and has data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                return makeErrorDuplicate("Checkpoint exists");
+            }
+            case ECheckpointRequestType::DeleteData:
+            case ECheckpointRequestType::Delete: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                return makeErrorInvalid("Checkpoint exists and has data");
+            }
+        }
+    } else if (checkpointExists && !checkpointDataPresent) {
+        // Checkpoint exists and has no data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                if (checkpointType == ECheckpointType::Normal) {
+                    return makeErrorInvalid(
+                        "Checkpoint exists and has no data");
+                }
+                return makeErrorDuplicate("Checkpoint exists");
+            }
+            case ECheckpointRequestType::DeleteData: {
+                return makeErrorDuplicate("Data is already deleted");
+            }
+            case ECheckpointRequestType::Delete: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                return makeErrorDuplicate("Checkpoint exists");
+            }
+        }
+    } else if (!checkpointExists && checkpointDeleted) {
+        // Checkpoint was deleted.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+            case ECheckpointRequestType::CreateWithoutData:
+                return makeErrorInvalid("Checkpoint is already deleted");
+            }
+            case ECheckpointRequestType::DeleteData: {
+                return makeErrorInvalid("Checkpoint is already deleted");
+            }
+            case ECheckpointRequestType::Delete: {
+                return makeErrorDuplicate("Checkpoint is already deleted");
+            }
+        }
+    } else {
+        STORAGE_CHECK_PRECONDITION(false);
+        return MakeError(
+            E_PRECONDITION_FAILED,
+            "Checkpoint validation should never reach this line");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

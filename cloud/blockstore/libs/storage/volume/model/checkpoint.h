@@ -1,6 +1,9 @@
 #pragma once
 
+#include "cloud/storage/core/protos/error.pb.h"
+
 #include <util/datetime/base.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/map.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -132,6 +135,7 @@ class TCheckpointStore
 private:
     TMap<ui64, TCheckpointRequest> CheckpointRequests;
     TActiveCheckpointsMap ActiveCheckpoints;
+    THashSet<TString> DeletedCheckpoints;
     ui64 LastCheckpointRequestId = 0;
     ui64 CheckpointRequestInProgress = 0;
     bool CheckpointBeingCreated = false;
@@ -158,6 +162,11 @@ public:
         const TString& checkpointId,
         TInstant timestamp);
 
+    [[nodiscard]] std::optional<NProto::TError> ValidateCheckpointRequest(
+        const TString& checkpointId,
+        ECheckpointRequestType requestType,
+        ECheckpointType checkpointType);
+
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
     void SetCheckpointRequestFinished(
@@ -177,6 +186,8 @@ public:
     [[nodiscard]] bool IsRequestInProgress() const;
     [[nodiscard]] bool IsCheckpointBeingCreated() const;
     [[nodiscard]] bool DoesCheckpointBlockingWritesExist() const;
+
+    [[nodiscard]] bool IsCheckpointDeleted(const TString& checkpointId) const;
     [[nodiscard]] bool DoesCheckpointHaveData(
         const TString& checkpointId) const;
 
