@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/copy_range.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -35,68 +36,58 @@ void TNonreplicatedPartitionMigrationCommonActor::InitWork(
     } else {
         ProcessingBlocks.SkipProcessedRanges();
     }
-
 }
 
 void TNonreplicatedPartitionMigrationCommonActor::StartWork(
     const NActors::TActorContext& ctx)
 {
-    MigrationStarted = true;
-    ContinueMigrationIfNeeded(ctx);
+    MigrationEnabled = true;
+    ScheduleRangeMigration(ctx);
 }
 
-void TNonreplicatedPartitionMigrationCommonActor::ContinueMigrationIfNeeded(
+void TNonreplicatedPartitionMigrationCommonActor::StartRangeMigration(
     const NActors::TActorContext& ctx)
 {
-    if (!MigrationStarted || MigrationInProgress ||
-        !ProcessingBlocks.IsProcessingStarted())
-    {
+    STORAGE_CHECK_PRECONDITION(
+        IsMigrationAllowed() && !IsIoDepthLimitReached());
+
+    auto migrationRange = TakeNextMigrationRange(ctx);
+    if (!migrationRange) {
+        // Migration of the last range has already started.
         return;
     }
 
-    MigrationInProgress = true;
-    ScheduleMigrateNextRange(ctx);
+    MigrateRange(ctx, *migrationRange);
+    ScheduleRangeMigration(ctx);
 }
 
-void TNonreplicatedPartitionMigrationCommonActor::MigrateNextRange(
-    const NActors::TActorContext& ctx)
+void TNonreplicatedPartitionMigrationCommonActor::MigrateRange(
+    const NActors::TActorContext& ctx,
+    TBlockRange64 range)
 {
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
-
-    const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
-
-    for (const auto& [key, requestInfo] :
-         WriteAndZeroRequestsInProgress.AllRequests())
-    {
-        const auto& requestRange = requestInfo.Value;
-        if (migrationRange.Overlaps(requestRange)) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%s] Range migration rejected, range: %s, inflight request: %s",
-                DiskId.c_str(),
-                DescribeRange(migrationRange).c_str(),
-                DescribeRange(requestRange).c_str());
-            MigrationInProgress = false;
-            return;
-        }
-    }
-
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Migrating range: %lu, count=%u",
-        DiskId.c_str(),
-        migrationRange.Start,
-        migrationRange.Size());
+    STORAGE_CHECK_PRECONDITION(
+        IsMigrationAllowed() && !IsIoDepthLimitReached());
 
     LastRangeMigrationStartTs = ctx.Now();
 
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Migrating range: %s",
+        DiskId.c_str(),
+        DescribeRange(range).c_str());
+
+    auto [_, inserted] = MigrationsInProgress.emplace(range.Start, range);
+    Y_DEBUG_ABORT_UNLESS(inserted);
+
     NCloud::Register<TCopyRangeActor>(
         ctx,
-        std::move(requestInfo),
+        CreateRequestInfo(
+            SelfId(),
+            0,   // cookie
+            MakeIntrusive<TCallContext>()),
         BlockSize,
-        migrationRange,
+        range,
         SrcActorId,
         DstActorId,
         RWClientId,
@@ -105,15 +96,102 @@ void TNonreplicatedPartitionMigrationCommonActor::MigrateNextRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TNonreplicatedPartitionMigrationCommonActor::IsMigrationAllowed() const
+{
+    return SrcActorId && DstActorId && MigrationEnabled;
+}
+
+bool TNonreplicatedPartitionMigrationCommonActor::IsIoDepthLimitReached() const
+{
+    Y_DEBUG_ABORT_UNLESS(MigrationsInProgress.size() <= MaxIoDepth);
+    return MigrationsInProgress.size() >= MaxIoDepth;
+}
+
+bool TNonreplicatedPartitionMigrationCommonActor::
+    OverlapsWithInflightWriteAndZero(TBlockRange64 range) const
+{
+    for (const auto& [key, requestInfo]:
+         WriteAndZeroRequestsInProgress.AllRequests())
+    {
+        if (range.Overlaps(requestInfo.Value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<TBlockRange64>
+TNonreplicatedPartitionMigrationCommonActor::GetNextMigrationRange() const
+{
+    // Attention! It is necessary to keep the logic consistent with
+    // TakeNextMigrationRange().
+
+    if (!IsMigrationAllowed()) {
+        return std::nullopt;
+    }
+
+    // First of all, we are trying to continue the migration range from
+    // DeferredMigrations.
+    if (!DeferredMigrations.empty()) {
+        return DeferredMigrations.begin()->second;
+    }
+
+    // Secondly, we are trying to migrate a new range.
+    if (ProcessingBlocks.IsProcessing()) {
+        return ProcessingBlocks.BuildProcessingRange();
+    }
+
+    return std::nullopt;
+}
+
+std::optional<TBlockRange64>
+TNonreplicatedPartitionMigrationCommonActor::TakeNextMigrationRange(
+    const TActorContext& ctx)
+{
+    // Attention! It is necessary to keep the logic consistent with
+    // GetNextMigrationRange().
+
+    if (!IsMigrationAllowed()) {
+        return std::nullopt;
+    }
+
+    // First of all, we are trying to continue the migration range from
+    // DeferredMigrations.
+    for (auto [key, range]: DeferredMigrations) {
+        // We can only perform migration that does not overlap with user
+        // requests.
+        if (!OverlapsWithInflightWriteAndZero(range)) {
+            DeferredMigrations.erase(key);
+            return range;
+        }
+    }
+
+    // Secondly, we are trying to migrate a new range.
+    if (ProcessingBlocks.IsProcessing()) {
+        auto range = ProcessingBlocks.BuildProcessingRange();
+
+        // Check whether migration intersects with inflight user requests.
+        if (OverlapsWithInflightWriteAndZero(range)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Range migration rejected, range: %s",
+                DiskId.c_str(),
+                DescribeRange(range).c_str());
+            return std::nullopt;
+        }
+        ProcessingBlocks.AdvanceProcessingIndex();
+        return range;
+    }
+
+    return std::nullopt;
+}
+
 void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
     const TEvNonreplPartitionPrivate::TEvRangeMigrated::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(MigrationInProgress);
-
-    if (!ProcessingBlocks.IsProcessingStarted()) {
-        // migration cancelled
-        MigrationInProgress = false;
+    if (!IsMigrationAllowed()) {
         return;
     }
 
@@ -154,75 +232,125 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         });
     }
 
-    bool indexUpdated = false;
+    size_t erasedCount = MigrationsInProgress.erase(msg->Range.Start);
+    Y_DEBUG_ABORT_UNLESS(erasedCount == 1);
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Range migration failed: %lu, count=%u, error: %s",
+        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+            "[%s] Range migration failed: %s, error: %s",
             DiskId.c_str(),
-            msg->Range.Start,
-            msg->Range.Size(),
+            DescribeRange(msg->Range).c_str(),
             FormatError(msg->GetError()).c_str());
 
         if (GetErrorKind(msg->GetError()) != EErrorKind::ErrorRetriable) {
             ReportMigrationFailed();
             MigrationOwner->OnMigrationError(ctx);
-            MigrationInProgress = false;
-            return;
-        }
-    } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-            "[%s] Range migrated: %lu, count=%u",
-            DiskId.c_str(),
-            msg->Range.Start,
-            msg->Range.Size());
-
-        if (!ProcessingBlocks.AdvanceProcessingIndex()) {
-            MigrationOwner->OnMigrationFinished(ctx);
-            MigrationInProgress = false;
+            MigrationEnabled = false;
             return;
         }
 
-        indexUpdated = true;
+        // Schedule to retry the migration of the failed range.
+        DeferredMigrations.emplace(msg->Range.Start, msg->Range);
+        ScheduleRangeMigration(ctx);
+        return;
     }
 
-    if (indexUpdated) {
-        auto migrationRange = ProcessingBlocks.BuildProcessingRange();
-        const auto currentIndex =
-            ProcessingBlocks.GetLastReportedProcessingIndex();
-        const auto step = Config->GetMigrationIndexCachingInterval();
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Range %s migrated",
+        DiskId.c_str(),
+        DescribeRange(msg->Range).c_str());
 
-        if (currentIndex + step < migrationRange.Start) {
-            ProcessingBlocks.SetLastReportedProcessingIndex(
-                migrationRange.Start);
+    NotifyMigrationProgressIfNeeded(ctx, msg->Range);
+    NotifyMigrationFinishedIfNeeded(ctx);
+    ScheduleRangeMigration(ctx);
+}
 
-            MigrationOwner->OnMigrationProgress(ctx, migrationRange.Start);
+void TNonreplicatedPartitionMigrationCommonActor::
+    NotifyMigrationProgressIfNeeded(
+        const TActorContext& ctx,
+        TBlockRange64 migratedRange)
+{
+    const ui64 nextCachedProgress =
+        ProcessingBlocks.GetLastReportedProcessingIndex() +
+        Config->GetMigrationIndexCachingInterval();
+
+    if (migratedRange.Contains(nextCachedProgress - 1) ||
+        migratedRange.Start > nextCachedProgress)
+    {
+        CachedMigrationProgressAchieved = nextCachedProgress;
+    }
+
+    if (!CachedMigrationProgressAchieved) {
+        return;
+    }
+
+    for (const auto& [id, range]: MigrationsInProgress) {
+        if (range.End < *CachedMigrationProgressAchieved) {
+            return;
+        }
+    }
+    for (const auto& [id, range]: DeferredMigrations) {
+        if (range.End < *CachedMigrationProgressAchieved) {
+            return;
         }
     }
 
-    ScheduleMigrateNextRange(ctx);
+    ProcessingBlocks.SetLastReportedProcessingIndex(
+        *CachedMigrationProgressAchieved);
+    MigrationOwner->OnMigrationProgress(ctx, *CachedMigrationProgressAchieved);
+    CachedMigrationProgressAchieved = std::nullopt;
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::
+    NotifyMigrationFinishedIfNeeded(const TActorContext& ctx)
+{
+    if (ProcessingBlocks.IsProcessing() ||
+        !MigrationsInProgress.empty() || !DeferredMigrations.empty())
+    {
+        return;
+    }
+
+    MigrationOwner->OnMigrationFinished(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TNonreplicatedPartitionMigrationCommonActor::ScheduleMigrateNextRange(
+void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     const TActorContext& ctx)
 {
-    const auto deadline =
-        LastRangeMigrationStartTs + MigrationOwner->CalculateMigrationTimeout();
-
-    if (ctx.Now() >= deadline) {
-        MigrateNextRange(ctx);
+    if (RangeMigrationScheduled || IsIoDepthLimitReached())
+    {
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-        "[%s] Postponing range migration till %s",
-        DiskId.c_str(),
-        deadline.ToString().Quote().c_str());
+    auto nextRange = GetNextMigrationRange();
+    if (!nextRange) {
+        return;
+    }
 
+    auto delayBetweenMigrations =
+        MigrationOwner->CalculateMigrationTimeout(*nextRange);
+
+    const auto deadline =
+        LastRangeMigrationStartTs + delayBetweenMigrations;
+
+    if (ctx.Now() >= deadline) {
+        StartRangeMigration(ctx);
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Schedule migrating next range after %s",
+        DiskId.c_str(),
+        delayBetweenMigrations.ToString().Quote().c_str());
+
+    RangeMigrationScheduled = true;
     ctx.Schedule(
-        deadline,
+        delayBetweenMigrations,
         new TEvNonreplPartitionPrivate::TEvMigrateNextRange());
 }
 
@@ -232,13 +360,13 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleMigrateNextRange(
 {
     Y_UNUSED(ev);
 
-    if (!ProcessingBlocks.IsProcessingStarted()) {
-        // migration cancelled
-        MigrationInProgress = false;
+    RangeMigrationScheduled = false;
+
+    if (!IsMigrationAllowed() || IsIoDepthLimitReached()) {
         return;
     }
 
-    MigrateNextRange(ctx);
+    StartRangeMigration(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

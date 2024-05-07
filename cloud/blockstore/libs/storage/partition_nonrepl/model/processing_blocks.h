@@ -30,7 +30,7 @@ public:
 
 public:
     void AbortProcessing();
-    bool IsProcessingStarted() const;
+    bool IsProcessing() const;
     bool IsProcessed(TBlockRange64 range) const;
     void MarkProcessed(TBlockRange64 range);
     bool SkipProcessedRanges();

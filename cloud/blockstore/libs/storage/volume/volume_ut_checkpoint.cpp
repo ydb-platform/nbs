@@ -3306,10 +3306,12 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     }
 
     void DoShouldCreateCheckpointWithShadowDisk(
-        NProto::EStorageMediaKind mediaKind)
+        NProto::EStorageMediaKind mediaKind,
+        ui32 ioDepth)
     {
         NProto::TStorageServiceConfig config;
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetMaxShadowDiskFillIoDepth(ioDepth);
         auto runtime = PrepareTestActorRuntime(config);
 
         int allocateRequestCount = 0;
@@ -3523,25 +3525,42 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskNonrepl)
     {
         DoShouldCreateCheckpointWithShadowDisk(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1);
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            8);
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror2)
     {
         DoShouldCreateCheckpointWithShadowDisk(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            1);
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            8);
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskMirror3)
     {
         DoShouldCreateCheckpointWithShadowDisk(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            1);
+
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            8);
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointWithShadowDiskHddNonrepl)
     {
         DoShouldCreateCheckpointWithShadowDisk(
-            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+            1);
+        DoShouldCreateCheckpointWithShadowDisk(
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+            8);
     }
 
     void ShouldRetryWhenAcquiringShadowDisk(ui32 responseMessage)
