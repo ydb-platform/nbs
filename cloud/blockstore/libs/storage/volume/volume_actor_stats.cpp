@@ -387,17 +387,15 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     simple.VBytesCount.Set(GetBlocksCount() * State->GetBlockSize());
     simple.PartitionCount.Set(State->GetPartitions().size());
 
-    const bool isMigrationIndexValid = State->GetMeta().GetMigrations().size()
-        || State->GetMeta().GetFreshDeviceIds().size();
-
-    if (isMigrationIndexValid) {
+    if (auto blockCountToMigrate = State->GetBlockCountToMigrate()) {
         simple.MigrationStarted.Set(true);
         ui64 migratedBlockCount =
-            State->GetBlockCountToMigrate()
-                ? GetBlocksCount() - *State->GetBlockCountToMigrate()
-                : State->GetMeta().GetMigrationIndex();
+            GetBlocksCount() - *State->GetBlockCountToMigrate();
         simple.MigrationProgress.Set(
             100 * migratedBlockCount / GetBlocksCount());
+    } else {
+        simple.MigrationStarted.Set(false);
+        simple.MigrationProgress.Set(0);
     }
 
     simple.ResyncStarted.Set(State->IsMirrorResyncNeeded());

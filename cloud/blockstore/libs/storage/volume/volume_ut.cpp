@@ -2788,11 +2788,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReconnectPipe();
         volume.WaitReady();
 
-        volume.SendToPipe(std::make_unique<TEvVolume::TEvUpdateMigrationState>(
-            migratedBlockCount,
-            volumeBlockCount - migratedBlockCount));
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-
         volume.SendToPipe(
             std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
         );
