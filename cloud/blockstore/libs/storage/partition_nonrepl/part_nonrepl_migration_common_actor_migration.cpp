@@ -306,8 +306,8 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::
     NotifyMigrationFinishedIfNeeded(const TActorContext& ctx)
 {
-    if (ProcessingBlocks.IsProcessing() ||
-        !MigrationsInProgress.empty() || !DeferredMigrations.empty())
+    if (ProcessingBlocks.IsProcessing() || !MigrationsInProgress.empty() ||
+        !DeferredMigrations.empty())
     {
         return;
     }
@@ -320,8 +320,7 @@ void TNonreplicatedPartitionMigrationCommonActor::
 void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     const TActorContext& ctx)
 {
-    if (RangeMigrationScheduled || IsIoDepthLimitReached())
-    {
+    if (RangeMigrationScheduled || IsIoDepthLimitReached()) {
         return;
     }
 
@@ -333,8 +332,7 @@ void TNonreplicatedPartitionMigrationCommonActor::ScheduleRangeMigration(
     auto delayBetweenMigrations =
         MigrationOwner->CalculateMigrationTimeout(*nextRange);
 
-    const auto deadline =
-        LastRangeMigrationStartTs + delayBetweenMigrations;
+    const auto deadline = LastRangeMigrationStartTs + delayBetweenMigrations;
 
     if (ctx.Now() >= deadline) {
         StartRangeMigration(ctx);

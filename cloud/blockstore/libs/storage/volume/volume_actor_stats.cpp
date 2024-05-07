@@ -392,9 +392,12 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
 
     if (isMigrationIndexValid) {
         simple.MigrationStarted.Set(true);
+        ui64 migratedBlockCount =
+            State->GetBlockCountToMigrate()
+                ? GetBlocksCount() - *State->GetBlockCountToMigrate()
+                : State->GetMeta().GetMigrationIndex();
         simple.MigrationProgress.Set(
-            100 * State->GetMeta().GetMigrationIndex() / GetBlocksCount()
-        );
+            100 * migratedBlockCount / GetBlocksCount());
     }
 
     simple.ResyncStarted.Set(State->IsMirrorResyncNeeded());
