@@ -1,4 +1,5 @@
 #include "part_mirror_actor.h"
+#include "part_mirror_resync_util.h"
 #include "part_nonrepl.h"
 #include "part_nonrepl_migration.h"
 
@@ -57,6 +58,10 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
     SetupPartitions(ctx);
     ScheduleCountersUpdate(ctx);
 
+    if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
+        ScheduleScrubbingNextRange(ctx);
+    }
+
     Become(&TThis::StateWork);
 }
 
@@ -105,6 +110,56 @@ void TMirrorPartitionActor::SetupPartitions(const TActorContext& ctx)
     }
 
     ReplicaCounters.resize(State.GetReplicaInfos().size());
+}
+
+void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
+{
+    const auto& checksums = ChecksumRangeActorCompanion.GetChecksums();
+    bool equal = true;
+    for (size_t i = 1; i < checksums.size(); i++) {
+        if (checksums[i] != checksums[0]) {
+            equal = false;
+            break;
+        }
+    }
+
+    if (!equal && WriteIntersectsWithScrubbing) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to inflight write",
+            DiskId.c_str(),
+            DescribeRange(
+                RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize())).c_str());
+        ScheduleScrubbingNextRange(ctx);
+        return;
+    }
+
+    if (!equal) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Checksum mismatch for range %s",
+            DiskId.c_str(),
+            DescribeRange(
+                RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize())).c_str());
+
+        for (size_t i = 0; i < checksums.size(); i++) {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Replica %lu range %s checksum %lu",
+                DiskId.c_str(),
+                i,
+                DescribeRange(
+                    RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize())).c_str(),
+                checksums[i]);
+        }
+        ReportMirroredDiskChecksumMismatch();
+    }
+
+    ++ScrubbingRangeId;
+    ScheduleScrubbingNextRange(ctx);
 }
 
 void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
@@ -181,6 +236,137 @@ void TMirrorPartitionActor::HandleUpdateCounters(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TMirrorPartitionActor::ScheduleScrubbingNextRange(
+    const TActorContext& ctx)
+{
+    if (!ScrubbingScheduled) {
+        ctx.Schedule(
+            Config->GetScrubbingInterval(),
+            new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
+        ScrubbingScheduled = true;
+    }
+}
+
+void TMirrorPartitionActor::HandleScrubbingNextRange(
+    const TEvNonreplPartitionPrivate::TEvScrubbingNextRange::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ScrubbingScheduled = false;
+    WriteIntersectsWithScrubbing = false;
+    auto scrubbingRange =
+        RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
+    if (scrubbingRange.Start >= State.GetBlockCount()) {
+        ScrubbingRangeId = 0;
+        scrubbingRange =
+            RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize());
+    }
+
+    for (const auto& [key, requestInfo]: RequestsInProgress.AllRequests()) {
+        if (!requestInfo.Write) {
+            continue;
+        }
+        const auto& requestRange = requestInfo.Value;
+        if (scrubbingRange.Overlaps(requestRange)) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Reschedule scrubbing for range %s due to inflight write to %s",
+                DiskId.c_str(),
+                DescribeRange(scrubbingRange).c_str(),
+                DescribeRange(requestRange).c_str());
+
+            ScheduleScrubbingNextRange(ctx);
+            return;
+        }
+    }
+
+    TVector<TReplicaDescriptor> replicas;
+    const auto& replicaInfos = State.GetReplicaInfos();
+    const auto& replicaActors = State.GetReplicaActors();
+    for (ui32 i = 0; i < replicaInfos.size(); i++) {
+        if (replicaInfos[i].Config->DevicesReadyForReading(scrubbingRange)) {
+            replicas.emplace_back(
+                replicaInfos[i].Config->GetName(),
+                i,
+                replicaActors[i]);
+        }
+    }
+
+    if (replicas.size() < 2) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Skipping scrubbing for range %s, devices not ready for reading",
+            DiskId.c_str(),
+            DescribeRange(scrubbingRange).c_str());
+
+        ++ScrubbingRangeId;
+        ScheduleScrubbingNextRange(ctx);
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[%s] Scrubbing range %s",
+        DiskId.c_str(),
+        DescribeRange(scrubbingRange).c_str());
+
+    ScrubbingThroughput += scrubbingRange.Size() * State.GetBlockSize();
+    ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
+    ChecksumRangeActorCompanion.CalculateChecksums(ctx, scrubbingRange);
+}
+
+void TMirrorPartitionActor::HandleChecksumUndelivery(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ChecksumRangeActorCompanion.HandleChecksumUndelivery(ctx);
+    if (ChecksumRangeActorCompanion.IsFinished()) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
+            DiskId.c_str(),
+            DescribeRange(
+                RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize())).c_str(),
+            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
+        ScheduleScrubbingNextRange(ctx);
+    }
+}
+
+void TMirrorPartitionActor::HandleChecksumResponse(
+    const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ChecksumRangeActorCompanion.HandleChecksumResponse(ev, ctx);
+
+    if (!ChecksumRangeActorCompanion.IsFinished()) {
+        return;
+    }
+
+    if (HasError(ChecksumRangeActorCompanion.GetError())) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "[%s] Reschedule scrubbing for range %s due to checksum error %s",
+            DiskId.c_str(),
+            DescribeRange(
+                RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize())).c_str(),
+            FormatError(ChecksumRangeActorCompanion.GetError()).c_str());
+        ScheduleScrubbingNextRange(ctx);
+        return;
+    }
+
+    CompareChecksums(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TMirrorPartitionActor::HandleRWClientIdChanged(
     const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
     const TActorContext& ctx)
@@ -226,6 +412,17 @@ STFUNC(TMirrorPartitionActor::StateWork)
             TEvNonreplPartitionPrivate::TEvUpdateCounters,
             HandleUpdateCounters);
 
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvScrubbingNextRange,
+            HandleScrubbingNextRange);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumUndelivery);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse,
+            HandleChecksumResponse);
+
         HFunc(TEvService::TEvReadBlocksRequest, HandleReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
         HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroBlocks);
@@ -266,6 +463,10 @@ STFUNC(TMirrorPartitionActor::StateZombie)
 {
     switch (ev->GetTypeRewrite()) {
         IgnoreFunc(TEvNonreplPartitionPrivate::TEvUpdateCounters);
+
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvScrubbingNextRange);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest);
+        IgnoreFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse);
 
         HFunc(TEvService::TEvReadBlocksRequest, RejectReadBlocks);
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);

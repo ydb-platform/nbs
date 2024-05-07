@@ -58,6 +58,12 @@ enum class EPublishingPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \
+    xxx(ScrubbingThroughput, Generic, Permanent,                   __VA_ARGS__)\
+// BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(xxx, ...)                     \
     xxx(BytesWritten,               Generic, Permanent,            __VA_ARGS__)\
     xxx(BytesRead,                  Generic, Permanent,            __VA_ARGS__)\
@@ -191,6 +197,7 @@ struct TPartitionDiskCounters
 // BLOCKSTORE_CUMULATIVE_COUNTER
 
         BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
+        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
     } Cumulative;
 

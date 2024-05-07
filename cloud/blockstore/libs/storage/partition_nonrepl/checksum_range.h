@@ -14,22 +14,22 @@ namespace NCloud::NBlockStore::NStorage {
 class TChecksumRangeActorCompanion
 {
 private:
-    const TBlockRange64 Range;
-    const TVector<TReplicaDescriptor> Replicas;
+    TVector<TReplicaDescriptor> Replicas;
 
     TInstant ChecksumStartTs;
     TDuration ChecksumDuration;
     ui32 CalculatedChecksumsCount = 0;
-    bool Finished = false;
     TVector<ui64> Checksums;
     NProto::TError Error;
 
 public:
-    TChecksumRangeActorCompanion(
-        TBlockRange64 range,
-        TVector<TReplicaDescriptor> replicas);
+    TChecksumRangeActorCompanion(TVector<TReplicaDescriptor> replicas);
 
-    void CalculateChecksums(const NActors::TActorContext& ctx);
+    TChecksumRangeActorCompanion() = default;
+
+    void CalculateChecksums(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range);
 
     void HandleChecksumResponse(
         const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
@@ -43,7 +43,10 @@ public:
     TDuration GetChecksumDuration() const;
 
 private:
-    void CalculateReplicaChecksum(const NActors::TActorContext& ctx, int idx);
+    void CalculateReplicaChecksum(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 range,
+        int idx);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
