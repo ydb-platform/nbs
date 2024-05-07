@@ -40,6 +40,8 @@ func getOperation(
 		status := grpc_status.FromProto(result.Error)
 		dmStatus := grpc_status.New(status.Code(), status.Message())
 
+		// We should return disk_manager.ErrorDetails, comply with contract with
+		// compute.
 		for _, errorDetail := range status.Details() {
 			protoMessage, err := proto.Marshal(errorDetail.(proto.Message))
 			if err != nil {
