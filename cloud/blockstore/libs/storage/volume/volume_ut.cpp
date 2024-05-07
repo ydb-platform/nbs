@@ -1519,7 +1519,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVector<bool> migratedRanges(totalRangesInVolume);
         ui32 totalMigratedRangesCount = 0;
 
-        auto countMigratedRanges = [&](TAutoPtr<IEventHandle>& event)
+        auto countMigratedRanges =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
@@ -1533,7 +1534,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 ++totalMigratedRangesCount;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(countMigratedRanges);
@@ -1626,7 +1627,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVector<bool> migratedRanges(totalRangesInVolume);
         ui32 failOnMigratedRangeWithIndex = 0;
 
-        auto countMigratedRanges = [&](TAutoPtr<IEventHandle>& event)
+        auto countMigratedRanges =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
@@ -1645,7 +1647,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 }
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(countMigratedRanges);
