@@ -10,7 +10,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/client"
 	aws_credentials "github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -23,6 +25,23 @@ import (
 
 func withComponentLoggingField(ctx context.Context) context.Context {
 	return logging.WithComponent(ctx, logging.ComponentS3)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type s3ClientRetryer struct {
+	client.DefaultRetryer
+}
+
+func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
+	logging.Debug(
+		req.Context(),
+		"retrying request %v for a %v time",
+		req.Operation.Name,
+		req.RetryCount+1,
+	)
+
+	return r.DefaultRetryer.RetryRules(req)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +69,7 @@ func NewS3Client(
 		Endpoint:         &endpoint,
 		Region:           &region,
 		S3ForcePathStyle: aws.Bool(true), // Without it we get DNS DDOS errors in tests. This option is fine for production too.
+		Retryer:          &s3ClientRetryer{},
 	}
 
 	session, err := session.NewSession(sessionConfig)
