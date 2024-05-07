@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 
 #include <util/system/hostname.h>
 
@@ -925,11 +926,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
-    Y_UNIT_TEST(ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests)
+    void DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(ui32 ioDepth)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
         config.SetMaxMigrationBandwidth(999'999'999);
+        config.SetMaxMigrationIoDepth(ioDepth);
         auto state = MakeIntrusive<TDiskRegistryState>();
         auto runtime = PrepareTestActorRuntime(config, state);
 
@@ -1084,6 +1086,20 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         const auto& bufs = resp->Record.GetBlocks().GetBuffers();
         UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
         UNIT_ASSERT_VALUES_EQUAL(GetBlockContent('a'), bufs[0]);
+    }
+
+    Y_UNIT_TEST(
+        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_1)
+    {
+        DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
+            1);
+    }
+
+    Y_UNIT_TEST(
+        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_8)
+    {
+        DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
+            8);
     }
 
     Y_UNIT_TEST(ShouldRunMigrationForVolumesWithoutClients)
@@ -1312,7 +1328,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, migrationStartedCounter);
-        UNIT_ASSERT_VALUES_EQUAL(80, migrationProgressCounter);
+        UNIT_ASSERT_VALUES_EQUAL(39, migrationProgressCounter);
 
         volume.RebootTablet();
         volume.AddClient(clientInfo);
@@ -1455,6 +1471,222 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT_VALUES_EQUAL(3, migratedRanges);
         UNIT_ASSERT_VALUES_EQUAL(2048, lastMigratedRange.Start);
+    }
+
+    void DoShouldMigrateAllBlocks(ui32 ioDepth, ui32 bandwidth)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetMaxMigrationBandwidth(bandwidth);
+        config.SetMaxMigrationIoDepth(ioDepth);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        const auto blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        const auto volumeBlockCount = blocksPerDevice * 2.5;
+        // We will migrate only the first and third devices.
+        const auto migrationRangesPerDevice =
+            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        const auto rangesToMigrateCount = migrationRangesPerDevice * 2;
+        const auto totalRangesInVolume = migrationRangesPerDevice * 3;
+        auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
+        {
+            return TBlockRange64::WithLength(
+                blocksPerDevice * deviceIndex,
+                blocksPerDevice);
+        };
+        auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
+            return start * DefaultBlockSize / ProcessingRangeSize;
+        };
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            volumeBlockCount);
+
+        volume.WaitReady();
+
+        state->MigrationMode = EMigrationMode::InProgress;
+        TVector<bool> migratedRanges(totalRangesInVolume);
+        ui32 totalMigratedRangesCount = 0;
+
+        auto countMigratedRanges = [&](TAutoPtr<IEventHandle>& event)
+        {
+            using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
+
+            const auto migratedEvent =
+                TEvNonreplPartitionPrivate::EvRangeMigrated;
+
+            if (event->GetTypeRewrite() == migratedEvent) {
+                auto migratedRange = event->Get<TMigratedEvent>()->Range;
+                migratedRanges[getMigrationRangeIndexByBlockStart(
+                    migratedRange.Start)] = true;
+                ++totalMigratedRangesCount;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(countMigratedRanges);
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvDiskRegistry::EvFinishMigrationRequest);
+        runtime->DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            rangesToMigrateCount,
+            totalMigratedRangesCount);
+
+        // Check that all blocks of the first and third device have been
+        // migrated.
+        auto checkAllBlockOfDeviceMigrated = [&](ui32 deviceIndex)
+        {
+            auto deviceBlocks = getDeviceBlocks(deviceIndex);
+            ui32 start = getMigrationRangeIndexByBlockStart(deviceBlocks.Start);
+            ui32 end = start + migrationRangesPerDevice;
+            for (ui32 i = start; i != end; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    true,
+                    migratedRanges[i],
+                    TString("Range #") + i + " should be migrated");
+            }
+        };
+        checkAllBlockOfDeviceMigrated(0);
+        checkAllBlockOfDeviceMigrated(2);
+    }
+
+    Y_UNIT_TEST(ShouldMigrateWithDifferentioDepth)
+    {
+        DoShouldMigrateAllBlocks(1, 80);
+        DoShouldMigrateAllBlocks(8, 80);
+        DoShouldMigrateAllBlocks(16, 80);
+
+        DoShouldMigrateAllBlocks(1, 1000000);
+        DoShouldMigrateAllBlocks(8, 1000000);
+        DoShouldMigrateAllBlocks(16, 1000000);
+    }
+
+    void DoShouldMigrateWhenErrorHappens(ui32 ioDepth, ui32 bandwidth)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetMaxMigrationBandwidth(bandwidth);
+        config.SetMaxMigrationIoDepth(ioDepth);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        const auto blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        const auto volumeBlockCount = blocksPerDevice * 2.5;
+        // We will migrate only the first and third devices.
+        const auto migrationRangesPerDevice =
+            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        const auto totalRangesInVolume = migrationRangesPerDevice * 3;
+        auto getDeviceBlocks = [&](ui32 deviceIndex) -> TBlockRange64
+        {
+            return TBlockRange64::WithLength(
+                blocksPerDevice * deviceIndex,
+                blocksPerDevice);
+        };
+        auto getMigrationRangeIndexByBlockStart = [&](ui64 start) -> ui32 {
+            return start * DefaultBlockSize / ProcessingRangeSize;
+        };
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            volumeBlockCount);
+
+        volume.WaitReady();
+
+        state->MigrationMode = EMigrationMode::InProgress;
+        TVector<bool> migratedRanges(totalRangesInVolume);
+        ui32 failOnMigratedRangeWithIndex = 0;
+
+        auto countMigratedRanges = [&](TAutoPtr<IEventHandle>& event)
+        {
+            using TMigratedEvent = TEvNonreplPartitionPrivate::TEvRangeMigrated;
+
+            const auto migratedEvent =
+                TEvNonreplPartitionPrivate::EvRangeMigrated;
+
+            if (event->GetTypeRewrite() == migratedEvent) {
+                auto* msg = event->Get<TMigratedEvent>();
+                auto migratedRangeIndex =
+                    getMigrationRangeIndexByBlockStart(msg->Range.Start);
+                if (migratedRangeIndex == failOnMigratedRangeWithIndex) {
+                    failOnMigratedRangeWithIndex += 3;
+                    const_cast<NProto::TError&>(msg->Error).SetCode(E_REJECTED);
+                } else {
+                    migratedRanges[migratedRangeIndex] = true;
+                }
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(countMigratedRanges);
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvDiskRegistry::EvFinishMigrationRequest);
+        runtime->DispatchEvents(options);
+
+        // Check that all blocks of the first and third device have been
+        // migrated.
+        auto checkAllBlockOfDeviceMigrated = [&](ui32 deviceIndex)
+        {
+            auto deviceBlocks = getDeviceBlocks(deviceIndex);
+            ui32 start = getMigrationRangeIndexByBlockStart(deviceBlocks.Start);
+            ui32 end = start + migrationRangesPerDevice;
+            for (ui32 i = start; i != end; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    true,
+                    migratedRanges[i],
+                    TString("Range #") + i + " should be migrated");
+            }
+        };
+        checkAllBlockOfDeviceMigrated(0);
+        checkAllBlockOfDeviceMigrated(2);
+    }
+
+    Y_UNIT_TEST(ShouldMigrateWhenErrorHappens)
+    {
+        DoShouldMigrateWhenErrorHappens(1, 80);
+        DoShouldMigrateWhenErrorHappens(8, 80);
+        DoShouldMigrateWhenErrorHappens(16, 80);
+
+        DoShouldMigrateWhenErrorHappens(1, 1000000);
+        DoShouldMigrateWhenErrorHappens(8, 1000000);
+        DoShouldMigrateWhenErrorHappens(16, 1000000);
     }
 
     Y_UNIT_TEST(ShouldRegularlyReacquireNonreplicatedDisks)
@@ -2508,6 +2740,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TVolumeClient volume(*runtime);
 
         state->ReplicaCount = 1;
+        const ui64 volumeBlockCount = 1024;
+        const ui64 migratedBlockCount = 512;
 
         volume.UpdateVolumeConfig(
             0,
@@ -2517,7 +2751,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            1024
+            volumeBlockCount
         );
 
         volume.WaitReady();
@@ -2537,8 +2771,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             }
         );
 
-        volume.SendToPipe(
-            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512, 1024));
+        volume.SendToPipe(std::make_unique<TEvVolume::TEvUpdateMigrationState>(
+            migratedBlockCount,
+            volumeBlockCount - migratedBlockCount));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         volume.SendToPipe(
@@ -2553,8 +2788,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReconnectPipe();
         volume.WaitReady();
 
-        volume.SendToPipe(
-            std::make_unique<TEvVolume::TEvUpdateMigrationState>(512, 1024));
+        volume.SendToPipe(std::make_unique<TEvVolume::TEvUpdateMigrationState>(
+            migratedBlockCount,
+            volumeBlockCount - migratedBlockCount));
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         volume.SendToPipe(

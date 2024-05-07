@@ -24,7 +24,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     }
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
-    ContinueMigrationIfNeeded(ctx);
+    ScheduleRangeMigration(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,12 +55,35 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
 
     const auto range = BuildRequestBlockRange(*msg, BlockSize);
 
-    if (ProcessingBlocks.IsProcessingStarted()) {
-        const auto migrationRange = ProcessingBlocks.BuildProcessingRange();
+    auto checkOverlapsWithMigration = [&](TBlockRange64 migrationRange) -> bool
+    {
         if (range.Overlaps(migrationRange)) {
-            replyError(E_REJECTED, TStringBuilder()
-                << "Request " << TMethod::Name
-                << " intersects with currently migrated range");
+            replyError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "Request " << TMethod::Name << DescribeRange(range)
+                    << " intersects with currently migrated range "
+                    << DescribeRange(migrationRange));
+            return true;
+        }
+        return false;
+    };
+
+    // Check overlapping with inflight migrations.
+    for (const auto [_, migrationRange]: MigrationsInProgress) {
+        if (checkOverlapsWithMigration(migrationRange)) {
+            return;
+        }
+    }
+
+    // While at least one migration is in progress, we are not slowing down user requests.
+    if (MigrationsInProgress.empty()) {
+        // Check overlapping with the range that will be migrated next.
+        // We need to ensure priority for the migration process, otherwise if
+        // the client continuously writes to one block, the migration progress
+        // will stall on this block.
+        auto nextRange = GetNextMigrationRange();
+        if (nextRange && checkOverlapsWithMigration(*nextRange)) {
             return;
         }
     }

@@ -35,7 +35,8 @@ TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
           std::move(digestGenerator),
           initialMigrationIndex,
           std::move(rwClientId),
-          statActorId)
+          statActorId,
+          config->GetMaxMigrationIoDepth())
     , Config(std::move(config))
     , SrcConfig(std::move(srcConfig))
     , Migrations(std::move(migrations))
@@ -78,9 +79,10 @@ bool TNonreplicatedPartitionMigrationActor::OnMessage(
     return true;
 }
 
-TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout()
+TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout(
+    TBlockRange64 range)
 {
-    return TimeoutCalculator.CalculateTimeout(GetNextProcessingRange());
+    return TimeoutCalculator.CalculateTimeout(range);
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
