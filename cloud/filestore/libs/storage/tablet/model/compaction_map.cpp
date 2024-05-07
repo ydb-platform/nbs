@@ -219,6 +219,8 @@ struct TCompactionMap::TImpl
 
     ui32 UsedRangesCount = 0;
     ui32 AllocatedRangesCount = 0;
+    ui64 TotalBlobsCount = 0;
+    ui64 TotalDeletionsCount = 0;
 
     TImpl(IAllocator* alloc)
         : Alloc(alloc)
@@ -242,9 +244,15 @@ struct TCompactionMap::TImpl
         ui32 groupIndex = GetGroupIndex(rangeId);
 
         auto* group = FindGroup(groupIndex);
-        if (!group) {
+        if (group) {
+            TotalBlobsCount -= group->Get(rangeId).BlobsCount;
+            TotalDeletionsCount -= group->Get(rangeId).DeletionsCount;
+        } else {
             group = LinkGroup(groupIndex);
         }
+
+        TotalBlobsCount += blobsCount;
+        TotalDeletionsCount += deletionsCount;
 
         UsedRangesCount += group->Update(rangeId, blobsCount, deletionsCount);
 
@@ -437,6 +445,18 @@ TVector<ui32> TCompactionMap::GetNonEmptyCompactionRanges() const
     return result;
 }
 
+TVector<ui32> TCompactionMap::GetAllCompactionRanges() const
+{
+    TVector<ui32> result(Reserve(Impl->AllocatedRangesCount));
+    for (const auto& group: Impl->Groups) {
+        for (ui32 i = 0; i < group.Stats.size(); ++i) {
+            result.push_back(i + group.GroupIndex);
+        }
+    }
+
+    return result;
+}
+
 TVector<TCompactionRangeInfo> TCompactionMap::GetTopRangesByCompactionScore(ui32 topSize) const
 {
     return Impl->GetTopRangesByCompactionScore(topSize);
@@ -452,6 +472,8 @@ TCompactionMapStats TCompactionMap::GetStats(ui32 topSize) const
     TCompactionMapStats stats = {
         .UsedRangesCount = Impl->UsedRangesCount,
         .AllocatedRangesCount = Impl->AllocatedRangesCount,
+        .TotalBlobsCount = Impl->TotalBlobsCount,
+        .TotalDeletionsCount = Impl->TotalDeletionsCount,
     };
 
     if (!topSize) {

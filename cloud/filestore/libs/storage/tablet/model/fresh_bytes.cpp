@@ -97,7 +97,7 @@ void TFreshBytes::AddBytes(
     c.TotalBytes += buffer.size();
 
     TBytes descriptor{nodeId, offset, buffer.size(), commitId, InvalidCommitId};
-    c.Data.emplace_back(std::move(descriptor), std::move(buffer));
+    c.Data.emplace_back(descriptor, std::move(buffer));
 
     const auto& storage = c.Data.back().Data;
     TKey key{nodeId, offset + storage.size()};
@@ -119,13 +119,27 @@ void TFreshBytes::AddDeletionMarker(
         Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
     }
 
+    c.DeletionMarkers.push_back({
+        nodeId,
+        offset,
+        len,
+        commitId,
+        InvalidCommitId});
     DeleteBytes(c, nodeId, offset, len, commitId);
 }
 
 void TFreshBytes::Barrier(ui64 commitId)
 {
-    if (Chunks.back().TotalBytes) {
-        Y_ABORT_UNLESS(Chunks.back().Data.back().Descriptor.MinCommitId <= commitId);
+    Y_ABORT_UNLESS(!Chunks.empty());
+    auto& c = Chunks.back();
+
+    if (!c.Data.empty() || !c.DeletionMarkers.empty()) {
+        if (!c.Data.empty()) {
+            Y_ABORT_UNLESS(c.Data.back().Descriptor.MinCommitId <= commitId);
+        }
+        if (!c.DeletionMarkers.empty()) {
+            Y_ABORT_UNLESS(c.DeletionMarkers.back().MinCommitId <= commitId);
+        }
         Chunks.back().ClosingCommitId = commitId;
         Chunks.emplace_back(Allocator);
         Chunks.back().Id = ++LastChunkId;
@@ -139,7 +153,8 @@ void TFreshBytes::OnCheckpoint(ui64 commitId)
 
 TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
     ui64 commitId,
-    TVector<TBytes>* entries)
+    TVector<TBytes>* entries,
+    TVector<TBytes>* deletionMarkers)
 {
     if (Chunks.size() == 1) {
         Barrier(commitId);
@@ -149,13 +164,21 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
         entries->push_back(e.Descriptor);
     }
 
+    for (auto& descriptor: Chunks.front().DeletionMarkers) {
+        deletionMarkers->push_back(descriptor);
+    }
+
     return {Chunks.front().Id, Chunks.front().ClosingCommitId};
 }
 
 void TFreshBytes::VisitTop(const TChunkVisitor& visitor)
 {
     for (const auto& e: Chunks.front().Data) {
-        visitor(e.Descriptor);
+        visitor(e.Descriptor, false);
+    }
+
+    for (const auto& descriptor: Chunks.front().DeletionMarkers) {
+        visitor(descriptor, true);
     }
 }
 

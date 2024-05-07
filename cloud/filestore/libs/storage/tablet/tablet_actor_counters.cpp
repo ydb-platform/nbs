@@ -109,12 +109,15 @@ void TIndexTabletActor::TMetrics::Register(
         EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBlobsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletionMarkersCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(GarbageQueueSize, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(GarbageBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(FreshBlocksCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(CMMixedBlobsCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(CMDeletionMarkersCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(IdleTime, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(BusyTime, EMetricType::MT_DERIVATIVE);
@@ -164,6 +167,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
     REGISTER_REQUEST(Compaction);
+    REGISTER_AGGREGATABLE_SUM(Compaction.DudCount, EMetricType::MT_DERIVATIVE);
     REGISTER_REQUEST(Cleanup);
     REGISTER_REQUEST(Flush);
     REGISTER_REQUEST(FlushBytes);
@@ -205,12 +209,15 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
+    Store(DeletedFreshBytesCount, stats.GetDeletedFreshBytesCount());
     Store(MixedBytesCount, stats.GetMixedBlocksCount() * blockSize);
     Store(MixedBlobsCount, stats.GetMixedBlobsCount());
     Store(DeletionMarkersCount, stats.GetDeletionMarkersCount());
     Store(GarbageQueueSize, stats.GetGarbageQueueSize());
     Store(GarbageBytesCount, stats.GetGarbageBlocksCount() * blockSize);
     Store(FreshBlocksCount, stats.GetFreshBlocksCount());
+    Store(CMMixedBlobsCount, compactionStats.TotalBlobsCount);
+    Store(CMDeletionMarkersCount, compactionStats.TotalDeletionsCount);
 
     Store(MaxReadIops, performanceProfile.GetMaxReadIops());
     Store(MaxWriteIops, performanceProfile.GetMaxWriteIops());

@@ -98,12 +98,15 @@ private:
 
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
+        std::atomic<i64> DeletedFreshBytesCount{0};
         std::atomic<i64> MixedBytesCount{0};
         std::atomic<i64> MixedBlobsCount{0};
         std::atomic<i64> DeletionMarkersCount{0};
         std::atomic<i64> GarbageQueueSize{0};
         std::atomic<i64> GarbageBytesCount{0};
         std::atomic<i64> FreshBlocksCount{0};
+        std::atomic<i64> CMMixedBlobsCount{0};
+        std::atomic<i64> CMDeletionMarkersCount{0};
 
         // Throttling
         std::atomic<i64> MaxReadBandwidth{0};
@@ -139,6 +142,11 @@ private:
             }
         };
 
+        struct TCompactionMetrics: TRequestMetrics
+        {
+            std::atomic<i64> DudCount{0};
+        };
+
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
         TRequestMetrics PatchBlob;
@@ -147,7 +155,7 @@ private:
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
-        TRequestMetrics Compaction;
+        TCompactionMetrics Compaction;
         TRequestMetrics Cleanup;
         TRequestMetrics Flush;
         TRequestMetrics FlushBytes;
@@ -444,6 +452,10 @@ private:
 
     void HandleAddDataCompleted(
         const TEvIndexTabletPrivate::TEvAddDataCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleForcedRangeOperationProgress(
+        const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <ydb/core/base/blobstorage.h>
 #include <library/cpp/actors/core/actor_bootstrapped.h>
@@ -219,7 +220,7 @@ void ApplyFreshDataRange(
         alignedTargetByteRange.Describe().c_str(),
         offset,
         length,
-        DescribeResponseDebugString(describeResponse).c_str());
+        DescribeResponseDebugString(describeResponse).Quote().c_str());
 
     auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
 
@@ -413,10 +414,9 @@ void TReadDataActor::HandleReadBlobResponse(
 
         const auto blobId = LogoBlobIDFromLogoBlobID(blobPiece.GetBlobId());
 
-        if (response.Id != blobId ||
-            response.Buffer.empty() ||
-            response.Buffer.size() % BlockSize != 0)
-        {
+        STORAGE_CHECK_PRECONDITION(response.Id == blobId);
+        STORAGE_CHECK_PRECONDITION(!response.Buffer.empty());
+        if (response.Id != blobId || response.Buffer.empty()) {
             const auto error = FormatError(MakeError(
                 E_FAIL,
                 Sprintf(

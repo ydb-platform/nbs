@@ -692,7 +692,9 @@ public:
         ui64 offset,
         ui64 len);
 
-    TFlushBytesCleanupInfo StartFlushBytes(TVector<TBytes>* bytes);
+    TFlushBytesCleanupInfo StartFlushBytes(
+        TVector<TBytes>* bytes,
+        TVector<TBytes>* deletionMarkers);
     ui32 FinishFlushBytes(
         TIndexTabletDatabase& db,
         ui64 chunkId,
@@ -935,6 +937,7 @@ public:
     TCompactionMapStats GetCompactionMapStats(ui32 topSize) const;
 
     TVector<ui32> GetNonEmptyCompactionRanges() const;
+    TVector<ui32> GetAllCompactionRanges() const;
     TVector<TCompactionRangeInfo> GetTopRangesByCompactionScore(ui32 topSize) const;
     TVector<TCompactionRangeInfo> GetTopRangesByCleanupScore(ui32 topSize) const;
 
@@ -947,14 +950,20 @@ public:
 public:
     struct TForcedRangeOperationState
     {
+        const TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
         const TVector<ui32> RangesToCompact;
 
         TInstant StartTime = TInstant::Now();
-        std::atomic<ui32> Current = 0;
+        ui32 Current = 0;
 
-        TForcedRangeOperationState(TVector<ui32> ranges)
-            : RangesToCompact(std::move(ranges))
+        TForcedRangeOperationState(
+                TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+                TVector<ui32> ranges)
+            : Mode(mode)
+            , RangesToCompact(std::move(ranges))
         {}
+
+        TForcedRangeOperationState(const TForcedRangeOperationState&) = default;
 
         bool Progress()
         {
@@ -963,47 +972,56 @@ public:
 
         ui32 GetCurrentRange() const
         {
-            return RangesToCompact[Current.load()];
+            return RangesToCompact[Current];
         }
     };
-
-    using TForcedRangeOperationStatePtr =
-        std::shared_ptr<TForcedRangeOperationState>;
 
 private:
     struct TPendingForcedRangeOperation
     {
-        TVector<ui32> Ranges;
         TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
+        TVector<ui32> Ranges;
 
         TPendingForcedRangeOperation() = default;
 
         TPendingForcedRangeOperation(
-            TVector<ui32> ranges,
-            TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
-            : Ranges(std::move(ranges)), Mode(mode) {}
+                TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+                TVector<ui32> ranges)
+            : Mode(mode)
+            , Ranges(std::move(ranges))
+        {
+        }
     };
 
     TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
-    TForcedRangeOperationStatePtr ForcedRangeOperationState;
+    TMaybe<TForcedRangeOperationState> ForcedRangeOperationState;
 
 public:
     void EnqueueForcedRangeOperation(
-        TVector<ui32> ranges,
-        TEvIndexTabletPrivate::EForcedRangeOperationMode mode);
+        TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+        TVector<ui32> ranges);
     TPendingForcedRangeOperation DequeueForcedRangeOperation();
 
-    void StartForcedRangeOperation(TVector<ui32> ranges);
+    void StartForcedRangeOperation(
+        TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+        TVector<ui32> ranges);
+
     void CompleteForcedRangeOperation();
 
-    const TForcedRangeOperationStatePtr& GetForcedRangeOperationState() const
+    const TForcedRangeOperationState* GetForcedRangeOperationState() const
     {
-        return ForcedRangeOperationState;
+        return ForcedRangeOperationState.Get();
+    }
+
+    void UpdateForcedRangeOperationProgress(ui32 current)
+    {
+        ForcedRangeOperationState->Current =
+            Max(ForcedRangeOperationState->Current, current);
     }
 
     bool IsForcedRangeOperationRunning() const
     {
-        return (bool)ForcedRangeOperationState;
+        return ForcedRangeOperationState.Defined();
     }
 
     //

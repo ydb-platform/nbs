@@ -368,6 +368,12 @@ TIndexTabletActor::ValidateWriteRequest<NProto::TWriteDataRequest>(
     const TByteRange& range);
 
 template NProto::TError
+TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TGenerateBlobIdsRequest>(
+    const TActorContext& ctx,
+    const NProtoPrivate::TGenerateBlobIdsRequest& request,
+    const TByteRange& range);
+
+template NProto::TError
 TIndexTabletActor::ValidateWriteRequest<NProtoPrivate::TAddDataRequest>(
     const TActorContext& ctx,
     const NProtoPrivate::TAddDataRequest& request,
@@ -569,6 +575,55 @@ void TIndexTabletActor::HandleDescribeSessions(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TIndexTabletActor::HandleForcedOperation(
+    const TEvIndexTablet::TEvForcedOperationRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& request = ev->Get()->Record;
+    using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+    EMode mode{};
+    NProto::TError e;
+    switch (request.GetOpType()) {
+        case NProtoPrivate::TForcedOperationRequest::E_COMPACTION: {
+            mode = EMode::Compaction;
+            break;
+        }
+
+        case NProtoPrivate::TForcedOperationRequest::E_CLEANUP: {
+            mode = EMode::Cleanup;
+            break;
+        }
+
+        default: {
+            e = MakeError(E_ARGUMENT, "unsupported mode");
+        }
+    }
+
+    if (e.GetCode() == S_OK && IsForcedRangeOperationRunning()) {
+        const auto currentMode = GetForcedRangeOperationState()->Mode;
+        if (currentMode == mode) {
+            e = MakeError(S_ALREADY, "already launched");
+        } else {
+            e = MakeError(E_TRY_AGAIN, TStringBuilder() << "mode mismatch: "
+                << static_cast<int>(mode)
+                << " != " << static_cast<int>(currentMode));
+        }
+    }
+
+    using TResponse = TEvIndexTablet::TEvForcedOperationResponse;
+    auto response = std::make_unique<TResponse>(std::move(e));
+    if (e.GetCode() == S_OK) {
+        TVector<ui32> ranges = request.GetProcessAllRanges()
+            ? GetAllCompactionRanges()
+            : GetNonEmptyCompactionRanges();
+        response->Record.SetRangeCount(ranges.size());
+        EnqueueForcedRangeOperation(mode, std::move(ranges));
+        EnqueueForcedRangeOperationIfNeeded(ctx);
+    }
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::HandleRequests(STFUNC_SIG)
@@ -654,6 +709,7 @@ STFUNC(TIndexTabletActor::StateBoot)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
@@ -678,6 +734,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(TEvIndexTabletPrivate::TEvUpdateCounters, HandleUpdateCounters);
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
+            HandleForcedRangeOperationProgress);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -707,6 +766,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters, HandleUpdateLeakyBucketCounters);
 
         HFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier, HandleReleaseCollectBarrier);
+        HFunc(
+            TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
+            HandleForcedRangeOperationProgress);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -746,6 +808,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -774,6 +837,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvReleaseCollectBarrier);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvForcedRangeOperationProgress);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);

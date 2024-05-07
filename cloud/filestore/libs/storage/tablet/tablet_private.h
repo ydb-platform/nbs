@@ -483,6 +483,16 @@ struct TEvIndexTabletPrivate
 
     using TForcedRangeOperationCompleted = TEmpty;
 
+    struct TForcedRangeOperationProgress
+    {
+        const ui32 Current;
+
+        explicit TForcedRangeOperationProgress(ui32 current)
+            : Current(current)
+        {
+        }
+    };
+
     //
     // DumpCompactionRange
     //
@@ -690,6 +700,8 @@ struct TEvIndexTabletPrivate
 
         EvReleaseCollectBarrier,
 
+        EvForcedRangeOperationProgress,
+
         EvEnd
     };
 
@@ -708,6 +720,9 @@ struct TEvIndexTabletPrivate
     using TEvReadDataCompleted = TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
     using TEvWriteDataCompleted = TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
     using TEvAddDataCompleted = TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
+
+    using TEvForcedRangeOperationProgress =
+        TRequestEvent<TForcedRangeOperationProgress, EvForcedRangeOperationProgress>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

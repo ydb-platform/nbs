@@ -72,6 +72,7 @@ message TFileSystemStats
     uint64 CheckpointBlobsCount = 208;
     uint64 FreshBytesCount = 209;
     uint64 AttrsUsedBytesCount = 210;
+    uint64 DeletedFreshBytesCount = 211;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

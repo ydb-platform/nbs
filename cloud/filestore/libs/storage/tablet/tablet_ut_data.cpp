@@ -1120,7 +1120,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            response->Error.GetCode(),
+            response->Error.GetMessage());
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -2780,7 +2783,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            response->Error.GetCode(),
+            response->Error.GetMessage());
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -5010,6 +5016,225 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
 
         tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldTrimFreshBytesDeletionMarkers)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBytesThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        // initializing the first block to write fresh bytes then
+        // otherwise those 1_KB of fresh bytes would be extended to a whole
+        // block
+        tablet.WriteData(handle, 0, block, 'a');
+        tablet.WriteData(handle, 0, 1_KB, 'a');
+        tablet.FlushBytes();
+        tablet.DestroyHandle(handle);
+        tablet.UnlinkNode(RootNodeId, "test", false);
+        tablet.FlushBytes();
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"filesystem", "test"}}, 1_KB},
+                {{
+                    {"sensor", "FlushBytes.Count"},
+                    {"filesystem", "test"}}, 1},
+                {{
+                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"filesystem", "test"}}, block + 1_KB},
+                {{
+                    {"sensor", "TrimBytes.Count"},
+                    {"filesystem", "test"}}, 2},
+            });
+        }
+    }
+
+    TABLET_TEST(ShouldCountDudCompactions)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.Compaction(rangeId);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 0);
+        }
+
+        tablet.DestroyHandle(handle);
+
+        auto registry = env.GetRegistry();
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{
+                {"sensor", "Compaction.RequestBytes"},
+                {"filesystem", "test"}}, 0},
+            {{
+                {"sensor", "Compaction.Count"},
+                {"filesystem", "test"}}, 1},
+            {{
+                {"sensor", "Compaction.DudCount"},
+                {"filesystem", "test"}}, 1},
+        });
+    }
+
+    TABLET_TEST(ShouldRejectBlobIndexOpsWithProperErrorCodeIfAnotherOpIsRunning)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * block);
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, 256_KB, '0');
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.SendCompactionRequest(rangeId);
+        tablet.SendCleanupRequest(rangeId);
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, 256_KB, '0');
+        tablet.SendCleanupRequest(rangeId);
+        tablet.SendCompactionRequest(rangeId);
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, block, '0');
+        tablet.SendFlushRequest();
+        tablet.SendFlushBytesRequest();
+
+        {
+            auto response = tablet.RecvFlushResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvFlushBytesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, 1_KB, '0');
+        tablet.SendFlushBytesRequest();
+        tablet.SendCompactionRequest(rangeId);
+        tablet.SendCleanupRequest(rangeId);
+
+        {
+            auto response = tablet.RecvFlushBytesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
     }
 
 #undef TABLET_TEST

@@ -601,6 +601,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             {{{"sensor", "FreshBytesCount"}, {"filesystem", "test"}},   DefaultBlockSize - 1},
             {{{"sensor", "FreshBlocksCount"}, {"filesystem", "test"}},  1},
             {{{"sensor", "MixedBlobsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "CMMixedBlobsCount"}, {"filesystem", "test"}}, 1},
+            {{{"sensor", "DeletionMarkersCount"}, {"filesystem", "test"}}, 64},
+            {{{"sensor", "CMDeletionMarkersCount"}, {"filesystem", "test"}}, 64},
             {{{"sensor", "MixedBytesCount"}, {"filesystem", "test"}}, sz},
         });
         // clang-format on

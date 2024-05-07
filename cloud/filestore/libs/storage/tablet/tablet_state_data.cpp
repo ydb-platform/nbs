@@ -351,12 +351,19 @@ void TIndexTabletState::WriteFreshBytesDeletionMarker(
         offset,
         len);
 
+    IncrementDeletedFreshBytesCount(db, len);
+
     InvalidateReadAheadCache(nodeId);
 }
 
-TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(TVector<TBytes>* bytes)
+TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(
+    TVector<TBytes>* bytes,
+    TVector<TBytes>* deletionMarkers)
 {
-    return Impl->FreshBytes.StartCleanup(GetCurrentCommitId(), bytes);
+    return Impl->FreshBytes.StartCleanup(
+        GetCurrentCommitId(),
+        bytes,
+        deletionMarkers);
 }
 
 ui32 TIndexTabletState::FinishFlushBytes(
@@ -365,9 +372,14 @@ ui32 TIndexTabletState::FinishFlushBytes(
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
     ui32 sz = 0;
-    Impl->FreshBytes.VisitTop([&] (const TBytes& bytes) {
+    ui32 deletedSz = 0;
+    Impl->FreshBytes.VisitTop([&] (const TBytes& bytes, bool isDeletionMarker) {
         db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
-        sz += bytes.Length;
+        if (isDeletionMarker) {
+            deletedSz += bytes.Length;
+        } else {
+            sz += bytes.Length;
+        }
 
         auto* range = profileLogRequest.AddRanges();
         range->SetNodeId(bytes.NodeId);
@@ -376,10 +388,13 @@ ui32 TIndexTabletState::FinishFlushBytes(
     });
 
     DecrementFreshBytesCount(db, sz);
+    // Min() needed for backwards compat
+    deletedSz = Min<ui32>(deletedSz, GetDeletedFreshBytesCount());
+    DecrementDeletedFreshBytesCount(db, deletedSz);
 
     Impl->FreshBytes.FinishCleanup(chunkId);
 
-    return sz;
+    return sz + deletedSz;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1084,6 +1099,11 @@ TVector<ui32> TIndexTabletState::GetNonEmptyCompactionRanges() const
     return Impl->CompactionMap.GetNonEmptyCompactionRanges();
 }
 
+TVector<ui32> TIndexTabletState::GetAllCompactionRanges() const
+{
+    return Impl->CompactionMap.GetAllCompactionRanges();
+}
+
 TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCompactionScore(ui32 topSize) const
 {
     return Impl->CompactionMap.GetTopRangesByCompactionScore(topSize);
@@ -1106,10 +1126,10 @@ void TIndexTabletState::LoadCompactionMap(
 }
 
 void TIndexTabletState::EnqueueForcedRangeOperation(
-    TVector<ui32> ranges,
-    TEvIndexTabletPrivate::EForcedRangeOperationMode mode)
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+    TVector<ui32> ranges)
 {
-    PendingForcedRangeOperations.emplace_back(std::move(ranges), mode);
+    PendingForcedRangeOperations.emplace_back(mode, std::move(ranges));
 }
 
 TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
@@ -1119,22 +1139,23 @@ TIndexTabletState::TPendingForcedRangeOperation TIndexTabletState::
         return {};
     }
 
-    auto ranges = std::move(PendingForcedRangeOperations.back());
+    auto op = std::move(PendingForcedRangeOperations.back());
     PendingForcedRangeOperations.pop_back();
 
-    return ranges;
+    return op;
 }
 
-void TIndexTabletState::StartForcedRangeOperation(TVector<ui32> ranges)
+void TIndexTabletState::StartForcedRangeOperation(
+    TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
+    TVector<ui32> ranges)
 {
-    TABLET_VERIFY(!ForcedRangeOperationState);
-    ForcedRangeOperationState =
-        std::make_shared<TForcedRangeOperationState>(std::move(ranges));
+    TABLET_VERIFY(!ForcedRangeOperationState.Defined());
+    ForcedRangeOperationState.ConstructInPlace(mode, std::move(ranges));
 }
 
 void TIndexTabletState::CompleteForcedRangeOperation()
 {
-    ForcedRangeOperationState.reset();
+    ForcedRangeOperationState.Clear();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
