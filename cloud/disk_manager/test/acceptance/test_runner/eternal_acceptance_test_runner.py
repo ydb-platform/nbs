@@ -20,6 +20,10 @@ from .lib import (
 _logger = logging.getLogger(__file__)
 
 
+def page_align(size, page_size=4096):
+    return (int(size) // page_size) * page_size
+
+
 class EternalAcceptanceTestBinaryExecutor(BaseTestBinaryExecutor):
     _entity_suffix = 'eternal'
 
@@ -143,12 +147,17 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     secondary_disk_path = inner_disk_exit_stack.enter_context(
                         self._instance_policy.attach_disk(output_disk),
                     )
-                    byte_count = int((self._args.disk_size * (1024 ** 3)) / self._iodepth)
+                    disk_bytes_count = self._args.disk_size * (1024 ** 3)
+                    chunk_size = 4 << 20
+                    byte_count = page_align(disk_bytes_count / self._iodepth, page_size=chunk_size)
                     cmds = []
                     futures = []
                     executor = ThreadPoolExecutor(max_workers=self._iodepth)
-                    for i in range(self._iodepth):
+                    for i in range(self._iodepth + 1):
                         offset = int(i * byte_count)
+                        if offset >= disk_bytes_count:
+                            break
+                        count = min(byte_count, disk_bytes_count - offset)
                         check_ssh_connection(instance.ip, self._profiler, self._module_factory, self._args.ssh_key_path)
                         ssh = inner_disk_exit_stack.enter_context(
                             self._module_factory.make_ssh_client(
@@ -157,9 +166,15 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                                 ssh_key_path=self._args.ssh_key_path,
                             ),
                         )
+
+                        # non 4MB chunk size aligned remainder of disk
+                        if count != byte_count:
+                            chunk_size = 4096
+
                         cmd = (f'{self._remote_cmp_path} --verbose'
-                               f' --bytes={byte_count}'
+                               f' --bytes={count}'
                                f' --ignore-initial={offset}'
+                               f' --chunk-size={chunk_size}'
                                f' {primary_disk_path}'
                                f' {secondary_disk_path}')
                         future = executor.submit(ssh.exec_command, cmd)
@@ -167,14 +182,14 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                         cmds.append(cmd)
                         _logger.info(f'Verifying data'
                                      f' <index={i}, offset={offset},'
-                                     f' bytes={byte_count}> on disk'
+                                     f' bytes={count}> on disk'
                                      f' <id={output_disk.id}> on'
                                      f' instance <id={instance.id}>')
 
                     error_message = ""
                     executor.shutdown(wait=True)
-                    for i in range(self._iodepth):
-                        _, stdout, stderr = futures[i].result()
+                    for i, future in enumerate(futures):
+                        _, stdout, stderr = future.result()
                         stdout_str = stdout.read().decode('utf-8')
                         stderr_str = stderr.read().decode('utf-8')
                         _logger.info(f'Verifying finished <index={i},'
