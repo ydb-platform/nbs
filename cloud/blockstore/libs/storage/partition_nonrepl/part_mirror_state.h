@@ -19,6 +19,7 @@ class TMirrorPartitionState
 {
 private:
     const TStorageConfigPtr Config;
+    const TNonreplicatedPartitionConfigPtr PartConfig;
     TString RWClientId;
 
     TMigrations Migrations;
@@ -69,6 +70,10 @@ public:
     [[nodiscard]] NProto::TError NextReadReplica(
         const TBlockRange64 readRange,
         NActors::TActorId* actorId);
+
+    ui32 GetBlockSize() const;
+
+    ui64 GetBlockCount() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -62,6 +62,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
         }
     }
 
+    stats->Cumulative.ScrubbingThroughput.Value = ScrubbingThroughput;
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(
             MakeIntrusive<TCallContext>(),
@@ -72,6 +73,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
 
     NetworkBytes = 0;
     CpuUsage = {};
+    ScrubbingThroughput = 0;
 
     NCloud::Send(
         ctx,
