@@ -25,13 +25,15 @@ TNonreplicatedPartitionMigrationCommonActor::
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
         TString rwClientId,
-        NActors::TActorId statActorId)
+        NActors::TActorId statActorId,
+        ui32 maxIoDepth)
     : MigrationOwner(migrationOwner)
     , Config(std::move(config))
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
     , BlockDigestGenerator(std::move(digestGenerator))
+    , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
     , StatActorId(statActorId)
@@ -55,12 +57,6 @@ void TNonreplicatedPartitionMigrationCommonActor::MarkMigratedBlocks(
     TBlockRange64 range)
 {
     ProcessingBlocks.MarkProcessed(range);
-}
-
-TBlockRange64 TNonreplicatedPartitionMigrationCommonActor::
-    GetNextProcessingRange() const
-{
-    return ProcessingBlocks.BuildProcessingRange();
 }
 
 ui64 TNonreplicatedPartitionMigrationCommonActor::

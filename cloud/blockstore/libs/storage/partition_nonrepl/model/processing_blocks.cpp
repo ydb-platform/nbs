@@ -29,7 +29,7 @@ void TProcessingBlocks::AbortProcessing()
     NextProcessingIndex = 0;
 }
 
-bool TProcessingBlocks::IsProcessingStarted() const
+bool TProcessingBlocks::IsProcessing() const
 {
     return !!BlockMap;
 }
