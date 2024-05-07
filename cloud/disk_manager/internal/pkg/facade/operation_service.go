@@ -5,8 +5,11 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	"google.golang.org/grpc"
+	grpc_status "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,8 +37,34 @@ func getOperation(
 
 	switch result := o.Result.(type) {
 	case *operation.Operation_Error:
+		status := grpc_status.FromProto(result.Error)
+		dmStatus := grpc_status.New(status.Code(), status.Message())
+
+		for _, errorDetail := range status.Details() {
+			protoMessage, err := proto.Marshal(errorDetail.(proto.Message))
+			if err != nil {
+				logging.Warn(ctx, "failed to marshal error detail: %v", err)
+				continue
+			}
+
+			var dmErrorDetail disk_manager.ErrorDetails
+			err = proto.Unmarshal(protoMessage, &dmErrorDetail)
+			if err != nil {
+				logging.Warn(ctx, "failed to unmarshal error detail: %v", err)
+				continue
+			}
+
+			dmStatusWithDetails, err := dmStatus.WithDetails(&dmErrorDetail)
+			if err == nil {
+				dmStatus = dmStatusWithDetails
+			} else {
+				logging.Warn(ctx, "failed to attach error details: %v", err)
+				continue
+			}
+		}
+
 		dmOp.Result = &disk_manager.Operation_Error{
-			Error: result.Error,
+			Error: dmStatus.Proto(),
 		}
 	case *operation.Operation_Response:
 		dmOp.Result = &disk_manager.Operation_Response{
