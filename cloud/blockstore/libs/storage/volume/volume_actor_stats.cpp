@@ -389,8 +389,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
 
     if (auto blockCountToMigrate = State->GetBlockCountToMigrate()) {
         simple.MigrationStarted.Set(true);
-        ui64 migratedBlockCount =
-            GetBlocksCount() - *State->GetBlockCountToMigrate();
+        ui64 migratedBlockCount = GetBlocksCount() - *blockCountToMigrate;
         simple.MigrationProgress.Set(
             100 * migratedBlockCount / GetBlocksCount());
     } else {
