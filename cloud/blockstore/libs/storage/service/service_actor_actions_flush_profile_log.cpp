@@ -37,8 +37,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushProfileLogActor::TFlushProfileLogActor(
-    TRequestInfoPtr requestInfo,
-    IProfileLogPtr profileLog)
+        TRequestInfoPtr requestInfo,
+        IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ProfileLog(std::move(profileLog))
 {}
