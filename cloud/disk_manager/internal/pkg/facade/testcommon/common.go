@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -558,12 +557,8 @@ func CheckErrorDetails(
 	statusDetails := status.Details()
 	require.Equal(t, 1, len(statusDetails))
 
-	protoMessage, err := proto.Marshal(statusDetails[0].(proto.Message))
-	require.NoError(t, err)
-
-	var errorDetails disk_manager.ErrorDetails
-	err = proto.Unmarshal(protoMessage, &errorDetails)
-	require.NoError(t, err)
+	errorDetails, ok := statusDetails[0].(*disk_manager.ErrorDetails)
+	require.True(t, ok)
 
 	require.Equal(t, int64(code), errorDetails.Code)
 	require.False(t, errorDetails.Internal)
