@@ -165,7 +165,7 @@ public:
     [[nodiscard]] std::optional<NProto::TError> ValidateCheckpointRequest(
         const TString& checkpointId,
         ECheckpointRequestType requestType,
-        ECheckpointType checkpointType);
+        ECheckpointType checkpointType) const;
 
     void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);

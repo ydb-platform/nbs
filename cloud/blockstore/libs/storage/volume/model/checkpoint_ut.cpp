@@ -759,12 +759,10 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                     return store.MakeDeleteCheckpointDataRequest(
                         checkpointId,
                         TInstant::Now());
-                    break;
                 case ECheckpointRequestType::Delete:
                     return store.MakeDeleteCheckpointRequest(
                         checkpointId,
                         TInstant::Now());
-                    break;
             }
         };
 
@@ -803,7 +801,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             }
         };
 
-        struct TStep {
+        struct TStep
+        {
             ECheckpointRequestType RequestType;
             std::optional<EWellKnownResultCodes> ExpectedErrorCode;
         };

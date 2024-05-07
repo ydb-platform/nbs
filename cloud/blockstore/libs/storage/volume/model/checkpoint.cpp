@@ -400,7 +400,7 @@ TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
 std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     const TString& checkpointId,
     ECheckpointRequestType requestType,
-    ECheckpointType checkpointType)
+    ECheckpointType checkpointType) const
 {
     auto makeErrorInvalid = [](TString message) -> NProto::TError
     {
@@ -409,7 +409,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
         return MakeError(E_PRECONDITION_FAILED, std::move(message), flags);
     };
 
-    auto makeErrorDuplicate = [](TString message) -> NProto::TError
+    auto makeErrorAlready = [](TString message) -> NProto::TError
     {
         return MakeError(S_ALREADY, std::move(message));
     };
@@ -424,7 +424,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     {
         TString message = TStringBuilder()
             << ToString(requestType)
-            << "request makes sense for normal checkpoints only";
+            << " request makes sense for normal checkpoints only";
         return makeErrorInvalid(std::move(message));
     }
 
@@ -438,8 +438,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     }
 
     const bool checkpointExists = actualCheckpointType.has_value();
-    const bool checkpointDataPresent = checkpointExists
-        && DoesCheckpointHaveData(checkpointId);
+    const bool checkpointDataPresent =
+        checkpointExists && DoesCheckpointHaveData(checkpointId);
     const bool checkpointDeleted = IsCheckpointDeleted(checkpointId);
 
     if (!checkpointExists && !checkpointDeleted) {
@@ -458,7 +458,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
         // Checkpoint exists and has data.
         switch (requestType) {
             case ECheckpointRequestType::Create: {
-                return makeErrorDuplicate("Checkpoint exists");
+                return makeErrorAlready("Checkpoint exists");
             }
             case ECheckpointRequestType::DeleteData:
             case ECheckpointRequestType::Delete: {
@@ -476,30 +476,28 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                     return makeErrorInvalid(
                         "Checkpoint exists and has no data");
                 }
-                return makeErrorDuplicate("Checkpoint exists");
+                return makeErrorAlready("Checkpoint exists");
             }
             case ECheckpointRequestType::DeleteData: {
-                return makeErrorDuplicate("Data is already deleted");
+                return makeErrorAlready("Data is already deleted");
             }
             case ECheckpointRequestType::Delete: {
                 return std::nullopt;
             }
             case ECheckpointRequestType::CreateWithoutData: {
-                return makeErrorDuplicate("Checkpoint exists");
+                return makeErrorAlready("Checkpoint exists");
             }
         }
     } else if (!checkpointExists && checkpointDeleted) {
         // Checkpoint was deleted.
         switch (requestType) {
-            case ECheckpointRequestType::Create: {
+            case ECheckpointRequestType::Create:
             case ECheckpointRequestType::CreateWithoutData:
-                return makeErrorInvalid("Checkpoint is already deleted");
-            }
             case ECheckpointRequestType::DeleteData: {
                 return makeErrorInvalid("Checkpoint is already deleted");
             }
             case ECheckpointRequestType::Delete: {
-                return makeErrorDuplicate("Checkpoint is already deleted");
+                return makeErrorAlready("Checkpoint is already deleted");
             }
         }
     } else {
