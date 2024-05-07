@@ -13,6 +13,11 @@ namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr auto MOUNT_INFO_FILE = "/proc/self/mountinfo";
+constexpr auto SYS_BLOCK_DIR = "/sys/block/";
+
+////////////////////////////////////////////////////////////////////////////////
+
 inline TStringBuf AsStringBuf(const TBuffer& buffer)
 {
     return { buffer.Data(), buffer.Size() };
@@ -35,12 +40,14 @@ TString PrintHostAndPort(const TNetworkAddress& addr);
 
 TSet<TString> FindMountedFiles(
     const TString& device,
-    const TString& mountInfoFile = "/proc/self/mountinfo");
+    const TString& mountInfoFile = MOUNT_INFO_FILE);
 
 TVector<TString> FindLoopbackDevices(
     const TSet<TString>& mountedFiles,
-    const TString& sysBlockDir = "/sys/block/");
+    const TString& sysBlockDir = SYS_BLOCK_DIR);
 
 int RemoveLoopbackDevice(const TString& loopDevice);
+
+TString FindFreeNbdDevice(const TString& sysBlockDir = SYS_BLOCK_DIR);
 
 }   // namespace NCloud::NBlockStore::NBD
