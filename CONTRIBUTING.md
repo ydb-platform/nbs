@@ -7,4 +7,4 @@ Anyone who wants to use and improve NBS or Filestore is welcome to make contribu
 
 ## Other questions
 
-If you have any questions, please mail us at thinkingwhat@yandex.ru.
+If you have any questions, please mail us at astr@ydb.tech.
