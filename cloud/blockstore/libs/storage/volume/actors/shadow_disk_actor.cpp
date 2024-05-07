@@ -549,7 +549,8 @@ TShadowDiskActor::TShadowDiskActor(
           MakeShadowDiskClientId(
               sourceDiskClientId,
               checkpointInfo.ShadowDiskState == EShadowDiskState::Ready),
-          volumeActorId)
+          volumeActorId,
+          config->GetMaxShadowDiskFillIoDepth())
     , Config(std::move(config))
     , RdmaClient(std::move(rdmaClient))
     , SrcConfig(std::move(srcConfig))
@@ -660,12 +661,12 @@ bool TShadowDiskActor::OnMessage(
     return true;
 }
 
-TDuration TShadowDiskActor::CalculateMigrationTimeout()
+TDuration TShadowDiskActor::CalculateMigrationTimeout(TBlockRange64 range)
 {
     STORAGE_CHECK_PRECONDITION(TimeoutCalculator);
 
     if (TimeoutCalculator) {
-        return TimeoutCalculator->CalculateTimeout(GetNextProcessingRange());
+        return TimeoutCalculator->CalculateTimeout(range);
     }
     return TDuration::Seconds(1);
 }
@@ -870,7 +871,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 CheckpointId,
                 EReason::FillProgressUpdate,
-                GetNextProcessingRange().Start));
+                ProcessedBlockCount));
     }
 
     STORAGE_CHECK_PRECONDITION(Acquired());

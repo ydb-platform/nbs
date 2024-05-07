@@ -43,7 +43,8 @@ public:
         TAutoPtr<NActors::IEventHandle>& ev) = 0;
 
     // Calculates the time during which a 4MB block should migrate.
-    [[nodiscard]] virtual TDuration CalculateMigrationTimeout() = 0;
+    [[nodiscard]] virtual TDuration
+    CalculateMigrationTimeout(TBlockRange64 range) = 0;
 
     // Notifies that a sufficiently large block of data has been migrated. The
     // size is determined by the settings.
@@ -87,22 +88,31 @@ private:
     const TString DiskId;
     const ui64 BlockSize;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
+    const ui32 MaxIoDepth;
     TString RWClientId;
 
     NActors::TActorId SrcActorId;
     NActors::TActorId DstActorId;
 
     TProcessingBlocks ProcessingBlocks;
-    bool MigrationInProgress = false;
-    bool MigrationStarted = false;
+    bool MigrationEnabled = false;
+    bool RangeMigrationScheduled = false;
+    TInstant LastRangeMigrationStartTs;
+    TMap<ui64, TBlockRange64> MigrationsInProgress;
+    TMap<ui64, TBlockRange64> DeferredMigrations;
+
+    // When we migrated a block whose range contains or exceeds a persistently
+    // stored offset of the progress of the entire migration, we remember this
+    // offset and wait for all blocks with addresses less than this offset to
+    // migrate. After that, we save the execution progress persistently by
+    // calling MigrationOwner->OnMigrationProgress().
+    std::optional<ui64> CachedMigrationProgressAchieved;
 
     TRequestsInProgress<ui64, TBlockRange64> WriteAndZeroRequestsInProgress{
         EAllowedRequests::WriteOnly};
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
-
-    TInstant LastRangeMigrationStartTs = {};
 
     // Statistics
     const NActors::TActorId StatActorId;
@@ -129,7 +139,8 @@ public:
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,
         TString rwClientId,
-        NActors::TActorId statActorId);
+        NActors::TActorId statActorId,
+        ui32 maxIoDepth);
 
     ~TNonreplicatedPartitionMigrationCommonActor() override;
 
@@ -148,9 +159,6 @@ public:
     // processed.
     void MarkMigratedBlocks(TBlockRange64 range);
 
-    // Called from the inheritor to get the next processing range.
-    TBlockRange64 GetNextProcessingRange() const;
-
     // Called from the inheritor to get the number of blocks that need to be
     // processed.
     ui64 GetBlockCountNeedToBeProcessed() const;
@@ -162,12 +170,25 @@ public:
     }
 
 private:
+    bool IsMigrationAllowed() const;
+    bool IsIoDepthLimitReached() const;
+    bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
+
+    std::optional<TBlockRange64> GetNextMigrationRange() const;
+    std::optional<TBlockRange64>
+    TakeNextMigrationRange(const NActors::TActorContext& ctx);
+
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
 
-    void ScheduleMigrateNextRange(const NActors::TActorContext& ctx);
-    void MigrateNextRange(const NActors::TActorContext& ctx);
-    void ContinueMigrationIfNeeded(const NActors::TActorContext& ctx);
+    void ScheduleRangeMigration(const NActors::TActorContext& ctx);
+    void StartRangeMigration(const NActors::TActorContext& ctx);
+    void MigrateRange(const NActors::TActorContext& ctx, TBlockRange64 range);
+
+    void NotifyMigrationProgressIfNeeded(
+        const NActors::TActorContext& ctx,
+        TBlockRange64 migratedRange);
+    void NotifyMigrationFinishedIfNeeded(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateWork);

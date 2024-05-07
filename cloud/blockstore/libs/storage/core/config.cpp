@@ -387,6 +387,7 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedVolumeMigrationDisabled,      bool,      false           )\
     xxx(MigrationIndexCachingInterval,             ui32,      65536           )\
     xxx(MaxMigrationBandwidth,                     ui32,      100             )\
+    xxx(MaxMigrationIoDepth,                       ui32,      1               )\
     xxx(ExpectedDiskAgentSize,                     ui32,      15              )\
     /* 75 devices = 5 agents */                                                \
     xxx(MaxNonReplicatedDeviceMigrationsInProgress,             ui32,      75 )\
@@ -474,6 +475,7 @@ TDuration MSeconds(ui32 value)
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
     xxx(MaxShadowDiskFillBandwidth,                     ui32,      500           )\
+    xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
     xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
     xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
     xxx(MinAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(1)    )\

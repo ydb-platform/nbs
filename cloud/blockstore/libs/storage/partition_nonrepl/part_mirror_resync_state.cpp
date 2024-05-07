@@ -33,7 +33,7 @@ TMirrorPartitionResyncState::TMirrorPartitionResyncState(
 
 bool TMirrorPartitionResyncState::IsResynced(TBlockRange64 range) const
 {
-    return ProcessingBlocks.IsProcessingStarted() &&
+    return ProcessingBlocks.IsProcessing() &&
         ProcessingBlocks.IsProcessed(range);
 }
 

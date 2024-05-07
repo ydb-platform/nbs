@@ -417,6 +417,7 @@ public:
     bool GetNonReplicatedVolumeMigrationDisabled() const;
     ui32 GetMigrationIndexCachingInterval() const;
     ui32 GetMaxMigrationBandwidth() const;
+    ui32 GetMaxMigrationIoDepth() const;
     ui32 GetExpectedDiskAgentSize() const;
     ui32 GetMaxNonReplicatedDeviceMigrationsInProgress() const;
     ui32 GetMaxNonReplicatedDeviceMigrationPercentageInProgress() const;
@@ -556,6 +557,8 @@ public:
     TString GetCachedDiskAgentSessionsPath() const;
 
     ui32 GetMaxShadowDiskFillBandwidth() const;
+    ui32 GetMaxShadowDiskFillIoDepth() const;
+
     TDuration GetMinAcquireShadowDiskRetryDelayWhenBlocked() const;
     TDuration GetMaxAcquireShadowDiskRetryDelayWhenBlocked() const;
     TDuration GetMinAcquireShadowDiskRetryDelayWhenNonBlocked() const;
