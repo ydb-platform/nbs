@@ -158,7 +158,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
         ReportMirroredDiskChecksumMismatch();
     }
 
-    ScrubbingRangeId++;
+    ++ScrubbingRangeId;
     ScheduleScrubbingNextRange(ctx);
 }
 
@@ -314,7 +314,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
         DiskId.c_str(),
         DescribeRange(scrubbingRange).c_str());
 
-    ScrubbingThroughput += ResyncRangeSize;
+    ScrubbingThroughput += scrubbingRange.Size() * State.GetBlockSize();
     ChecksumRangeActorCompanion = TChecksumRangeActorCompanion(replicas);
     ChecksumRangeActorCompanion.CalculateChecksums(ctx, scrubbingRange);
 }
