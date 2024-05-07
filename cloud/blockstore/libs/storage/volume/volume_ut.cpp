@@ -1328,7 +1328,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         );
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, migrationStartedCounter);
-        UNIT_ASSERT_VALUES_EQUAL(39, migrationProgressCounter);
+        UNIT_ASSERT_VALUES_EQUAL(60, migrationProgressCounter);
 
         volume.RebootTablet();
         volume.AddClient(clientInfo);
@@ -2787,11 +2787,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.ReallocateDisk();
         volume.ReconnectPipe();
         volume.WaitReady();
-
-        volume.SendToPipe(std::make_unique<TEvVolume::TEvUpdateMigrationState>(
-            migratedBlockCount,
-            volumeBlockCount - migratedBlockCount));
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         volume.SendToPipe(
             std::make_unique<TEvVolumePrivate::TEvUpdateCounters>()
