@@ -139,6 +139,7 @@ protected:
             auto request = std::make_shared<NProto::TZeroBlocksRequest>();
             request->SetStartIndex(StartIndex);
             request->SetBlocksCount(BlocksCount);
+            PrepareHeaders(*request->MutableHeaders());
 
             result = WaitFor(Session->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
