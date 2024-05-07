@@ -44,6 +44,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(TruncateRange,                          __VA_ARGS__)                   \
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
+    xxx(GenerateCommitId,                       __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -525,23 +526,9 @@ struct TEvIndexTabletPrivate
     // CollectGarbage
     //
 
-    struct TCollectGarbageRequest
-    {
-        // If set to false, will not consider data associated with the current
-        // commitId. By default, is set to false. Is set to true only for
-        // testing purposes, when there is a guarantee that no other concurrent
-        // operations may need to access the data associated with the current
-        // commitId.
-        const bool ConsiderCurrentCommitId = false;
+    using TCollectGarbageRequest = TEmpty;
 
-        explicit TCollectGarbageRequest(bool considerCurrentCommitId = false)
-            : ConsiderCurrentCommitId(considerCurrentCommitId)
-        {}
-    };
-
-    struct TCollectGarbageResponse
-    {
-    };
+    using TCollectGarbageResponse = TEmpty;
 
     using TCollectGarbageCompleted = TDataOperationCompleted;
 
@@ -688,6 +675,17 @@ struct TEvIndexTabletPrivate
             : CommitId(commitId)
             , Count(count)
         {}
+    };
+
+    //
+    // Generate commit id
+    //
+
+    using TGenerateCommitIdRequest = TEmpty;
+
+    struct TGenerateCommitIdResponse
+    {
+        ui64 CommitId;
     };
 
     //

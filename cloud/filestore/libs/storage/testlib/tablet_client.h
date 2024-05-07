@@ -309,11 +309,9 @@ public:
             mode);
     }
 
-    auto CreateCollectGarbageRequest(bool considerCurrentCommitId = false)
+    auto CreateCollectGarbageRequest()
     {
-        return std::make_unique<
-            TEvIndexTabletPrivate::TEvCollectGarbageRequest>(
-            considerCurrentCommitId);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
     }
 
     auto CreateTruncateRequest(ui64 node, ui64 length)
@@ -352,6 +350,11 @@ public:
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvFilterAliveNodesRequest>(
             std::move(nodes));
+    }
+
+    auto CreateGenerateCommitIdRequest()
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdRequest>();
     }
 
     auto CreateDumpCompactionRangeRequest(ui32 rangeId)

@@ -843,7 +843,7 @@ public:
     bool TryReleaseCollectBarrier(ui64 commitId);
     bool IsCollectBarrierAcquired(ui64 commitId) const;
 
-    ui64 GetCollectCommitId(bool considerCurrentCommitId) const;
+    ui64 GetCollectCommitId() const;
 
     void LoadGarbage(
         const TVector<TPartialBlobId>& newBlobs,

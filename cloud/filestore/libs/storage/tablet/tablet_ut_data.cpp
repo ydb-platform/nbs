@@ -958,7 +958,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
-        tablet.CollectGarbage(true);
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
 
@@ -979,7 +980,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
-        tablet.CollectGarbage(true);
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
 
         tablet.DestroyHandle(handle);
         tablet.UnlinkNode(RootNodeId, "test", false);
@@ -1059,7 +1061,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);   // new: 2, garbage: 0
         }
 
-        tablet.CollectGarbage(true);
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
 
         {
             auto response = tablet.GetStorageStats();
@@ -1083,7 +1086,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             );  // new: 1 (x block), garbage: 2 (x block)
         }
 
-        tablet.CollectGarbage(true);
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
 
         {
             auto response = tablet.GetStorageStats();
@@ -5031,7 +5035,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             ));
         }
 
-        tablet.CollectGarbage(true);
+        tablet.GenerateCommitId();
+        tablet.CollectGarbage();
 
         {
             tablet.AdvanceTime(TDuration::Seconds(15));
@@ -5237,6 +5242,63 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto response = tablet.RecvCollectGarbageResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
         }
+    }
+
+    TABLET_TEST(ShouldGenerateCommitId)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        ui64 commitId = InvalidCommitId;
+        env.GetRuntime().SetEventFilter(
+            [&commitId](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        using TResponse = TEvBlobStorage::TEvPutResult;
+                        auto* msg = event->template Get<TResponse>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            commitId = MakeCommitId(
+                                msg->Id.Generation(),
+                                msg->Id.Step());
+                        }
+                    }
+                }
+
+                return false;
+            });
+        tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return commitId != InvalidCommitId;
+            }});
+
+        auto response = tablet.GenerateCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(commitId + 2, response->CommitId);
+
+        response = tablet.GenerateCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(commitId + 3, response->CommitId);
+
+        tablet.DestroyHandle(handle);
     }
 
 #undef TABLET_TEST

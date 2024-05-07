@@ -408,7 +408,7 @@ void TIndexTabletActor::HandleCollectGarbage(
         return;
     }
 
-    ui64 collectCommitId = GetCollectCommitId(msg->ConsiderCurrentCommitId);
+    ui64 collectCommitId = GetCollectCommitId();
 
     auto newBlobs = GetNewBlobs(collectCommitId);
     auto garbageBlobs = GetGarbageBlobs(collectCommitId);

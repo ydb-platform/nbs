@@ -994,11 +994,11 @@ bool TIndexTabletState::IsCollectBarrierAcquired(ui64 commitId) const
     return Impl->GarbageQueue.IsCollectBarrierAcquired(commitId);
 }
 
-ui64 TIndexTabletState::GetCollectCommitId(bool considerCurrentCommitId) const
+ui64 TIndexTabletState::GetCollectCommitId() const
 {
     // should not collect after any barrier
     return Min(
-        GetCurrentCommitId() - 1 + considerCurrentCommitId,
+        GetCurrentCommitId() - 1,
         Impl->GarbageQueue.GetCollectCommitId());
 }
 
