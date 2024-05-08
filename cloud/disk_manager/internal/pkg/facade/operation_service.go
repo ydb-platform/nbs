@@ -14,6 +14,51 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func convertOperationErrorToDiskManagerApiFormat(
+	ctx context.Context,
+	result *operation.Operation_Error,
+) *disk_manager.Operation_Error {
+
+	status := grpc_status.FromProto(result.Error)
+	dmStatus := grpc_status.New(status.Code(), status.Message())
+
+	defaultDmOperationError := &disk_manager.Operation_Error{
+		Error: dmStatus.Proto(),
+	}
+
+	if len(status.Details()) == 0 {
+		return defaultDmOperationError
+	}
+
+	// We expect the only one error detail.
+	errorDetail := status.Details()[0]
+
+	// Convert to disk_manager.ErrorDetails via marshaling/unmarshaling in
+	// order to be compliant with disk_manager/api.
+	protoMessage, err := proto.Marshal(errorDetail.(proto.Message))
+	if err != nil {
+		logging.Warn(ctx, "failed to marshal error detail: %v", err)
+		return defaultDmOperationError
+	}
+
+	var dmErrorDetail disk_manager.ErrorDetails
+	err = proto.Unmarshal(protoMessage, &dmErrorDetail)
+	if err != nil {
+		logging.Warn(ctx, "failed to unmarshal error detail: %v", err)
+		return defaultDmOperationError
+	}
+
+	dmStatusWithDetails, err := dmStatus.WithDetails(&dmErrorDetail)
+	if err != nil {
+		logging.Warn(ctx, "failed to attach error details: %v", err)
+		return defaultDmOperationError
+	}
+
+	return &disk_manager.Operation_Error{
+		Error: dmStatusWithDetails.Proto(),
+	}
+}
+
 func getOperation(
 	ctx context.Context,
 	taskScheduler tasks.Scheduler,
@@ -37,37 +82,7 @@ func getOperation(
 
 	switch result := o.Result.(type) {
 	case *operation.Operation_Error:
-		status := grpc_status.FromProto(result.Error)
-		dmStatus := grpc_status.New(status.Code(), status.Message())
-
-		// We should return disk_manager.ErrorDetails, comply with contract with
-		// compute.
-		for _, errorDetail := range status.Details() {
-			protoMessage, err := proto.Marshal(errorDetail.(proto.Message))
-			if err != nil {
-				logging.Warn(ctx, "failed to marshal error detail: %v", err)
-				continue
-			}
-
-			var dmErrorDetail disk_manager.ErrorDetails
-			err = proto.Unmarshal(protoMessage, &dmErrorDetail)
-			if err != nil {
-				logging.Warn(ctx, "failed to unmarshal error detail: %v", err)
-				continue
-			}
-
-			dmStatusWithDetails, err := dmStatus.WithDetails(&dmErrorDetail)
-			if err == nil {
-				dmStatus = dmStatusWithDetails
-			} else {
-				logging.Warn(ctx, "failed to attach error details: %v", err)
-				continue
-			}
-		}
-
-		dmOp.Result = &disk_manager.Operation_Error{
-			Error: dmStatus.Proto(),
-		}
+		dmOp.Result = convertOperationErrorToDiskManagerApiFormat(ctx, result)
 	case *operation.Operation_Response:
 		dmOp.Result = &disk_manager.Operation_Response{
 			Response: result.Response,
