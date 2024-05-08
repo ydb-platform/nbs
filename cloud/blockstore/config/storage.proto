@@ -965,7 +965,7 @@ message TStorageServiceConfig
 
     // Max shadow disk fill io depth.
     optional uint32 MaxShadowDiskFillIoDepth = 363;
-    
+
     // Enable data scrubbing for mirrored disks.
     optional bool DataScrubbingEnabled = 364;
     // Interval between scrubbing ranges in milliseconds
