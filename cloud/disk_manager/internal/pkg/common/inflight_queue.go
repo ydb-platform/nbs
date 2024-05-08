@@ -20,16 +20,16 @@ type item struct {
 }
 
 type InflightQueue struct {
-	milestone             Milestone
-	defaultMilestoneValue uint32
-	processedValues       <-chan uint32
-	holeValues            ChannelWithCancellation
-	inflightLimit         int
-	items                 []item
-	inflightCount         int
-	lastHoleValue         *uint32
-	mutex                 sync.RWMutex
-	possibleToAdd         Cond
+	milestone                  Milestone
+	milestoneHintForEmptyQueue uint32
+	processedValues            <-chan uint32
+	holeValues                 ChannelWithCancellation
+	inflightLimit              int
+	items                      []item
+	inflightCount              int
+	lastHoleValue              *uint32
+	mutex                      sync.RWMutex
+	possibleToAdd              Cond
 }
 
 // Not thread-safe.
@@ -92,14 +92,16 @@ func (q *InflightQueue) Milestone() Milestone {
 	return q.milestone
 }
 
-// Default milestone value should be used when
-// there are no inflight items.
-func (q *InflightQueue) UpdateDefaultMilestoneValue(value uint32) {
+// Inflight queue uses this hint as milestone value
+// if there are no inflight items in the queue.
+// If this method is called with some value v,
+// values less then v should not be sent to the inflight queue anymore.
+func (q *InflightQueue) UpdateMilestoneHintForEmptyQueue(value uint32) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.defaultMilestoneValue = value
-	if len(q.items) == 0 && q.defaultMilestoneValue > q.milestone.Value {
-		q.milestone.Value = q.defaultMilestoneValue
+	q.milestoneHintForEmptyQueue = value
+	if len(q.items) == 0 && q.milestoneHintForEmptyQueue > q.milestone.Value {
+		q.milestone.Value = q.milestoneHintForEmptyQueue
 	}
 }
 
@@ -176,8 +178,8 @@ func (q *InflightQueue) updateMilestoneOnDrain(toRemoveCount int) {
 			lastItemValue := q.items[len(q.items)-1].value
 			newMilestoneValue = lastItemValue + 1
 		}
-		if q.defaultMilestoneValue > newMilestoneValue {
-			newMilestoneValue = q.defaultMilestoneValue
+		if q.milestoneHintForEmptyQueue > newMilestoneValue {
+			newMilestoneValue = q.milestoneHintForEmptyQueue
 		}
 	} else {
 		newMilestoneValue = q.items[toRemoveCount].value

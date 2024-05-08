@@ -125,7 +125,7 @@ func (s *diskSource) generateChunkIndices(
 			chunkIndex++
 		}
 
-		s.chunkIndices.UpdateDefaultMilestoneValue(chunkIndex)
+		s.chunkIndices.UpdateMilestoneHintForEmptyQueue(chunkIndex)
 		blockIndex += s.maxChangedBlockCountPerIteration
 	}
 
