@@ -3,6 +3,7 @@ RECURSE(
     core
     init
     model
+    perf
     service
     ss_proxy
     tablet
