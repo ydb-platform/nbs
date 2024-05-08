@@ -78,6 +78,7 @@ class LocalNbs(Daemon):
         else:
             self.__nbs_secure_port = self.__port_manager.get_port() if enable_tls else 0
         self.__ic_port = self.__port_manager.get_port()
+        self.__profile_log_name = "profile-%s.log" % self.__ic_port
         self.__mon_port = self.__port_manager.get_port()
         if nbs_binary_path is not None:
             self.__binary_path = nbs_binary_path
@@ -253,6 +254,10 @@ ModifyScheme {
     @property
     def access_service(self):
         return self.__access_service
+
+    @property
+    def profile_log_path(self):
+        return os.path.join(self.__cwd, self.__profile_log_name)
 
     def __generate_server_log_txt(self):
         services_info = [
@@ -506,11 +511,7 @@ ModifyScheme {
             "--data-server-port", str(self.__nbs_data_port),
             "--secure-server-port", str(self.__nbs_secure_port),
             "--mon-port", str(self.__mon_port),
-        ]
-
-        command += [
-            "--profile-file",
-            os.path.join(self.__cwd, "profile-%s.log" % self.__ic_port)
+            "--profile-file", self.profile_log_path,
         ]
 
         if self.__grpc_trace:

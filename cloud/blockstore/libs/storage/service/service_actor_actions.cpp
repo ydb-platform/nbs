@@ -81,6 +81,7 @@ void TServiceActor::HandleExecuteAction(
         {"changestorageconfig",               &TServiceActor::CreateChangeStorageConfigActionActor         },
         {"getnameservernodes",                &TServiceActor::CreateGetNameserverNodesActionActor          },
         {"cms",                               &TServiceActor::CreateCmsActionActor                         },
+        {"flushprofilelog",                   &TServiceActor::CreateFlushProfileLogActor                   },
     };
 
     NProto::TError error;
