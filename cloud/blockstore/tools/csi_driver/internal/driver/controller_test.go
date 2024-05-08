@@ -30,7 +30,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 			DiskId:               volumeID,
 			BlockSize:            blockSize,
 			BlocksCount:          blockCount,
-			StorageMediaKind:     storage.EStorageMediaKind_STORAGE_MEDIA_SSD,
+			StorageMediaKind:     getStorageMediaKind(parameters),
 			BaseDiskId:           parameters["base-disk-id"],
 			BaseDiskCheckpointId: parameters["base-disk-checkpoint-id"],
 		}).Return(&nbs.TCreateVolumeResponse{}, nil)
@@ -76,6 +76,11 @@ func TestCreateDeleteNbsDisk(t *testing.T) {
 		"backend":                 "nbs",
 		"base-disk-id":            "testBaseDiskId",
 		"base-disk-checkpoint-id": "testBaseCheckpointId",
+	})
+
+	doTestCreateDeleteVolume(t, map[string]string{
+		"backend":            "nbs",
+		"storage-media-kind": "ssd_nonrepl",
 	})
 }
 
