@@ -1,6 +1,7 @@
 client/bench/blockstore-client-bench
 client/ut_throttling/cloud-blockstore-libs-client-ut_throttling
 client/ut/cloud-blockstore-libs-client-ut
+common/benchmark/benchmark
 common/ut/cloud-blockstore-libs-common-ut
 daemon/ydb/ut/cloud-blockstore-libs-daemon-ydb-ut
 diagnostics/ut/cloud-blockstore-libs-diagnostics-ut

@@ -1,7 +1,8 @@
 #include "iovector.h"
 
-#include <util/string/builder.h>
+#include <library/cpp/int128/int128.h>
 
+#include <util/string/builder.h>
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -13,7 +14,8 @@ bool IsAllZeroes(const char* src, size_t size)
     using TBigNumber = ui64;
 
     Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-
+#define IMPL 1
+#if (IMPL == 1)
     const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
     for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
         if (buffer[i] != 0) {
@@ -21,6 +23,23 @@ bool IsAllZeroes(const char* src, size_t size)
         }
     }
     return true;
+#endif
+#if (IMPL == 2)
+    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
+    if (*a) {
+        return false;
+    }
+    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
+#endif
+    /*
+      for (size_t i = 0; i != size; i += sizeof(TBigNumber)) {
+          TBigNumber a = 0;
+          std::copy(src + i, src + i + sizeof(TBigNumber), &a);
+          if (a != 0) {
+              return false;
+          }
+      }
+  */
 }
 
 }   // namespace
