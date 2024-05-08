@@ -72,11 +72,7 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 self._args.disk_type,
                 self._args.disk_blocksize,
                 {},
-                (
-                    f'{self._args.zone_id}_sync_'
-                    f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-                    f'{size_prettifier(self._args.disk_blocksize)}'.lower()
-                ),
+                self._get_test_suite(),
             ):
                 disk_name_prefix = (
                     f'acceptance-test-{self._args.test_type}-'
