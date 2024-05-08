@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"google.golang.org/grpc"

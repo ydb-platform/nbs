@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"google.golang.org/protobuf/proto"
 )

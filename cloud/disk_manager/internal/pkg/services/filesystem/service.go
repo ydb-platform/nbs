@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/errors"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"

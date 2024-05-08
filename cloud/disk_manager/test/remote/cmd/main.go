@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/api"
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"

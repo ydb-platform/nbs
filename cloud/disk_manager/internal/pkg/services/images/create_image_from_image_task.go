@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"

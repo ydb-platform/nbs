@@ -3,7 +3,7 @@ package images
 import (
 	"context"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
