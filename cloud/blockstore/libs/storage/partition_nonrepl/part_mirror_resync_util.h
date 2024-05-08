@@ -17,6 +17,15 @@ struct TReplicaDescriptor
     TString Name;
     ui32 ReplicaIndex = 0;
     NActors::TActorId ActorId;
+
+    TReplicaDescriptor(
+            TString name,
+            ui32 replicaIndex,
+            NActors::TActorId actorId)
+        : Name(name)
+        , ReplicaIndex(replicaIndex)
+        , ActorId(actorId)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
