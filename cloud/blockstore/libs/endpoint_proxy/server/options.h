@@ -13,6 +13,7 @@ struct TOptions final: TOptionsBase
     TString RootCertsFile;
     TString KeyFile;
     TString CertFile;
+    bool Netlink = false;
 
     TOptions();
 

@@ -32,9 +32,9 @@ enum {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnection final
+class TDevice final
     : public ISimpleThread
-    , public IDeviceConnection
+    , public IDevice
 {
 private:
     const ILoggingServicePtr Logging;
@@ -52,7 +52,7 @@ private:
     TAtomic ShouldStop = 0;
 
 public:
-    TDeviceConnection(
+    TDevice(
             ILoggingServicePtr logging,
             const TNetworkAddress& connectAddress,
             TString deviceName,
@@ -69,9 +69,9 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
     }
 
-    ~TDeviceConnection() override
+    ~TDevice() override
     {
-        Stop();
+        Stop(true);
     }
 
     void Start() override
@@ -82,8 +82,12 @@ public:
         ISimpleThread::Start();
     }
 
-    void Stop() override
+    void Stop(bool deleteDevice) override
     {
+        // device configured via ioctl interface is bound to the process, there
+        // is no point keeping it
+        Y_UNUSED(deleteDevice);
+
         if (AtomicSwap(&ShouldStop, 1) == 1) {
             return;
         }
@@ -113,7 +117,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDeviceConnection::ConnectSocket()
+void TDevice::ConnectSocket()
 {
     STORAGE_DEBUG("Connect socket");
 
@@ -131,7 +135,7 @@ void TDeviceConnection::ConnectSocket()
     Socket = socket;
 }
 
-void TDeviceConnection::DisconnectSocket()
+void TDevice::DisconnectSocket()
 {
     STORAGE_DEBUG("Disconnect socket");
 
@@ -140,7 +144,7 @@ void TDeviceConnection::DisconnectSocket()
     Socket.Close();
 }
 
-void TDeviceConnection::ConnectDevice()
+void TDevice::ConnectDevice()
 {
     STORAGE_DEBUG("Connect device");
 
@@ -193,7 +197,7 @@ void TDeviceConnection::ConnectDevice()
     Device.Swap(device);
 }
 
-void TDeviceConnection::HandleIO()
+void TDevice::HandleIO()
 {
     STORAGE_DEBUG("Start IO for device");
 
@@ -208,7 +212,7 @@ void TDeviceConnection::HandleIO()
     ioctl(Device, NBD_CLEAR_SOCK);
 }
 
-void TDeviceConnection::DisconnectDevice()
+void TDevice::DisconnectDevice()
 {
     STORAGE_DEBUG("Disconnect device");
 
@@ -221,39 +225,41 @@ void TDeviceConnection::DisconnectDevice()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnectionStub final
-    : public IDeviceConnection
+class TDeviceStub final
+    : public IDevice
 {
 public:
     void Start() override
     {}
 
-    void Stop() override
-    {}
+    void Stop(bool deleteDevice) override
+    {
+        Y_UNUSED(deleteDevice);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnectionFactory final
-    : public IDeviceConnectionFactory
+class TDeviceFactory final
+    : public IDeviceFactory
 {
 private:
     const ILoggingServicePtr Logging;
     const TDuration Timeout;
 
 public:
-    TDeviceConnectionFactory(ILoggingServicePtr logging, TDuration timeout)
+    TDeviceFactory(ILoggingServicePtr logging, TDuration timeout)
         : Logging(std::move(logging))
         , Timeout(timeout)
     {}
 
-    IDeviceConnectionPtr Create(
+    IDevicePtr Create(
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
         ui32 blockSize) override
     {
-        return std::make_shared<TDeviceConnection>(
+        return std::make_shared<TDevice>(
             Logging,
             connectAddress,
             std::move(deviceName),
@@ -267,13 +273,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDeviceConnectionPtr CreateDeviceConnection(
+IDevicePtr CreateDevice(
     ILoggingServicePtr logging,
     const TNetworkAddress& connectAddress,
     TString deviceName,
     TDuration timeout)
 {
-    return std::make_shared<TDeviceConnection>(
+    return std::make_shared<TDevice>(
         std::move(logging),
         connectAddress,
         std::move(deviceName),
@@ -282,16 +288,16 @@ IDeviceConnectionPtr CreateDeviceConnection(
         timeout);
 }
 
-IDeviceConnectionPtr CreateDeviceConnectionStub()
+IDevicePtr CreateDeviceStub()
 {
-    return std::make_shared<TDeviceConnectionStub>();
+    return std::make_shared<TDeviceStub>();
 }
 
-IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+IDeviceFactoryPtr CreateDeviceFactory(
     ILoggingServicePtr logging,
     TDuration timeout)
 {
-    return std::make_shared<TDeviceConnectionFactory>(
+    return std::make_shared<TDeviceFactory>(
         std::move(logging),
         timeout);
 }

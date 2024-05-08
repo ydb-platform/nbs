@@ -8,13 +8,13 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TProxyDeviceConnectionFactoryConfig
+struct TProxyDeviceFactoryConfig
 {
     ui32 DefaultSectorSize = 0;
 };
 
-NBD::IDeviceConnectionFactoryPtr CreateProxyDeviceConnectionFactory(
-    TProxyDeviceConnectionFactoryConfig config,
+NBD::IDeviceFactoryPtr CreateProxyDeviceFactory(
+    TProxyDeviceFactoryConfig config,
     IEndpointProxyClientPtr client);
 
 }   // namespace NCloud::NBlockStore::NClient
