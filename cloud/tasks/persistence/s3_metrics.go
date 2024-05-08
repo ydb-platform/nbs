@@ -47,7 +47,7 @@ func (m *s3Metrics) StatCall(
 		successCounter := subRegistry.Counter("success")
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("errors/timeout")
-		canceledCounter := subRegistry.Counter("errors/canceled")
+		// canceledCounter := subRegistry.Counter("errors/cancelled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if time.Since(start) >= m.callTimeout {
@@ -74,16 +74,16 @@ func (m *s3Metrics) StatCall(
 
 			errorCounter.Inc()
 
-			dmError := (*err).(*errors.RetriableError)
-			if aerr, ok := dmError.Unwrap().(awserr.Error); ok {
-				switch aerr.Code() {
-				case request.CanceledErrorCode:
-					canceledCounter.Inc()
+			var awsError awserr.Error
+			if errors.As(*err, &awsError) {
+				switch awsError.Code() {
 				case request.ErrCodeResponseTimeout:
 					timeoutCounter.Inc()
+					// case request.CanceledErrorCode:
+					// 	canceledCounter.Inc()
 				}
 			} else {
-				logging.Debug(ctx, "failed to unwrap error %v", dmError)
+				logging.Debug(ctx, "failed to convert to aws error %v", err)
 			}
 
 			return
