@@ -110,6 +110,7 @@ struct IProfileLog
     };
 
     virtual void Write(TRecord record) = 0;
+    virtual bool Flush() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

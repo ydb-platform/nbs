@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import random
 import tempfile
 import time
@@ -387,6 +388,41 @@ def test_read_with_io_depth():
         "--output", "readblocks-1")
 
     assert files_equal("readblocks-0", "readblocks-1")
+    tear_down(env)
+
+
+def test_flush_profile_log():
+    env, run = setup()
+    print("output_path = {}".format(yatest_common.output_path()))
+
+    run("createvolume",
+        "--disk-id", "volume-0",
+        "--blocks-count", str(BLOCKS_COUNT))
+
+    # The size is probably zero right now, but it is not guaranteed.
+    profile_log_size_1 = os.stat(env.nbs_profile_log_path).st_size
+
+    random_writes(run)
+    run("ExecuteAction",
+        "--action", "FlushProfileLog",
+        "--input-bytes", "",
+        "--verbose")
+    profile_log_size_2 = os.stat(env.nbs_profile_log_path).st_size
+    assert profile_log_size_2 > profile_log_size_1
+
+    for i in range(0, 5):
+        run("readblocks",
+            "--disk-id", "volume-0",
+            "--start-index", str(i * 10),
+            "--blocks-count", "10",
+            "--output", "readblocks-1")
+    run("ExecuteAction",
+        "--action", "FlushProfileLog",
+        "--input-bytes", "",
+        "--verbose")
+    profile_log_size_3 = os.stat(env.nbs_profile_log_path).st_size
+    assert profile_log_size_3 > profile_log_size_2
+
     tear_down(env)
 
 

@@ -98,6 +98,8 @@ private:
 
     TLockFreeStack<TRecord> Records;
 
+    TMutex FlushLock;
+
     TAtomic ShouldStop = false;
 
 public:
@@ -117,10 +119,11 @@ public:
     void Stop() override;
 
     void Write(TRecord record) override;
+    bool Flush() override;
 
 private:
     void ScheduleFlush();
-    void Flush();
+    void DoFlush();
 };
 
 void TProfileLog::Start()
@@ -144,21 +147,32 @@ void TProfileLog::ScheduleFlush()
         return;
     }
 
-    auto weak_ptr = weak_from_this();
+    auto weakPtr = weak_from_this();
 
     Scheduler->Schedule(
         Timer->Now() + Settings.TimeThreshold,
-        [weak_ptr = std::move(weak_ptr)] {
-            if (auto p = weak_ptr.lock()) {
-                p->Flush();
+        [weakPtr = std::move(weakPtr)]
+        {
+            if (auto p = weakPtr.lock()) {
+                p->DoFlush();
                 p->ScheduleFlush();
             }
-        }
-    );
+        });
 }
 
-void TProfileLog::Flush()
+bool TProfileLog::Flush()
 {
+    if (AtomicGet(ShouldStop)) {
+        return false;
+    }
+
+    DoFlush();
+    return true;
+}
+
+void TProfileLog::DoFlush()
+{
+    auto guard = Guard(FlushLock);
     TVector<TRecord> records;
     Records.DequeueAllSingleConsumer(&records);
 
@@ -237,21 +251,23 @@ void TProfileLog::Flush()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TProfileLogStub final
-    : public IProfileLog
+class TProfileLogStub final: public IProfileLog
 {
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void Write(TRecord record) override
     {
         Y_UNUSED(record);
+    }
+
+    bool Flush() override
+    {
+        return false;
     }
 };
 
