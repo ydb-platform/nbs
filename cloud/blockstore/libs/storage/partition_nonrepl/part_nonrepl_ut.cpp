@@ -1,15 +1,16 @@
 #include "part_nonrepl.h"
+
 #include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
-
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -1610,6 +1611,90 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             doZeroBlocks(true, 102);
             UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
         }
+    }
+
+    Y_UNIT_TEST(ShouldReadVoidBuffers)
+    {
+        const ui32 blockCount = 16;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui32 trimmedBufferCount = 0;
+        auto trimVoidBuffers = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksResponse)
+            {
+                auto& msg =
+                    *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                TrimVoidBuffers(msg.Record.MutableBlocks());
+                auto stat = CountVoidBuffers(msg.Record.GetBlocks());
+                trimmedBufferCount += stat.VoidBlockCount;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime.SetObserverFunc(trimVoidBuffers);
+
+        auto request = client.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(0, blockCount));
+        request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+            NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+        client.SendRequest(client.GetActorId(), std::move(request));
+
+        auto response = client.RecvReadBlocksResponse();
+
+        const auto& blocks = response->Record.GetBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, trimmedBufferCount);
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, blocks.BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+        for (const auto& buffer: blocks.GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 0), buffer);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadLocalVoidBuffers)
+    {
+        const ui32 blockCount = 16;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        ui32 trimmedBufferCount = 0;
+        auto trimVoidBuffers = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksResponse)
+            {
+                auto& msg =
+                    *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                TrimVoidBuffers(msg.Record.MutableBlocks());
+                auto stat = CountVoidBuffers(msg.Record.GetBlocks());
+                trimmedBufferCount += stat.VoidBlockCount;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime.SetObserverFunc(trimVoidBuffers);
+
+        // Create local buffer and fill with some data
+        const size_t dataSize = blockCount * DefaultBlockSize;
+        TString buffer(dataSize, 100);
+        TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
+        auto request = client.CreateReadBlocksLocalRequest(
+            TBlockRange64::WithLength(0, blockCount),
+            TGuardedSgList(sgList));
+
+        request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+            NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+        client.SendRequest(client.GetActorId(), std::move(request));
+
+        auto response = client.RecvReadBlocksLocalResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, trimmedBufferCount);
+        // Check that the read data contains only zeros.
+        UNIT_ASSERT_VALUES_EQUAL(TString(dataSize, 0), buffer);
     }
 }
 

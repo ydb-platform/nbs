@@ -4,6 +4,27 @@
 
 namespace NCloud::NBlockStore {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsAllZeroes(const char* src, size_t size)
+{
+    using TBigNumber = ui64;
+
+    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
+    for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
+        if (buffer[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blocksCount, ui32 blockSize)
@@ -66,14 +87,17 @@ TResultOrError<TSgList> GetSgList(
     return sglist;
 }
 
-void CopyToSgList(
+TVoidBuffersStat CopyToSgList(
     const NProto::TIOVector& iov,
     const TSgList& sglist,
     ui64 offsetInBlocks,
     ui32 blockSize)
 {
+    TVoidBuffersStat result;
+
     ui64 offsetInBytes = offsetInBlocks * blockSize;
 
+    // Skip offsetInBytes in destination
     size_t dstIndex = 0;
     for (; dstIndex != sglist.size(); ++dstIndex) {
         const size_t size = sglist[dstIndex].Size();
@@ -87,7 +111,7 @@ void CopyToSgList(
     }
 
     for (const auto& src: iov.GetBuffers()) {
-        Y_ABORT_UNLESS(src.size() == blockSize);
+        Y_ABORT_UNLESS(src.size() == blockSize || src.size() == 0);
         Y_ABORT_UNLESS(dstIndex != sglist.size());
 
         TBlockDataRef dst = sglist[dstIndex];
@@ -96,10 +120,14 @@ void CopyToSgList(
         Y_ABORT_UNLESS(dst.Size() - offsetInBytes >= blockSize);
 
         if (dst.Data()) {
-            memcpy(
-                const_cast<char*>(dst.Data()) + offsetInBytes,
-                src.data(),
-                blockSize);
+            char* destBuff = const_cast<char*>(dst.Data()) + offsetInBytes;
+            if (src.empty()) {
+                memset(destBuff, 0, blockSize);
+                ++result.VoidBlockCount;
+            } else {
+                memcpy(destBuff, src.data(), blockSize);
+                ++result.NonVoidBlockCount;
+            }
         }
 
         offsetInBytes += blockSize;
@@ -109,6 +137,64 @@ void CopyToSgList(
             offsetInBytes = 0;
         }
     }
+    return result;
+}
+
+void TrimVoidBuffers(NProto::TIOVector* iov)
+{
+    for (auto& buffer: *iov->MutableBuffers()) {
+        if (IsAllZeroes(buffer.data(), buffer.size())) {
+            buffer.clear();
+        }
+    }
+}
+
+size_t CopyAndTrimVoidBuffers(
+    TBlockDataRef src,
+    ui32 blockCount,
+    ui32 blockSize,
+    NProto::TIOVector* iov)
+{
+    Y_ABORT_UNLESS(static_cast<size_t>(blockCount) * blockSize == src.Size());
+
+    size_t bytesCount = 0;
+
+    auto& buffers = *iov->MutableBuffers();
+    buffers.Clear();
+    buffers.Reserve(blockCount);
+
+    const char* srcBuffer = src.Data();
+    size_t srcLen = src.Size();
+
+    for (size_t i = 0; i < blockCount; ++i) {
+        if (IsAllZeroes(srcBuffer, blockSize)) {
+            // Add an empty buffer when data contains all zeros.
+            buffers.Add();
+        } else {
+            static_assert(
+                std::is_same<decltype(buffers.Add()), TString*>::value);
+            buffers.Add(TString(srcBuffer, blockSize));
+        }
+
+        srcBuffer += blockSize;
+        srcLen -= blockSize;
+        bytesCount += blockSize;
+    }
+
+    return bytesCount;
+}
+
+TVoidBuffersStat CountVoidBuffers(const NProto::TIOVector& iov)
+{
+    TVoidBuffersStat result;
+    for (const auto& buffer: iov.GetBuffers()) {
+        if (buffer.Empty()) {
+            ++result.VoidBlockCount;
+        } else {
+            ++result.NonVoidBlockCount;
+        }
+    }
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore

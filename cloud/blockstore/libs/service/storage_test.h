@@ -36,6 +36,8 @@ struct TTestStorage
     : public IStorage
 {
     ui32 ErrorCount = 0;
+    bool DoAllocations = false;
+
 
     BLOCKSTORE_DECLARE_METHOD(ZeroBlocks)
     BLOCKSTORE_DECLARE_METHOD(ReadBlocksLocal)
@@ -50,8 +52,13 @@ struct TTestStorage
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
-        Y_UNUSED(bytesCount);
-        return nullptr;
+        if (!DoAllocations) {
+            return nullptr;
+        }
+
+        return {
+            new char[bytesCount],
+            std::default_delete<char[]>()};
     }
 
     void ReportIOError() override

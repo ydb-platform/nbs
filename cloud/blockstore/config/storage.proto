@@ -970,4 +970,7 @@ message TStorageServiceConfig
     optional bool DataScrubbingEnabled = 364;
     // Interval between scrubbing ranges in milliseconds
     optional uint32 ScrubbingInterval = 365;
+
+    // Optimize all-zeros blocks transmission over the network.
+    optional bool OptimizeVoidBuffersTransferForReadsEnabled = 366;
 }

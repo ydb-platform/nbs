@@ -151,6 +151,64 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
             }
         }
     }
+
+    Y_UNIT_TEST(ShouldCopyAndTrimVoidBuffers)
+    {
+        const ui64 blockCount = 10;
+        TVector<char> buffer(blockCount * BlockSize, 0);
+
+        // Fill last two blocks with data
+        std::fill(buffer.begin() + 8 * BlockSize, buffer.end(), 255);
+
+        // Check that the first 8 blocks will be optimized.
+        NProto::TIOVector ioVector;
+        auto handledByteCount = CopyAndTrimVoidBuffers(
+            TBlockDataRef{buffer.data(), buffer.size()},
+            blockCount,
+            BlockSize,
+            &ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(buffer.size(), handledByteCount);
+        for (size_t i = 0; i < blockCount; ++i) {
+            const auto& buf  = ioVector.GetBuffers(i);
+            UNIT_ASSERT_VALUES_EQUAL(
+                i < 8 ? 0 : BlockSize,
+                buf.size());
+        }
+        TVoidBuffersStat stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(8, stat.VoidBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stat.NonVoidBlockCount);
+    }
+
+    Y_UNIT_TEST(ShouldTrimVoidBuffers)
+    {
+        const ui64 blockCount = 10;
+        TVector<char> buffer(blockCount * BlockSize, 0);
+
+        // Fill last two blocks with data
+        std::fill(buffer.begin() + 8 * BlockSize, buffer.end(), 255);
+
+        // Fill ioVector without optimizations
+        NProto::TIOVector ioVector;
+        auto sgList = ResizeIOVector(ioVector, blockCount, BlockSize);
+        auto bytesCopied =
+            SgListCopy(TBlockDataRef{buffer.data(), buffer.size()}, sgList);
+        UNIT_ASSERT_VALUES_EQUAL(buffer.size(), bytesCopied);
+
+        // Check that no void buffers have been created.
+        TVoidBuffersStat stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(0, stat.VoidBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, stat.NonVoidBlockCount);
+
+        // Remove void buffers.
+        TrimVoidBuffers(&ioVector);
+        for (size_t i = 0; i < blockCount; ++i) {
+            const auto& buf = ioVector.GetBuffers(i);
+            UNIT_ASSERT_VALUES_EQUAL(i < 8 ? 0 : BlockSize, buf.size());
+        }
+        stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(8, stat.VoidBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, stat.NonVoidBlockCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore
