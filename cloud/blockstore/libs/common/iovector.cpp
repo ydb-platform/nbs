@@ -3,44 +3,21 @@
 #include <library/cpp/int128/int128.h>
 
 #include <util/string/builder.h>
+
+#include <immintrin.h>
+
+#define IMPL 2
 namespace NCloud::NBlockStore {
 
+#if IMPL == 4
+inline int TestAllZeros(__m256i x)
+{
+    return _mm256_testz_si256(x, x);
+}
+#endif
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-bool IsAllZeroes(const char* src, size_t size)
-{
-    using TBigNumber = ui64;
-
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-#define IMPL 1
-#if (IMPL == 1)
-    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
-    for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
-        if (buffer[i] != 0) {
-            return false;
-        }
-    }
-    return true;
-#endif
-#if (IMPL == 2)
-    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
-    if (*a) {
-        return false;
-    }
-    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
-#endif
-    /*
-      for (size_t i = 0; i != size; i += sizeof(TBigNumber)) {
-          TBigNumber a = 0;
-          std::copy(src + i, src + i + sizeof(TBigNumber), &a);
-          if (a != 0) {
-              return false;
-          }
-      }
-  */
-}
 
 }   // namespace
 
@@ -81,9 +58,8 @@ TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
     return sglist;
 }
 
-TResultOrError<TSgList> GetSgList(
-    const NProto::TReadBlocksResponse& response,
-    ui32 expectedBlockSize)
+TResultOrError<TSgList>
+GetSgList(const NProto::TReadBlocksResponse& response, ui32 expectedBlockSize)
 {
     const auto& iov = response.GetBlocks();
     TSgList sglist(Reserve(iov.BuffersSize()));
@@ -91,10 +67,11 @@ TResultOrError<TSgList> GetSgList(
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer) {
             if (buffer.size() != expectedBlockSize) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "read-response has invalid buffer."
-                    << " BufferSize = " << buffer.size()
-                    << " BlockSize = " << expectedBlockSize);
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "read-response has invalid buffer."
+                                     << " BufferSize = " << buffer.size()
+                                     << " BlockSize = " << expectedBlockSize);
             }
             sglist.emplace_back(buffer.data(), buffer.size());
         } else {
@@ -208,6 +185,58 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
         }
     }
     return result;
+}
+
+bool IsAllZeroes(const char* src, size_t size)
+{
+#if (IMPL == 1)
+    using TBigNumber = ui64;
+    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
+    for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
+        if (buffer[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+#endif
+#if (IMPL == 2)
+    using TBigNumber = ui64;
+    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
+    if (*a) {
+        return false;
+    }
+    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
+#endif
+#if (IMPL == 3)
+    using TBigNumber = ui64;
+    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    for (size_t i = 0; i != size; i += sizeof(TBigNumber)) {
+        TBigNumber a = 0;
+        std::memcpy(&a, src + i, sizeof(TBigNumber));
+        if (a != 0) {
+            return false;
+        }
+    }
+    return true;
+#endif
+#if (IMPL == 4)
+    using TBigNumber = __m256i;
+    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
+
+    for (size_t i = 0, n = size / (sizeof(TBigNumber)); i != n; ++i) {
+        if (!TestAllZeros(buffer[i])) {
+            return false;
+        }
+    }
+    return true;
+#endif
 }
 
 }   // namespace NCloud::NBlockStore
