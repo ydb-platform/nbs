@@ -1087,49 +1087,107 @@ void TVolumeActor::HandleUpdateCheckpointRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)
+void TVolumeActor::ProcessNextCheckpointRequest(const TActorContext& ctx)  // TODO:_ naming:  ProcessNextCheckpointRequest
 {
-    // only one simultaneous checkpoint request is supported, other requests
-    // should wait
-    if (State->GetCheckpointStore().IsRequestInProgress()) {
-        return;
-    }
+    // TODO:_ can it happen that this while loop lasts for too long (lots of requests to reply)?
+    // TODO:_ Don't forget that time complexity is quadratic since we iterate over requests every time
+    while (true) {  // TODO:_ huge while(true), seriously?
+        // only one simultaneous checkpoint request is supported, other requests
+        // should wait
+        if (State->GetCheckpointStore().IsRequestInProgress()) {
+            return;
+        }
 
-    // there is no FIFO guarantee for requests sent via TPartitionRequestActor
-    // and requests forwarded via TVolumeActor => we can start checkpoint
-    // creation only if there are no TPartitionRequestActor-based requests
-    // in flight currently
-    if (MultipartitionWriteAndZeroRequestsInProgress) {
-        return;
-    }
+        // there is no FIFO guarantee for requests sent via TPartitionRequestActor
+        // and requests forwarded via TVolumeActor => we can start checkpoint
+        // creation only if there are no TPartitionRequestActor-based requests
+        // in flight currently
+        if (MultipartitionWriteAndZeroRequestsInProgress) {
+            return;
+        }
 
-    ui64 readyToExecuteRequestId = 0;
-    // nothing to do
-    if (!State->GetCheckpointStore().HasRequestToExecute(
-            &readyToExecuteRequestId))
-    {
-        return;
-    }
+        ui64 readyToExecuteRequestId = 0;
+        // nothing to do
+        if (!State->GetCheckpointStore().HasRequestToExecute(
+                &readyToExecuteRequestId))
+        {
+            return;
+        }
 
-    State->GetCheckpointStore().SetCheckpointRequestInProgress(
-        readyToExecuteRequestId);
-
-    const TCheckpointRequest& request =
-        State->GetCheckpointStore().GetRequestById(readyToExecuteRequestId);
-
-    if (request.State == ECheckpointRequestState::Received) {
+        const TCheckpointRequest& request =
+            State->GetCheckpointStore().GetRequestById(readyToExecuteRequestId);
         const TCheckpointRequestInfo* requestInfo =
             CheckpointRequests.FindPtr(readyToExecuteRequestId);
 
-        AddTransaction(*requestInfo->RequestInfo);
+        if (request.State == ECheckpointRequestState::Received) {
+            auto validationResult =
+                State->GetCheckpointStore().ValidateCheckpointRequest(
+                    request.CheckpointId,
+                    request.ReqType,
+                    request.Type);
 
-        ExecuteTx<TSaveCheckpointRequest>(
-            ctx,
-            requestInfo->RequestInfo,
+            // TODO_  naming: validationResult seems confusing.
+            if (validationResult) {
+                State->GetCheckpointStore().UnsetCheckpointRequestInProgress();  // TODO:_ no need in unset, set as FinishedWithoutExecution instead (or just remove it)
+                ReplyToCheckpointRequestWithoutSaving(
+                    ctx,
+                    request.ReqType,
+                    requestInfo,
+                    *validationResult);
+                continue;
+            }
+        }
+
+        // TODO:_ do this outsize while
+        State->GetCheckpointStore().SetCheckpointRequestInProgress(
             readyToExecuteRequestId);
-    } else {
+
+        if (request.State == ECheckpointRequestState::Received) {
+            AddTransaction(*requestInfo->RequestInfo);
+
+            ExecuteTx<TSaveCheckpointRequest>(
+                ctx,
+                requestInfo->RequestInfo,
+                readyToExecuteRequestId);
+            return;
+        }
+
         ProcessCheckpointRequest(ctx, readyToExecuteRequestId);
+        return;
     }
+}
+
+void TVolumeActor::ReplyToCheckpointRequestWithoutSaving(
+        const NActors::TActorContext& ctx,
+        ECheckpointRequestType requestType,
+        const TCheckpointRequestInfo* requestInfo,
+        const NProto::TError& error)  // TODO:_ move error?
+{
+    NActors::IEventBasePtr response;
+
+    switch (requestType) {
+        case ECheckpointRequestType::Create:
+        case ECheckpointRequestType::CreateWithoutData: {
+            response =
+                std::make_unique<TCreateCheckpointMethod::TResponse>(error);
+            break;
+        }
+        case ECheckpointRequestType::DeleteData: {
+            response =
+                std::make_unique<TDeleteCheckpointDataMethod::TResponse>(error);
+            break;
+        }
+        case ECheckpointRequestType::Delete: {
+            response =
+                std::make_unique<TDeleteCheckpointMethod::TResponse>(error);
+            break;
+        }
+    }
+
+    NCloud::Reply(
+        ctx,
+        requestInfo->RequestInfo,
+        std::move(response));
 }
 
 void TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 requestId)
@@ -1413,6 +1471,7 @@ void TVolumeActor::CompleteUpdateCheckpointRequest(
         const bool needReply =
             args.RequestInfo && SelfId() != args.RequestInfo->Sender;
         if (needReply) {
+            // TODO:_ dedup?
             if (request.ReqType == ECheckpointRequestType::Create) {
                 NCloud::Reply(
                     ctx,

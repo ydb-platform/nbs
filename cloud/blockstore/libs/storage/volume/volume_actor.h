@@ -653,6 +653,12 @@ private:
 
     void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
 
+    void ReplyToCheckpointRequestWithoutSaving(
+        const NActors::TActorContext& ctx,
+        ECheckpointRequestType requestType,
+        const TCheckpointRequestInfo* requestInfo,
+        const NProto::TError& error);
+
     void ProcessCheckpointRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId);

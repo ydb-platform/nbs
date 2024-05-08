@@ -92,14 +92,6 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
         checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
-void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
-{
-    auto& checkpointRequest = GetRequest(requestId);
-    Y_DEBUG_ABORT_UNLESS(
-        checkpointRequest.State == ECheckpointRequestState::Received);
-    checkpointRequest.State = ECheckpointRequestState::Saved;
-}
-
 void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
@@ -115,6 +107,24 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
     CheckpointBlockingWritesBeingCreated =
         CheckpointBeingCreated &&
         checkpointRequest.ShadowDiskState == EShadowDiskState::None;
+}
+
+void TCheckpointStore::UnsetCheckpointRequestInProgress()
+{
+    // TODO:_ verify checkpoint state?
+    Y_DEBUG_ABORT_UNLESS(CheckpointRequestInProgress != 0);
+    CheckpointRequestInProgress = 0;
+    CheckpointBeingCreated = false;
+    CheckpointBlockingWritesBeingCreated = false;
+
+}
+
+void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+{
+    auto& checkpointRequest = GetRequest(requestId);
+    Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Received);
+    checkpointRequest.State = ECheckpointRequestState::Saved;
 }
 
 void TCheckpointStore::SetCheckpointRequestFinished(
@@ -138,9 +148,7 @@ void TCheckpointStore::SetCheckpointRequestFinished(
         checkpointRequest.ShadowDiskState = shadowDiskState;
         Apply(checkpointRequest);
     }
-    CheckpointRequestInProgress = 0;
-    CheckpointBeingCreated = false;
-    CheckpointBlockingWritesBeingCreated = false;
+    UnsetCheckpointRequestInProgress();
 }
 
 void TCheckpointStore::SetShadowDiskState(

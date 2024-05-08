@@ -167,8 +167,9 @@ public:
         ECheckpointRequestType requestType,
         ECheckpointType checkpointType) const;
 
-    void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestInProgress(ui64 requestId);
+    void UnsetCheckpointRequestInProgress();
+    void SetCheckpointRequestSaved(ui64 requestId);
     void SetCheckpointRequestFinished(
         ui64 requestId,
         bool completed,

@@ -421,6 +421,37 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             checkpoints[request.CheckpointId].Data);
     }
 
+    Y_UNIT_TEST(UnsetInProgress)
+    {
+        TCheckpointStore store({}, "disk-1");
+
+        const auto& request = store.MakeCreateCheckpointRequest(
+            "checkpoint",
+            TInstant::Now(),
+            ECheckpointRequestType::Create,
+            ECheckpointType::Normal,
+            false);
+
+        ui64 requestId = request.RequestId;
+
+        store.SetCheckpointRequestInProgress(requestId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            store.DoesCheckpointBlockingWritesExist());
+        UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
+        UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
+        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
+
+        store.UnsetCheckpointRequestInProgress();
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.DoesCheckpointBlockingWritesExist());
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
+        UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
+        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+    }
+
     Y_UNIT_TEST(RepeatRequests)
     {
         TCheckpointStore store({}, "disk-1");
