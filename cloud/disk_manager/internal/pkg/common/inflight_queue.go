@@ -95,7 +95,7 @@ func (q *InflightQueue) Milestone() Milestone {
 // Inflight queue uses this hint as milestone value
 // if there are no inflight items in the queue.
 // If this method is called with some value v,
-// values less then v should not be sent to the inflight queue anymore.
+// values less then v should not be added to the inflight queue anymore.
 func (q *InflightQueue) UpdateMilestoneHintForEmptyQueue(value uint32) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
