@@ -453,6 +453,7 @@ private:
             request->SetCheckpointId(CheckpointId);
             request->BlockSize = Volume.GetBlockSize();
             request->Sglist = holder.GetGuardedSgList();
+            PrepareHeaders(*request->MutableHeaders());
 
             auto future = Session->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),

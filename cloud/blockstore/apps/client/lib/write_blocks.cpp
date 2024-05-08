@@ -352,6 +352,7 @@ private:
                 request->BlocksCount = writeRange->BlocksCount;
                 request->BlockSize = Volume.GetBlockSize();
                 request->Sglist = writeRange->SgList;
+                PrepareHeaders(*request->MutableHeaders());
 
                 auto future = Session->WriteBlocksLocal(
                     MakeIntrusive<TCallContext>(),

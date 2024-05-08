@@ -117,6 +117,12 @@ TCommand::TCommand(IBlockStorePtr client)
     Opts.AddHelpOption('h');
     Opts.SetFreeArgsNum(0);
 
+    Opts.AddLongOption("batch-blocks-count")
+        .Help("max number of blocks per read request")
+        .RequiredArgument("NUM")
+        .DefaultValue(1024)
+        .StoreResult(&BatchBlocksCount);
+
     Opts.AddLongOption("config")
         .Help(TStringBuilder()
             << "config file name. Default is "
@@ -411,6 +417,11 @@ bool TCommand::UnmountVolume(ISession& session)
         return false;
     }
     return true;
+}
+
+void TCommand::PrepareHeaders(NProto::THeaders& headers) const
+{
+    headers.SetClientId(ClientConfig->GetClientId());
 }
 
 bool TCommand::WaitForI(const NThreading::TFuture<void>& future)
