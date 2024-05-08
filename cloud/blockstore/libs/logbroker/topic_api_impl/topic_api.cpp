@@ -142,7 +142,7 @@ public:
 
     void Stop() override
     {
-        std::lock_guard lock {DriverMutex};
+        std::lock_guard lock{DriverMutex};
 
         if (Driver) {
             Driver->Stop(false);
@@ -209,8 +209,10 @@ private:
 
         if (!HasError(error)) {
             // just in case
-            error =
-                MakeError(E_FAIL, "unexpected success: " + event.DebugString());
+            error = MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "unexpected success: " << event.DebugString());
         }
 
         return error;
@@ -260,7 +262,7 @@ private:
 
     const NYdb::TDriver& GetDriver()
     {
-        std::unique_lock lock{DriverMutex};
+        std::lock_guard lock{DriverMutex};
         if (!Driver) {
             Driver = std::make_unique<NYdb::TDriver>(CreateDriverConfig());
         }
