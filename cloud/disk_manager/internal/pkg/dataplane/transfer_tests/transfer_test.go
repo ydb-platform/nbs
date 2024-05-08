@@ -937,7 +937,7 @@ func TestTransferFromDiskToIncrementalSnapshotWhenBaseSnapshotIsSmall(t *testing
 	to.checkChunks(t, ctx, expectedChunks)
 }
 
-func TestTransferFromDiskToDiskWithFewChangedBlocksOnBigDisk(t *testing.T) {
+func TestTransferFromDiskToDiskWithFewChunksToTransfer(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -993,5 +993,5 @@ func TestTransferFromDiskToDiskWithFewChangedBlocksOnBigDisk(t *testing.T) {
 		},
 	}
 
-	fillAndTransfer(t, ctx, from, to, true)
+	fillAndTransfer(t, ctx, from, to, true) // withRandomFailures
 }
