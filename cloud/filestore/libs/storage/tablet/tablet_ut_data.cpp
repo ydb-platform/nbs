@@ -5164,14 +5164,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         });
     }
 
-    TABLET_TEST(CleanupShouldNotInterferwWithCollectGarbage)
+    TABLET_TEST(CleanupShouldNotInterfereWithCollectGarbage)
     {
         const auto block = tabletConfig.BlockSize;
         tabletConfig.BlockCount = 1'000'000;
 
         NProto::TStorageConfig storageConfig;
 
-        storageConfig.SetWriteBlobThreshold(0);
         storageConfig.SetCompactionThreshold(999'999);
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetCollectGarbageThreshold(1_GB);

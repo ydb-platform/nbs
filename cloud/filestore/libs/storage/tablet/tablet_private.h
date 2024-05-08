@@ -685,7 +685,7 @@ struct TEvIndexTabletPrivate
 
     struct TGenerateCommitIdResponse
     {
-        ui64 CommitId;
+        ui64 CommitId = InvalidCommitId;
     };
 
     //
