@@ -56,10 +56,11 @@ enum class EPublishingPolicy
     xxx(HasBrokenDeviceSilent,  Generic, Permanent,                __VA_ARGS__)\
 // BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS
 
-////////////////////////////////////////////////////////////////////////////////
-
 #define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \
     xxx(ScrubbingThroughput, Generic, Permanent,                   __VA_ARGS__)\
+    xxx(ReadUnknownVoidBlockCount,         Generic, Permanent,     __VA_ARGS__)\
+    xxx(ReadNonVoidBlockCount,             Generic, Permanent,     __VA_ARGS__)\
+    xxx(ReadVoidBlockCount,                Generic, Permanent,     __VA_ARGS__)\
 // BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////

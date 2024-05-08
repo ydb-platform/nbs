@@ -42,6 +42,9 @@ private:
     ui32 VoidBlockCount = 0;
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    ui32 UnknownVoidBlockCount = 0;
+    ui32 VoidBlockCount = 0;
+    ui32 NonVoidBlockCount = 0;
 
 public:
     TDiskAgentReadActor(
@@ -185,6 +188,10 @@ void TDiskAgentReadActor::Done(
 
     completion->ExecCycles = RequestInfo->GetExecCycles();
 
+    completion->UnknownVoidBlockCount = UnknownVoidBlockCount;
+    completion->NonVoidBlockCount = NonVoidBlockCount;
+    completion->VoidBlockCount = VoidBlockCount;
+
     NCloud::Send(
         ctx,
         Part,
@@ -254,8 +261,14 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             guard.Get(),
             blockRange.Start - Request.GetStartIndex(),
             PartConfig->GetBlockSize());
-        if (!SkipVoidBlocksToOptimizeNetworkTransfer) {
+
+        if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+            NonVoidBlockCount +=
+                voidBlockStat.TotalBlockCount - voidBlockStat.VoidBlockCount;
+            VoidBlockCount += voidBlockStat.VoidBlockCount;
+        } else {
             STORAGE_CHECK_PRECONDITION(voidBlockStat.VoidBlockCount == 0);
+            UnknownVoidBlockCount += voidBlockStat.TotalBlockCount;
         };
         VoidBlockCount += voidBlockStat.VoidBlockCount;
     }
