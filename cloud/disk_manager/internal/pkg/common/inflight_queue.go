@@ -163,8 +163,8 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 		}
 	}
 
-	if len(q.items) == 0 && q.milestoneHint > q.milestone.Value {
-		if q.milestoneHint > q.milestone.Value {
+	if toRemoveCount == 0 {
+		if len(q.items) == 0 && q.milestoneHint > q.milestone.Value {
 			q.milestone.Value = q.milestoneHint
 		}
 		return
