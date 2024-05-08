@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
@@ -72,13 +74,18 @@ func (m *s3Metrics) StatCall(
 
 			errorCounter.Inc()
 
-			if errors.Is(*err, context.DeadlineExceeded) {
-				timeoutCounter.Inc()
+			dmError := (*err).(*errors.RetriableError)
+			if aerr, ok := dmError.Unwrap().(awserr.Error); ok {
+				switch aerr.Code() {
+				case request.CanceledErrorCode:
+					canceledCounter.Inc()
+				case request.ErrCodeResponseTimeout:
+					timeoutCounter.Inc()
+				}
+			} else {
+				logging.Debug(ctx, "failed to unwrap error %v", dmError)
 			}
 
-			if errors.Is(*err, context.Canceled) {
-				canceledCounter.Inc()
-			}
 			return
 		}
 
