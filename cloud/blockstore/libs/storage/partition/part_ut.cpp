@@ -10989,6 +10989,91 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             "tablet is shutting down",
             response->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldSubtractCleanupBlobsWhenCheckingForBlobsCountCompaction)
+    {
+        auto config = DefaultConfig();
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetV1GarbageCompactionEnabled(true);
+        config.SetCompactionGarbageThreshold(999999999);
+        config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetSSDMaxBlobsPerUnit(7);
+        config.SetHDDMaxBlobsPerUnit(7);
+
+        ui32 blocksCount =  1024 * 1024;
+
+        auto runtime = PrepareTestActorRuntime(config, blocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 compactionByBlobCount = 0;
+        ui64 compactionRequestObserved = 0;
+        runtime->SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        ++compactionRequestObserved;
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvCleanupRequest: {
+                        return true;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        auto* msg =
+                            event->template Get<TEvStatsService::TEvVolumePartCounters>();
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        compactionByBlobCount =
+                            cc.CompactionByBlobCountPerDisk.Value;
+                        break;
+                    }
+                }
+                return false;
+            }
+        );
+
+        for (size_t i = 0; i < 4; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
+        }
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_EQUAL(0, compactionByBlobCount);
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // blob count is less than 4 * 2 => no compaction
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        for (size_t i = 0; i < 4; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
+        }
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // blob count is greater than threshold on disk => only one compaction
+        // because two blobs go to cleanup queue and just one is created
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionByBlobCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
