@@ -40,6 +40,7 @@ func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMe
 	if ok {
 		switch kind {
 		case "hdd":
+			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD
 		case "hybrid":
 			return storagecoreapi.EStorageMediaKind_STORAGE_MEDIA_HDD
 		case "ssd":
