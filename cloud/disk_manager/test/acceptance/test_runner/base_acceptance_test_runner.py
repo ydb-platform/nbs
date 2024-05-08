@@ -5,6 +5,7 @@ import logging
 import re
 import socket
 import subprocess
+import sys
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -319,6 +320,20 @@ class BaseAcceptanceTestRunner(ABC):
                     disk = ycp_disk
 
         return disk
+
+    @contextlib.contextmanager
+    def instance_policy_obtained(self, handler):
+        ctx = self._instance_policy.obtain()
+        try:
+            instance = ctx.__enter__()
+        except Exception as e:
+            handler(e)
+            raise e
+        try:
+            yield instance
+        finally:
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            ctx.__exit__(exc_type, exc_value, exc_tb)
 
     @contextlib.contextmanager
     def _recording_result(

@@ -147,7 +147,12 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
         test_cases = generate_test_cases(self._args.test_suite,
                                          self._cluster.name)
 
-        with self._instance_policy.obtain() as instance:
+        with self.instance_policy_obtained(
+            lambda err: self.report_failed_test_cases(
+                test_cases,
+                err,
+            ),
+        ) as instance:
             try:
                 # Copy verify-test binary to instance
                 _logger.info(f'Copying <path={self._args.verify_test}> to'

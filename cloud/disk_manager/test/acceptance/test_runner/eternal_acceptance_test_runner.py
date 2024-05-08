@@ -58,6 +58,19 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
             f'{size_prettifier(self._args.disk_blocksize)}'.lower()
         )
 
+    def _report_compute_failure(self, error):
+        if self._results_processor is not None:
+            self._results_processor.publish_test_report_base(
+                compute_node="FailedToGetInstance",
+                id="FailedToGetInstanceId",
+                disk_size=self._args.disk_size * (1024 ** 3),
+                disk_type=self._args.disk_type,
+                disk_bs=self._args.disk_blocksize,
+                extra_params={},
+                test_case_name=self._get_test_suite(),
+                error=error,
+            )
+
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
@@ -66,7 +79,11 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
         )
 
         with contextlib.ExitStack() as stack:
-            instance = stack.enter_context(self._instance_policy.obtain())
+            instance = stack.enter_context(
+                self.instance_policy_obtained(
+                    self._report_compute_failure,
+                ),
+            )
             stack.enter_context(
                 self._recording_result(
                     instance.compute_node,
@@ -75,11 +92,7 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                     self._args.disk_type,
                     self._args.disk_blocksize,
                     {},
-                    (
-                        f'{self._args.zone_id}_eternal_'
-                        f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-                        f'{size_prettifier(self._args.disk_blocksize)}'.lower()
-                    ),
+                    self._get_test_suite(),
                     )
             )
             # Copy cmp binary to instance
