@@ -725,7 +725,7 @@ void TIndexTabletState::AddDupCacheEntry(                                      \
                                                                                \
     NProto::TDupCacheEntry entry;                                              \
     entry.SetSessionId(session->GetSessionId());                               \
-    entry.SetEntryId(session->LastDupCacheEntryId++);                          \
+    entry.SetEntryId(session->GenerateDupCacheEntryId());                      \
     entry.SetRequestId(requestId);                                             \
     *entry.Mutable##name() = response;                                         \
                                                                                \
