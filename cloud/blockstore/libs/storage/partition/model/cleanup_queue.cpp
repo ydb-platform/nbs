@@ -38,6 +38,9 @@ struct TCleanupQueue::TImpl
 
     size_t GetCount(ui64 maxCommitId) const
     {
+        if (maxCommitId == InvalidCommitId) {
+            return Items.size();
+        }
         size_t result = 0;
         for (const auto& item: Items) {
             if (item.CommitId > maxCommitId) {
