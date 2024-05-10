@@ -5295,6 +5295,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCleanupThreshold(999'999);
         storageConfig.SetCollectGarbageThreshold(1_GB);
 
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
         auto handle = CreateHandle(tablet, id);
 
         for (int i = 0; i < 2; i++) {
