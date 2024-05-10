@@ -9,6 +9,7 @@ RECURSE(
     discovery
     disk_agent
     encryption
+    endpoint_proxy
     endpoints
     endpoints_grpc
     endpoints_nbd

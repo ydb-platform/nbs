@@ -228,3 +228,39 @@ message TRefreshEndpointResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Proxy endpoint
+
+message TStartProxyEndpointRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // BlockStore unix-socket path.
+    string UnixSocketPath = 2;
+
+    // NBD device to proxy requests from.
+    string NbdDevice = 3;
+}
+
+message TStartProxyEndpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+message TStopProxyEndpointRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // BlockStore unix-socket path.
+    string UnixSocketPath = 2;
+}
+
+message TStopProxyEndpointResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
