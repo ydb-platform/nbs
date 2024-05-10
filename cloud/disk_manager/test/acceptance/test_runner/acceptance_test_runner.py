@@ -3,12 +3,13 @@ import logging
 import re
 
 from cloud.blockstore.pylibs import common
-from cloud.blockstore.pylibs.ycp import YcpWrapper
+from cloud.blockstore.pylibs.ycp import YcpWrapper, Ycp
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
     generate_test_cases,
-    YcpNewDiskPolicy
+    YcpNewDiskPolicy,
+    TestCase,
 )
 
 _logger = logging.getLogger(__file__)
@@ -112,6 +113,29 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                 # Delete all output disks
                 self._delete_output_disks(disk_ids)
 
+    def report_failed_test_cases(
+        self,
+        test_cases: list[TestCase],
+        exception: Exception,
+        instance: Ycp.Instance | None = None
+    ):
+        if self._results_processor is None:
+            raise exception
+        for test_case in test_cases:
+            compute_node = instance and instance.compute_node or "FailedToGetInstance"
+            compute_node_id = instance and instance.id or "FailedToGetInstanceId"
+            self._results_processor.publish_test_report_base(
+                compute_node,
+                compute_node_id,
+                disk_size=test_case.disk_size,
+                disk_type=test_case.disk_type,
+                disk_bs=test_case.disk_blocksize,
+                extra_params={},
+                test_case_name=f'{self._args.zone_id}_{test_case.test_case_name}',
+                error=exception,
+            )
+        raise exception
+
     def run(self, profiler: common.Profiler) -> None:
         self._initialize_run(
             profiler,
@@ -123,7 +147,12 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
         test_cases = generate_test_cases(self._args.test_suite,
                                          self._cluster.name)
 
-        with self._instance_policy.obtain() as instance:
+        with self.instance_policy_obtained(
+            lambda err: self.report_failed_test_cases(
+                test_cases,
+                err,
+            ),
+        ) as instance:
             try:
                 # Copy verify-test binary to instance
                 _logger.info(f'Copying <path={self._args.verify_test}> to'
@@ -140,19 +169,6 @@ class AcceptanceTestRunner(BaseAcceptanceTestRunner):
                 _logger.info(f'Generated <len={len(test_cases)}> test cases'
                              f' for test suite <name={self._args.test_suite}>')
             except Exception as e:
-                if self._results_processor is None:
-                    raise e
-                for test_case in test_cases:
-                    self._results_processor.publish_test_report_base(
-                        instance.compute_node,
-                        instance.id,
-                        disk_size=test_case.disk_size,
-                        disk_type=test_case.disk_type,
-                        disk_bs=test_case.disk_blocksize,
-                        extra_params={},
-                        test_case_name=f'{self._args.zone_id}_{test_case.test_case_name}',
-                        error=e,
-                    )
-                raise e
+                self.report_failed_test_cases(test_cases, e, instance)
             for test_case in test_cases:
                 self._run_single_testcase(instance, test_case)
