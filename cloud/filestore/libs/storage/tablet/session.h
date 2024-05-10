@@ -8,6 +8,7 @@
 #include <library/cpp/actors/core/actorid.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_multi_map.h>
 #include <util/generic/intrlist.h>
@@ -54,9 +55,7 @@ using TSessionLockMultiMap = THashMultiMap<ui64, TSessionLock*>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDupCacheEntry
-    : public TIntrusiveListItem<TDupCacheEntry>
-    , public NProto::TDupCacheEntry
+struct TDupCacheEntry: NProto::TDupCacheEntry
 {
     bool Commited = false;
 
@@ -66,7 +65,7 @@ struct TDupCacheEntry
     {}
 };
 
-using TDupCacheEntryList = TIntrusiveListWithAutoDelete<TDupCacheEntry, TDelete>;
+using TDupCacheEntryList = TDeque<TDupCacheEntry>;
 using TDupCacheEntryMap = THashMap<ui64, TDupCacheEntry*>;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -84,6 +83,7 @@ struct TSession
     : public TIntrusiveListItem<TSession>
     , public NProto::TSession
 {
+    // TODO: change visibility of the stuff below to private
     TSessionHandleList Handles;
     TSessionLockList Locks;
 
@@ -93,11 +93,12 @@ struct TSession
     ui32 LastEvent = 0;
     bool NotifyEvents = false;
 
+    TSubSessions SubSessions;
+
+private:
     ui64 LastDupCacheEntryId = 1;
     TDupCacheEntryList DupCacheEntries;
     TDupCacheEntryMap DupCache;
-
-    TSubSessions SubSessions;
 
 public:
     TSession(const NProto::TSession& proto)
@@ -147,6 +148,11 @@ public:
         return SubSessions.GetSubSessions();
     }
 
+    ui64 GenerateDupCacheEntryId()
+    {
+        return LastDupCacheEntryId++;
+    }
+
     void LoadDupCacheEntry(NProto::TDupCacheEntry entry)
     {
         LastDupCacheEntryId = Max(LastDupCacheEntryId, entry.GetEntryId());
@@ -172,10 +178,10 @@ public:
         Y_ABORT_UNLESS(proto.GetRequestId());
         Y_ABORT_UNLESS(proto.GetEntryId());
 
-        DupCacheEntries.PushBack(new TDupCacheEntry(std::move(proto), commited));
+        DupCacheEntries.emplace_back(std::move(proto), commited);
 
-        auto entry = DupCacheEntries.Back();
-        auto [_, inserted] = DupCache.emplace(entry->GetRequestId(), entry);
+        auto& entry = DupCacheEntries.back();
+        auto [_, inserted] = DupCache.emplace(entry.GetRequestId(), &entry);
         Y_ABORT_UNLESS(inserted);
     }
 
@@ -188,14 +194,15 @@ public:
 
     ui64 PopDupCacheEntry(ui64 maxEntries)
     {
-        if (DupCacheEntries.Size() <= maxEntries) {
+        if (DupCacheEntries.size() <= maxEntries) {
             return 0;
         }
 
-        std::unique_ptr<TDupCacheEntry> entry(DupCacheEntries.PopFront());
-        DupCache.erase(entry->GetRequestId());
+        auto entry = DupCacheEntries.front();
+        DupCache.erase(entry.GetRequestId());
+        DupCacheEntries.pop_front();
 
-        return entry->GetEntryId();
+        return entry.GetEntryId();
     }
 
     ui64 GetSessionSeqNo() const
