@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+import "cloud/blockstore/public/api/protos/endpoints.proto";
+
+import "google/api/annotations.proto";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/grpc";
+
+////////////////////////////////////////////////////////////////////////////////
+// The NBS endpoint proxy definition.
+
+service TBlockStoreEndpointProxy
+{
+    rpc StartProxyEndpoint(TStartProxyEndpointRequest) returns (TStartProxyEndpointResponse) {
+        option (google.api.http) = {
+            post: "/start_proxy_endpoint"
+            body: "*"
+        };
+    }
+
+    rpc StopProxyEndpoint(TStopProxyEndpointRequest) returns (TStopProxyEndpointResponse) {
+        option (google.api.http) = {
+            post: "/stop_proxy_endpoint"
+            body: "*"
+        };
+    }
+}

@@ -6,6 +6,7 @@ INCLUDE_TAGS(GO_PROTO)
 EXCLUDE_TAGS(JAVA_PROTO)
 
 SRCS(
+    endpoint_proxy.proto
     service.proto
 )
 
