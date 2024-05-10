@@ -1153,7 +1153,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            response->Error.GetCode(),
+            response->Error.GetMessage());
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -2813,7 +2816,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto response = tablet.FlushBytes();
-        UNIT_ASSERT(response->Error.GetCode() == S_ALREADY);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_FALSE,
+            response->Error.GetCode(),
+            response->Error.GetMessage());
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -5164,17 +5170,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         });
     }
 
-    TABLET_TEST(CleanupShouldNotInterfereWithCollectGarbage)
+    TABLET_TEST(ShouldRejectBlobIndexOpsWithProperErrorCodeIfAnotherOpIsRunning)
     {
         const auto block = tabletConfig.BlockSize;
-        tabletConfig.BlockCount = 1'000'000;
 
         NProto::TStorageConfig storageConfig;
-
-        storageConfig.SetCompactionThreshold(999'999);
-        storageConfig.SetCleanupThreshold(999'999);
-        storageConfig.SetCollectGarbageThreshold(1_GB);
-
+        storageConfig.SetWriteBlobThreshold(2 * block);
         TTestEnv env({}, std::move(storageConfig));
 
         env.CreateSubDomain("nfs");
@@ -5190,6 +5191,110 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, 256_KB, '0');
+
+        ui32 rangeId = GetMixedRangeIndex(id, 0);
+        tablet.SendCompactionRequest(rangeId);
+        tablet.SendCleanupRequest(rangeId);
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, 256_KB, '0');
+        tablet.SendCleanupRequest(rangeId);
+        tablet.SendCompactionRequest(rangeId);
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, block, '0');
+        tablet.SendFlushRequest();
+        tablet.SendFlushBytesRequest();
+
+        {
+            auto response = tablet.RecvFlushResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvFlushBytesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.WriteData(handle, 0, 1_KB, '0');
+        tablet.SendFlushBytesRequest();
+        tablet.SendCompactionRequest(rangeId);
+        tablet.SendCleanupRequest(rangeId);
+
+        {
+            auto response = tablet.RecvFlushBytesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
+    TABLET_TEST(CleanupShouldNotInterfereWithCollectGarbage)
+    {
+        const auto block = tabletConfig.BlockSize;
+        tabletConfig.BlockCount = 1'000'000;
+
+        NProto::TStorageConfig storageConfig;
+
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+
         auto handle = CreateHandle(tablet, id);
 
         for (int i = 0; i < 2; i++) {
