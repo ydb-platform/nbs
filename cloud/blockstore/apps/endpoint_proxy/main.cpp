@@ -1,4 +1,4 @@
-#include <cloud/blockstore/libs/endpoint_proxy/bootstrap.h>
+#include <cloud/blockstore/libs/endpoint_proxy/server/bootstrap.h>
 
 #include <cloud/storage/core/libs/daemon/app.h>
 

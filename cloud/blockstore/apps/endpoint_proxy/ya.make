@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/endpoint_proxy
+    cloud/blockstore/libs/endpoint_proxy/server
     cloud/storage/core/libs/daemon
 
     library/cpp/getopt
