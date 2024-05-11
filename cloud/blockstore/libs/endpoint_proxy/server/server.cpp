@@ -240,6 +240,8 @@ struct TServer: IServer
             if (Thread) {
                 Thread->Join();
             }
+
+            Server.reset();
         }
     }
 };

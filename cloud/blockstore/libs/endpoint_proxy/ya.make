@@ -1,17 +1,4 @@
-LIBRARY()
-
-SRCS(
-    bootstrap.cpp
-    options.cpp
-    server.cpp
+RECURSE(
+    client
+    server
 )
-
-PEERDIR(
-    cloud/blockstore/libs/daemon/common
-
-    library/cpp/getopt/small
-
-    contrib/ydb/library/actors/util
-)
-
-END()
