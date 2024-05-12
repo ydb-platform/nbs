@@ -28,7 +28,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldKeepItemsSorted)
     {
-        TCleanupQueue queue;
+        TCleanupQueue queue(1024);
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldTrimQueue)
     {
-        TCleanupQueue queue;
+        TCleanupQueue queue(1024);
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
