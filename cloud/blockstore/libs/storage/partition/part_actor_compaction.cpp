@@ -1048,7 +1048,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     const auto blockCount = State->GetMixedBlocksCount()
-        + State->GetMergedBlocksCount();
+        + State->GetMergedBlocksCount() - State->GetCleanupQueue().GetQueueBlocks();
     const auto diskGarbage =
         GetPercentage(State->GetUsedBlocksCount(), blockCount);
 

@@ -35,10 +35,13 @@ private:
     struct TImpl;
     std::unique_ptr<TImpl> Impl;
 
+    const ui64 BlockSize;
+
     ui64 QueueBytes = 0;
+    ui64 QueueBlocks = 0;
 
 public:
-    TCleanupQueue();
+    TCleanupQueue(ui64 blockSize);
     ~TCleanupQueue();
 
     //
@@ -57,6 +60,7 @@ public:
         size_t limit = 100) const;
 
     ui64 GetQueueBytes() const;
+    ui64 GetQueueBlocks() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
