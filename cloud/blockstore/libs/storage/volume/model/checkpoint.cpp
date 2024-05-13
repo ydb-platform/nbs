@@ -415,7 +415,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     };
 
     if (checkpointId.empty()) {
-        return makeErrorInvalid("Checkpoint id should not be empty");
+        return MakeError(E_ARGUMENT, "Checkpoint id should not be empty");
     }
 
     if (checkpointType != ECheckpointType::Normal &&
@@ -425,7 +425,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
         TString message = TStringBuilder()
             << requestType
             << " request makes sense for normal checkpoints only";
-        return makeErrorInvalid(std::move(message));
+        return MakeError(E_ARGUMENT, "Checkpoint id should not be empty");
     }
 
     const auto actualCheckpointType = GetCheckpointType(checkpointId);
@@ -506,7 +506,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     }
     STORAGE_CHECK_PRECONDITION(false);
     return MakeError(
-        E_PRECONDITION_FAILED,
+        E_INVALID_STATE,
         "Checkpoint validation should never reach this line");
 }
 

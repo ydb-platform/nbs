@@ -870,29 +870,29 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         }
 
         executeRequests(ECheckpointType::Light, TVector<TStep>{
-            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, E_ARGUMENT},
             {ECheckpointRequestType::Create, std::nullopt},
-            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, E_ARGUMENT},
             {ECheckpointRequestType::Delete, std::nullopt},
-            {ECheckpointRequestType::DeleteData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::DeleteData, E_ARGUMENT},
         });
 
         executeRequests(ECheckpointType::Light, TVector<TStep>{
-            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::CreateWithoutData, E_ARGUMENT},
             {ECheckpointRequestType::Create, std::nullopt},
-            {ECheckpointRequestType::CreateWithoutData, E_PRECONDITION_FAILED},
+            {ECheckpointRequestType::CreateWithoutData, E_ARGUMENT},
         });
 
         executeRequest(
             "",
             ECheckpointRequestType::Create,
             ECheckpointType::Normal,
-            E_PRECONDITION_FAILED);
+            E_ARGUMENT);
         executeRequest(
             "",
             ECheckpointRequestType::Create,
             ECheckpointType::Light,
-            E_PRECONDITION_FAILED);
+            E_ARGUMENT);
     }
 }
 
