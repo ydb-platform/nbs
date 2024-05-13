@@ -21,7 +21,7 @@ def get_template(name: str) -> Template:
 
 
 class EternalTestHelper:
-    _VM_PREFIX = "%s-test-vm-%s"
+    _VM_PREFIX = '%s-test-vm-%s'
     _DISK_NAME = '%s-test-disk-%s-%s'
     _FS_NAME = '%s-test-fs-%s'
 
@@ -632,7 +632,6 @@ class EternalTestHelper:
 
         self.logger.info("Creating and configuring fio vms")
         instances = self.create_and_configure_vms()
-        # instances = self.find_instances()
         self._run_fio_on_instances(instances)
 
     def handle_rerun_fio(self):

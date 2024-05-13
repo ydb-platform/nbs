@@ -155,7 +155,6 @@ class FioSequentialConfig:
 
     def construct_bash_command(self, fio_bin: str, mount_path: str) -> str:
         cmd = ' && '.join([' '.join(load.get_index_fio_cmd(fio_bin, mount_path)) for load in self.loads])
-        print(cmd)
         return f'while true ; do {cmd} || break ; done'
 
 
