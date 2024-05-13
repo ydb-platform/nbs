@@ -91,8 +91,8 @@ struct THandlerFactory
         { "updatediskregistryconfig", NewUpdateDiskRegistryConfigCommand },
         { "writeblocks", NewWriteBlocksCommand },
         { "zeroblocks", NewZeroBlocksCommand },
-        { "startproxyendpoint", NewStartProxyEndpointCommand},
-        { "stopproxyendpoint", NewStopProxyEndpointCommand},
+        { "startproxyendpoint", NewStartProxyEndpointCommand },
+        { "stopproxyendpoint", NewStopProxyEndpointCommand },
     };
 };
 

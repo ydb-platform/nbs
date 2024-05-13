@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStartProxyEndpointCommand final
-    : public TCommand
+class TStartProxyEndpointCommand final: public TCommand
 {
 private:
     TString UnixSocketPath;
@@ -94,8 +93,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStopProxyEndpointCommand final
-    : public TCommand
+class TStopProxyEndpointCommand final: public TCommand
 {
 private:
     TString UnixSocketPath;

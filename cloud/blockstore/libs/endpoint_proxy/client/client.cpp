@@ -68,8 +68,7 @@ struct TRequestContextImpl: TRequestContextBase
             channelCredentials
         ))
         , Promise(NThreading::NewPromise<TResponse>())
-    {
-    }
+    {}
 };
 
 struct TStartRequestContext: TRequestContextImpl<
