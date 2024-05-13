@@ -1620,22 +1620,26 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
-        ui32 trimmedBufferCount = 0;
-        auto trimVoidBuffers = [&](TAutoPtr<IEventHandle>& event)
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        client.WriteBlocks(dirtyBlocks, 100);
+
+        // Read 16 blocks.
+        ui32 voidBlockCount = 0;
+        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvReadDeviceBlocksResponse)
             {
                 auto& msg =
                     *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
-                TrimVoidBuffers(msg.Record.MutableBlocks());
                 auto stat = CountVoidBuffers(msg.Record.GetBlocks());
-                trimmedBufferCount += stat.VoidBlockCount;
+                voidBlockCount += stat.VoidBlockCount;
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
-        runtime.SetObserverFunc(trimVoidBuffers);
+        runtime.SetObserverFunc(countVoidBlocks);
 
         auto request = client.CreateReadBlocksRequest(
             TBlockRange64::WithLength(0, blockCount));
@@ -1644,13 +1648,21 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         client.SendRequest(client.GetActorId(), std::move(request));
 
         auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount - dirtyBlocks.Size(),
+            voidBlockCount);
 
         const auto& blocks = response->Record.GetBlocks();
-        UNIT_ASSERT_VALUES_EQUAL(blockCount, trimmedBufferCount);
         UNIT_ASSERT_VALUES_EQUAL(blockCount, blocks.BuffersSize());
         UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+        size_t i = 0;
         for (const auto& buffer: blocks.GetBuffers()) {
-            UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 0), buffer);
+            if (dirtyBlocks.Contains(i)) {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 100), buffer);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 0), buffer);
+            }
+            ++i;
         }
     }
 
@@ -1661,22 +1673,26 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         TTestEnv env(runtime);
         TPartitionClient client(runtime, env.ActorId);
 
-        ui32 trimmedBufferCount = 0;
-        auto trimVoidBuffers = [&](TAutoPtr<IEventHandle>& event)
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        client.WriteBlocks(dirtyBlocks, 100);
+
+        // Read 16 blocks.
+        ui32 voidBlockCount = 0;
+        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvReadDeviceBlocksResponse)
             {
                 auto& msg =
                     *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
-                TrimVoidBuffers(msg.Record.MutableBlocks());
                 auto stat = CountVoidBuffers(msg.Record.GetBlocks());
-                trimmedBufferCount += stat.VoidBlockCount;
+                voidBlockCount += stat.VoidBlockCount;
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
         };
-        runtime.SetObserverFunc(trimVoidBuffers);
+        runtime.SetObserverFunc(countVoidBlocks);
 
         // Create local buffer and fill with some data
         const size_t dataSize = blockCount * DefaultBlockSize;
@@ -1692,9 +1708,26 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         auto response = client.RecvReadBlocksLocalResponse();
 
-        UNIT_ASSERT_VALUES_EQUAL(blockCount, trimmedBufferCount);
-        // Check that the read data contains only zeros.
-        UNIT_ASSERT_VALUES_EQUAL(TString(dataSize, 0), buffer);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount - dirtyBlocks.Size(),
+            voidBlockCount);
+
+        size_t i = 0;
+        auto sgListOrError = SgListNormalize(sgList, DefaultBlockSize);
+        UNIT_ASSERT(!HasError(sgListOrError));
+        auto blocks = sgListOrError.ExtractResult();
+        for (const auto& buffer: blocks) {
+            if (dirtyBlocks.Contains(i)) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 100),
+                    buffer.AsStringBuf());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 0),
+                    buffer.AsStringBuf());
+            }
+            ++i;
+        }
     }
 }
 
