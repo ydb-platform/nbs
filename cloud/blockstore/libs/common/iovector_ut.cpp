@@ -174,9 +174,9 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
                 i < 8 ? 0 : BlockSize,
                 buf.size());
         }
-        TVoidBuffersStat stat = CountVoidBuffers(ioVector);
+        TCopyStats stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(10, stat.TotalBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(8, stat.VoidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, stat.NonVoidBlockCount);
     }
 
     Y_UNIT_TEST(ShouldTrimVoidBuffers)
@@ -195,9 +195,9 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
         UNIT_ASSERT_VALUES_EQUAL(buffer.size(), bytesCopied);
 
         // Check that no void buffers have been created.
-        TVoidBuffersStat stat = CountVoidBuffers(ioVector);
+        TCopyStats stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(10, stat.TotalBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, stat.VoidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(blockCount, stat.NonVoidBlockCount);
 
         // Remove void buffers.
         TrimVoidBuffers(&ioVector);
@@ -206,8 +206,8 @@ Y_UNIT_TEST_SUITE(TIOVectorTest)
             UNIT_ASSERT_VALUES_EQUAL(i < 8 ? 0 : BlockSize, buf.size());
         }
         stat = CountVoidBuffers(ioVector);
+        UNIT_ASSERT_VALUES_EQUAL(10, stat.TotalBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(8, stat.VoidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, stat.NonVoidBlockCount);
     }
 }
 

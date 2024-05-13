@@ -9,9 +9,9 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVoidBuffersStat
+struct TCopyStats
 {
-    ui32 NonVoidBlockCount = 0;
+    ui32 TotalBlockCount = 0;
     ui32 VoidBlockCount = 0;
 };
 
@@ -25,7 +25,7 @@ TResultOrError<TSgList>
 GetSgList(const NProto::TReadBlocksResponse& response, ui32 expectedBlockSize);
 
 // Copy all data from iov to sglist. Skip first offsetInBlocks in sglist.
-TVoidBuffersStat CopyToSgList(
+TCopyStats CopyToSgList(
     const NProto::TIOVector& src,
     const TSgList& dst,
     ui64 offsetInBlocks,
@@ -43,6 +43,6 @@ size_t CopyAndTrimVoidBuffers(
     NProto::TIOVector* dst);
 
 // Calculate how many buffers were void and how many were not.
-[[nodiscard]] TVoidBuffersStat CountVoidBuffers(const NProto::TIOVector& iov);
+[[nodiscard]] TCopyStats CountVoidBuffers(const NProto::TIOVector& iov);
 
 }   // namespace NCloud::NBlockStore

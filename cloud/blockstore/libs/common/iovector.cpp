@@ -87,13 +87,13 @@ TResultOrError<TSgList> GetSgList(
     return sglist;
 }
 
-TVoidBuffersStat CopyToSgList(
+TCopyStats CopyToSgList(
     const NProto::TIOVector& iov,
     const TSgList& sglist,
     ui64 offsetInBlocks,
     ui32 blockSize)
 {
-    TVoidBuffersStat result;
+    TCopyStats result;
 
     ui64 offsetInBytes = offsetInBlocks * blockSize;
 
@@ -126,7 +126,6 @@ TVoidBuffersStat CopyToSgList(
                 ++result.VoidBlockCount;
             } else {
                 memcpy(destBuff, src.data(), blockSize);
-                ++result.NonVoidBlockCount;
             }
         }
 
@@ -137,6 +136,8 @@ TVoidBuffersStat CopyToSgList(
             offsetInBytes = 0;
         }
     }
+
+    result.TotalBlockCount = iov.GetBuffers().size();
     return result;
 }
 
@@ -184,14 +185,13 @@ size_t CopyAndTrimVoidBuffers(
     return bytesCount;
 }
 
-TVoidBuffersStat CountVoidBuffers(const NProto::TIOVector& iov)
+TCopyStats CountVoidBuffers(const NProto::TIOVector& iov)
 {
-    TVoidBuffersStat result;
+    TCopyStats result;
+    result.TotalBlockCount = iov.GetBuffers().size();
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer.Empty()) {
             ++result.VoidBlockCount;
-        } else {
-            ++result.NonVoidBlockCount;
         }
     }
     return result;
