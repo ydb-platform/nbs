@@ -36,23 +36,19 @@ FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
 FILESTORE_SERVER_BIN="cloud/filestore/apps/server/filestore-server"
 FILESTORE_VHOST_BIN="cloud/filestore/apps/vhost/filestore-vhost"
 
-if $SYMLINK_BINARIES; then
-    # If SYMLINK_BINARIES is set to false, it is assumed that binaries are already
-    # in $BIN_DIR. Otherwise current script will try to locate proper binaries and
-    # add symlinks from $BIN_DIR to them.
 
-    # create symlinks
-    for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN; do
-        ln -svf $BUILD_ROOT/$file $BIN_DIR/
-    done
-else
-    for file in $BUILD_FILES; do
-        basename=`basename $file`
-        if [ ! -f $BIN_DIR/$basename ]; then
-            echo "WARNING: $BIN_DIR/$basename not found"
-        fi
-    done
-fi
+# create symlinks
+for file in $YDBD_BIN $FILESTORE_CLIENT_BIN $FILESTORE_SERVER_BIN $FILESTORE_VHOST_BIN; do
+    ln -svf $BUILD_ROOT/$file $BIN_DIR/
+done
+
+for file in $BUILD_FILES; do
+    basename=`basename $file`
+    if [ ! -f $BIN_DIR/$basename ]; then
+        echo "WARNING: $BIN_DIR/$basename not found"
+    fi
+done
+
 
 DATA_DIRS=" \
     certs \

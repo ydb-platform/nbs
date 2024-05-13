@@ -16,7 +16,7 @@ usermod -a -G kvm $USER
 To build run the following command from the repository root folder:
 
 ```bash
-./ya make cloud/filestore/buildall -r
+./ya make -r -D FORCE_STATIC_LINKING=yes -- cloud/filestore/buildall
 ```
 
 ### 2. Configuring
@@ -28,7 +28,7 @@ cd cloud/filestore/bin
 
 ### 3. Running services
 
-- to avoid dynamic link errors you need to set `LD_LIBRARY_PATH` to include all necessary libraries:
+- to avoid dynamic link errors (in case you built without `-D FORCE_STATIC_LINKING=yes`) you need to set `LD_LIBRARY_PATH` to include all necessary libraries:
 ```bash
 export REPO_ROOT=<path-to-repo-root>
 
