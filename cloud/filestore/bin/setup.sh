@@ -23,8 +23,6 @@ generate_cert() {
     rm $dir/$name.csr $dir/$fallback_name.csr
 }
 
-SYMLINK_BINARIES=${SYMLINK_BINARIES:-true}
-
 REPO_DIR=`find_repo_dir`
 BIN_DIR=`find_bin_dir`
 
