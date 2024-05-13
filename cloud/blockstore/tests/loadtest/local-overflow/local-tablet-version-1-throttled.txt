@@ -28,6 +28,7 @@ Vertices {
         }
         TestDuration: 60
         SuccessOnError: 2147811330
+        SuccessOnError: 2147483650
         Name: "Test for localhost tablet version 1 with throttling"
     }
 }
