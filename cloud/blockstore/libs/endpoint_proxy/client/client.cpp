@@ -169,10 +169,8 @@ struct TEndpointProxyClient: IEndpointProxyClient
         requestContext->Reader->Finish(
             &requestContext->Response,
             &requestContext->Status,
-            &*requestContext
+            requestContext.release()
         );
-
-        requestContext.release();
 
         return promise;
     }
@@ -234,7 +232,7 @@ struct TEndpointProxyClient: IEndpointProxyClient
 
     void Start() override
     {
-        Thread = SystemThreadFactory()->Run([=] () {
+        Thread = SystemThreadFactory()->Run([this] () {
             Loop();
         });
     }
