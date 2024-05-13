@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
@@ -69,16 +71,21 @@ func (m *s3Metrics) StatCall(
 				bucket,
 				key,
 			)
-
 			errorCounter.Inc()
 
-			if errors.Is(*err, context.DeadlineExceeded) {
-				timeoutCounter.Inc()
+			var awsError awserr.Error
+			if errors.As(*err, &awsError) &&
+				awsError.Code() == request.CanceledErrorCode {
+
+				if ctx.Err() == context.DeadlineExceeded {
+					timeoutCounter.Inc()
+				} else {
+					canceledCounter.Inc()
+				}
+			} else {
+				logging.Debug(ctx, "failed to process aws go sdk error %v", err)
 			}
 
-			if errors.Is(*err, context.Canceled) {
-				canceledCounter.Inc()
-			}
 			return
 		}
 
