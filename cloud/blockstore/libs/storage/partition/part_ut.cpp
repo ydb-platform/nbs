@@ -11073,6 +11073,24 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, compactionByBlobCount);
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // no more compactions generated because blobs in cleanup queue are
+        // considered to be already removed
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionByBlobCount);
     }
 
     Y_UNIT_TEST(ShouldRunCompactionIfBlocksCountIsGreaterThanThreshold)
@@ -11100,6 +11118,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         compactionRequestObserved = true;
                         break;
+                    }
+                    case TEvPartitionPrivate::EvCleanupRequest: {
+                        return true;
                     }
                     case TEvStatsService::EvVolumePartCounters: {
                         auto* msg =
@@ -11133,7 +11154,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // garbage block count is less than 20%  => no compaction
         UNIT_ASSERT(!compactionRequestObserved);
 
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < 2; ++i) {
             partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
         }
 
@@ -11152,7 +11173,25 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
         }
 
-        UNIT_ASSERT(0 < compactionByBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionByBlockCount);
+
+        // wait for background operations completion
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // no more compactions generated because blocks in cleanup queue are
+        // considered to be already removed
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionByBlockCount);
     }
 }
 
