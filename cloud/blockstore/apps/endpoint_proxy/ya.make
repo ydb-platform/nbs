@@ -1,4 +1,4 @@
-PROGRAM(nbs-endpoint-proxy)
+PROGRAM(blockstore-endpoint-proxy)
 
 ALLOCATOR(TCMALLOC_TC)
 

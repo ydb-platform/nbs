@@ -248,6 +248,9 @@ message TStartProxyEndpointResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Selected internal socket used for communication with the kernel.
+    string InternalUnixSocketPath = 2;
 }
 
 message TStopProxyEndpointRequest
@@ -263,4 +266,10 @@ message TStopProxyEndpointResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Selected internal socket used for communication with the kernel.
+    string InternalUnixSocketPath = 2;
+
+    // The device associated with this endpoint.
+    string NbdDevice = 3;
 }

@@ -65,7 +65,7 @@ protected:
             return false;
         }
 
-        output << "OK" << Endl;
+        output << result.DebugString() << Endl;
         return true;
     }
 
@@ -140,7 +140,7 @@ protected:
             return false;
         }
 
-        output << "OK" << Endl;
+        output << result.DebugString() << Endl;
         return true;
     }
 
