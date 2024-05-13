@@ -57,7 +57,9 @@ var newRegistryOnce sync.Once
 
 func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
 	registry := prometheus.NewRegistry(
-		prometheus.NewRegistryOpts().SetNameSanitizer(sanitizeName),
+		prometheus.NewRegistryOpts().SetNameSanitizer(
+			sanitizeName,
+		).AddTags(map[string]string{"component": path}),
 	)
 	allGatherers.Add(registry)
 	newRegistryOnce.Do(
