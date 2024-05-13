@@ -423,7 +423,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
          requestType == ECheckpointRequestType::CreateWithoutData))
     {
         TString message = TStringBuilder()
-            << ToString(requestType)
+            << requestType
             << " request makes sense for normal checkpoints only";
         return makeErrorInvalid(std::move(message));
     }
@@ -433,7 +433,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     if (actualCheckpointType && actualCheckpointType != checkpointType) {
         TString message = TStringBuilder()
             << "Checkpoint exists and has another type "
-            << ToString(*actualCheckpointType);
+            << *actualCheckpointType;
         return makeErrorInvalid(std::move(message));
     }
 
@@ -454,7 +454,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                 return makeErrorInvalid("Checkpoint does not exist");
             }
         }
-    } else if (checkpointExists && checkpointDataPresent) {
+    }
+    if (checkpointExists && checkpointDataPresent) {
         // Checkpoint exists and has data.
         switch (requestType) {
             case ECheckpointRequestType::Create: {
@@ -468,7 +469,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                 return makeErrorInvalid("Checkpoint exists and has data");
             }
         }
-    } else if (checkpointExists && !checkpointDataPresent) {
+    }
+    if (checkpointExists && !checkpointDataPresent) {
         // Checkpoint exists and has no data.
         switch (requestType) {
             case ECheckpointRequestType::Create: {
@@ -488,7 +490,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                 return makeErrorAlready("Checkpoint exists");
             }
         }
-    } else if (!checkpointExists && checkpointDeleted) {
+    }
+    if (!checkpointExists && checkpointDeleted) {
         // Checkpoint was deleted.
         switch (requestType) {
             case ECheckpointRequestType::Create:
@@ -500,12 +503,11 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                 return makeErrorAlready("Checkpoint is already deleted");
             }
         }
-    } else {
-        STORAGE_CHECK_PRECONDITION(false);
-        return MakeError(
-            E_PRECONDITION_FAILED,
-            "Checkpoint validation should never reach this line");
     }
+    STORAGE_CHECK_PRECONDITION(false);
+    return MakeError(
+        E_PRECONDITION_FAILED,
+        "Checkpoint validation should never reach this line");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
