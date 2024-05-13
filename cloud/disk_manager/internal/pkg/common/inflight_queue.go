@@ -92,7 +92,8 @@ func (q *InflightQueue) Milestone() Milestone {
 	return q.milestone
 }
 
-// It is safe to use milestone hint only when the queue is empty.
+// It is safe to use milestone hint only when
+// there are no inflight items in the queue.
 // If this method is called with some value v,
 // values less then v should not be added to the inflight queue anymore.
 func (q *InflightQueue) UpdateMilestoneHint(value uint32) {
@@ -100,6 +101,7 @@ func (q *InflightQueue) UpdateMilestoneHint(value uint32) {
 	defer q.mutex.Unlock()
 	q.milestoneHint = value
 	if len(q.items) == 0 && q.milestoneHint > q.milestone.Value {
+		// It is safe to update milestone here because the queue is empty.
 		q.milestone.Value = q.milestoneHint
 	}
 }
@@ -172,6 +174,8 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 		lastItemValue := q.items[len(q.items)-1].value
 		newMilestoneValue = lastItemValue + 1
 		if q.milestoneHint > newMilestoneValue {
+			// It is safe to update milestone here because
+			// all items in the queue are already processed.
 			newMilestoneValue = q.milestoneHint
 		}
 	} else {
