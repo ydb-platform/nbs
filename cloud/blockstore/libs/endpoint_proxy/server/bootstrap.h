@@ -13,7 +13,7 @@ class TBootstrap
 {
 private:
     TOptions Options;
-    IServerPtr Server;
+    IEndpointProxyServerPtr Server;
     TProgramShouldContinue ShouldContinue;
 
 public:
