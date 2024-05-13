@@ -92,8 +92,6 @@ func (q *InflightQueue) Milestone() Milestone {
 	return q.milestone
 }
 
-// It is safe to use milestone hint only when
-// there are no inflight items in the queue.
 // If this method is called with some value v,
 // values less then v should not be added to the inflight queue anymore.
 func (q *InflightQueue) UpdateMilestoneHint(value uint32) {
