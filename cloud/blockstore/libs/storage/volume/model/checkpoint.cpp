@@ -425,7 +425,7 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
         TString message = TStringBuilder()
             << requestType
             << " request makes sense for normal checkpoints only";
-        return MakeError(E_ARGUMENT, "Checkpoint id should not be empty");
+        return MakeError(E_ARGUMENT, std::move(message));
     }
 
     const auto actualCheckpointType = GetCheckpointType(checkpointId);
