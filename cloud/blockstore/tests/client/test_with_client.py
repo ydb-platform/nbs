@@ -2,10 +2,13 @@ import json
 import logging
 import os
 import random
+import subprocess
 import tempfile
+import threading
 import time
 
 import yatest.common as common
+import yatest.common.network as network
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
@@ -42,8 +45,6 @@ from contrib.ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
 
 from google.protobuf import text_format
 
-import subprocess
-
 
 BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 WRITEREQ_FILE = "writereq.bin"
@@ -55,6 +56,22 @@ CHANGED_BLOCKS_COUNT = 1234
 
 NRD_BLOCKS_COUNT = 1024**3 // BLOCK_SIZE
 
+
+################################################################################
+# proc utils
+
+def run_async(job, stderr, stdout):
+    def run():
+        with open(os.path.join(common.output_path(), stderr), "w") as err:
+            with open(os.path.join(common.output_path(), stdout), "w") as out:
+                subprocess.call(job, stderr=err, stdout=out)
+    t = threading.Thread(target=run)
+    t.setDaemon(True)
+    t.start()
+
+
+################################################################################
+# result comparison utils
 
 def files_equal(path_0, path_1, cb=None):
     file_0 = open(path_0, "rb")
@@ -118,6 +135,9 @@ def file_parse_as_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
 
+
+################################################################################
+# client cmd helpers
 
 def list_placement_groups(env, run):
     clear_file(env.results_file)
@@ -230,6 +250,9 @@ def send_two_node_nameservice_config(env):
     update_cms_config(env.kikimr_cluster.client, nameservice_config)
 
 
+################################################################################
+# env setup/tear_down
+
 def setup(with_nrd=False, nrd_device_count=1, rack='', storage_config_patches=None):
     server = TServerAppConfig()
     server.ServerConfig.CopyFrom(TServerConfig())
@@ -310,6 +333,9 @@ def random_writes(run, block_count=BLOCKS_COUNT):
             "--input", WRITEREQ_FILE,
             "--start-index", str(start_index))
 
+
+################################################################################
+# test cases
 
 def test_successive_remounts_and_writes():
     env, run = setup()
@@ -921,4 +947,40 @@ def test_enabled_configs_dispatcher():
 
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)
+    return ret
+
+
+def test_endpoint_proxy():
+    env, run = setup()
+
+    endpoint_proxy_path = common.binary_path(
+        "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
+
+    port_manager = network.PortManager()
+    port = port_manager.get_port()
+    sockets_dir = tempfile.TemporaryDirectory()
+
+    run_async(
+        [
+            endpoint_proxy_path, "--server-port", str(port),
+            "--sockets-dir", sockets_dir.name
+        ],
+        "endpoint-proxy-%s.out" % port,
+        "endpoint-proxy-%s.err" % port
+    )
+
+    run("startproxyendpoint",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port),
+        "--socket", "TODO-nbs-socket",
+        "--nbd-device", "TODO-nbd-device")
+
+    run("stopproxyendpoint",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port),
+        "--socket", "TODO-nbs-socket")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    sockets_dir.cleanup()
     return ret

@@ -196,6 +196,7 @@ struct TServer: IEndpointProxyServer
         requestContext->Done = true;
 
         auto& r = requestContext->Response;
+        r.SetInternalUnixSocketPath("TODO-internal-socket");
         requestContext->Writer.Finish(
             r,
             grpc::Status::OK,
@@ -213,6 +214,8 @@ struct TServer: IEndpointProxyServer
         requestContext->Done = true;
 
         auto& r = requestContext->Response;
+        r.SetInternalUnixSocketPath("TODO-internal-socket");
+        r.SetNbdDevice("TODO-nbd-device");
         requestContext->Writer.Finish(
             r,
             grpc::Status::OK,
