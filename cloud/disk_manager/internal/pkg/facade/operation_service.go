@@ -14,7 +14,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func convertOperationErrorToDiskManagerApiFormat(
+func toDiskManagerOperationError(
 	ctx context.Context,
 	result *operation.Operation_Error,
 ) *disk_manager.Operation_Error {
@@ -37,18 +37,18 @@ func convertOperationErrorToDiskManagerApiFormat(
 	// order to be compliant with disk_manager/api.
 	protoMessage, err := proto.Marshal(errorDetail.(proto.Message))
 	if err != nil {
-		logging.Warn(ctx, "failed to marshal error detail: %v", err)
+		logging.Warn(ctx, "failed to marshal error details: %v", err)
 		return defaultDmOperationError
 	}
 
-	var dmErrorDetail disk_manager.ErrorDetails
-	err = proto.Unmarshal(protoMessage, &dmErrorDetail)
+	var dmErrorDetails disk_manager.ErrorDetails
+	err = proto.Unmarshal(protoMessage, &dmErrorDetails)
 	if err != nil {
-		logging.Warn(ctx, "failed to unmarshal error detail: %v", err)
+		logging.Warn(ctx, "failed to unmarshal error details: %v", err)
 		return defaultDmOperationError
 	}
 
-	dmStatusWithDetails, err := dmStatus.WithDetails(&dmErrorDetail)
+	dmStatusWithDetails, err := dmStatus.WithDetails(&dmErrorDetails)
 	if err != nil {
 		logging.Warn(ctx, "failed to attach error details: %v", err)
 		return defaultDmOperationError
@@ -82,7 +82,7 @@ func getOperation(
 
 	switch result := o.Result.(type) {
 	case *operation.Operation_Error:
-		dmOp.Result = convertOperationErrorToDiskManagerApiFormat(ctx, result)
+		dmOp.Result = toDiskManagerOperationError(ctx, result)
 	case *operation.Operation_Response:
 		dmOp.Result = &disk_manager.Operation_Response{
 			Response: result.Response,
