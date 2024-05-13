@@ -27,10 +27,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TString TestConsumer = "test-consumer";
-static const TString TestTopic = "test-topic";
-static const TString TestSource = "test-source";
-static const TString Database = "/Root";
+const TString TestConsumer = "test-consumer";
+const TString TestTopic = "test-topic";
+const TString TestSource = "test-source";
+const TString Database = "/Root";
+const TDuration WaitTimeout = 15s;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -178,23 +179,31 @@ Y_UNIT_TEST_SUITE(TLogbrokerTest)
 
         service->Start();
 
-        const TVector<TMessage> expectedData {
-            { "hello", 42 },
-            { "world", 888 },
-            { "foo", 1000 },
-            { "bar", 1001 },
+        const TVector<TMessage> expectedData{
+            {"hello", 42},
+            {"world", 888},
+            {"foo", 1000},
+            {"bar", 1001},
         };
 
         {
-            auto error = service->Write({ expectedData[0], expectedData[1] }, Now())
-                .GetValueSync();
+            auto future =
+                service->Write({expectedData[0], expectedData[1]}, Now());
+
+            UNIT_ASSERT(future.Wait(WaitTimeout));
+
+            const auto& error = future.GetValue();
 
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
         }
 
         {
-            auto error = service->Write({ expectedData[2], expectedData[3] }, Now())
-                .GetValueSync();
+            auto future =
+                service->Write({expectedData[2], expectedData[3]}, Now());
+
+            UNIT_ASSERT(future.Wait(WaitTimeout));
+
+            const auto& error = future.GetValue();
 
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
         }
@@ -219,9 +228,12 @@ Y_UNIT_TEST_SUITE(TLogbrokerTest)
         auto service = CreateTopicAPIService(config, logging);
         service->Start();
 
-        auto r = service->Write({TMessage { "hello", 42 }}, Now())
-            .GetValueSync();
-        UNIT_ASSERT(HasError(r));
+        auto future = service->Write({TMessage{"hello", 42}}, Now());
+
+        UNIT_ASSERT(future.Wait(WaitTimeout));
+
+        const auto& error = future.GetValue();
+        UNIT_ASSERT(HasError(error));
 
         service->Stop();
     }
