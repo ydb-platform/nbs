@@ -169,6 +169,7 @@ struct TEvNonreplPartitionPrivate
         EvBegin = TBlockStorePrivateEvents::PARTITION_NONREPL_START,
 
         EvUpdateCounters,
+        EvScrubbingNextRange,
         EvReadBlocksCompleted,
         EvWriteBlocksCompleted,
         EvZeroBlocksCompleted,
@@ -189,6 +190,7 @@ struct TEvNonreplPartitionPrivate
         "EvEnd expected to be < TBlockStorePrivateEvents::PARTITION_NONREPL_END");
 
     using TEvUpdateCounters = TResponseEvent<TEmpty, EvUpdateCounters>;
+    using TEvScrubbingNextRange = TResponseEvent<TEmpty, EvScrubbingNextRange>;
     using TEvReadBlocksCompleted = TResponseEvent<TOperationCompleted, EvReadBlocksCompleted>;
     using TEvWriteBlocksCompleted = TResponseEvent<TOperationCompleted, EvWriteBlocksCompleted>;
     using TEvZeroBlocksCompleted = TResponseEvent<TOperationCompleted, EvZeroBlocksCompleted>;

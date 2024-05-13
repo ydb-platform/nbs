@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "checksum_range.h"
 #include "config.h"
 #include "part_nonrepl_events_private.h"
 #include "part_mirror_state.h"
@@ -47,7 +48,8 @@ private:
     ui64 NetworkBytes = 0;
     TDuration CpuUsage;
 
-    TRequestsInProgress<ui64> RequestsInProgress{EAllowedRequests::ReadWrite};
+    TRequestsInProgress<ui64, TBlockRange64> RequestsInProgress{
+        EAllowedRequests::ReadWrite};
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
@@ -56,6 +58,13 @@ private:
     size_t AliveReplicas = 0;
 
     NProto::TError Status;
+
+    bool ScrubbingScheduled = false;
+    ui64 ScrubbingRangeId = 0;
+    TBlockRange64 ScrubbingRange;
+    TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
+    bool WriteIntersectsWithScrubbing = false;
+    ui64 ScrubbingThroughput = 0;
 
 public:
     TMirrorPartitionActor(
@@ -78,7 +87,9 @@ private:
     void KillActors(const NActors::TActorContext& ctx);
     void SetupPartitions(const NActors::TActorContext& ctx);
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
+    void ScheduleScrubbingNextRange(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);
+    void CompareChecksums(const NActors::TActorContext& ctx);
     void ReplyAndDie(const NActors::TActorContext& ctx);
 
 private:
@@ -99,6 +110,18 @@ private:
 
     void HandleUpdateCounters(
         const TEvNonreplPartitionPrivate::TEvUpdateCounters::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScrubbingNextRange(
+        const TEvNonreplPartitionPrivate::TEvScrubbingNextRange::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleChecksumResponse(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleChecksumUndelivery(
+        const TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

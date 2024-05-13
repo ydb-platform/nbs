@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -54,8 +55,15 @@ void TMirrorPartitionActor::MirrorRequest(
         return;
     }
 
+    const auto range = BuildRequestBlockRange(
+        *ev->Get(),
+        State.GetBlockSize());
     const auto requestIdentityKey = ev->Cookie;
-    RequestsInProgress.AddWriteRequest(requestIdentityKey);
+    RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
+
+    if (ScrubbingRange.Overlaps(range)) {
+        WriteIntersectsWithScrubbing = true;
+    }
 
     NCloud::Register<TMirrorRequestActor<TMethod>>(
         ctx,

@@ -21,12 +21,13 @@ TMirrorPartitionState::TMirrorPartitionState(
         TMigrations migrations,
         TVector<TDevices> replicaDevices)
     : Config(std::move(config))
+    , PartConfig(std::move(partConfig))
     , RWClientId(std::move(rwClientId))
     , Migrations(std::move(migrations))
 {
-    ReplicaInfos.push_back({partConfig->Fork(partConfig->GetDevices()), {}});
+    ReplicaInfos.push_back({PartConfig->Fork(PartConfig->GetDevices()), {}});
     for (auto& devices: replicaDevices) {
-        ReplicaInfos.push_back({partConfig->Fork(std::move(devices)), {}});
+        ReplicaInfos.push_back({PartConfig->Fork(std::move(devices)), {}});
     }
 
     ui32 freshDeviceCount = 0;
@@ -34,11 +35,11 @@ TMirrorPartitionState::TMirrorPartitionState(
         freshDeviceCount += replicaInfo.Config->GetFreshDeviceIds().size();
     }
 
-    if (freshDeviceCount != partConfig->GetFreshDeviceIds().size()) {
+    if (freshDeviceCount != PartConfig->GetFreshDeviceIds().size()) {
         ReportFreshDeviceNotFoundInConfig(TStringBuilder()
             << "Fresh device count mismatch: " << freshDeviceCount
-            << " != " << partConfig->GetFreshDeviceIds().size()
-            << " for disk " << partConfig->GetName());
+            << " != " << PartConfig->GetFreshDeviceIds().size()
+            << " for disk " << PartConfig->GetName());
     }
 }
 
@@ -192,6 +193,16 @@ NProto::TError TMirrorPartitionState::NextReadReplica(
 
     return MakeError(E_INVALID_STATE, TStringBuilder() << "range "
         << DescribeRange(readRange) << " targets only fresh/dummy devices");
+}
+
+ui32 TMirrorPartitionState::GetBlockSize() const
+{
+    return PartConfig->GetBlockSize();
+}
+
+ui64 TMirrorPartitionState::GetBlockCount() const
+{
+    return PartConfig->GetBlockCount();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
