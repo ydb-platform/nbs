@@ -2,8 +2,6 @@ package persistence
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -19,14 +17,10 @@ func newS3Client(
 	callTimeout time.Duration,
 ) (*S3Client, error) {
 
-	endpoint := fmt.Sprintf(
-		"http://localhost:%s",
-		os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"),
-	)
 	credentials := NewS3Credentials("test", "test")
 	return NewS3Client(
-		endpoint,
-		"test",
+		"test", // endpoint
+		"test", // region
 		credentials,
 		callTimeout,
 		metricsRegistry,
