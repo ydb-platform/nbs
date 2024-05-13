@@ -809,11 +809,13 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         int checkpointIndex = 0;
 
-        auto executeRequests = [&](ECheckpointType checkpointType, const TVector<TStep>& steps)
+        auto executeRequests =
+            [&](ECheckpointType checkpointType, const TVector<TStep>& steps)
         {
-            TString checkpointId = TStringBuilder() << "checkpoint_" << checkpointIndex++;
+            TString checkpointId = TStringBuilder()
+                                   << "checkpoint_" << checkpointIndex++;
 
-            for (const TStep& step : steps) {
+            for (const TStep& step: steps) {
                 executeRequest(
                     checkpointId,
                     step.RequestType,

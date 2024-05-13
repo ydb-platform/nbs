@@ -423,8 +423,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
          requestType == ECheckpointRequestType::CreateWithoutData))
     {
         TString message = TStringBuilder()
-            << requestType
-            << " request makes sense for normal checkpoints only";
+                          << requestType
+                          << " request makes sense for normal checkpoints only";
         return MakeError(E_ARGUMENT, std::move(message));
     }
 
@@ -432,8 +432,8 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
 
     if (actualCheckpointType && actualCheckpointType != checkpointType) {
         TString message = TStringBuilder()
-            << "Checkpoint exists and has another type "
-            << *actualCheckpointType;
+                          << "Checkpoint exists and has another type "
+                          << *actualCheckpointType;
         return makeErrorInvalid(std::move(message));
     }
 
