@@ -26,8 +26,6 @@ generate_cert() {
 REPO_DIR=`find_repo_dir`
 BIN_DIR=`find_bin_dir`
 
-echo "${SYMLINK_BINARIES}"
-
 BUILD_ROOT="$REPO_DIR/cloud/filestore/buildall"
 YDBD_BIN="contrib/ydb/apps/ydbd/ydbd"
 FILESTORE_CLIENT_BIN="cloud/filestore/apps/client/filestore-client"
