@@ -91,16 +91,17 @@ def main(
         min_disk_size = convert_size(image.min_disk_size)
         prefix = " (PROTECTED)"
         postfix = ""
+
+        if image.id == new_image_id:
+            postfix = " (NEW)"
+
         if (
             image.id not in PROTECTED_IMAGE_IDS
             and image.family == image_family_name  # noqa: W503
             and image.id != new_image_id  # noqa: W503
         ):
             prefix = ""
-            if image.id == new_image_id:
-                postfix = " (NEW)"
-            if image.family == image_family_name:
-                postfix += " (SELECTED)"
+            postfix += " (SELECTED)"
             candidate_images.append(image)
 
         logger.info(

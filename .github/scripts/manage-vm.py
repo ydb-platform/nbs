@@ -146,7 +146,7 @@ done
 ./run.sh || exit 0
 """
 
-    cloud_init = {}
+    cloud_init = {"runcmd": [script]}
     # cloud_init["ssh_pwauth"] = False
     cloud_init["users"] = [
         {
@@ -161,7 +161,6 @@ done
         logger.info("Adding SSH keys to cloud-init")
         cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
 
-    cloud_init["runcmd"] = [script]
     logger.info(
         f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
             token, "****"
