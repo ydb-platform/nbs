@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServer;
-using IServerPtr = std::shared_ptr<IServer>;
+struct IEndpointProxyServer;
+using IEndpointProxyServerPtr = std::shared_ptr<IEndpointProxyServer>;
 
 }   // namespace NCloud::NBlockStore::NServer
