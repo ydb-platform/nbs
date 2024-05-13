@@ -1255,7 +1255,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, dts.size());
     }
 
-    Y_UNIT_TEST(ShouldTracjCleanupQueueBlockCount)
+    Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
         TPartitionState state(
             DefaultConfig(1, 1000),

@@ -11094,7 +11094,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui64 compactionByBlockCount = 0;
         bool compactionRequestObserved = false;
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetEventFilter([&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
                         compactionRequestObserved = true;
@@ -11102,13 +11103,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     }
                     case TEvStatsService::EvVolumePartCounters: {
                         auto* msg =
-                            event->Get<TEvStatsService::TEvVolumePartCounters>();
+                            event->template Get<TEvStatsService::TEvVolumePartCounters>();
                         const auto& cc = msg->DiskCounters->Cumulative;
                         compactionByBlockCount =
                             cc.CompactionByGarbageBlocksPerDisk.Value;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             }
         );
 
@@ -11129,7 +11130,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        // blob count is less than 4 * 2 => no compaction
+        // garbage block count is less than 20%  => no compaction
         UNIT_ASSERT(!compactionRequestObserved);
 
         for (size_t i = 0; i < 3; ++i) {
@@ -11139,7 +11140,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        // blob count is greater than threshold => compaction
+        // garbage block count is greater than threshold => compaction
         UNIT_ASSERT(compactionRequestObserved);
 
         partition.SendToPipe(
