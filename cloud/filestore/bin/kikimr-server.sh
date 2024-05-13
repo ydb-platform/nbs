@@ -13,7 +13,7 @@ GRPC_PORT=${GRPC_PORT:-9001}
 MON_PORT=${MON_PORT:-8765}
 
 # ya tool gdb --args \
-$BIN_DIR/kikimr server                               \
+$BIN_DIR/ydbd server                                 \
     --tcp                                            \
     --node              $NODE                        \
     --ic-port           $IC_PORT                     \
