@@ -968,7 +968,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TBlockRange64 lastMigratedRange;
         bool interceptMigration = true;
 
-        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime->SetObserverFunc(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 const auto migratedEvent =
                     TEvNonreplPartitionPrivate::EvRangeMigrated;
                 using TMigratedEvent =
@@ -983,9 +985,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     }
                 }
 
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
+            });
 
         // reallocating disk
         volume.ReallocateDisk();
