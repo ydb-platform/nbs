@@ -36,7 +36,29 @@ struct TReadBlocksLocalRequest
     ui32 BlockSize = 0;
 };
 
-using TReadBlocksLocalResponse = TReadBlocksResponse;
+struct TReadBlocksLocalResponse: public TReadBlocksResponse
+{
+    TReadBlocksLocalResponse() = default;
+
+    TReadBlocksLocalResponse(const TReadBlocksLocalResponse&) = default;
+    TReadBlocksLocalResponse(TReadBlocksLocalResponse&&) = default;
+
+    explicit TReadBlocksLocalResponse(const TReadBlocksResponse& rh);
+    explicit TReadBlocksLocalResponse(TReadBlocksResponse&& rh);
+
+    TReadBlocksLocalResponse&
+    operator=(const TReadBlocksLocalResponse&) = default;
+    TReadBlocksLocalResponse& operator=(TReadBlocksLocalResponse&&) = default;
+
+    TReadBlocksLocalResponse& operator=(const TReadBlocksResponse& rh);
+    TReadBlocksLocalResponse& operator=(TReadBlocksResponse&& rh);
+
+    TReadBlocksLocalResponse& operator=(const TErrorResponse& rh);
+    TReadBlocksLocalResponse& operator=(TErrorResponse&& rh);
+
+    // If true, it means that all the data read was zeros.
+    bool AllZeroes = false;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

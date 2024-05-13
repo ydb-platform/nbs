@@ -473,7 +473,9 @@ Y_UNIT_TEST_SUITE(TSessionTest)
 
         {
             auto res = ReadBlocks(session, blockSize);
-            UNIT_ASSERT_C(!HasError(res), res);
+            UNIT_ASSERT_C(
+                !HasError(res),
+                static_cast<const NProto::TReadBlocksResponse&>(res));
         }
 
         {

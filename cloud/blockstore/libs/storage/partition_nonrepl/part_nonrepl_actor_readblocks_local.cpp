@@ -39,6 +39,7 @@ private:
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
+    ui32 VoidBlockCount = 0;
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
@@ -256,6 +257,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         if (!SkipVoidBlocksToOptimizeNetworkTransfer) {
             STORAGE_CHECK_PRECONDITION(voidBlockStat.VoidBlockCount == 0);
         };
+        VoidBlockCount += voidBlockStat.VoidBlockCount;
     }
 
     if (++RequestsCompleted < DeviceRequests.size()) {
@@ -263,6 +265,8 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     }
 
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
+    response->Record.AllZeroes = VoidBlockCount == Request.GetBlocksCount();
+
     Done(ctx, std::move(response), false);
 }
 

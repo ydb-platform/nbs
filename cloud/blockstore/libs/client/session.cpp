@@ -983,7 +983,8 @@ void TSession::HandleResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-TFuture<NProto::TReadBlocksResponse> TSession::SendRequest<TReadBlocksMethod>(
+TFuture<NProto::TReadBlocksLocalResponse>
+TSession::SendRequest<TReadBlocksMethod>(
     TCallContextPtr callContext,
     TReadBlocksMethod::TRequest request)
 {

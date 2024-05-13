@@ -14,6 +14,61 @@ static const TString RequestNames[] = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace NProto {
+
+TReadBlocksLocalResponse::TReadBlocksLocalResponse(
+    const TReadBlocksResponse& rh)
+    : TReadBlocksResponse(rh)
+{}
+
+TReadBlocksLocalResponse::TReadBlocksLocalResponse(TReadBlocksResponse&& rh)
+    : TReadBlocksResponse(std::move(rh))
+{}
+
+TReadBlocksLocalResponse&
+TReadBlocksLocalResponse::operator=(const NProto::TReadBlocksResponse& rh)
+{
+    if (&rh == this) {
+        return *this;
+    }
+
+    static_cast<TReadBlocksResponse&>(*this) = rh;
+
+    return *this;
+}
+
+TReadBlocksLocalResponse&
+TReadBlocksLocalResponse::operator=(TReadBlocksResponse&& rh)
+{
+    if (&rh == this) {
+        return *this;
+    }
+
+    static_cast<TReadBlocksResponse&>(*this) = std::move(rh);
+
+    return *this;
+}
+
+TReadBlocksLocalResponse&
+TReadBlocksLocalResponse::operator=(const TErrorResponse& rh)
+{
+    static_cast<TReadBlocksResponse&>(*this) = rh;
+
+    return *this;
+}
+
+TReadBlocksLocalResponse&
+TReadBlocksLocalResponse::operator=(TErrorResponse&& rh)
+{
+    static_cast<TReadBlocksResponse&>(*this) = std::move(rh);
+
+    return *this;
+}
+
+}   // namespace NProto
+
+////////////////////////////////////////////////////////////////////////////////
+
 const TString& GetBlockStoreRequestName(EBlockStoreRequest request)
 {
     if (request < EBlockStoreRequest::MAX) {

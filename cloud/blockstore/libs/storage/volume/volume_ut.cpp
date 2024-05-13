@@ -1792,6 +1792,124 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoShouldMigrateWhenErrorHappens(16, 1000000);
     }
 
+    Y_UNIT_TEST(ShouldUseZeroBlocksRequestsForMigration)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMaxMigrationBandwidth(999'999'999);
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        const auto blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        const auto migrationRangesPerDevice =
+            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        const auto totalRangesToMigrateCount = migrationRangesPerDevice * 2;
+        const ui64 blockPerMigratedRange =
+            ProcessingRangeSize / DefaultBlockSize;
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            2.5 * blocksPerDevice);
+
+        volume.WaitReady();
+
+        // We write the data to a part of the blocks. Some of the blocks remain
+        // filled with zeros.
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto makeRange = [&](ui32 migrationRangeIndex,
+                             ui32 blockInRangeIndex) -> TBlockRange64
+        {
+            Y_DEBUG_ABORT_UNLESS(blockInRangeIndex < blockPerMigratedRange);
+            return TBlockRange64::MakeOneBlock(
+                migrationRangeIndex * blockPerMigratedRange +
+                blockInRangeIndex);
+        };
+        auto getRangeIndex = [&](ui64 startIndex) -> ui32
+        {
+            return startIndex / blockPerMigratedRange;
+        };
+
+        // Write to the first block of the first migration range
+        volume.WriteBlocks(makeRange(0, 0), clientInfo.GetClientId(), 1);
+        // write to last block of first migration range
+        volume.WriteBlocks(
+            makeRange(1, blockPerMigratedRange - 1),
+            clientInfo.GetClientId(),
+            2);
+        // Write in the middle of the third migration range.
+        volume.WriteBlocks(
+            makeRange(2, blockPerMigratedRange / 2),
+            clientInfo.GetClientId(),
+            3);
+
+        // Start the migration and check which blocks were copied and which ones
+        // were simply zeroed.
+        state->MigrationMode = EMigrationMode::InProgress;
+
+        enum class ETransferMethod
+        {
+            Write,
+            Zero
+        };
+        TMap<size_t, ETransferMethod> migratedRanges;
+        auto watchZeroAndWriteRequests = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksLocalRequest) {
+                auto* msg = event->Get<TEvService::TEvWriteBlocksLocalRequest>();
+                migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
+                    ETransferMethod::Write;
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvZeroBlocksRequest) {
+                auto* msg = event->Get<TEvService::TEvZeroBlocksRequest>();
+                migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
+                    ETransferMethod::Zero;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime->SetObserverFunc(watchZeroAndWriteRequests);
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvDiskRegistry::EvFinishMigrationRequest);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        // Check used transfer methods.
+        UNIT_ASSERT_VALUES_EQUAL(
+            totalRangesToMigrateCount,
+            migratedRanges.size());
+        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[0]);
+        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[1]);
+        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[2]);
+        for (const auto& [migrationRangeIndex, transferMethod]: migratedRanges)
+        {
+            if (migrationRangeIndex > 2) {
+                UNIT_ASSERT_EQUAL(ETransferMethod::Zero, transferMethod);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldRegularlyReacquireNonreplicatedDisks)
     {
         NProto::TStorageServiceConfig config;

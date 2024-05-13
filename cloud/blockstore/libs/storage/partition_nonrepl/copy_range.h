@@ -51,6 +51,7 @@ public:
 private:
     void ReadBlocks(const NActors::TActorContext& ctx);
     void WriteBlocks(const NActors::TActorContext& ctx);
+    void ZeroBlocks(const NActors::TActorContext& ctx);
     void Done(const NActors::TActorContext& ctx);
 
 private:
@@ -70,6 +71,14 @@ private:
 
     void HandleWriteUndelivery(
         const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroResponse(
+        const TEvService::TEvZeroBlocksResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleZeroUndelivery(
+        const TEvService::TEvZeroBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(
