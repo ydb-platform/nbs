@@ -47,7 +47,7 @@ func (m *s3Metrics) StatCall(
 		successCounter := subRegistry.Counter("success")
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("errors/timeout")
-		// canceledCounter := subRegistry.Counter("errors/cancelled")
+		canceledCounter := subRegistry.Counter("errors/cancelled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if time.Since(start) >= m.callTimeout {
@@ -71,19 +71,19 @@ func (m *s3Metrics) StatCall(
 				bucket,
 				key,
 			)
-
 			errorCounter.Inc()
 
 			var awsError awserr.Error
-			if errors.As(*err, &awsError) {
-				switch awsError.Code() {
-				case request.ErrCodeResponseTimeout:
+			if errors.As(*err, &awsError) &&
+				awsError.Code() == request.CanceledErrorCode {
+
+				if ctx.Err() == context.DeadlineExceeded {
 					timeoutCounter.Inc()
-					// case request.CanceledErrorCode:
-					// 	canceledCounter.Inc()
+				} else {
+					canceledCounter.Inc()
 				}
 			} else {
-				logging.Debug(ctx, "failed to convert to aws error %v", err)
+				logging.Debug(ctx, "failed to process aws go sdk error %v", err)
 			}
 
 			return

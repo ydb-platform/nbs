@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -15,27 +16,34 @@ import (
 
 func newS3Client(
 	metricsRegistry *mocks.RegistryMock,
+	callTimeout time.Duration,
 ) (*S3Client, error) {
 
-	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"))
+	endpoint := fmt.Sprintf(
+		"http://localhost:%s",
+		os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"),
+	)
 	credentials := NewS3Credentials("test", "test")
 	return NewS3Client(
 		endpoint,
 		"test",
 		credentials,
-		0, // callTimeout
+		callTimeout,
 		metricsRegistry,
 	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestS3ClientCancelledMetrics(t *testing.T) {
+func TestS3ClientCancelMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry)
+	s3, err := newS3Client(
+		metricsRegistry,
+		10*time.Second, // callTimeout
+	)
 	require.NoError(t, err)
 
 	cancel()
@@ -62,11 +70,19 @@ func TestS3ClientTimeoutMetrics(t *testing.T) {
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(metricsRegistry)
+	s3, err := newS3Client(
+		metricsRegistry,
+		0, // callTimeout
+	)
 	require.NoError(t, err)
 
 	metricsRegistry.GetCounter(
 		"errors",
+		map[string]string{"call": "CreateBucket"},
+	).On("Inc").Once()
+
+	metricsRegistry.GetCounter(
+		"hanging",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
