@@ -2,6 +2,9 @@
     "test_with_client.test_destroy_volume": {
         "uri": "file://test_with_client.test_destroy_volume/results.txt"
     },
+    "test_with_client.test_enabled_configs_dispatcher": {
+        "uri": "file://test_with_client.test_enabled_configs_dispatcher/results.txt"
+    },
     "test_with_client.test_disabled_configs_dispatcher": {
         "uri": "file://test_with_client.test_disabled_configs_dispatcher/results.txt"
     },

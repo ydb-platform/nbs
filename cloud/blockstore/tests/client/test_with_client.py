@@ -926,6 +926,30 @@ def test_disabled_configs_dispatcher():
     return ret
 
 
+def test_enabled_configs_dispatcher():
+    storage = TStorageServiceConfig()
+    storage.ConfigsDispatcherServiceEnabled = True
+    env, run = setup(storage_config_patches=[storage])
+
+    static_nodes = get_static_nodes(env, run)
+    assert len(static_nodes) == 1
+
+    send_two_node_nameservice_config(env)
+
+    updated_static_nodes = get_static_nodes(env, run)
+    assert len(updated_static_nodes) == 2
+    assert updated_static_nodes[0]["NodeId"] == 1
+    assert updated_static_nodes[1]["NodeId"] == 2
+
+    with open(env.results_path, "w") as results:
+        results.write(json.dumps(static_nodes) + "\n")
+        results.write(json.dumps(updated_static_nodes) + "\n")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
+
+
 def test_endpoint_proxy():
     env, run = setup()
 
