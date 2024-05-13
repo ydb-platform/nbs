@@ -45,6 +45,10 @@ func (c *ChannelWithInflightQueue) Milestone() Milestone {
 	return c.inflightQueue.Milestone()
 }
 
+func (c *ChannelWithInflightQueue) UpdateMilestoneHint(value uint32) {
+	c.inflightQueue.UpdateMilestoneHint(value)
+}
+
 func (c *ChannelWithInflightQueue) Close() {
 	c.inflightQueue.Close()
 	if c.channel != nil {

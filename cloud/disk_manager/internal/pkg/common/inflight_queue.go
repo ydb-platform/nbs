@@ -21,6 +21,7 @@ type item struct {
 
 type InflightQueue struct {
 	milestone       Milestone
+	milestoneHint   uint32
 	processedValues <-chan uint32
 	holeValues      ChannelWithCancellation
 	inflightLimit   int
@@ -91,6 +92,18 @@ func (q *InflightQueue) Milestone() Milestone {
 	return q.milestone
 }
 
+// It is safe to use milestone hint only when the queue is empty.
+// If this method is called with some value v,
+// values less then v should not be added to the inflight queue anymore.
+func (q *InflightQueue) UpdateMilestoneHint(value uint32) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	q.milestoneHint = value
+	if len(q.items) == 0 && q.milestoneHint > q.milestone.Value {
+		q.milestone.Value = q.milestoneHint
+	}
+}
+
 func (q *InflightQueue) Close() {
 	q.holeValues.Cancel()
 }
@@ -158,6 +171,9 @@ func (q *InflightQueue) valueProcessed(value uint32) {
 	if toRemoveCount >= len(q.items) {
 		lastItemValue := q.items[len(q.items)-1].value
 		newMilestoneValue = lastItemValue + 1
+		if q.milestoneHint > newMilestoneValue {
+			newMilestoneValue = q.milestoneHint
+		}
 	} else {
 		newMilestoneValue = q.items[toRemoveCount].value
 	}
