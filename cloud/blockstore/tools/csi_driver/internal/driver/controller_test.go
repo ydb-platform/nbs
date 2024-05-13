@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	nbs "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/driver/mocks"
@@ -30,7 +31,7 @@ func doTestCreateDeleteVolume(t *testing.T, parameters map[string]string) {
 			DiskId:               volumeID,
 			BlockSize:            blockSize,
 			BlocksCount:          blockCount,
-			StorageMediaKind:     storage.EStorageMediaKind_STORAGE_MEDIA_SSD,
+			StorageMediaKind:     getStorageMediaKind(parameters),
 			BaseDiskId:           parameters["base-disk-id"],
 			BaseDiskCheckpointId: parameters["base-disk-checkpoint-id"],
 		}).Return(&nbs.TCreateVolumeResponse{}, nil)
@@ -77,10 +78,53 @@ func TestCreateDeleteNbsDisk(t *testing.T) {
 		"base-disk-id":            "testBaseDiskId",
 		"base-disk-checkpoint-id": "testBaseCheckpointId",
 	})
+
+	doTestCreateDeleteVolume(t, map[string]string{
+		"backend":            "nbs",
+		"storage-media-kind": "ssd_nonrepl",
+	})
 }
 
 func TestCreateDeleteNfsFilesystem(t *testing.T) {
 	doTestCreateDeleteVolume(t, map[string]string{
 		"backend": "nfs",
 	})
+}
+
+func TestGetStorageMediaKind(t *testing.T) {
+
+	assert.Equal(
+		t,
+		getStorageMediaKind(map[string]string{}),
+		storage.EStorageMediaKind_STORAGE_MEDIA_SSD,
+	)
+
+	assert.Equal(
+		t,
+		getStorageMediaKind(map[string]string{
+			"storage-media-kind": "xxx",
+		}),
+		storage.EStorageMediaKind_STORAGE_MEDIA_SSD,
+	)
+
+	p := map[string]storage.EStorageMediaKind{
+		"hdd":         storage.EStorageMediaKind_STORAGE_MEDIA_HDD,
+		"hybrid":      storage.EStorageMediaKind_STORAGE_MEDIA_HDD,
+		"ssd":         storage.EStorageMediaKind_STORAGE_MEDIA_SSD,
+		"ssd_nonrepl": storage.EStorageMediaKind_STORAGE_MEDIA_SSD_NONREPLICATED,
+		"ssd_mirror2": storage.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR2,
+		"ssd_mirror3": storage.EStorageMediaKind_STORAGE_MEDIA_SSD_MIRROR3,
+		"ssd_local":   storage.EStorageMediaKind_STORAGE_MEDIA_SSD_LOCAL,
+		"hdd_nonrepl": storage.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED,
+	}
+
+	for s, v := range p {
+		assert.Equal(
+			t,
+			getStorageMediaKind(map[string]string{
+				"storage-media-kind": s,
+			}),
+			v,
+		)
+	}
 }
