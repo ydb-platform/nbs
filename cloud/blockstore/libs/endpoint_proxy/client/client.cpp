@@ -65,8 +65,7 @@ struct TRequestContextImpl: TRequestContextBase
         , CQ(cq)
         , Service(grpc::CreateChannel(
             Sprintf("%s:%u", host.c_str(), port),
-            channelCredentials
-        ))
+            channelCredentials))
         , Promise(NThreading::NewPromise<TResponse>())
     {}
 };
