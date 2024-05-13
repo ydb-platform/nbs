@@ -9,7 +9,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
-    s3_metrics_test.go
+    s3_client_test.go
     ydb_test.go
 )
 

@@ -47,7 +47,7 @@ func (m *s3Metrics) StatCall(
 		successCounter := subRegistry.Counter("success")
 		hangingCounter := subRegistry.Counter("hanging")
 		timeoutCounter := subRegistry.Counter("errors/timeout")
-		canceledCounter := subRegistry.Counter("errors/cancelled")
+		canceledCounter := subRegistry.Counter("errors/canceled")
 		timeHistogram := subRegistry.DurationHistogram("time", s3CallDurationBuckets())
 
 		if time.Since(start) >= m.callTimeout {

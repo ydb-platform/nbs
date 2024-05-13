@@ -19,8 +19,8 @@ func newS3Client(
 
 	credentials := NewS3Credentials("test", "test")
 	return NewS3Client(
-		"test", // endpoint
-		"test", // region
+		"endpoint",
+		"region",
 		credentials,
 		callTimeout,
 		metricsRegistry,
@@ -29,15 +29,12 @@ func newS3Client(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestS3ClientCancelMetrics(t *testing.T) {
+func TestS3ClientShouldSendErrorCanceledMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(
-		metricsRegistry,
-		10*time.Second, // callTimeout
-	)
+	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
 	require.NoError(t, err)
 
 	cancel()
@@ -48,7 +45,7 @@ func TestS3ClientCancelMetrics(t *testing.T) {
 	).On("Inc").Once()
 
 	metricsRegistry.GetCounter(
-		"errors/cancelled",
+		"errors/canceled",
 		map[string]string{"call": "CreateBucket"},
 	).On("Inc").Once()
 
@@ -58,16 +55,13 @@ func TestS3ClientCancelMetrics(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 }
 
-func TestS3ClientTimeoutMetrics(t *testing.T) {
+func TestS3ClientShouldSendErrorTimeoutMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
 	metricsRegistry := mocks.NewRegistryMock()
 
-	s3, err := newS3Client(
-		metricsRegistry,
-		0, // callTimeout
-	)
+	s3, err := newS3Client(metricsRegistry, 0 /* callTimeout */)
 	require.NoError(t, err)
 
 	metricsRegistry.GetCounter(
