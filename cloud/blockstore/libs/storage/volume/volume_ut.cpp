@@ -926,7 +926,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
     }
 
-    void DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(ui32 ioDepth)
+    void DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(
+        ui32 ioDepth)
     {
         NProto::TStorageServiceConfig config;
         config.SetAcquireNonReplicatedDevices(true);
@@ -950,8 +951,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             false,
             1,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            2.5 * blocksPerDevice
-        );
+            2.5 * blocksPerDevice);
 
         volume.WaitReady();
 
@@ -964,11 +964,154 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         state->MigrationMode = EMigrationMode::InProgress;
         TAutoPtr<IEventHandle> evRangeMigrated;
-        TBlockRange64 migratedRange;
+        TBlockRange64 interceptedRange;
+        TBlockRange64 lastMigratedRange;
         bool interceptMigration = true;
 
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                const auto migratedEvent =
+                    TEvNonreplPartitionPrivate::EvRangeMigrated;
+                using TMigratedEvent =
+                    TEvNonreplPartitionPrivate::TEvRangeMigrated;
+
+                if (event->GetTypeRewrite() == migratedEvent) {
+                    lastMigratedRange = event->Get<TMigratedEvent>()->Range;
+                    if (interceptMigration && !evRangeMigrated) {
+                        interceptedRange = event->Get<TMigratedEvent>()->Range;
+                        evRangeMigrated = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        client1.ReconnectPipe();
+        client1.AddClient(clientInfo);
+        volume.WaitReady();
+
+        // Intercepting the migration. All write anr zero requests overlapping
+        // with it range will be rejected.
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(evRangeMigrated);
+
+        {
+            client1.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(interceptedRange.Start),
+                clientInfo.GetClientId(),
+                'a');
+            auto response = client1.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        {
+            client1.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(interceptedRange.End),
+                clientInfo.GetClientId(),
+                'a');
+            auto response = client1.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        {
+            client1.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(interceptedRange.Start),
+                clientInfo.GetClientId());
+            auto response = client1.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        {
+            client1.SendZeroBlocksRequest(
+                TBlockRange64::MakeOneBlock(interceptedRange.End),
+                clientInfo.GetClientId());
+            auto response = client1.RecvZeroBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        }
+
+        // Send intercepted migration event.
+        interceptMigration = false;
+        runtime->Send(evRangeMigrated.Release());
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return lastMigratedRange == interceptedRange;
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        // Write block after migration.
+        client1.SendWriteBlocksRequest(
+            interceptedRange,
+            clientInfo.GetClientId(),
+            'a');
+
+        // Check that we have read what we have written.
+        auto resp =
+            client1.ReadBlocks(interceptedRange, clientInfo.GetClientId());
+        const auto& bufs = resp->Record.GetBlocks().GetBuffers();
+        UNIT_ASSERT_VALUES_EQUAL(1024, bufs.size());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent('a'), bufs[0]);
+    }
+
+    Y_UNIT_TEST(ShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating_1)
+    {
+        DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(1);
+    }
+
+    Y_UNIT_TEST(ShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating_8)
+    {
+        DoShouldEnsureRejectWriteZeroRequestsOverlappingWithMigrating(8);
+    }
+
+    void DoShouldEnsureRejectMigratingOverlappingWithWriteRequest(ui32 ioDepth)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetAcquireNonReplicatedDevices(true);
+        config.SetMaxMigrationBandwidth(999'999'999);
+        config.SetMaxMigrationIoDepth(ioDepth);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        TVolumeClient client1(*runtime);
+
+        const ui64 blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        const ui64 totalBlockCount = 3 * blocksPerDevice;
+        // We are migrating the first and third devices.
+        const ui64 totalRangesToMigrate =
+            2 * blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            totalBlockCount);
+
+        volume.WaitReady();
+
+        // registering a writer
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        client1.AddClient(clientInfo);
+
+        state->MigrationMode = EMigrationMode::InProgress;
+        bool interceptMigrations = true;
+        std::vector<TAutoPtr<IEventHandle>> interceptedMigrations;
+        std::vector<TBlockRange64> allMigratedRanges;
+
         TAutoPtr<IEventHandle> evWriteCompleted;
-        bool interceptWrite = false;
+        bool interceptWrite = true;
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 const auto completionEvent =
@@ -978,14 +1121,17 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 using TMigratedEvent =
                     TEvNonreplPartitionPrivate::TEvRangeMigrated;
 
-                if (interceptMigration
-                        && event->GetTypeRewrite() == migratedEvent)
-                {
-                    migratedRange = event->Get<TMigratedEvent>()->Range;
-                    evRangeMigrated = event.Release();
-                    return TTestActorRuntime::EEventAction::DROP;
-                } else if (interceptWrite
-                        && event->GetTypeRewrite() == completionEvent)
+                if (event->GetTypeRewrite() == migratedEvent) {
+                    allMigratedRanges.push_back(
+                        event->Get<TMigratedEvent>()->Range);
+                    if (interceptMigrations) {
+                        interceptedMigrations.push_back(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                if (interceptWrite &&
+                    event->GetTypeRewrite() == completionEvent)
                 {
                     evWriteCompleted = event.Release();
                     return TTestActorRuntime::EEventAction::DROP;
@@ -1001,105 +1147,65 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         client1.AddClient(clientInfo);
         volume.WaitReady();
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT(evRangeMigrated);
-
+        // Intercept write response. It will block migrating of last range.
+        const auto writeRange = TBlockRange64::MakeOneBlock(totalBlockCount - 1);
         client1.SendWriteBlocksRequest(
-            TBlockRange64::MakeOneBlock(migratedRange.Start),
+            writeRange,
             clientInfo.GetClientId(),
-            'a'
-        );
-        {
-            auto response = client1.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        client1.SendWriteBlocksRequest(
-            TBlockRange64::MakeOneBlock(migratedRange.End),
-            clientInfo.GetClientId(),
-            'a'
-        );
-        {
-            auto response = client1.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        client1.SendZeroBlocksRequest(
-            TBlockRange64::MakeOneBlock(migratedRange.Start),
-            clientInfo.GetClientId()
-        );
-        {
-            auto response = client1.RecvZeroBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        client1.SendZeroBlocksRequest(
-            TBlockRange64::MakeOneBlock(migratedRange.End),
-            clientInfo.GetClientId()
-        );
-        {
-            auto response = client1.RecvZeroBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        interceptWrite = true;
-        client1.SendWriteBlocksRequest(
-            TBlockRange64::MakeOneBlock(migratedRange.End + 1),
-            clientInfo.GetClientId(),
-            'a'
-        );
-
+            'a');
         runtime->DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(evWriteCompleted);
 
-        runtime->Send(evRangeMigrated.Release());
+        // Return intercepted migrations.
+        interceptMigrations = false;
+        for (auto& migrationEvent: interceptedMigrations) {
+            runtime->Send(migrationEvent.Release());
+        }
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT(!evRangeMigrated);
+        const size_t rangesMigratedBeforeStall = totalRangesToMigrate - 1;
+        // Waiting for the migration to be almost done.
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
 
-        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
-        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
-        UNIT_ASSERT(!evRangeMigrated);
+                return allMigratedRanges.size() == rangesMigratedBeforeStall;
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
+        const bool hasWriteRequestOverlaps = AnyOf(
+            allMigratedRanges,
+            [&](TBlockRange64 r) { return r.Overlaps(writeRange); });
+        UNIT_ASSERT(!hasWriteRequestOverlaps);
+        UNIT_ASSERT_VALUES_EQUAL(rangesMigratedBeforeStall, allMigratedRanges.size());
 
-        auto lastMigratedRange = migratedRange;
-
+        // Finish the write, this should unblock migration of last range.
         interceptWrite = false;
         runtime->Send(evWriteCompleted.Release());
 
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT(evRangeMigrated);
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                bool overlaps = AnyOf(
+                    allMigratedRanges,
+                    [&](TBlockRange64 r) { return r.Overlaps(writeRange); });
+                return overlaps;
+            };
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+        }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            lastMigratedRange.End + 1,
-            migratedRange.Start
-        );
-
-        interceptMigration = false;
-        runtime->Send(evRangeMigrated.Release());
-
-        runtime->DispatchEvents({}, TDuration::Seconds(1));
-
-        auto resp = client1.ReadBlocks(
-            TBlockRange64::MakeOneBlock(lastMigratedRange.End + 1),
-            clientInfo.GetClientId()
-        );
-        const auto& bufs = resp->Record.GetBlocks().GetBuffers();
-        UNIT_ASSERT_VALUES_EQUAL(1, bufs.size());
-        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent('a'), bufs[0]);
+        UNIT_ASSERT_VALUES_EQUAL(totalRangesToMigrate, allMigratedRanges.size());
     }
 
-    Y_UNIT_TEST(
-        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_1)
+    Y_UNIT_TEST(ShouldEnsureRejectMigratingOverlappingWithWriteRequest_1)
     {
-        DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
-            1);
+        DoShouldEnsureRejectMigratingOverlappingWithWriteRequest(1);
     }
 
-    Y_UNIT_TEST(
-        ShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests_8)
+    Y_UNIT_TEST(ShouldEnsureRejectMigratingOverlappingWithWriteRequest_8)
     {
-        DoShouldEnsureMutualExclusionOfIntersectingWritesAndMigrationRequests(
-            8);
+        DoShouldEnsureRejectMigratingOverlappingWithWriteRequest(8);
     }
 
     Y_UNIT_TEST(ShouldRunMigrationForVolumesWithoutClients)
