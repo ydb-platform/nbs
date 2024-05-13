@@ -36,9 +36,9 @@ def status_to_string(image: Image) -> str:
 
 def convert_size(size_bytes):
     if size_bytes == 0:
-        return "0B"
-    size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
-    i = int(math.floor(math.log(size_bytes, 1024)))
+        return "0 B"
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = math.floor(math.log(size_bytes, 1024))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return f"{s} {size_name[i]}"
@@ -71,9 +71,9 @@ def main(
 
     if update_image_id:
         variable.edit(value=new_image_id)
-        logger.info("%s (new) = %s" % (image_variable_name, new_image_id))
+        logger.info("%s (new) = %s", image_variable_name, new_image_id)
     else:
-        logger.info("Would set %s (new) = %s" % (image_variable_name, new_image_id))
+        logger.info("Would set %s (new) = %s", image_variable_name, new_image_id)
 
     request = ListImagesRequest(
         folder_id=folder_id,
@@ -104,24 +104,22 @@ def main(
             candidate_images.append(image)
 
         logger.info(
-            "Found image%s: %s %s %s %s %s %s %s %s"
-            % (
-                # fmt: off
-                prefix, image.id, image.name, status, created_at,
-                image.family, storage_size, min_disk_size,
-                ', '.join(f"{k}={v}" for k, v in image.labels.items())
-                # fmt: on
-            )
+            "Found image%s: %s %s %s %s %s %s %s %s",
+            # fmt: off
+            prefix, image.id, image.name, status, created_at,
+            image.family, storage_size, min_disk_size,
+            ', '.join(f"{k}={v}" for k, v in image.labels.items())
+            # fmt: on
         )
-    logger.info(f"Total images: {len(response.images)}")
+    logger.info("Total images: %d", len(response.images))
 
     for image in candidate_images[images_to_keep:]:
         if remove_old_images:
-            logger.info(f"Removing image {image.id}")
+            logger.info("Removing image %s", image.id)
             client.Delete(DeleteImageRequest(image_id=image.id))
-            logger.info(f"Image {image.id} removed")
+            logger.info("Image %s removed", image.id)
         else:
-            logger.info(f"Would remove image {image.id}")
+            logger.info("Would remove image %s", image.id)
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ def log_file_extraction(file_name: str, output_path: str) -> None:
 def write_contents_to_output(
     output_file_path: str, output_path: str, files: List[str], run_id: int = 0
 ) -> None:
-    with open(output_file_path, "a") as output_file:  # 'a' to append to the file
+    with open(output_file_path, "a") as output_file:
         for file_name in files:
             file_path = os.path.join(output_path, file_name)
             try:
