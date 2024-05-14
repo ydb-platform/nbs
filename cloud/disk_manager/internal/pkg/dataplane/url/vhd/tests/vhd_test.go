@@ -22,6 +22,15 @@ func getVHDImageMapFile() string {
 	return os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE")
 }
 
+func getVHDUbuntu1604ImageFileURL() string {
+	port := os.Getenv("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_FILE_SERVER_PORT")
+	return fmt.Sprintf("http://localhost:%v", port)
+}
+
+func getVHDUbuntu1604ImageMapFile() string {
+	return os.Getenv("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_MAP_FILE")
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func getVHDReader(
@@ -40,6 +49,15 @@ func TestVHDMapImage(t *testing.T) {
 		t,
 		getVHDImageFileURL(),
 		getVHDImageMapFile(),
+		getVHDReader,
+	)
+}
+
+func TestQCOW2MapImageUbuntu1604(t *testing.T) {
+	common_testing.MapImageTest(
+		t,
+		getVHDUbuntu1604ImageFileURL(),
+		getVHDUbuntu1604ImageMapFile(),
 		getVHDReader,
 	)
 }
