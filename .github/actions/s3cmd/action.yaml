@@ -25,16 +25,22 @@ inputs:
   user:
     required: false
     description: "github user"
+  install:
+    required: false
+    default: true
+    description: "install s3cmd and awscli"
+
 runs:
   using: composite
   steps:
     - name: install s3cmd
+      if: inputs.install == 'true'
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends s3cmd
+        sudo apt-get install -y --no-install-recommends s3cmd awscli
     - name: configure s3cmd
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         export S3CMD_CONFIG=$(sudo -E -H -u $user mktemp -p /home/$user)
         sudo chown $user: $S3CMD_CONFIG
@@ -59,6 +65,10 @@ runs:
         [default]
         region = eu-north1
         endpoint_url=https://storage.ai.nebius.cloud/
+        s3 =
+          max_concurrent_requests = 32
+          multipart_chunksize = 32MB
+          max_queue_size = 10240
         EOF
 
         sudo mkdir -p /root/.aws/
@@ -71,6 +81,10 @@ runs:
         [default]
         region = eu-north1
         endpoint_url=https://storage.ai.nebius.cloud/
+        s3 =
+          max_concurrent_requests = 32
+          multipart_chunksize = 32MB
+          max_queue_size = 10240
         EOF
 
         folder="${{ runner.arch == 'X64' && 'x86-64' || runner.arch == 'ARM64' && 'arm64' || 'unknown' }}"

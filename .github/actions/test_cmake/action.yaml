@@ -1,10 +1,11 @@
 name: Run tests with cmake
 description: Run tests using cmake infrastructure
+
 runs:
   using: composite
   steps:
     - name: prepare
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "SHELLOPTS=$SHELLOPTS:xtrace" >> $GITHUB_ENV
         echo "ARTIFACTS_DIR=${TMP_DIR}/artifacts" >> $GITHUB_ENV
@@ -12,11 +13,11 @@ runs:
         echo "SUMMARY_LINKS=$(mktemp)" >> $GITHUB_ENV
 
     - name: create dirs
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         mkdir -p "$ARTIFACTS_DIR" "$SUMMARY_DIR"
     - name: ctest
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         cd $TMP_DIR
 
@@ -26,7 +27,7 @@ runs:
 
     - name: Generate summary
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
@@ -47,7 +48,7 @@ runs:
 
     - name: Sync logs to S3
       if: always()
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         echo "::group::s3-sync"
         [ -f "${TMP_DIR}/ctest.log" ] && {

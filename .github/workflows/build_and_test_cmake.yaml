@@ -75,6 +75,7 @@ jobs:
         s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        install: false
 
     - name: Build
       uses: ./.github/actions/build_cmake

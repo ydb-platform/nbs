@@ -19,8 +19,8 @@ runs:
   using: composite
   steps:
     - name: Init
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
-      shell: bash
       run: |
         export TMP_DIR=$(pwd)/tmp_build
         export ROOT_PATH=$(pwd)
@@ -37,7 +37,7 @@ runs:
         echo "CCACHE_REMOTE_STORAGE=http://${{ inputs.bazel_remote_username }}:${{ inputs.bazel_remote_password }}@195.242.17.155:9090|layout=bazel" >> $GITHUB_ENV
 
     - name: build
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
         cd $TMP_DIR
         export

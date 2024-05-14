@@ -110,6 +110,8 @@ jobs:
       shell: bash
       run: |
         set -x
+        # you can't override GITHUB_* vars (except token) in step env
+        export GITHUB_REPOSITORY="ydb-platform/nbs"
         echo "::group::generate-summary"
         python3 .github/scripts/tests/generate-summary.py \
           --summary-out-path "$TMP_DIR" \
@@ -120,7 +122,7 @@ jobs:
         echo "::endgroup::"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REPOSITORY: "ydb-platform/nbs"
+
 
     - name: Launch fail-checker.py
       shell: bash
