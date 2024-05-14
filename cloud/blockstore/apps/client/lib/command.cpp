@@ -592,7 +592,11 @@ void TCommand::Init()
             static_cast<ui16>(EndpointProxyInsecurePort),
             static_cast<ui16>(EndpointProxySecurePort),
             {}, // rootCertsFile
-        }, Logging);
+            {
+                TDuration::Seconds(1),
+                TDuration::Minutes(5),
+            },
+        }, Scheduler, Timer, Logging);
     }
 
     Start();

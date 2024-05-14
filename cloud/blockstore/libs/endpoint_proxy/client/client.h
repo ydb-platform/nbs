@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
@@ -29,14 +30,23 @@ struct IEndpointProxyClient: IStartable
 
 struct TEndpointProxyClientConfig
 {
+    struct TRetryPolicy
+    {
+        TDuration Backoff;
+        TDuration TotalTimeout;
+    };
+
     TString Host;
     ui16 Port;
     ui16 SecurePort;
     TString RootCertsFile;
+    TRetryPolicy RetryPolicy;
 };
 
 IEndpointProxyClientPtr CreateClient(
     TEndpointProxyClientConfig config,
+    ISchedulerPtr scheduler,
+    ITimerPtr timer,
     ILoggingServicePtr logging);
 
 }   // namespace NCloud::NBlockStore::NClient
