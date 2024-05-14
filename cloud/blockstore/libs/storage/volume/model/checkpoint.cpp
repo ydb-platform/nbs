@@ -1,7 +1,7 @@
 #include "checkpoint.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include "cloud/storage/core/libs/common/helpers.h"
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -402,14 +402,14 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
     ECheckpointRequestType requestType,
     ECheckpointType checkpointType) const
 {
-    auto makeErrorInvalid = [](TString message) -> NProto::TError
+    auto makeErrorInvalid = [](TString message)
     {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
         return MakeError(E_PRECONDITION_FAILED, std::move(message), flags);
     };
 
-    auto makeErrorAlready = [](TString message) -> NProto::TError
+    auto makeErrorAlready = [](TString message)
     {
         return MakeError(S_ALREADY, std::move(message));
     };

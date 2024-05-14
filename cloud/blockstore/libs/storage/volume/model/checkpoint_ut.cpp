@@ -743,7 +743,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         auto makeCheckpointRequest =
             [&] (const TString& checkpointId,
                 ECheckpointRequestType requestType,
-                ECheckpointType checkpointType) -> TCheckpointRequest
+                ECheckpointType checkpointType)
         {
             switch (requestType) {
                 case ECheckpointRequestType::Create:
@@ -770,7 +770,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             [&](const TString& checkpointId,
                 ECheckpointRequestType requestType,
                 ECheckpointType checkpointType,
-                std::optional<EWellKnownResultCodes> expectedErrorCode) -> void
+                std::optional<EWellKnownResultCodes> expectedErrorCode)
         {
             auto request = makeCheckpointRequest(
                 checkpointId,
