@@ -88,6 +88,7 @@ private:
     enum fuse_cancelation_code CancelCode;
     NAtomic::TBool ShouldStop = false;
     TAtomicCounter CompletingCount = {0};
+    TManualEvent RequestCompleted;
     TManualEvent Stopped;
 
     TMutex RequestsLock;
@@ -126,6 +127,8 @@ public:
             CompletingCount.Add(1);
         }
 
+        RequestCompleted.Signal();
+
         int ret = cb(req);
         if (CompletingCount.Dec() == 0 && ShouldStop) {
             Stopped.Signal();
@@ -137,16 +140,18 @@ public:
         CancelCode = code;
         ShouldStop = true;
 
-        TGuard g{RequestsLock};
-        for (auto&& [req, context] : Requests) {
-            CancelRequest(
-                Log,
-                *RequestStats,
-                *context,
-                req,
-                CancelCode);
+        // we cannot cancel inflight requests because of a possible race
+        // between CancelRequest (which touches TCallContext and fuse_req_t)
+        // and natural request processing
+        while (true) {
+            with_lock (RequestsLock) {
+                if (Requests.empty()) {
+                    break;
+                }
+            }
+
+            RequestCompleted.Wait();
         }
-        Requests.clear();
 
         while (CompletingCount.Val() != 0) {
             Stopped.Wait();
