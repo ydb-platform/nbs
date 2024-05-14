@@ -67,4 +67,5 @@ message ServerConfig {
     optional placementgroup.Config PlacementGroupConfig = 14;
     optional dataplane.DataplaneConfig DataplaneConfig = 15;
     optional performance.PerformanceConfig PerformanceConfig = 16;
+    optional bool LockProcessMemory = 17 [default = true];
 }

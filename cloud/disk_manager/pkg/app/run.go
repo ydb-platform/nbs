@@ -19,7 +19,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -83,17 +82,22 @@ func run(
 	ctx = logging.SetLogger(ctx, logger)
 
 	logging.Info(ctx, "Locking process memory")
-	err := util.LockProcessMemory()
-	if err != nil {
-		logging.Error(ctx, "Failed to lock process memory: %v", err)
-		return err
+
+	if config.GetLockProcessMemory() {
+		err := util.LockProcessMemory()
+		if err != nil {
+			logging.Error(ctx, "Failed to lock process memory: %v", err)
+			return err
+		}
 	}
+
+	var err error
 
 	if len(hostname) == 0 {
 		hostname, err = os.Hostname()
 		if err != nil {
 			logging.Error(ctx, "Failed to get hostname from OS: %v", err)
-			return errors.NewNonRetriableError(err)
+			return err
 		}
 	}
 
