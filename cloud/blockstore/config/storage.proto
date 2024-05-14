@@ -970,4 +970,7 @@ message TStorageServiceConfig
     optional bool DataScrubbingEnabled = 364;
     // Interval between scrubbing ranges in milliseconds
     optional uint32 ScrubbingInterval = 365;
+
+    // Number of volume history entries to cleanup per run.
+    optional uint32 VolumeHistoryCleanupItems = 366;
 }
