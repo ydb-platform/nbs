@@ -119,7 +119,7 @@ set -x
     i=0
     url="https://github.com/actions/runner/releases/download/v{version}/actions-runner-linux-${{ARCH}}-{version}.tar.gz"
     until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
-        [ -f "$FILENAME" ] || curl --connect-timeout 5 -O -L "$url" -o "$FILENAME"
+        [ -f "$FILENAME" ] || curl --connect-timeout 5 -L "$url" -o "$FILENAME"
         exit_code=$?
         i=$((i+1))
         [ $exit_code -eq 0 ] || rm -f "$FILENAME"
