@@ -572,6 +572,8 @@ public:
 
     bool GetDataScrubbingEnabled() const;
     TDuration GetScrubbingInterval() const;
+
+    bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 };
 
 ui64 GetAllocationUnit(

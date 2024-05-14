@@ -16,6 +16,15 @@ enum EControlRequestSource
     SOURCE_SERVICE_MONITORING = 1;
 }
 
+enum EOptimizeNetworkTransfer
+{
+    // No optimization enabled
+    NOT_OPTIMIZE = 0;
+
+    // When the block contains only zeros, then pass it with a size of 0.
+    SKIP_VOID_BLOCKS = 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Common message headers.
 
@@ -66,4 +75,7 @@ message THeaders
     // True for requests that originate from blockstore-server itself
     // e.g. NRD migration-related reads and writes.
     bool IsBackgroundRequest = 9;
+
+    // This flag controls the optimization of data transmission over the network.
+    EOptimizeNetworkTransfer OptimizeNetworkTransfer = 10;
 }

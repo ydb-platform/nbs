@@ -376,7 +376,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         // these calls will occur in the Shutdown(), we will simulate the
         // successful waiting for requests to be completed during Shutdown().
         fastTimer->AddOnTickCallback(
-            [&]() { readPromise.SetValue(NProto::TReadBlocksResponse{}); });
+            [&]() { readPromise.SetValue(NProto::TReadBlocksLocalResponse{}); });
         fastTimer->AddOnTickCallback(
             [&]() { writePromise.SetValue(NProto::TWriteBlocksResponse{}); });
         fastTimer->AddOnTickCallback(
@@ -387,6 +387,95 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
         // Assert that the time has passed less than the shutdown timeout.
         UNIT_ASSERT_GT(now + shutdownTimeout, fastTimer->Now());
+    }
+
+    void DoShouldOptimizeVoidBlocks(
+        bool storageUseOwnAllocator,
+        ui32 blockSize,
+        bool normalize,
+        bool enableOptimization)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+        storage->DoAllocations = storageUseOwnAllocator;
+
+        //  The first block will be filled with zeros and the second with ones
+        //  and so on.
+        storage->ReadBlocksLocalHandler =
+            [blockSize](
+                auto ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            const ui64 requestByteCount =
+                static_cast<ui64>(request->GetBlocksCount()) *
+                request->BlockSize;
+
+            TString data;
+            data.resize(requestByteCount, 0);
+            for (ui64 offset = 0; offset < data.size(); offset += blockSize) {
+                std::memset(
+                    const_cast<char*>(data.Data() + offset),
+                    offset / blockSize,
+                    blockSize);
+            }
+
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            SgListCopy(TBlockDataRef{data.data(), data.Size()}, guard.Get());
+
+            NProto::TReadBlocksLocalResponse r;
+            *r.MutableError() = MakeError(S_OK);
+            return MakeFuture<>(std::move(r));
+        };
+
+        auto adapter = std::make_shared<TStorageAdapter>(
+            storage,
+            4096,   // storageBlockSize
+            normalize,
+            32_MB);   // maxRequestSize
+
+        {   // Requesting the reading of two blocks. Since the first block will
+            // be filled with zeros, it should be optimized and will return an
+            // empty buffer.
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            request->MutableHeaders()->SetOptimizeNetworkTransfer(
+                enableOptimization
+                    ? NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS
+                    : NProto::EOptimizeNetworkTransfer::NOT_OPTIMIZE);
+            request->SetBlocksCount(2);
+
+            auto response = adapter->ReadBlocks(
+                Now(),
+                MakeIntrusive<TCallContext>(),
+                std::move(request),
+                blockSize);
+            response.Wait();
+            const auto& value = response.GetValue();
+            UNIT_ASSERT_EQUAL(S_OK, value.GetError().GetCode());
+
+            const auto& data = value.GetBlocks().GetBuffers();
+            UNIT_ASSERT_EQUAL(
+                enableOptimization ? 0 : blockSize,
+                data[0].size());   // First block should be optimized
+            UNIT_ASSERT_EQUAL(blockSize, data[1].size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldOptimizeZeroBlocks)
+    {
+        const ui32 blockSizes[] = {4_KB, 8_KB, 16_KB, 32_KB, 64_KB, 128_KB};
+        for (auto blockSize: blockSizes) {
+            DoShouldOptimizeVoidBlocks(false, blockSize, false, false);
+            DoShouldOptimizeVoidBlocks(false, blockSize, false, true);
+            DoShouldOptimizeVoidBlocks(false, blockSize, true, false);
+            DoShouldOptimizeVoidBlocks(false, blockSize, true, true);
+
+            DoShouldOptimizeVoidBlocks(true, blockSize, false, false);
+            DoShouldOptimizeVoidBlocks(true, blockSize, false, true);
+            DoShouldOptimizeVoidBlocks(true, blockSize, true, false);
+            DoShouldOptimizeVoidBlocks(true, blockSize, true, true);
+        }
     }
 }
 

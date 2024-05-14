@@ -40,7 +40,7 @@ public:
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
-        return MakeFuture<NProto::TReadBlocksResponse>();
+        return MakeFuture<NProto::TReadBlocksLocalResponse>();
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -281,6 +281,9 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
 
     auto response = std::make_shared<NProto::TReadBlocksResponse>();
 
+    // We are trying to allocate memory for request using Storage. If the memory
+    // is not allocated, then we will read immediately to the buffers in the
+    // protobuf.
     auto buffer = Storage->AllocateBuffer(bytesCount);
 
     TSgList sgList;
@@ -312,7 +315,6 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
 
     localRequest->Sglist = TGuardedSgList(std::move(sgList));
 
-    auto requestBlocksCount = request->GetBlocksCount();
     auto guardedSgList = localRequest->Sglist;
 
     auto future = Storage->ReadBlocksLocal(
@@ -329,24 +331,50 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
          response = std::move(response),
          buffer = std::move(buffer),
          guardedSgList = std::move(guardedSgList),
-         requestBlocksCount,
+         requestBlocksCount = request->GetBlocksCount(),
          requestBlockSize,
-         bytesCount](const auto& f) mutable
+         bytesCount,
+         optimizeNetworkTransfer =
+             request->GetHeaders().GetOptimizeNetworkTransfer()](
+            const TFuture<NProto::TReadBlocksLocalResponse>& f) mutable
         {
             inflightReads->UnregisterRequest(id);
 
             const auto& localResponse = f.GetValue();
             guardedSgList.Close();
 
-            if (!HasError(localResponse) && buffer) {
-                auto sgList = ResizeIOVector(
-                    *response->MutableBlocks(),
-                    requestBlocksCount,
-                    requestBlockSize);
+            if (HasError(localResponse)) {
+                // We don't touch the data in response if an error has occurred.
+            } else if (buffer) {
+                // If we allocated a buffer, then we transfer data from it.
+                if (optimizeNetworkTransfer ==
+                    NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+                {
+                    size_t bytesCopied = CopyAndTrimVoidBuffers(
+                        {buffer.get(), bytesCount},
+                        requestBlocksCount,
+                        requestBlockSize,
+                        response->MutableBlocks());
+                    Y_ABORT_UNLESS(bytesCopied == bytesCount);
+                } else {
+                    auto sgList = ResizeIOVector(
+                        *response->MutableBlocks(),
+                        requestBlocksCount,
+                        requestBlockSize);
 
-                size_t bytesCopied =
-                    SgListCopy({buffer.get(), bytesCount}, sgList);
-                Y_ABORT_UNLESS(bytesCopied == bytesCount);
+                    size_t bytesCopied =
+                        SgListCopy({buffer.get(), bytesCount}, sgList);
+                    Y_ABORT_UNLESS(bytesCopied == bytesCount);
+                }
+            } else {
+                if (optimizeNetworkTransfer ==
+                    NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+                {
+                    // If we read the data directly to the final destination,
+                    // then we clean out the void buffers where the data
+                    // contains only zeros
+                    TrimVoidBuffers(*response->MutableBlocks());
+                }
             }
 
             response->MergeFrom(localResponse);
