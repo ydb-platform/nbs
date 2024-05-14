@@ -5420,6 +5420,87 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(CollectGarbageWithTheSameCollectCommitIdShouldNotFail)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetMinChannelCount(1);
+
+        // ensure that all blobs use the same channel
+        TTestEnv env(
+            {.ChannelCount = TIndexTabletSchema::DataChannel + 1},
+            std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto handle = CreateHandle(tablet, id);
+
+        const int size = BlockGroupSize * block;
+        for (int i = 0; i < 2; i++) {
+            tablet.WriteData(handle, 0, size, 'a' + i);
+        }
+
+        auto& runtime = env.GetRuntime();
+
+        TVector<ui64> collectCommitIds;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg = event->template Get<
+                            TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel >= TIndexTabletSchema::DataChannel) {
+                            auto commitId = MakeCommitId(
+                                msg->CollectGeneration,
+                                msg->CollectStep);
+                            collectCommitIds.push_back(commitId);
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        {
+            auto response = tablet.CollectGarbage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, collectCommitIds.size());
+
+        {
+            tablet.Cleanup(GetMixedRangeIndex(id, 0));
+            auto response = tablet.CollectGarbage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, collectCommitIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(collectCommitIds[0], collectCommitIds[1]);
+
+        {
+            auto readData = tablet.ReadData(handle, 0, size);
+            TString data(size, 'b');
+            UNIT_ASSERT_VALUES_EQUAL(data, readData->Record.GetBuffer());
+        }
+    }
+
 #undef TABLET_TEST
 }
 
