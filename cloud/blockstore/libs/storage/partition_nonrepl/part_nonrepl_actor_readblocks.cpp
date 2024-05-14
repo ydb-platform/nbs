@@ -41,7 +41,7 @@ private:
 
     NProto::TReadBlocksResponse Response;
 
-    const bool SkipVoidBlocksForOptimizeNetworkTransfer;
+    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
 public:
     TDiskAgentReadActor(
@@ -89,7 +89,7 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
-    , SkipVoidBlocksForOptimizeNetworkTransfer(
+    , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
 {}
@@ -259,7 +259,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             std::move(*msg->Record.MutableBlocks()->MutableBuffers(i));
         if (responseBuffer.Empty()) {
             STORAGE_CHECK_PRECONDITION(
-                SkipVoidBlocksForOptimizeNetworkTransfer);
+                SkipVoidBlocksToOptimizeNetworkTransfer);
             responseBuffer.resize(blockSize, 0);
         }
     }

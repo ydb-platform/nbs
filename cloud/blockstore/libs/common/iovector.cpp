@@ -165,33 +165,27 @@ size_t CopyAndTrimVoidBuffers(
     buffers.Reserve(blockCount);
 
     const char* srcBuffer = src.Data();
-    size_t srcLen = src.Size();
-
     for (size_t i = 0; i < blockCount; ++i) {
         if (IsAllZeroes(srcBuffer, blockSize)) {
             // Add an empty buffer when data contains all zeros.
             buffers.Add();
         } else {
-            static_assert(
-                std::is_same<decltype(buffers.Add()), TString*>::value);
-            buffers.Add(TString(srcBuffer, blockSize));
+            buffers.Add()->assign(srcBuffer, blockSize);
         }
 
         srcBuffer += blockSize;
-        srcLen -= blockSize;
         bytesCount += blockSize;
     }
 
     return bytesCount;
 }
 
-TCopyStats CountVoidBuffers(const NProto::TIOVector& iov)
+ui32 CountVoidBuffers(const NProto::TIOVector& iov)
 {
-    TCopyStats result;
-    result.TotalBlockCount = iov.GetBuffers().size();
+    ui32 result = 0;
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer.Empty()) {
-            ++result.VoidBlockCount;
+            ++result;
         }
     }
     return result;

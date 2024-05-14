@@ -373,7 +373,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
                     // If we read the data directly to the final destination,
                     // then we clean out the void buffers where the data
                     // contains only zeros
-                    TrimVoidBuffers(response->MutableBlocks());
+                    TrimVoidBuffers(*response->MutableBlocks());
                 }
             }
 

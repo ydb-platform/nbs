@@ -16,7 +16,6 @@ enum EControlRequestSource
     SOURCE_SERVICE_MONITORING = 1;
 }
 
-
 enum EOptimizeNetworkTransfer
 {
     // No optimization enabled

@@ -32,7 +32,7 @@ TCopyStats CopyToSgList(
     ui32 blockSize);
 
 // Check all buffers, and trim those buffers that contain only zeros.
-void TrimVoidBuffers(NProto::TIOVector* iov);
+void TrimVoidBuffers(NProto::TIOVector& iov);
 
 // Creates buffers for all blocks and copies only those that contain non-zeros.
 // Buffers whose data is all zeros remain of zero size.
@@ -42,7 +42,7 @@ size_t CopyAndTrimVoidBuffers(
     ui32 blockSize,
     NProto::TIOVector* dst);
 
-// Calculate how many buffers were void and how many were not.
-[[nodiscard]] TCopyStats CountVoidBuffers(const NProto::TIOVector& iov);
+// Count how many buffers are void.
+[[nodiscard]] ui32 CountVoidBuffers(const NProto::TIOVector& iov);
 
 }   // namespace NCloud::NBlockStore

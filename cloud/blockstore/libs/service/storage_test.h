@@ -56,9 +56,7 @@ struct TTestStorage
             return nullptr;
         }
 
-        return {
-            new char[bytesCount],
-            std::default_delete<char[]>()};
+        return std::make_shared<char[]>(bytesCount);
     }
 
     void ReportIOError() override

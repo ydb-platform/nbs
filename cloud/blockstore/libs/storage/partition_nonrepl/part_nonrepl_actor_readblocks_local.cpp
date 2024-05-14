@@ -40,7 +40,7 @@ private:
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
 
-    const bool SkipVoidBlocksForOptimizeNetworkTransfer;
+    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
 public:
     TDiskAgentReadActor(
@@ -88,7 +88,7 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
-    , SkipVoidBlocksForOptimizeNetworkTransfer(
+    , SkipVoidBlocksToOptimizeNetworkTransfer(
           Request.GetHeaders().GetOptimizeNetworkTransfer() ==
           NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
 {}
@@ -253,7 +253,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             guard.Get(),
             blockRange.Start - Request.GetStartIndex(),
             PartConfig->GetBlockSize());
-        if (!SkipVoidBlocksForOptimizeNetworkTransfer) {
+        if (!SkipVoidBlocksToOptimizeNetworkTransfer) {
             STORAGE_CHECK_PRECONDITION(voidBlockStat.VoidBlockCount == 0);
         };
     }

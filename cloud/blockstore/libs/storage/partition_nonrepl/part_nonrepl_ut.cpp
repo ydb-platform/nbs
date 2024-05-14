@@ -1633,8 +1633,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             {
                 auto& msg =
                     *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
-                auto stat = CountVoidBuffers(msg.Record.GetBlocks());
-                voidBlockCount += stat.VoidBlockCount;
+                voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
@@ -1686,8 +1685,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             {
                 auto& msg =
                     *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
-                auto stat = CountVoidBuffers(msg.Record.GetBlocks());
-                voidBlockCount += stat.VoidBlockCount;
+                voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
             }
 
             return TTestActorRuntime::DefaultObserverFunc(event);
