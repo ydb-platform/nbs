@@ -1254,6 +1254,48 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         state.RegisterSuccess(now, group2);
         UNIT_ASSERT_VALUES_EQUAL(0, dts.size());
     }
+
+    Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
+    {
+        TPartitionState state(
+            DefaultConfig(1, 1000),
+            0,  // generation
+            BuildDefaultCompactionPolicy(5),
+            0,  // compactionScoreHistorySize
+            0,  // cleanupScoreHistorySize
+            DefaultBPConfig(),
+            DefaultFreeSpaceConfig(),
+            Max(),  // maxIORequestsInFlight
+            0,  // reassignChannelsPercentageThreshold
+            0,  // lastCommitId
+            5,  // channelCount
+            0,  // mixedIndexCacheSize
+            10000,  // allocationUnit
+            100,  // maxBlobsPerUnit
+            10,  // maxBlobsPerRange,
+            1  // compactionRangeCountPerRun
+        );
+
+        TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111};
+        TCleanupQueueItem b2 {{1, 2, 4, 4096, 0, 0}, 112};
+
+        state.GetCleanupQueue().Add(b2);
+        state.GetCleanupQueue().Add(b1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1025,
+            state.GetCleanupQueue().GetQueueBlocks());
+
+        state.GetCleanupQueue().Remove(b1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            state.GetCleanupQueue().GetQueueBlocks());
+
+        state.GetCleanupQueue().Remove(b2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.GetCleanupQueue().GetQueueBlocks());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
