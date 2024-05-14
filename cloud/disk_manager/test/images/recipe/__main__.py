@@ -57,7 +57,7 @@ def start(argv):
 
     vhd_ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vhd_images/ubuntu1604-ci-stable")
     if os.path.exists(vhd_ubuntu1604_image_file_path):
-        vhd_ubuntu1604_image_file_server = ImageFileServerLauncher(ubuntu1604_image_file_path)
+        vhd_ubuntu1604_image_file_server = ImageFileServerLauncher(vhd_ubuntu1604_image_file_path)
         vhd_ubuntu1604_image_file_server.start()
         set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(vhd_ubuntu1604_image_file_server.port))
         # size and crc32 after converting to raw image

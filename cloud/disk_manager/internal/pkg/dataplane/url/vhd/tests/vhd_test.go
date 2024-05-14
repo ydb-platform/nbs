@@ -53,7 +53,7 @@ func TestVHDMapImage(t *testing.T) {
 	)
 }
 
-func TestQCOW2MapImageUbuntu1604(t *testing.T) {
+func TestVHDMapImageUbuntu1604(t *testing.T) {
 	common_testing.MapImageTest(
 		t,
 		getVHDUbuntu1604ImageFileURL(),
