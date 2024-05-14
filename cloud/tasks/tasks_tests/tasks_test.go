@@ -721,7 +721,7 @@ func TestTasksSendEvent(t *testing.T) {
 	id, err := scheduleDoublerTask(reqCtx, s.scheduler, 123)
 	require.NoError(t, err)
 
-	updateTaskState := func() (tasks_storage.TaskState, error) {
+	updateTask := func() (tasks_storage.TaskState, error) {
 		ticker := time.NewTicker(20 * time.Millisecond)
 
 		for {
@@ -731,6 +731,8 @@ func TestTasksSendEvent(t *testing.T) {
 				require.NoError(t, err)
 
 				taskState, err = s.storage.UpdateTask(ctx, taskState)
+				// If UpdateTask is executed before task runner locked the task
+				// we encounter 'wrong generation' error.
 				if err == nil {
 					return taskState, err
 				}
@@ -741,20 +743,25 @@ func TestTasksSendEvent(t *testing.T) {
 	err = s.scheduler.SendEvent(ctx, id, 10)
 	require.NoError(t, err)
 
+	// Should return up-to-date Events value.
+	taskState, err := updateTask()
+	require.NoError(t, err)
+	require.EqualValues(t, []int64{10}, taskState.Events)
+
 	// Events should be unique.
 	err = s.scheduler.SendEvent(ctx, id, 10)
 	require.NoError(t, err)
 
 	// Should not update "events" field in task state.
-	taskState, err := updateTaskState()
+	taskState, err = updateTask()
 	require.NoError(t, err)
 	require.EqualValues(t, []int64{10}, taskState.Events)
 
 	err = s.scheduler.SendEvent(ctx, id, 11)
 	require.NoError(t, err)
 
-	// UpdateTask should return up-to-date Events value.
-	taskState, err = updateTaskState()
+	// Should return up-to-date Events value.
+	taskState, err = updateTask()
 	require.NoError(t, err)
 	require.EqualValues(t, []int64{10, 11}, taskState.Events)
 }
