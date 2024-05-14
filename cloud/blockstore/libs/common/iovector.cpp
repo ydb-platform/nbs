@@ -1,25 +1,8 @@
 #include "iovector.h"
 
-#include <library/cpp/int128/int128.h>
-
 #include <util/string/builder.h>
 
-#include <immintrin.h>
-
-#define IMPL 2
 namespace NCloud::NBlockStore {
-
-#if IMPL == 4
-inline int TestAllZeros(__m256i x)
-{
-    return _mm256_testz_si256(x, x);
-}
-#endif
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,8 +41,9 @@ TSgList GetSgList(const NProto::TWriteBlocksRequest& request)
     return sglist;
 }
 
-TResultOrError<TSgList>
-GetSgList(const NProto::TReadBlocksResponse& response, ui32 expectedBlockSize)
+TResultOrError<TSgList> GetSgList(
+    const NProto::TReadBlocksResponse& response,
+    ui32 expectedBlockSize)
 {
     const auto& iov = response.GetBlocks();
     TSgList sglist(Reserve(iov.BuffersSize()));
@@ -189,19 +173,6 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
 
 bool IsAllZeroes(const char* src, size_t size)
 {
-#if (IMPL == 1)
-    using TBigNumber = ui64;
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-
-    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
-    for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
-        if (buffer[i] != 0) {
-            return false;
-        }
-    }
-    return true;
-#endif
-#if (IMPL == 2)
     using TBigNumber = ui64;
     Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
 
@@ -210,33 +181,6 @@ bool IsAllZeroes(const char* src, size_t size)
         return false;
     }
     return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
-#endif
-#if (IMPL == 3)
-    using TBigNumber = ui64;
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-
-    for (size_t i = 0; i != size; i += sizeof(TBigNumber)) {
-        TBigNumber a = 0;
-        std::memcpy(&a, src + i, sizeof(TBigNumber));
-        if (a != 0) {
-            return false;
-        }
-    }
-    return true;
-#endif
-#if (IMPL == 4)
-    using TBigNumber = __m256i;
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-
-    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
-
-    for (size_t i = 0, n = size / (sizeof(TBigNumber)); i != n; ++i) {
-        if (!TestAllZeros(buffer[i])) {
-            return false;
-        }
-    }
-    return true;
-#endif
 }
 
 }   // namespace NCloud::NBlockStore

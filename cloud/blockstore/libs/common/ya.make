@@ -27,9 +27,6 @@ IF (PROFILE_MEMORY_ALLOCATIONS)
     )
 ENDIF()
 
-# Add avx2 for fast TestAllZeros()
-CFLAGS(-mavx2)
-
 END()
 
 RECURSE_FOR_TESTS(
