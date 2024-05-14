@@ -66,6 +66,18 @@ on:
         type: boolean
         default: false
         description: "Update remote build cache"
+      upload_ya_dir:
+        type: string
+        default: "no"
+        description: "Upload ya dir to s3"
+      clean_ya_dir:
+        type: string
+        default: "no"
+        description: "Clean ya dir from image before building"
+      use_network_cache:
+        type: string
+        default: "yes"
+        description: "Use network cache"
     outputs:
       sleep_after_tests:
         description: "sleep_after_tests"
@@ -108,6 +120,7 @@ jobs:
         s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        install: false
 
     - name: Build
       uses: ./.github/actions/build
@@ -120,6 +133,8 @@ jobs:
         bazel_remote_username: ${{ secrets.REMOTE_CACHE_USERNAME }}
         bazel_remote_password: ${{ secrets.REMOTE_CACHE_PASSWORD }}
         link_threads: ${{ inputs.link_threads }}
+        clean_ya_dir: ${{ inputs.clean_ya_dir }}
+        use_network_cache: ${{ inputs.use_network_cache }}
 
     - name: Run tests
       uses: ./.github/actions/test
@@ -136,6 +151,9 @@ jobs:
         link_threads: ${{ inputs.link_threads }}
         test_threads: ${{ inputs.test_threads }}
         sync_to_s3: ${{ vars.SYNC_TO_S3 }}
+        upload_ya_dir: ${{ inputs.upload_ya_dir }}
+        clean_ya_dir: ${{ inputs.run_build && 'no' || inputs.clean_ya_dir }}
+        use_network_cache: ${{ inputs.use_network_cache }}
 
     - id: failure
       name: set sleep_after_tests in case of failure

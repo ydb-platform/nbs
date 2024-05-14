@@ -373,9 +373,10 @@ if __name__ == "__main__":
         "logs",
         "build_logs",
         "artifacts",
+        "ya_archive",
     }
 
-    ttl_config = {"default": "30d", "test_data": "7d"}
+    ttl_config = {"default": "30d", "test_data": "7d", "ya_archive": "7d"}
     for ttl_setting in args.ttl:
         key, value = ttl_setting.split("=")
         ttl_config[key] = value

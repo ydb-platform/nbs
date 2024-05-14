@@ -99,8 +99,24 @@ on:
         description: "--link-threads in ya make"
       test_threads:
         type: string
-        default: "12"
+        default: "32"
         description: "--test-threads in ya test"
+      upload_ya_dir:
+        type: string
+        default: "no"
+        description: "Upload ya dir to s3"
+      clean_ya_dir:
+        type: string
+        default: "no"
+        description: "Clean ya dir from image before building"
+      use_network_cache:
+        type: string
+        default: "yes"
+        description: "Use network cache"
+      disk_type:
+        type: string
+        default: "network-ssd-nonreplicated"
+        description: "Disk type for VM"
 
 jobs:
   provide-runner:
@@ -138,8 +154,6 @@ jobs:
         uses: ./.github/actions/runner_create
         timeout-minutes: 60
         with:
-          org: ydb-platform
-          team: NBS
           repo_owner: ${{ github.repository_owner }}
           repo: ${{ github.event.repository.name }}
           service_account_key: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
@@ -148,47 +162,19 @@ jobs:
           vm_name: ${{ github.event.pull_request.number && format('pr-{0}{1}-{2}-{3}', github.event.pull_request.number, inputs.vm_name_suffix, github.run_id, github.run_attempt) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
           vm_zone: eu-north1-c
           vm_cpu: 60
-          vm_memory: 240
-          vm_disk_type: network-ssd-nonreplicated
+          vm_memory: 420
+          vm_disk_type: ${{ inputs.disk_type || 'network-ssd-nonreplicated' }}
           vm_disk_size: 1023
           vm_subnet: f8uh0ml4rhb45nde9p75
           vm_image: ${{ vars.IMAGE_ID_2204 }}
-          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name) || format('run={0}-{1},repo={2}', github.run_id, github.run_attempt, github.event.repository.name) }}
+          vm_labels: ${{ github.event.pull_request.number && format('pr={0},run={1}-{2},repo={3},owner={4}', github.event.pull_request.number, github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) || format('run={0}-{1},repo={2},owner={3}', github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
           vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
-
-
-  prepare-vm:
-    name: Prepare runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
-    needs: provide-runner
-    runs-on: [ self-hosted, "${{ needs.provide-runner.outputs.label }}" ]
-    steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha != ''
-        with:
-          submodules: true
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: ${{ !contains(github.event.pull_request.labels.*.name, 'rebase') && 1 || 0 }}
-      - name: Rebase PR
-        if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
-        shell: bash
-        run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git rebase origin/${{ github.event.pull_request.base.ref }}
-      - name: Checkout
-        uses: actions/checkout@v4
-        if: github.event.pull_request.head.sha == ''
-        with:
-          submodules: true
-      - name: Prepare VM
-        uses: ./.github/actions/prepare
 
   build-and-test:
     name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
     uses: ./.github/workflows/build_and_test_ya.yaml
     needs:
       - provide-runner
-      - prepare-vm
     with:
       runner_kind: self-hosted
       runner_label: ${{ needs.provide-runner.outputs.label }}
@@ -206,6 +192,9 @@ jobs:
       sleep_after_tests: ${{ inputs.sleep_after_tests }}
       cache_update_build: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_build)) }}
       cache_update_tests: ${{ fromJson(github.event_name == 'workflow_dispatch' && format('{0}', inputs.cache_update) || format('{0}', inputs.cache_update_tests)) }}
+      upload_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.upload_ya_dir}}
+      clean_ya_dir: ${{ github.event == 'workflow_dispatch' && 'no' || inputs.clean_ya_dir }}
+      use_network_cache: ${{ github.event == 'workflow_dispatch' && 'yes'|| inputs.use_network_cache }}
     secrets: inherit
 
   sleep-if-needed:
@@ -219,7 +208,11 @@ jobs:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
         if: ${{ needs.build-and-test.outputs.sleep_after_tests && needs.build-and-test.outputs.sleep_after_tests != '0'  }}
-        run: sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
+        # we need to use binary because builting doesn't produce process
+        # which we can kill to stop the vm before it's done
+        run: |
+          echo "sleeping ${{ needs.build-and-test.outputs.sleep_after_tests }}s"
+          /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
 
   release-runner:
     name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]

@@ -164,7 +164,7 @@ if __name__ == "__main__":
 
     bucket_name, base_prefix = parse_s3_path(args.s3_path)
 
-    ttl_config = {"default": "30d", "test_data": "7d"}
+    ttl_config = {"default": "30d", "test_data": "7d", "ya_archive": "7d"}
     for ttl_setting in args.ttl:
         key, value = ttl_setting.split("=")
         ttl_config[key] = value
@@ -177,6 +177,7 @@ if __name__ == "__main__":
         "logs",
         "build_logs",
         "artifacts",
+        "ya_archive",
     }
 
     s3_client = boto3.client("s3")
