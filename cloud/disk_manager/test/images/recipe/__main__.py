@@ -55,11 +55,11 @@ def start(argv):
     image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
     set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
 
-    ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vhd_images/ubuntu1604-ci-stable")
-    if os.path.exists(ubuntu1604_image_file_path):
-        ubuntu1604_image_file_server = ImageFileServerLauncher(ubuntu1604_image_file_path)
-        ubuntu1604_image_file_server.start()
-        set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(ubuntu1604_image_file_server.port))
+    vhd_ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vhd_images/ubuntu1604-ci-stable")
+    if os.path.exists(vhd_ubuntu1604_image_file_path):
+        vhd_ubuntu1604_image_file_server = ImageFileServerLauncher(ubuntu1604_image_file_path)
+        vhd_ubuntu1604_image_file_server.start()
+        set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_FILE_SERVER_PORT", str(vhd_ubuntu1604_image_file_server.port))
         # size and crc32 after converting to raw image
         set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_SIZE", "15246508032")
         set_env("DISK_MANAGER_RECIPE_VHD_UBUNTU1604_IMAGE_CRC32", "3937858947")
