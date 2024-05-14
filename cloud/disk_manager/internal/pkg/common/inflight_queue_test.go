@@ -91,36 +91,36 @@ func TestInflightQueueMilestone(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
 	queue.Add(ctx, 10)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(10)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 11, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 11, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
 	queue.Add(ctx, 13)
 	queue.Add(ctx, 15)
 	queue.Add(ctx, 16)
 	sendProcessedValue(13)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 15, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 15, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(15)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 16, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 16, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(16)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 17, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 17, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
 	queue.UpdateMilestoneHint(20)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 20, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 20, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
 	queue.Add(ctx, 22)
 	queue.Add(ctx, 25)
 	queue.UpdateMilestoneHint(30)
 
 	sendProcessedValue(22)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 25, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 25, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(25)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
 	// Milestone value should not decrease
 	queue.UpdateMilestoneHint(0)
-	require.Equal(t, queue.Milestone(), Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount})
+	require.Equal(t, Milestone{Value: 30, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 }
