@@ -89,6 +89,9 @@ message TLoadTest
 
     // disables destruction of the filestore created via CreateFileStoreRequest
     bool KeepFileStore = 16;
+
+    // Specific Errors we are waiting for.
+    repeated uint32 SuccessOnError = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

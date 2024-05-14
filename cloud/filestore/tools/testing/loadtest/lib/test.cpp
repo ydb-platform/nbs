@@ -604,11 +604,20 @@ private:
 
             auto code = request->Error.GetCode();
             if (FAILED(code)) {
-                STORAGE_ERROR("%s failing test due to: %s",
-                    MakeTestTag().c_str(),
-                    FormatError(request->Error).c_str());
+                bool expectedErrorCode = false;
+                for (auto code: Config.GetSuccessOnError()) {
+                    if (code == request->Error.GetCode()) {
+                        expectedErrorCode = true;
+                        break;
+                    }
+                }
+                if (!expectedErrorCode) {
+                    STORAGE_ERROR("%s failing test due to: %s",
+                        MakeTestTag().c_str(),
+                        FormatError(request->Error).c_str());
 
-                TestStats.Success = false;
+                    TestStats.Success = false;
+                }
             }
 
             auto& stats = TestStats.ActionStats[request->Action];
