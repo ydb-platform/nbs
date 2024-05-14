@@ -731,8 +731,8 @@ func TestTasksSendEvent(t *testing.T) {
 				require.NoError(t, err)
 
 				taskState, err = s.storage.UpdateTask(ctx, taskState)
-				// If UpdateTask is executed before task runner locked the task
-				// we encounter 'wrong generation' error.
+				// Retry UpdateTask as it might encounter 'wrong generation'
+				// because task might be locked/executed in parallel.
 				if err == nil {
 					return taskState, err
 				}
