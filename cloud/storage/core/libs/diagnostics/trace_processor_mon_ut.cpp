@@ -1,3 +1,5 @@
+#include "trace_processor_mon.h"
+#include "trace_processor.h"
 #include "trace_reader.h"
 
 #include <cloud/storage/core/protos/media.pb.h>
@@ -5,6 +7,7 @@
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/logger/backend.h>
@@ -115,14 +118,15 @@ struct TEnv
                 "STORAGE_TRACE",
                 requestThresholds
         )};
-        return NCloud::CreateTraceProcessor(
-            Timer,
-            Scheduler,
-            logging,
+        return NCloud::CreateTraceProcessorMon(
             monitoring,
-            "STORAGE_TRACE",
-            *LWManager,
-            std::move(readers)
+            NCloud::CreateTraceProcessor(
+                Timer,
+                Scheduler,
+                logging,
+                "STORAGE_TRACE",
+                *LWManager,
+                std::move(readers))
         );
     }
 };

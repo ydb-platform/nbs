@@ -17,7 +17,7 @@ SRCS(
     postpone_time_predictor_ut.cpp
     request_counters_ut.cpp
     solomon_counters_ut.cpp
-    trace_processor_ut.cpp
+    trace_processor_mon_ut.cpp
     trace_serializer_ut.cpp
     weighted_percentile_ut.cpp
 )

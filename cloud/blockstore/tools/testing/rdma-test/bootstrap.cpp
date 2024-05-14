@@ -17,6 +17,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -122,14 +124,15 @@ void TBootstrap::InitTracing()
     }
 
     if (traceReaders) {
-        TraceProcessor = CreateTraceProcessor(
-            Timer,
-            Scheduler,
-            Logging,
+        TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
-            "BLOCKSTORE_TRACE",
-            traceManager,
-            std::move(traceReaders));
+            CreateTraceProcessor(
+                Timer,
+                Scheduler,
+                Logging,
+                "BLOCKSTORE_TRACE",
+                traceManager,
+                std::move(traceReaders)));
     }
 }
 
