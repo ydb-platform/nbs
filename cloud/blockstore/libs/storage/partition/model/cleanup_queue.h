@@ -41,7 +41,7 @@ private:
     ui64 QueueBlocks = 0;
 
 public:
-    TCleanupQueue(ui64 blockSize);
+    explicit TCleanupQueue(ui64 blockSize);
     ~TCleanupQueue();
 
     //
