@@ -120,6 +120,20 @@ struct TServer: IEndpointProxyServer
 
     void PreStart()
     {
+
+        // TODO
+
+        /*
+    TServerConfig serverConfig {
+        .ThreadsCount = 1,  // there will be just one endpoint
+        .MaxInFlightBytesPerThread = Options->MaxInFlightBytes,
+        .Affinity = {}
+    };
+
+    NbdServer = CreateServer(Logging, serverConfig);
+    NbdServer->Start();
+    */
+
         grpc::ServerBuilder sb;
         const auto addr = Sprintf("0.0.0.0:%u", Config.Port);
         sb.AddListeningPort(addr, grpc::InsecureServerCredentials());
@@ -192,6 +206,39 @@ struct TServer: IEndpointProxyServer
             << requestContext->Request.DebugString().Quote());
 
         // TODO: impl
+
+
+        /*
+    auto mountResponse = Session->MountVolume().GetValue(WaitTimeout);
+    CheckError(mountResponse);
+
+    TStorageOptions options;
+
+    const auto& volume = mountResponse.GetVolume();
+    options.BlockSize = volume.GetBlockSize();
+    options.BlocksCount = volume.GetBlocksCount();
+    options.CheckpointId = Options->CheckpointId;
+
+    auto handlerFactory = CreateServerHandlerFactory(
+        CreateDefaultDeviceHandlerFactory(),
+        Logging,
+        Session,
+        CreateServerStatsStub(),
+        options);
+
+    auto future = NbdServer->StartEndpoint(
+        listenAddress,
+        std::move(handlerFactory));
+    CheckError(future.GetValue(WaitTimeout));
+
+        NbdDevice = CreateDeviceConnection(
+            Logging,
+            listenAddress,
+            Options->ConnectDevice,
+            Options->Timeout);
+
+        NbdDevice->Start();
+        */
 
         requestContext->Done = true;
 
