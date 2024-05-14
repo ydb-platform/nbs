@@ -32,13 +32,10 @@ class Migration:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        log_message = 'Migration test was halted due to timeout' if exc_type \
-            else 'Migration test successfully finished'
-        self.__runner.logger.info('Test ended: ' + log_message)
-
-        agent_message = 'halt migration test' if exc_type \
-            else 'finish migration test'
-        self.__runner.change_agent_state(self.__agent_id, 0, agent_message)
+        message = 'finish migration test'
+        if exc_type is not None:
+            message = 'halt migration test'
+        self.__runner.change_agent_state(self.__agent_id, 0, message)
 
 
 class TestRunner:
@@ -67,14 +64,15 @@ class TestRunner:
             self.sleep_timeout = 0
             self.max_kills = 6
 
-        if args.run_locally:
+        if args.no_ycp:
             assert args.disk_id, 'Disk id should be provided'
-            assert not args.use_auth, 'Can\'t use auth while running locally'
-            assert not args.check_load, 'Can\'t check load while running locally'
-            assert not args.disk_name, 'Can\'t find disk by name while running locally'
+            assert args.nbs_host, 'Nbs endpoint host should be provided'
+            assert not args.use_auth, 'Can\'t use auth without ycp'
+            assert not args.check_load, 'Can\'t check load without ycp'
+            assert not args.disk_name, 'Can\'t find disk by name without ycp'
 
             self.disk_id = args.disk_id
-            self.endpoint = '{}:{}'.format('localhost', self.port)
+            self.endpoint = f'{args.nbs_host}:{args.nbs_port}'
         else:
             assert args.cluster, 'Cluster should be provided'
             assert args.zone, 'Zone should be provided'
@@ -105,7 +103,8 @@ class TestRunner:
                     token = ycp.create_iam_token()
                 self.credentials = ClientCredentials(auth_token=token.iam_token)
 
-            self.endpoint = '{}:{}'.format(self.instance.compute_node, self.port)
+            host = args.nbs_host if args.nbs_host else self.instance.compute_node
+            self.endpoint = '{}:{}'.format(host, self.port)
 
             if self.disk_id is None:
                 description = f'id={args.disk_id}' if args.disk_id else f'name={args.disk_name}'
@@ -308,6 +307,11 @@ def parse_args():
         help='specify service-account-id for authorization to nbs server'
     )
     test_arguments_group.add_argument(
+        '--nbs-host',
+        required=False,
+        help='specify nbs server host'
+    )
+    test_arguments_group.add_argument(
         '--nbs-port',
         type=int,
         help='specify nbs server port'
@@ -318,10 +322,10 @@ def parse_args():
         default=False,
         help='make requests to nbs with authorization')
     test_arguments_group.add_argument(
-        '--run-locally',
+        '--no-ycp',
         action='store_true',
         default=False,
-        help='don\'t use ycp, but run locally on nbs-host')
+        help='don\'t use ycp')
     test_arguments_group.add_argument(
         '--zone',
         type=str,
