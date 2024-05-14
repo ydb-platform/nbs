@@ -1,32 +1,104 @@
 variable "FOLDER_ID" {
-  type = string
+  type    = string
   default = "bjeuq5o166dq4ukv3eec"
 }
 
 variable "ZONE" {
-  type = string
+  type    = string
   default = "eu-north1-c"
 }
 
 variable "SUBNET_ID" {
-  type = string
+  type    = string
   default = "f8uh0ml4rhb45nde9p75"
 }
 
 variable "LSB_RELEASE" {
-  type = string
+  type    = string
   default = "jammy"
 }
 
 variable "CCACHE_VERSION" {
-  type = string
+  type    = string
   default = "4.8.1"
 }
 
 variable "OS_ARCH" {
-  type = string
+  type    = string
   default = "x86_64"
 }
+
+variable "RUNNER_VERSION" {
+  type    = string
+  default = "2.316.1"
+}
+
+variable "YA_ARCHIVE_URL" {
+  type    = string
+  default = ""
+}
+
+variable "USER_TO_CREATE" {
+  type    = string
+  default = "github"
+}
+
+variable "PASSWORD_HASH" {
+  type    = string
+  default = ""
+}
+
+variable "GITHUB_TOKEN" {
+  type    = string
+  default = ""
+}
+
+variable "ORG" {
+  type    = string
+  default = "ydb-platform"
+}
+
+variable "TEAM" {
+  type    = string
+  default = "nbs"
+}
+
+variable "AWS_ACCESS_KEY_ID" {
+  type    = string
+  default = ""
+}
+
+variable "AWS_SECRET_ACCESS_KEY" {
+  type    = string
+  default = ""
+}
+
+variable "NIGHTLY_RUN_ID" {
+  type    = string
+  default = "0"
+}
+
+variable "BUILD_RUN_ID" {
+  type    = string
+  default = "0"
+}
+
+
+variable "REPOSITORY" {
+  type    = string
+  default = ""
+}
+
+variable "IMAGE_FAMILY_NAME" {
+  type    = string
+  default = ""
+}
+
+variable "IMAGE_PREFIX" {
+  type    = string
+  default = ""
+}
+
 
 locals {
   current_date = formatdate("YYMMDD-hhmmss", timestamp())
@@ -35,42 +107,59 @@ locals {
 source "yandex" "github-runner" {
   endpoint            = "api.nemax.nebius.cloud:443"
   folder_id           = "${var.FOLDER_ID}"
-  source_image_family = "ubuntu-2204-lts"
-  ssh_username        = "ubuntu"
-  use_ipv4_nat        = "true"
-  image_description   = "Github Runner Image"
-  image_family        = "github-runner"
-  image_name          = "gh-2204-${local.current_date}"
-  subnet_id           = "${var.SUBNET_ID}"
-  disk_type           = "network-ssd"
   zone                = "${var.ZONE}"
-  disk_size_gb        = 8
+  subnet_id           = "${var.SUBNET_ID}"
+  use_ipv4_nat        = "true"
+  state_timeout       = "60m"
+  ssh_username        = "ubuntu"
+  source_image_family = "ubuntu-2204-lts"
+  image_family        = "github-runner-${var.IMAGE_FAMILY_NAME}"
+  image_name          = (
+                          var.YA_ARCHIVE_URL != ""
+                            ? "${var.IMAGE_PREFIX}-${var.IMAGE_FAMILY_NAME}-${var.NIGHTLY_RUN_ID}"
+                            : "${var.IMAGE_PREFIX}-${var.IMAGE_FAMILY_NAME}-build-${var.BUILD_RUN_ID}"
+                        )
+  image_description   = (
+                          var.YA_ARCHIVE_URL != ""
+                            ? "repo:${var.REPOSITORY} run_id:${var.BUILD_RUN_ID} created_at:${local.current_date} nightly_run_id:${var.NIGHTLY_RUN_ID} "
+                            : "repo:${var.REPOSITORY} run_id:${var.BUILD_RUN_ID} created_at:${local.current_date}"
+                        )
+  image_pooled        = "true"
+
+  // labels don't work for some reason
+  labels = {
+    "nightly_run" = "${var.NIGHTLY_RUN_ID}"
+    "repository"  = "${var.REPOSITORY}"
+  }
+
+  disk_type       = "network-ssd"
+  disk_size_gb    = var.YA_ARCHIVE_URL != "" ? 6*93 : 12
+  instance_cores  = 60
+  instance_mem_gb = 240
 }
 
 build {
   sources = ["source.yandex.github-runner"]
 
   provisioner "shell" {
-    inline = [
-      "set -x",
-      # Global Ubuntu things
-      "wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc | sudo apt-key add -",
-      "echo \"deb https://apt.kitware.com/ubuntu/ ${var.LSB_RELEASE} main\" | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null",
-      "wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -",
-      "echo \"deb https://apt.llvm.org/${var.LSB_RELEASE}/ llvm-toolchain-${var.LSB_RELEASE}-14 main\" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null",
-      "sudo apt-get update",
-      "echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections",
-      "sudo apt-get install -y --no-install-recommends git wget gnupg lsb-release curl xz-utils tzdata cmake python3-dev python3-pip ninja-build antlr3 m4 libidn11-dev libaio1 libaio-dev make clang-14 lld-14 llvm-14 file distcc s3cmd qemu-kvm dpkg-dev",
-      "sudo pip3 install conan==1.59 pytest==7.1.3  pyinstaller==5.13.2 pytest-timeout pytest-xdist==3.3.1 setproctitle==1.3.2  six pyyaml packaging  cryptography grpcio grpcio-tools PyHamcrest tornado xmltodict pyarrow boto3 moto[server] psutil pygithub==1.59.1",
-      "curl -L https://github.com/ccache/ccache/releases/download/v${var.CCACHE_VERSION}/ccache-${var.CCACHE_VERSION}-linux-${var.OS_ARCH}.tar.xz | sudo tar -xJ -C /usr/local/bin/ --strip-components=1 --no-same-owner ccache-${var.CCACHE_VERSION}-linux-${var.OS_ARCH}/ccache",
-      "sudo apt-get remove -y unattended-upgrades",
-
-      # Other packages
-      "sudo apt-get install -y git jq tree tmux atop",
-
-      # Clean
-      "rm -rf .sudo_as_admin_successful",
-      "sudo rm -rf /var/lib/apt/lists/*",
+    environment_vars = [
+      "CCACHE_VERSION=${var.CCACHE_VERSION}",
+      "LSB_RELEASE=${var.LSB_RELEASE}",
+      "RUNNER_VERSION=${var.RUNNER_VERSION}",
+      "OS_ARCH=${var.OS_ARCH}",
+      "USER_TO_CREATE=${var.USER_TO_CREATE}",
+      "PASSWORD_HASH=${var.PASSWORD_HASH}",
+      "YA_ARCHIVE_URL=${var.YA_ARCHIVE_URL}",
+      "GITHUB_TOKEN=${var.GITHUB_TOKEN}",
+      "ORG=${var.ORG}",
+      "TEAM=${var.TEAM}",
+      "AWS_ACCESS_KEY_ID=${var.AWS_ACCESS_KEY_ID}",
+      "AWS_SECRET_ACCESS_KEY=${var.AWS_SECRET_ACCESS_KEY}",
     ]
+    script = "./.github/scripts/github-runner.sh"
+  }
+
+  post-processor "manifest" {
+    output = "manifest.json"
   }
 }

@@ -46,7 +46,6 @@ jobs:
           reporter: ${{ steps.reporter.outputs.value }}
           path: |
             .github/
-            cloud/storage/core/tools/ci/
           pattern: "*.sh"
 
       - name: shfmt
@@ -54,6 +53,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
+          shfmt_flags: "-i 4 -ci -kp -bn -sr"
 
   python:
     runs-on: ubuntu-latest

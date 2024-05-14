@@ -1,0 +1,262 @@
+name: Build VM Image
+run-name: Build VM Image ${{ github.event.workflow_run.event }} workflow_run_id:${{ inputs.workflow_run_id }} download_ya_archive:${{ inputs.download_ya_archive }} remove_old_images:${{ inputs.remove_old_images }} update_image_id:${{ inputs.update_image_id }}
+on:
+  # schedule:
+  #   - cron: "0 5 * * *"
+  workflow_call:
+    inputs:
+      build:
+        description: "Build VM image"
+        required: false
+        default: true
+        type: boolean
+      download_ya_archive:
+        description: "Download .ya archive to resulting image"
+        required: false
+        default: true
+        type: boolean
+      workflow_run_id:
+        description: "Workflow run id (optional)"
+        required: false
+        default: 0
+        type: number
+      file:
+        description: "File to download"
+        required: false
+        default: "ya_web_url_file"
+        type: string
+      images_to_keep:
+        description: "Number of images to keep"
+        required: false
+        default: 3
+        type: number
+      remove_old_images:
+        description: "Delete old images"
+        required: false
+        default: false
+        type: boolean
+      update_image_id:
+        description: "Update image id"
+        required: false
+        default: false
+        type: boolean
+      image_prefix:
+        description: "Image prefix"
+        required: false
+        default: "gh-2204-auto"
+        type: string
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Build VM image"
+        required: false
+        default: true
+        type: boolean
+      download_ya_archive:
+        description: "Download .ya archive to resulting image"
+        required: false
+        default: true
+        type: boolean
+      workflow_run_id:
+        description: "Workflow run id (optional)"
+        required: false
+        default: 0
+        type: number
+      file:
+        description: "File to download"
+        required: false
+        default: "ya_web_url_file"
+        type: string
+      images_to_keep:
+        description: "Number of images to keep"
+        required: false
+        default: 3
+        type: number
+      remove_old_images:
+        description: "Delete old images"
+        required: false
+        default: false
+        type: boolean
+      update_image_id:
+        description: "Update image id"
+        required: false
+        default: false
+        type: boolean
+      image_prefix:
+        description: "Image prefix"
+        required: false
+        default: "gh-2204-auto"
+        type: string
+
+env:
+  build: ${{ github.event_name == 'schedule' && 'true' || inputs.build }}
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -eo pipefail -x {0}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+
+    - name: Set up Packer
+      uses: hashicorp/setup-packer@v3
+      with:
+        version: 1.10.2
+    - name: install dependencies
+      run: |
+        pip install PyGithub==2.2.0 grpcio grpcio-tools yandexcloud==0.258.0
+        echo "PATH=$PATH:$HOME/nebius-cloud/bin" >> $GITHUB_ENV
+
+    - name: Set up NCP
+      run: |
+        curl -sSL https://storage.ai.nebius.cloud/ncp/install.sh | bash
+        cat <<EOF > sa.json
+        ${sa_json}
+        EOF
+
+        ncp config profile create nbs-github-user-sa
+        ncp config set service-account-key sa.json
+        ncp config set endpoint api.ai.nebius.cloud:443
+      env:
+        sa_json: ${{ secrets.NEBIUS_SA_JSON_CREDENTIALS }}
+
+    - name: Get IAM token
+      id: get-iam-token
+      run: |
+        YC_TOKEN=$(ncp --profile=nbs-github-user-sa iam create-token --format=json | jq -r .iam_token)
+        echo "::add-mask::$YC_TOKEN"
+        echo "YC_TOKEN=$YC_TOKEN" >> $GITHUB_ENV
+
+    - name: Get .ya archive url
+      if: inputs.download_ya_archive == true
+      id: get-ya-archive-url
+      run: |
+        python .github/scripts/workflow-artifact-download.py \
+          --artifact "${ARTIFACT_NAME}" \
+          --workflow-run-id "${WORKFLOW_RUN_ID}"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        ARTIFACT_NAME: ${{ inputs.file }}
+        WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
+
+
+    - name: Check whether we have image with this workflow_run_id
+      if: inputs.download_ya_archive == true
+      id: check-image
+      run: |
+        ncp --profile=nbs-github-user-sa compute images list --folder-id "${FOLDER_ID}" --format=json | tee -a images.txt
+        exit_code=0
+        jq  -r 'first(
+          .[].name |
+          if .== "${{ inputs.image_prefix }}-${{ steps.get-ya-archive-url.outputs.run_id }}"
+          then
+            halt_error(1)
+          else
+            empty
+          end
+        )' < images.txt || {
+          exit_code=$?
+        }
+        if [ "$exit_code" -eq 1 ]; then
+          echo "Image with this run_id already exists, if you want to overwrite it, rename old one"
+
+          echo "image_already_exists=true" >> $GITHUB_OUTPUT
+
+        else
+          echo "Image with this run_id doesn't exist"
+          echo "image_already_exists=false" >> $GITHUB_OUTPUT
+
+        fi
+      env:
+        FOLDER_ID: bjeuq5o166dq4ukv3eec
+
+    - name: Run `packer init` and create variables file
+      if: steps.check-image.outputs.image_already_exists != 'true'
+      id: init
+      run: |
+        VARIABLES_FILE=$(mktemp XXXXXXX.hcl)
+        IMAGE_FAMILY_NAME=${GITHUB_REPOSITORY//\//-}
+        echo "VARIABLES_FILE=$VARIABLES_FILE" >> $GITHUB_ENV
+        packer init .github/packer/config.pkr.hcl
+
+        cat << EOF > $VARIABLES_FILE
+        RUNNER_VERSION="${RUNNER_VERSION}"
+        USER_TO_CREATE="${USER_NAME}"
+        PASSWORD_HASH="${{ secrets.VM_USER_PASSWD }}"
+        ${YA_ARCHIVE_PARAMETER}
+        FOLDER_ID="${FOLDER_ID}"
+        ZONE="${ZONE}"
+        SUBNET_ID="${SUBNET_ID}"
+        ORG="${ORG}"
+        TEAM="${TEAM}"
+        GITHUB_TOKEN="${GITHUB_TOKEN}"
+        AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+        AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+        REPOSITORY="${GITHUB_REPOSITORY}"
+        IMAGE_FAMILY_NAME="${IMAGE_FAMILY_NAME}"
+        IMAGE_PREFIX="${IMAGE_PREFIX}"
+        BUILD_RUN_ID="${BUILD_RUN_ID}"
+        EOF
+        cat $VARIABLES_FILE
+      env:
+        RUNNER_VERSION: ${{ vars.RUNNER_VERSION || '2.308.0' }}
+        FOLDER_ID: bjeuq5o166dq4ukv3eec
+        ZONE: eu-north1-c
+        SUBNET_ID: f8uh0ml4rhb45nde9p75
+        USER_NAME: github
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        ORG: "ydb-platform"
+        TEAM: "nbs"
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        IMAGE_PREFIX: ${{ inputs.image_prefix }}
+        BUILD_RUN_ID: ${{ github.run_id }}
+        YA_ARCHIVE_PARAMETER: |
+          ${{ (inputs.download_ya_archive && steps.get-ya-archive-url.outputs.latest_url != '')
+              && format(
+                'YA_ARCHIVE_URL="{0}"
+                NIGHTLY_RUN_ID="{1}"',
+                steps.get-ya-archive-url.outputs.latest_url, steps.get-ya-archive-url.outputs.run_id
+              ) || ''
+          }}
+
+    - name: Run `packer validate`
+      if: steps.check-image.outputs.image_already_exists != 'true'
+      id: validate
+      run: |
+        packer validate -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
+
+    - name: Run `packer build`
+      id: build
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      timeout-minutes: 120
+      # IMPORTANT: PASSWORD_HASH is in '' and with in-place variable to prevent need to escape $ in variable name
+      run: |
+        packer build -timestamp-ui -var-file=$VARIABLES_FILE .github/packer/github-runner.pkr.hcl
+
+        echo "IMAGE_ID_2204=$(jq -r '.builds[0].artifact_id' manifest.json)" >> $GITHUB_OUTPUT
+
+
+    - name: Print IMAGE_ID_2204
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      run: echo ${{ steps.build.outputs.IMAGE_ID_2204 }}
+
+    - name: Set new image id
+      if: env.build == 'true' && steps.check-image.outputs.image_already_exists != 'true'
+      run: |
+        python ./.github/scripts/manage-images.py \
+          --service-account-key sa.json \
+          --new-image-id ${NEW_IMAGE_ID} \
+          --image-variable-name ${IMAGE_VARIABLE_NAME} \
+          --images-to-keep ${IMAGES_TO_KEEP} ${UPDATE_IMAGE_ID} ${REMOVE_OLD_IMAGES}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        IMAGE_VARIABLE_NAME: IMAGE_ID_2204
+        NEW_IMAGE_ID: ${{ steps.build.outputs.IMAGE_ID_2204 }}
+        IMAGES_TO_KEEP: ${{ inputs.images_to_keep }}
+        UPDATE_IMAGE_ID: ${{ inputs.update_image_id && '--update-image-id' || '' }}
+        REMOVE_OLD_IMAGES: ${{ inputs.remove_old_images && '--remove-old-images' || '' }}

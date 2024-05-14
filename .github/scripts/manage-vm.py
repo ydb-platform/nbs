@@ -98,36 +98,69 @@ def generate_cloud_init_script(
             f",GITHUB_REPOSITORY_{os.environ['GITHUB_REPOSITORY'].replace('/', '_')}"
         )
 
-    for item in ["GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_NUMBER"]:
+    for item in ["GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"]:
         if os.environ.get(item):
             label += f",{item}_{os.environ[item]}"
 
-    script = [
-        "#!/bin/bash",
-        "set -x",
-        "mkdir -p /actions-runner && cd /actions-runner",
-        'case $(uname -m) in aarch64) ARCH="arm64" ;; amd64|x86_64) ARCH="x64";; esac',
-        f"export FILENAME=actions-runner-linux-${{ARCH}}-{version}.tar.gz",
-        # https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz
-        f'[ -f "$FILENAME" ] || curl -O -L "https://github.com/actions/runner/releases/download/v{version}/$FILENAME"',
-        'tar xzf "./$FILENAME"',
-        "export RUNNER_ALLOW_RUNASROOT=1",
-        f"./config.sh  --labels {label} --url https://github.com/{owner}/{repo} --token {token}",
-        "./run.sh",
-    ]
+    script = f"""
+set -x
+[ -d /actions-runner ] && {{
+    echo "Runner already installed"
+    cd /actions-runner
+}} || {{
+    mkdir -p /actions-runner && cd /actions-runner
+    case $(uname -m) in
+        aarch64) ARCH="arm64" ;;
+        amd64|x86_64) ARCH="x64";;
+    esac
+    export FILENAME=runner.tar.gz
+    # https://github.com/actions/runner/releases/download/v2.314.1/actions-runner-linux-x64-2.314.1.tar.gz
+    exit_code=1
+    i=0
+    url="https://github.com/actions/runner/releases/download/v{version}/actions-runner-linux-${{ARCH}}-{version}.tar.gz"
+    until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
+        [ -f "$FILENAME" ] || curl --connect-timeout 5 -O -L "$url" -o "$FILENAME"
+        exit_code=$?
+        i=$((i+1))
+        [ $exit_code -eq 0 ] || rm -f "$FILENAME"
+        echo "$((date)) [$i] curl exited (or timed-out) with code $exit_code"
+    done
+    tar xzf "./$FILENAME" || exit 0
+}}
+export RUNNER_ALLOW_RUNASROOT=1
 
-    cloud_init = {}
-    cloud_init["ssh_pwauth"] = False
+# trying to catch registration error
+exit_code=1
+i=0
+until [ $exit_code -eq 0 ] || [ $i -gt 3 ]; do
+    echo ./config.sh --labels {label} --url https://github.com/{owner}/{repo} --token XXX --unattended
+    set +x
+    timeout 60 ./config.sh --labels {label} --url https://github.com/{owner}/{repo} --token {token} --unattended
+    set -x
+    exit_code=$?
+    i=$((i+1))
+    echo "$((date)) [$i] config.sh exited (or timed-out) with code $exit_code"
+    [ $exit_code -eq 0 ] || find /actions-runner -name *.log -print -exec cat {{}} \; # noqa: W605
+done
+# exit code 0 to skip the error and to boot vm correctly
+./run.sh || exit 0
+"""
+
+    cloud_init = {"runcmd": [script]}
+    # cloud_init["ssh_pwauth"] = False
     cloud_init["users"] = [
         {
             "name": user,
             "sudo": "ALL=(ALL) NOPASSWD:ALL",
             "passwd": os.environ["VM_USER_PASSWD"],
+            "lock_passwd": False,
             "shell": "/bin/bash",
-            "ssh_authorized_keys": ssh_keys,
         }
     ]
-    cloud_init["runcmd"] = ["\n".join(script)]
+    if ssh_keys:
+        logger.info("Adding SSH keys to cloud-init")
+        cloud_init["users"][0]["ssh_authorized_keys"] = ssh_keys
+
     logger.info(
         f"Cloud-init: \n{yaml.safe_dump(cloud_init, default_flow_style=False, width=math.inf)}".replace(
             token, "****"
@@ -155,10 +188,13 @@ def get_runner_token(
     ).json()
 
     token = result.get("token")
+    expires_at = result.get("expires_at")
     if token:
         # Mask the token in the logs
         print(f"::add-mask::{token}")
-        logger.debug("Got runner registration token: %s", token)
+        logger.debug(
+            "Got runner registration token: %s (valid till: %s)", (token, expires_at)
+        )
         return token
     else:
         raise ValueError(f"Failed to get runner registration token: {result}")
@@ -218,7 +254,15 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
         args.github_repo_owner, args.github_repo, GITHUB_TOKEN
     )
 
-    ssh_keys = fetch_github_team_public_keys(gh, args.github_org, args.github_team_slug)
+    ssh_keys = []
+    if args.github_org and args.github_team_slug:
+        ssh_keys = fetch_github_team_public_keys(
+            gh, args.github_org, args.github_team_slug
+        )
+    else:
+        logger.info(
+            "No GitHub organization or team specified, skipping SSH key fetching"
+        )
 
     # fmt: off
     standard_v2_cpu = [
@@ -257,6 +301,14 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
     labels = args.labels
     labels["runner-label"] = runner_github_label
 
+    metadata = {
+        "user-data": user_data,
+        "serial-port-enable": "1",
+    }
+    if ssh_keys:
+        logger.info("Adding SSH keys to metadata")
+        metadata["ssh-keys"] = "\n".join([f"{args.user}:{key}" for key in ssh_keys])
+
     request = CreateInstanceRequest(
         name=args.name,
         folder_id=args.folder_id,
@@ -283,11 +335,7 @@ def create_vm(sdk: SDK, args: argparse.Namespace):
                 ),
             )
         ],
-        metadata={
-            "user-data": user_data,
-            "ssh-keys": "\n".join([f"{args.user}:{key}" for key in ssh_keys]),
-            "serial-port-enable": "1",
-        },
+        metadata=metadata,
     )
 
     # Create the VM
@@ -407,15 +455,15 @@ if __name__ == "__main__":
     create = subparsers.add_parser("create", help="Create a new VM")
     create.add_argument(
         "--github-org",
-        required=True,
-        default="ydb-platform",
+        required=False,
+        default="",
         help="GitHub organization name (we will fetch SSH keys from this org to allow access to the VM)",
     )
 
     create.add_argument(
         "--github-team-slug",
-        required=True,
-        default="NBS",
+        required=False,
+        default="",
         help="Slug of the GitHub team within the organization",
     )
 
@@ -434,7 +482,7 @@ if __name__ == "__main__":
 
     create.add_argument(
         "--github-runner-version",
-        default="2.308.0",
+        default="2.316.1",
         help="GitHub Runner version",
     )
 
@@ -488,7 +536,7 @@ if __name__ == "__main__":
 
     create.add_argument("--retry-time", default=10, help="How often to retry (seconds)")
     create.add_argument(
-        "--timeout", default=600, help="How long to wait for creation (seconds)"
+        "--timeout", default=1200, help="How long to wait for creation (seconds)"
     )
     create.add_argument("--apply", action="store_true", help="Apply the changes")
 

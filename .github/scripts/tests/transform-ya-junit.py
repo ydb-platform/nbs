@@ -169,25 +169,34 @@ class YTestReportTrace:
         return result
 
     def get_log_dir(self, class_event, name) -> str | None:
-        logs_dir = self.traces.get(
-            (class_event, name),
-            {},
-        ).get("logs", {}).get("logsdir")
+        logs_dir = (
+            self.traces.get(
+                (class_event, name),
+                {},
+            )
+            .get("logs", {})
+            .get("logsdir")
+        )
 
         if logs_dir is None:
             return None
 
-        return logs_dir.replace("$(BUILD_ROOT)", '').lstrip('/')
+        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
     def get_log_dir_chunk(self, suite, idx, total):
-        logs_dir = self.traces.get(
-            (suite, idx, total), {},
-        ).get("logs", {}).get("logsdir")
+        logs_dir = (
+            self.traces.get(
+                (suite, idx, total),
+                {},
+            )
+            .get("logs", {})
+            .get("logsdir")
+        )
 
         if logs_dir is None:
             return None
 
-        return logs_dir.replace("$(BUILD_ROOT)", '').lstrip('/')
+        return logs_dir.replace("$(BUILD_ROOT)", "").lstrip("/")
 
 
 def filter_empty_logs(logs):
@@ -292,9 +301,8 @@ def transform(
                     )
                     add_junit_link_property(
                         case,
-                        'logs_directory',
-                        f'{data_url_prefix}/'
-                        f'{urllib.parse.quote(logs_directory)}',
+                        "logs_directory",
+                        f"{data_url_prefix}/" f"{urllib.parse.quote(logs_directory)}",
                     )
 
                 if logs:
@@ -339,7 +347,7 @@ def main():
     parser.add_argument("--log-url-prefix", default="./", help="url prefix for logs")
     parser.add_argument(
         "--data-url-prefix",
-        dest='data_url_prefix',
+        dest="data_url_prefix",
         default="./",
         help="Url prefix for test data, which stores all the additional logs",
     )

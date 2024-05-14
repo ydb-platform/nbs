@@ -25,22 +25,39 @@ inputs:
     required: false
     default: "8"
     description: "link threads count"
+  clean_ya_dir:
+    required: false
+    default: "no"
+    description: "clean ya dir"
+  use_network_cache:
+    required: false
+    default: "yes"
+    description: "use network cache"
+
 
 runs:
   using: composite
   steps:
     - name: Init
       id: init
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
-        echo "SHELLOPTS=xtrace" >> $GITHUB_ENV
         export TMP_DIR=/home/github/tmp_build
         echo "TMP_DIR=$TMP_DIR" >> $GITHUB_ENV
         rm -rf $TMP_DIR && mkdir $TMP_DIR && chown -R github:github $TMP_DIR $GITHUB_WORKSPACE
 
+        if [ "${{ inputs.clean_ya_dir }}" == "yes" ] && [ -d /home/github/.ya/ ]; then
+          echo "Cleaning ya dir"
+          rm -rf /home/github/.ya/
+        fi
+
     - name: build
-      shell: bash
+      shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
+        function grep_ya_tc() {
+          ps aux | grep [y]a-tc || true
+        }
+
         extra_params=()
 
         if [ ! -z "${{ inputs.build_target }}" ]; then
@@ -50,19 +67,21 @@ runs:
           done
         fi
 
-        if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
-          extra_params+=(--bazel-remote-store)
-          extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
-        fi
+        if [ "${{ inputs.use_network_cache }}" == "yes" ]; then
+          if [ ! -z "${{ inputs.bazel_remote_uri }}" ]; then
+            extra_params+=(--bazel-remote-store)
+            extra_params+=(--bazel-remote-base-uri "${{ inputs.bazel_remote_uri }}")
+          fi
 
-        if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
-          extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
-          extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
-          extra_params+=(--add-result .o)
-        fi
+          if [ ! -z "${{ inputs.bazel_remote_username }}" ]; then
+            extra_params+=(--bazel-remote-username "${{ inputs.bazel_remote_username }}")
+            extra_params+=(--bazel-remote-password "${{ inputs.bazel_remote_password }}")
+            extra_params+=(--add-result .o)
+          fi
 
-        if [ "${{ inputs.cache_update }}" == "true" ]; then
-          extra_params+=(--bazel-remote-put --dist-cache-evict-bins)
+          if [ "${{ inputs.cache_update }}" == "true" ]; then
+            extra_params+=(--bazel-remote-put)
+          fi
         fi
 
         case "${{ inputs.build_preset }}" in
@@ -88,11 +107,59 @@ runs:
             ;;
         esac
 
-        sudo -E -H -u github ./ya make -k --build "${build_type}" --force-build-depends -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' -T --stat  \
+
+        if [ -d /home/github/.ya/tools/ ]; then
+          ya_bin_path=$(find /home/github/.ya/tools/ -type f -name "ya-bin")
+          if [ ! -s "$ya_bin_path" ]; then
+            echo "ya-bin exists but is empty, lets look for ya-tc process and kill it if it's running somehow."
+            ps auxf | grep -vE "]$"
+            ls -lsha "$ya_bin_path"
+            du -h -d 1 /home/github/.ya/
+
+            process_name="ya-tc"
+            # by default ya-tc should terminate within 5 minutes
+            timeout=360
+            start_time=$(date +%s)
+
+            while true; do
+              pgrep -x "ya-tc" && {
+                  echo "ya-tc is still running."
+                  grep_ya_tc
+              } || {
+                  echo "ya-tc is not running."
+                  grep_ya_tc
+                  break
+              }
+
+              current_time=$(date +%s)
+              elapsed_time=$((current_time - start_time))
+
+              if [ "$elapsed_time" -ge "$timeout" ]; then
+                  echo "Timeout reached. ya-tc is still running. killing it"
+                  grep_ya_tc
+                  pkill -f ya-tc || true
+                  grep_ya_tc
+                  break
+              fi
+
+              sleep 5
+            done
+
+            echo "ya-bin exists but is empty, recovering by removing it."
+            ls -lsha "$ya_bin_path"
+            ps auxf | grep -vE "]$"
+            rm -rf $ya_bin_path
+          fi
+        else
+          echo "/home/github/.ya/tools/ not found"
+        fi
+        date
+        sudo -E -H -u github ./ya make -k -j60 --build "${build_type}" --force-build-depends -D'BUILD_LANGUAGES=CPP PY3 PY2 GO' -T --stat  \
           --log-file "$TMP_DIR/ya_log.txt" --evlog-file "$TMP_DIR/ya_evlog.jsonl" \
           --dump-graph --dump-graph-to-file "$TMP_DIR/ya_graph.json" \
           --cache-size 512G --link-threads "${{ inputs.link_threads }}" \
           "${extra_params[@]}"
+        date
 
     - name: Sync logs to S3
       if: always()

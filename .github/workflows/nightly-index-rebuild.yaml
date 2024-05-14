@@ -43,7 +43,7 @@ jobs:
       run: |
         set -x
         echo "::group::generate-listing"
-        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d --generate-indexes --remove-expired --apply
+        python3 .github/scripts/index.py s3://${S3_BUCKET}/${GITHUB_REPOSITORY}/ --ttl default=7d --ttl ya_archive=1d --generate-indexes --remove-expired --apply
         echo "::endgroup::"
       env:
         S3_BUCKET: ${{ vars.AWS_BUCKET }}
