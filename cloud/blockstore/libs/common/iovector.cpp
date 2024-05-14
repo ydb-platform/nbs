@@ -141,9 +141,9 @@ TCopyStats CopyToSgList(
     return result;
 }
 
-void TrimVoidBuffers(NProto::TIOVector* iov)
+void TrimVoidBuffers(NProto::TIOVector& iov)
 {
-    for (auto& buffer: *iov->MutableBuffers()) {
+    for (auto& buffer: *iov.MutableBuffers()) {
         if (IsAllZeroes(buffer.data(), buffer.size())) {
             buffer.clear();
         }
