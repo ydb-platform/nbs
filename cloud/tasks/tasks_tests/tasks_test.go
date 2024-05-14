@@ -721,26 +721,47 @@ func TestTasksSendEvent(t *testing.T) {
 	id, err := scheduleDoublerTask(reqCtx, s.scheduler, 123)
 	require.NoError(t, err)
 
-	taskState, err := s.storage.GetTask(ctx, id)
-	require.NoError(t, err)
+	updateTask := func() (tasks_storage.TaskState, error) {
+		ticker := time.NewTicker(20 * time.Millisecond)
+
+		for {
+			select {
+			case <-ticker.C:
+				taskState, err := s.storage.GetTask(ctx, id)
+				require.NoError(t, err)
+
+				taskState, err = s.storage.UpdateTask(ctx, taskState)
+				// Retry UpdateTask as it might encounter 'wrong generation'
+				// because task might be locked/executed in parallel.
+				if err == nil {
+					return taskState, err
+				}
+			}
+		}
+	}
 
 	err = s.scheduler.SendEvent(ctx, id, 10)
 	require.NoError(t, err)
+
+	// Should return up-to-date Events value.
+	taskState, err := updateTask()
+	require.NoError(t, err)
+	require.EqualValues(t, []int64{10}, taskState.Events)
 
 	// Events should be unique.
 	err = s.scheduler.SendEvent(ctx, id, 10)
 	require.NoError(t, err)
 
 	// Should not update "events" field in task state.
-	taskState, err = s.storage.UpdateTask(ctx, taskState)
+	taskState, err = updateTask()
 	require.NoError(t, err)
 	require.EqualValues(t, []int64{10}, taskState.Events)
 
 	err = s.scheduler.SendEvent(ctx, id, 11)
 	require.NoError(t, err)
 
-	// UpdateTask should return up-to-date Events value.
-	taskState, err = s.storage.UpdateTask(ctx, taskState)
+	// Should return up-to-date Events value.
+	taskState, err = updateTask()
 	require.NoError(t, err)
 	require.EqualValues(t, []int64{10, 11}, taskState.Events)
 }
