@@ -724,10 +724,10 @@ TRebaseResult TIndexTabletState::RebaseMixedBlocks(TVector<TBlock>& blocks) cons
     return RebaseBlocks(
         blocks,
         GetCurrentCommitId(),
-        [=] (ui64 nodeId, ui64 commitId) {
-            return Impl->Checkpoints.FindCheckpoint(nodeId, commitId);
-        },
-        [=] (ui64 nodeId, ui32 blockIndex) {
+        [this](ui64 nodeId, ui64 commitId)
+        { return Impl->Checkpoints.FindCheckpoint(nodeId, commitId); },
+        [this](ui64 nodeId, ui32 blockIndex)
+        {
             return IntersectsWithFresh(
                 Impl->FreshBytes,
                 Impl->FreshBlocks,
@@ -1195,6 +1195,48 @@ void TIndexTabletState::RegisterReadAheadResult(
 TReadAheadCacheStats TIndexTabletState::CalculateReadAheadCacheStats() const
 {
     return Impl->ReadAheadCache.GetStats();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletState::TryFillGetNodeAttrResult(
+    ui64 parentNodeId,
+    const TString& name,
+    NProto::TNodeAttr* response)
+{
+    return Impl->NodeIndexCache.TryFillGetNodeAttrResult(
+        parentNodeId,
+        name,
+        response);
+}
+
+void TIndexTabletState::InvalidateNodeIndexCache(
+    ui64 parentNodeId,
+    const TString& name)
+{
+    Cerr << "InvalidateNodeIndexCache: " << parentNodeId << " " << name << Endl;
+    Impl->NodeIndexCache.InvalidateCache(parentNodeId, name);
+}
+
+void TIndexTabletState::InvalidateNodeIndexCache(ui64 nodeId)
+{
+    Cerr << "InvalidateNodeIndexCache: " << nodeId << Endl;
+    Impl->NodeIndexCache.InvalidateCache(nodeId);
+}
+
+void TIndexTabletState::RegisterGetNodeAttrResult(
+    ui64 parentNodeId,
+    const TString& name,
+    const NProto::TNodeAttr& result)
+{
+    Cerr << "RegisterGetNodeAttrResult: " << parentNodeId << " " << name << " "
+         << result.DebugString().Quote() << Endl;
+    Impl->NodeIndexCache.RegisterGetNodeAttrResult(parentNodeId, name, result);
+}
+
+TNodeIndexCacheStats TIndexTabletState::CalculateNodeIndexCacheStats() const
+{
+    return Impl->NodeIndexCache.GetStats();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

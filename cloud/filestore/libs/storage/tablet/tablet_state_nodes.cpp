@@ -91,6 +91,8 @@ void TIndexTabletState::UpdateNode(
 
         AddCheckpointNode(db, checkpointId, nodeId);
     }
+
+    InvalidateNodeIndexCache(nodeId);
 }
 
 void TIndexTabletState::RemoveNode(
@@ -117,6 +119,8 @@ void TIndexTabletState::RemoveNode(
         maxCommitId,
         node.Attrs.GetSize(),
         0);
+
+    InvalidateNodeIndexCache(node.NodeId);
 }
 
 void TIndexTabletState::UnlinkNode(
@@ -194,6 +198,8 @@ void TIndexTabletState::RewriteNode(
         // no need this version any more
         db.DeleteNodeVer(nodeId, minCommitId);
     }
+
+    InvalidateNodeIndexCache(nodeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,6 +252,8 @@ ui64 TIndexTabletState::UpdateNodeAttr(
     } else {
         DecrementAttrsUsedBytesCount(db, SizeDiff(attr.Value, newValue));
     }
+
+    InvalidateNodeIndexCache(nodeId);
 
     return version;
 }
@@ -343,6 +351,8 @@ void TIndexTabletState::RewriteNodeAttr(
         // no need this version any more
         db.DeleteNodeAttrVer(nodeId, minCommitId, attr.Name);
     }
+
+    InvalidateNodeIndexCache(nodeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -380,6 +390,8 @@ void TIndexTabletState::RemoveNodeRef(
 
         AddCheckpointNode(db, checkpointId, nodeId);
     }
+
+    InvalidateNodeIndexCache(nodeId, childName);
 }
 
 bool TIndexTabletState::ReadNodeRef(
@@ -461,6 +473,8 @@ void TIndexTabletState::RewriteNodeRef(
         // no need this version any more
         db.DeleteNodeRefVer(nodeId, minCommitId, childName);
     }
+
+    InvalidateNodeIndexCache(nodeId, childName);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

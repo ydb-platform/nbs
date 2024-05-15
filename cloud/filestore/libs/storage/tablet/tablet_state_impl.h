@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/fresh_bytes.h>
 #include <cloud/filestore/libs/storage/tablet/model/garbage_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
@@ -50,6 +51,7 @@ struct TIndexTabletState::TImpl
     TGarbageQueue GarbageQueue;
     TTruncateQueue TruncateQueue;
     TReadAheadCache ReadAheadCache;
+    TNodeIndexCache NodeIndexCache;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;
@@ -65,6 +67,7 @@ struct TIndexTabletState::TImpl
         , CompactionMap(registry.GetAllocator(EAllocatorTag::CompactionMap))
         , GarbageQueue(registry.GetAllocator(EAllocatorTag::GarbageQueue))
         , ReadAheadCache(registry.GetAllocator(EAllocatorTag::ReadAheadCache))
+        , NodeIndexCache(registry.GetAllocator(EAllocatorTag::NodeIndexCache))
         , ThrottlingPolicy(TThrottlerConfig())
     {}
 };
