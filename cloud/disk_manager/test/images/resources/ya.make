@@ -16,6 +16,13 @@ FROM_SANDBOX(
 
 FROM_SANDBOX(
     FILE
+    6318551696
+    RENAME RESOURCE
+    OUT_NOAUTO vhd_images/ubuntu1604-ci-stable
+)
+
+FROM_SANDBOX(
+    FILE
     4709742882
     RENAME RESOURCE
     OUT_NOAUTO vmdk_images/ubuntu-22.04-jammy-server-cloudimg-amd64.vmdk
