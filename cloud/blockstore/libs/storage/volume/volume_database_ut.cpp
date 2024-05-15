@@ -928,7 +928,21 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
 
             UNIT_ASSERT(db.ReadOutdatedHistory(
                 records,
-                TInstant::Seconds(1)));
+                TInstant::Seconds(1),
+                1));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, records.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey(TInstant::Seconds(1)), records[0]);
+        });
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            TVector<THistoryLogKey> records;
+
+            UNIT_ASSERT(db.ReadOutdatedHistory(
+                records,
+                TInstant::Seconds(1),
+                Max<ui32>()));
 
             UNIT_ASSERT_VALUES_EQUAL(3, records.size());
 

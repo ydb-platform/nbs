@@ -655,7 +655,8 @@ void TVolumeActor::HandleUpdateCounters(
         ExecuteTx<TCleanupHistory>(
             ctx,
             std::move(requestInfo),
-            ctx.Now() - Config->GetVolumeHistoryDuration());
+            ctx.Now() - Config->GetVolumeHistoryDuration(),
+            Config->GetVolumeHistoryCleanupItemCount());
     }
 }
 

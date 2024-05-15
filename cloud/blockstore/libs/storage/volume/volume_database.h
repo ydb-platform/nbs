@@ -65,7 +65,8 @@ public:
 
     bool ReadOutdatedHistory(
         TVector<THistoryLogKey>& records,
-        TInstant oldestTimestamp);
+        TInstant oldestTimestamp,
+        ui32 itemCount);
 
     bool ReadHistory(
         TVector<THistoryLogItem>& records,
