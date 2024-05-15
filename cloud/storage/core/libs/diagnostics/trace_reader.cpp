@@ -1,4 +1,4 @@
-#include "trace_processor.h"
+#include "trace_reader.h"
 
 #include "logging.h"
 

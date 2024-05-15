@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/filestore/config/diagnostics.pb.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>

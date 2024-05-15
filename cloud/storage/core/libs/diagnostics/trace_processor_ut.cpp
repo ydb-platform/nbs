@@ -1,4 +1,4 @@
-#include "trace_processor.h"
+#include "trace_reader.h"
 
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/libs/common/public.h>
