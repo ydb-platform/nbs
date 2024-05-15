@@ -20,15 +20,12 @@ class TCopyRangeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
+    const ui32 BlockSize;
     const TBlockRange64 Range;
     const NActors::TActorId Source;
     const NActors::TActorId Target;
     const TString WriterClientId;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
-
-    TGuardedBuffer<TString> Buffer;
-    TGuardedSgList SgList;
-    NProto::TError Error;
 
     TInstant ReadStartTs;
     TDuration ReadDuration;
@@ -50,27 +47,29 @@ public:
 
 private:
     void ReadBlocks(const NActors::TActorContext& ctx);
-    void WriteBlocks(const NActors::TActorContext& ctx);
+    void WriteBlocks(
+        const NActors::TActorContext& ctx,
+        NProto::TIOVector blocks);
     void ZeroBlocks(const NActors::TActorContext& ctx);
-    void Done(const NActors::TActorContext& ctx);
+    void Done(const NActors::TActorContext& ctx, NProto::TError error);
 
 private:
     STFUNC(StateWork);
 
     void HandleReadResponse(
-        const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+        const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleReadUndelivery(
-        const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+        const TEvService::TEvReadBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteResponse(
-        const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
+        const TEvService::TEvWriteBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleWriteUndelivery(
-        const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
+        const TEvService::TEvWriteBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleZeroResponse(

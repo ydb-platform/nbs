@@ -42,6 +42,7 @@ private:
     NProto::TReadBlocksResponse Response;
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    ui32 VoidBlockCount = 0;
 
 public:
     TDiskAgentReadActor(
@@ -261,6 +262,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             STORAGE_CHECK_PRECONDITION(
                 SkipVoidBlocksToOptimizeNetworkTransfer);
             responseBuffer.resize(blockSize, 0);
+            ++VoidBlockCount;
         }
     }
 
@@ -270,6 +272,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
     response->Record = std::move(Response);
+    response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
     Done(ctx, std::move(response), false);
 }
 

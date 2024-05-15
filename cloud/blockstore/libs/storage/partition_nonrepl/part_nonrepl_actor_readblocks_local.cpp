@@ -265,7 +265,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
     }
 
     auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>();
-    response->Record.AllZeroes = VoidBlockCount == Request.GetBlocksCount();
+    response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
 
     Done(ctx, std::move(response), false);
 }
