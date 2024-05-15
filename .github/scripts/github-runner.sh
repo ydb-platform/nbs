@@ -48,8 +48,8 @@ sudo apt-get install -y --no-install-recommends \
              git wget gnupg lsb-release curl tzdata \
              cmake python3-dev python3-pip ninja-build antlr3 \
              m4 libidn11-dev libaio1 libaio-dev make clang-14 \
-             lld-14 llvm-14 file distcc s3cmd qemu-kvm dpkg-dev \
-             docker-ce docker-ce-cli containerd.io \
+             lld-14 llvm-14 file distcc s3cmd qemu-kvm qemu-utils \
+             dpkg-dev docker-ce docker-ce-cli containerd.io \
              docker-buildx-plugin docker-compose-plugin jq \
              aria2 jq tree tmux atop awscli iftop htop \
              pixz pigz pbzip2 xz-utils
