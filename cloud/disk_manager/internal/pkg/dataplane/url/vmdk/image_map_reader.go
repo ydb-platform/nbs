@@ -14,10 +14,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewImageMapReader(reader common.Reader) *ImageMapReader {
-	return &ImageMapReader{
+func NewImageMapReader(
+	ctx context.Context,
+	reader common.Reader,
+) (*ImageMapReader, error) {
+
+	imageMapReader := ImageMapReader{
 		reader: reader,
 	}
+
+	err := imageMapReader.readHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &imageMapReader, nil
 }
 
 type ImageMapReader struct {
@@ -27,24 +38,6 @@ type ImageMapReader struct {
 
 func (r *ImageMapReader) Size() uint64 {
 	return r.header.Capacity.bytes()
-}
-
-func (r *ImageMapReader) ReadHeader(ctx context.Context) error {
-	err := r.readHeader(ctx, 0)
-	if err != nil {
-		return err
-	}
-
-	if r.header.GdOffset == gdReadFooter {
-		// Read footer from the second to last sector of the image.
-		// Footer takes precedence over header.
-		footerOffset := r.reader.Size() - 2*sectorSize
-		if err := r.readHeader(ctx, footerOffset); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (r *ImageMapReader) Header() header {
@@ -138,7 +131,29 @@ func (r *ImageMapReader) Read(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (r *ImageMapReader) readHeader(ctx context.Context, offset uint64) error {
+func (r *ImageMapReader) readHeader(ctx context.Context) error {
+	err := r.readHeaderFromOffset(ctx, 0)
+	if err != nil {
+		return err
+	}
+
+	if r.header.GdOffset == gdReadFooter {
+		// Read footer from the second to last sector of the image.
+		// Footer takes precedence over header.
+		footerOffset := r.reader.Size() - 2*sectorSize
+		if err := r.readHeaderFromOffset(ctx, footerOffset); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ImageMapReader) readHeaderFromOffset(
+	ctx context.Context,
+	offset uint64,
+) error {
+
 	headerSize := uint64(unsafe.Sizeof(r.header))
 	if r.reader.Size() < headerSize {
 		return common.NewSourceInvalidError(

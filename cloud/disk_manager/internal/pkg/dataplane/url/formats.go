@@ -5,41 +5,18 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vhd"
 )
 
 //////////////////////////////////////////////////////////////////////////////
 
-type formatMagic struct {
-	format ImageFormat
-	magic  []byte
-	offset int
+var formatMagics = map[ImageFormat][]byte{
+	ImageFormatQCOW2: {0x51, 0x46, 0x49, 0xFB},                         // QFI\xfb
+	ImageFormatVMDK:  {0x4b, 0x44, 0x4d, 0x56},                         // KDMV
+	ImageFormatVHDX:  {0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6c, 0x65}, // vhdxfile
+	ImageFormatVHD:   {0x63, 0x6f, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x78}, // connectix
+	ImageFormatVDI:   {0x7f, 0x10, 0xda, 0xbe},
 }
-
-var formatMagics = []formatMagic{
-	{
-		format: ImageFormatQCOW2,
-		magic:  []byte{0x51, 0x46, 0x49, 0xFB}, // QFI\xfb
-	},
-	{
-		format: ImageFormatVMDK,
-		magic:  []byte{0x4b, 0x44, 0x4d, 0x56}, // KDMV
-	},
-	{
-		format: ImageFormatVHDX,
-		magic:  []byte{0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6c, 0x65}, // vhdxfile
-	},
-	{
-		format: ImageFormatVHD,
-		magic:  []byte{0x63, 0x6f, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x78}, // connectix
-	},
-	{
-		format: ImageFormatVDI,
-		magic:  []byte{0x7f, 0x10, 0xda, 0xbe},
-		offset: 0x40,
-	},
-}
-
-const magicBufferSize = 68 // Should be enough for all formats.
 
 type ImageFormat string
 
@@ -70,25 +47,58 @@ func guessImageFormat(
 	reader common.Reader,
 ) (ImageFormat, error) {
 
-	buffer := make([]byte, magicBufferSize)
-	_, err := reader.Read(ctx, 0, buffer)
-	if err != nil {
-		return "", err
-	}
+	for imageFormat := range formatMagics {
+		ok, err := isImageFormat(ctx, reader, imageFormat)
+		if err != nil {
+			return "", err
+		}
 
-	for _, magic := range formatMagics {
-		if hasAtOffset(buffer, magic.magic, magic.offset) {
-			return magic.format, nil
+		if ok {
+			return imageFormat, nil
 		}
 	}
 
 	return ImageFormatRaw, nil
 }
 
-func hasAtOffset(buffer []byte, magic []byte, offset int) bool {
-	if len(buffer) < offset+len(magic) {
-		return false
+func isImageFormat(
+	ctx context.Context,
+	reader common.Reader,
+	imageFormat ImageFormat,
+) (bool, error) {
+
+	offset := 0
+	switch imageFormat {
+	case ImageFormatVHD:
+		offset = int(reader.Size() - vhd.FooterSize)
+	case ImageFormatVDI:
+		offset = 0x40
 	}
 
-	return bytes.HasPrefix(buffer[offset:], magic)
+	return hasAtOffset(
+		ctx,
+		reader,
+		formatMagics[imageFormat],
+		offset,
+	)
+}
+
+func hasAtOffset(
+	ctx context.Context,
+	reader common.Reader,
+	magic []byte,
+	offset int,
+) (bool, error) {
+
+	if offset+len(magic) > int(reader.Size()) {
+		return false, nil
+	}
+
+	buffer := make([]byte, len(magic))
+	_, err := reader.Read(ctx, uint64(offset), buffer)
+	if err != nil {
+		return false, err
+	}
+
+	return bytes.Equal(buffer, magic), nil
 }

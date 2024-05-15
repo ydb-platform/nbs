@@ -22,10 +22,21 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewImageMapReader(reader common.Reader) *ImageMapReader {
-	return &ImageMapReader{
+func NewImageMapReader(
+	ctx context.Context,
+	reader common.Reader,
+) (*ImageMapReader, error) {
+
+	imageMapReader := ImageMapReader{
 		reader: reader,
 	}
+
+	err := imageMapReader.readFooter(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &imageMapReader, nil
 }
 
 type ImageMapReader struct {
@@ -96,10 +107,6 @@ func (r *ImageMapReader) Read(ctx context.Context) ([]common.ImageMapItem, error
 	entry.dumpToItem(&item)
 	items = append(items, item)
 	return items, nil
-}
-
-func (r *ImageMapReader) ReadFooter(ctx context.Context) error {
-	return r.readFooter(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

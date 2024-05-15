@@ -228,6 +228,8 @@ func newImageMapReader(
 	urlReader url_common.Reader,
 ) (url_common.ImageMapReader, error) {
 
+	urlReader.EnableCache()
+
 	format, err := guessImageFormat(ctx, urlReader)
 	if err != nil {
 		return nil, err
@@ -235,34 +237,13 @@ func newImageMapReader(
 
 	switch format {
 	case ImageFormatQCOW2:
-		reader := qcow2.NewImageMapReader(urlReader)
-		err := reader.ReadHeader(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		urlReader.EnableCache()
-		return reader, nil
+		return qcow2.NewImageMapReader(ctx, urlReader)
 
 	case ImageFormatVMDK:
-		reader := vmdk.NewImageMapReader(urlReader)
-		err := reader.ReadHeader(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		urlReader.EnableCache()
-		return reader, nil
+		return vmdk.NewImageMapReader(ctx, urlReader)
 
 	case ImageFormatVHD:
-		reader := vhd.NewImageMapReader(urlReader)
-		err := reader.ReadFooter(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		urlReader.EnableCache()
-		return reader, nil
+		return vhd.NewImageMapReader(ctx, urlReader)
 
 	case ImageFormatRaw:
 		return newRawImageMapReader(urlReader.Size()), nil
