@@ -92,9 +92,16 @@ struct TCachedAcquireKey
     TString DiskId;
     TString ClientId;
 
-    friend std::strong_ordering operator<=>(
-        const TCachedAcquireKey&,
-        const TCachedAcquireKey&) = default;
+    friend bool operator<(
+        const TCachedAcquireKey& lhs,
+        const TCachedAcquireKey& rhs)
+    {
+        auto tie = [](const TCachedAcquireKey& arg)
+        {
+            return std::tie(arg.DiskId, arg.ClientId);
+        };
+        return tie(lhs) < tie(rhs);
+    }
 };
 
 using TCachedAcquireRequests =
