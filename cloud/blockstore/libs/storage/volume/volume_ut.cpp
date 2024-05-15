@@ -1869,8 +1869,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TMap<size_t, ETransferMethod> migratedRanges;
         auto watchZeroAndWriteRequests = [&](TAutoPtr<IEventHandle>& event)
         {
-            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksLocalRequest) {
-                auto* msg = event->Get<TEvService::TEvWriteBlocksLocalRequest>();
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                auto* msg = event->Get<TEvService::TEvWriteBlocksRequest>();
                 migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
                     ETransferMethod::Write;
             }
