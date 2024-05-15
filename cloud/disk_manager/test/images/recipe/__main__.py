@@ -45,15 +45,25 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_VMDK_STREAM_OPTIMIZED_IMAGE_CRC32", "1412309815")
 
-    vhd_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd.img")
-    vhd_image_file_server = ImageFileServerLauncher(vhd_image_file_path)
-    vhd_image_file_server.start()
-    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT", str(vhd_image_file_server.port))
+    vhd_raw_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_raw.img")
+    vhd_raw_image_file_server = ImageFileServerLauncher(vhd_raw_image_file_path)
+    vhd_raw_image_file_server.start()
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_FILE_SERVER_PORT", str(vhd_raw_image_file_server.port))
     # size and crc32 after converting to raw image
-    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE", "117469184")
-    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32", "4215190084")
-    image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_image_map.json")
-    set_env("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE", image_map_file_path)
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_SIZE", "67125248")
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_CRC32", "1563150988")
+    image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_raw_image_map.json")
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_MAP_FILE", image_map_file_path)
+
+    vhd_dynamic_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_dynamic.img")
+    vhd_dynamic_image_file_server = ImageFileServerLauncher(vhd_dynamic_image_file_path)
+    vhd_dynamic_image_file_server.start()
+    set_env("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_FILE_SERVER_PORT", str(vhd_dynamic_image_file_server.port))
+    # size and crc32 after converting to raw image
+    set_env("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_SIZE", "117469184")
+    set_env("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_CRC32", "4215190084")
+    image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_dynamic_image_map.json")
+    set_env("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_MAP_FILE", image_map_file_path)
 
     vhd_ubuntu1604_image_file_path = yatest_common.build_path("cloud/disk_manager/test/images/resources/vhd_images/ubuntu1604-ci-stable")
     if os.path.exists(vhd_ubuntu1604_image_file_path):

@@ -150,10 +150,16 @@ func TestImageReading(t *testing.T) {
 			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VMDK_IMAGE_CRC32")),
 		},
 		{
-			name:       "vhd image",
-			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT")),
-			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_SIZE")),
-			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_CRC32")),
+			name:       "vhd raw image",
+			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_FILE_SERVER_PORT")),
+			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_SIZE")),
+			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_CRC32")),
+		},
+		{
+			name:       "vhd dynamic image",
+			imageURL:   getImageFileURL(os.Getenv("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_FILE_SERVER_PORT")),
+			imageSize:  parseUint64(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_SIZE")),
+			imageCRC32: parseUint32(t, os.Getenv("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_CRC32")),
 		},
 		{
 			name:       "vhd ubuntu image",
