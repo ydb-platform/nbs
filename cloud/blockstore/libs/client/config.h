@@ -6,7 +6,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
 
-#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <util/datetime/base.h>
