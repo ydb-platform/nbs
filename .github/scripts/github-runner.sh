@@ -26,7 +26,7 @@ function on_exit() {
     sudo rm -rf "/home/${USER_TO_CREATE}/.aws" /root/.aws/
     sudo rm -rf /var/lib/apt/lists/*
     sync
-    exit $exit_code
+    exit "$exit_code"
 }
 trap on_exit EXIT
 
@@ -201,7 +201,7 @@ sudo test -s "/home/${USER_TO_CREATE}/.ssh/authorized_keys" || {
     sudo ls -lsha "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
     healthchecks_exit_code=1
 }
-sudo grep 'github:\$' /etc/shadow >/dev/null 2>/dev/null || {
+sudo grep 'github:\$' /etc/shadow > /dev/null 2> /dev/null || {
     echo "User github either do not exist or has wrong hash"
     healthchecks_exit_code=1
 }
