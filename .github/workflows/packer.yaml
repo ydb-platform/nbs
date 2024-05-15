@@ -186,7 +186,7 @@ jobs:
         cat << EOF > $VARIABLES_FILE
         RUNNER_VERSION="${RUNNER_VERSION}"
         USER_TO_CREATE="${USER_NAME}"
-        PASSWORD_HASH="${{ secrets.VM_USER_PASSWD }}"
+        PASSWORD_HASH="${PASSWORD_HASH}"
         ${YA_ARCHIVE_PARAMETER}
         FOLDER_ID="${FOLDER_ID}"
         ZONE="${ZONE}"
@@ -209,6 +209,7 @@ jobs:
         SUBNET_ID: f8uh0ml4rhb45nde9p75
         USER_NAME: github
         GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+        PASSWORD_HASH: ${{ secrets.VM_USER_PASSWD }}
         ORG: "ydb-platform"
         TEAM: "nbs"
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
