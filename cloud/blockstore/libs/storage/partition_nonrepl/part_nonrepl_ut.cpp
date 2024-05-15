@@ -1673,7 +1673,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadUnknownVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadNonVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(13, counters.ReadVoidBlockCount.Value);
 
@@ -1689,7 +1688,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(16, counters.ReadUnknownVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadNonVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadVoidBlockCount.Value);
 
@@ -1771,7 +1769,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadUnknownVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadNonVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(13, counters.ReadVoidBlockCount.Value);
 
@@ -1788,7 +1785,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(16, counters.ReadUnknownVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadNonVoidBlockCount.Value);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadVoidBlockCount.Value);
 

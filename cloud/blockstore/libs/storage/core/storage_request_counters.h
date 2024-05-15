@@ -33,6 +33,8 @@ struct TRequestCounters
 {
     ui64 Count = 0;
     ui64 RequestBytes = 0;
+    ui64 RequestVoidBytes = 0;
+    ui64 RequestNonVoidBytes = 0;
 
     ui64 FreshCount = 0;
     ui64 FreshRequestBytes = 0;
@@ -117,10 +119,22 @@ struct TRequestCounters
         return RequestBytes;
     }
 
+    ui64 GetRequestVoidBytes() const
+    {
+        return RequestVoidBytes;
+    }
+
+    ui64 GetRequestNonVoidBytes() const
+    {
+        return RequestNonVoidBytes;
+    }
+
     void Add(const TRequestCounters& source)
     {
         Count += source.Count;
         RequestBytes += source.RequestBytes;
+        RequestVoidBytes += source.RequestVoidBytes;
+        RequestNonVoidBytes += source.RequestNonVoidBytes;
 
         FreshCount += source.FreshCount;
         FreshRequestBytes += source.FreshRequestBytes;
@@ -147,6 +161,8 @@ struct TRequestCounters
     {
         Count = 0;
         RequestBytes = 0;
+        RequestVoidBytes = 0;
+        RequestNonVoidBytes = 0;
 
         FreshCount = 0;
         FreshRequestBytes = 0;

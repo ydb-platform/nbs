@@ -60,6 +60,8 @@ void TVolumeRequestCounters::Register(NMonitoring::TDynamicCountersPtr counters)
 {
     ReadCount.Register(counters->GetSubgroup("request", "ReadBlocks"), "Count");
     ReadBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestBytes");
+    ReadVoidBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestVoidBytes");
+    ReadNonVoidBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestNonVoidBytes");
 
     WriteCount.Register(counters->GetSubgroup("request", "WriteBlocks"), "Count");
     WriteBytes.Register(counters->GetSubgroup("request", "WriteBlocks"), "RequestBytes");
@@ -72,6 +74,8 @@ void TVolumeRequestCounters::Publish(TInstant now)
 {
     ReadCount.Publish(now);
     ReadBytes.Publish(now);
+    ReadVoidBytes.Publish(now);
+    ReadNonVoidBytes.Publish(now);
 
     WriteCount.Publish(now);
     WriteBytes.Publish(now);
@@ -86,6 +90,8 @@ void TVolumeRequestCounters::Reset()
 {
     ReadCount.Reset();
     ReadBytes.Reset();
+    ReadVoidBytes.Reset();
+    ReadNonVoidBytes.Reset();
 
     WriteCount.Reset();
     WriteBytes.Reset();
@@ -98,6 +104,10 @@ void TVolumeRequestCounters::UpdateCounters(const TPartitionDiskCounters& source
 {
     ReadCount.Increment(source.RequestCounters.ReadBlocks.GetCount());
     ReadBytes.Increment(source.RequestCounters.ReadBlocks.GetRequestBytes());
+    ReadVoidBytes.Increment(
+        source.RequestCounters.ReadBlocks.GetRequestVoidBytes());
+    ReadNonVoidBytes.Increment(
+        source.RequestCounters.ReadBlocks.GetRequestNonVoidBytes());
 
     WriteCount.Increment(source.RequestCounters.WriteBlocks.GetCount());
     WriteBytes.Increment(source.RequestCounters.WriteBlocks.GetRequestBytes());
