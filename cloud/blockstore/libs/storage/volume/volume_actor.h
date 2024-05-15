@@ -299,7 +299,6 @@ private:
     std::optional<TCompositeId> VolumeRequestIdGenerator;
 
     TIntrusiveList<TRequestInfo> ActiveReadHistoryRequests;
-    TInstant LastHistoryCleanup;
 
     EPartitionsStartedReason PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
     ui32 FailedBoots = 0;

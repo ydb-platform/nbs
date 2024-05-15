@@ -644,6 +644,88 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             runtime->DispatchEvents(options);
         }
     }
+
+    Y_UNIT_TEST(ShouldNotTruncateHistoryRecordsNewerThanVolumeHistoryDuration)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetVolumeHistoryDuration(1000);
+        storageServiceConfig.SetVolumeHistoryCleanupItemCount(100);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.AddClient(clientInfo);
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Minutes(2));
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE,
+                0);
+            volume.AddClient(clientInfo);
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(2, response->History.size());
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
