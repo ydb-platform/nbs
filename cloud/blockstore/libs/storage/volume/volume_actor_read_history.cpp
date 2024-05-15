@@ -32,10 +32,15 @@ void TVolumeActor::HandleReadHistory(
         ev->Cookie,
         msg->CallContext);
 
+    auto endTs = msg->OldestTimestamp.has_value()
+        ? msg->OldestTimestamp.value()
+        : (ctx.Now() - Config->GetVolumeHistoryDuration());
+
     ProcessReadHistory(
         ctx,
         std::move(requestInfo),
         msg->Timestamp,
+        endTs,
         msg->RecordCount,
         false);
 }
@@ -44,6 +49,7 @@ void TVolumeActor::ProcessReadHistory(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
     TInstant ts,
+    TInstant oldestTs,
     size_t recordCount,
     bool monRequest)
 {
@@ -53,7 +59,7 @@ void TVolumeActor::ProcessReadHistory(
         ctx,
         std::move(requestInfo),
         ts,
-        ctx.Now() - Config->GetVolumeHistoryDuration(),
+        oldestTs,
         recordCount,
         monRequest);
 }

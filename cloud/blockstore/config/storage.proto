@@ -972,5 +972,5 @@ message TStorageServiceConfig
     optional uint32 ScrubbingInterval = 365;
 
     // Number of volume history entries to cleanup per run.
-    optional uint32 VolumeHistoryCleanupItems = 366;
+    optional uint32 VolumeHistoryCleanupItemsCount = 366;
 }

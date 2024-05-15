@@ -547,6 +547,102 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             DiskByteCount + WriteBlockCount * DiskBlockSize,
             statsForDisks["vol0-c1"].WriteByteCount);
     }
+
+    Y_UNIT_TEST(ShouldTryToCutVolumeHistoryAtStartup)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetVolumeHistoryDuration(1000);
+        storageServiceConfig.SetVolumeHistoryCleanupItemsCount(20);
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        for (ui32 i = 0; i < 39; ++i) {
+            auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.SendAddClientRequest(clientInfo);
+            auto response = volume.RecvAddClientResponse();
+            UNIT_ASSERT_C(
+                FAILED(response->GetStatus()),
+                "Unexpected successful result");
+        }
+
+        runtime->AdvanceCurrentTime(TDuration::Minutes(1));
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(40, response->History.size());
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(20, response->History.size());
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvReadHistoryRequest>(
+                runtime->GetCurrentTime(),
+                TInstant::Seconds(0),
+                Max<size_t>()
+            ));
+        {
+            auto response = volume.RecvResponse<TEvVolumePrivate::TEvReadHistoryResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->History.size());
+        }
+
+        // no history records should remain, just check that nothing crashes
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

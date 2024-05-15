@@ -12,6 +12,8 @@
 
 #include <contrib/ydb/library/actors/core/scheduler_cookie.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,12 +93,22 @@ struct TEvVolumePrivate
     struct TReadHistoryRequest
     {
         TInstant Timestamp;
+        std::optional<TInstant> OldestTimestamp;
         size_t RecordCount;
 
         TReadHistoryRequest(
                 TInstant timestamp,
                 size_t recordCount)
             : Timestamp(timestamp)
+            , RecordCount(recordCount)
+        {}
+
+        TReadHistoryRequest(
+                TInstant start_ts,
+                TInstant end_ts,
+                size_t recordCount)
+            : Timestamp(start_ts)
+            , OldestTimestamp(end_ts)
             , RecordCount(recordCount)
         {}
     };

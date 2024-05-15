@@ -573,7 +573,7 @@ public:
     bool GetDataScrubbingEnabled() const;
     TDuration GetScrubbingInterval() const;
 
-    ui32 GetVolumeHistoryCleanupItems() const;
+    ui32 GetVolumeHistoryCleanupItemsCount() const;
 };
 
 ui64 GetAllocationUnit(

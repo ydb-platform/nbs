@@ -523,6 +523,7 @@ void TVolumeActor::HandleHttpInfo_Default(
             ctx,
             std::move(requestInfo),
             TInstant::MicroSeconds(ts),
+            ctx.Now() - Config->GetVolumeHistoryDuration(),
             Config->GetVolumeHistoryCacheSize(),
             true);
         return;
