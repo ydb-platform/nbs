@@ -66,8 +66,8 @@ jobs:
         set -x
         # git config is needed for some reason, idk why it works without
         # it on self-hosted runners
-        git config --global user.email "librarian@nebius.com"
-        git config --global user.name "Rebase Robotovich"
+        git config user.email "librarian@nebius.com"
+        git config user.name "Rebase Robotovich"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout

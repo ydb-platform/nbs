@@ -11,6 +11,11 @@ on:
       - main
     paths:
     - ".github/**"
+    types:
+      - 'opened'
+      - 'synchronize'
+      - 'reopened'
+      - 'labeled'
   workflow_dispatch:
 
 defaults:
