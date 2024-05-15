@@ -242,6 +242,10 @@ message TStartProxyEndpointRequest
 
     // NBD device to proxy requests from.
     string NbdDevice = 3;
+
+    // NBD StorageOptions.
+    uint32 BlockSize = 4;
+    uint64 BlocksCount = 5;
 }
 
 message TStartProxyEndpointResponse

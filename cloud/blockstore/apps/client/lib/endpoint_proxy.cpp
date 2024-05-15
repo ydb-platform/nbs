@@ -17,6 +17,8 @@ class TStartProxyEndpointCommand final: public TCommand
 private:
     TString UnixSocketPath;
     TString NbdDeviceFile;
+    ui32 BlockSize = 0;
+    ui64 BlocksCount = 0;
 
 public:
     explicit TStartProxyEndpointCommand(IBlockStorePtr client)
@@ -29,6 +31,14 @@ public:
         Opts.AddLongOption("nbd-device", "nbd device file")
             .RequiredArgument("STR")
             .StoreResult(&NbdDeviceFile);
+
+        Opts.AddLongOption("block-size", "nbd options: block size")
+            .RequiredArgument("STR")
+            .StoreResult(&BlockSize);
+
+        Opts.AddLongOption("blocks-count", "nbd options: blocks count")
+            .RequiredArgument("STR")
+            .StoreResult(&BlocksCount);
     }
 
 protected:
@@ -48,6 +58,8 @@ protected:
         } else {
             request->SetUnixSocketPath(UnixSocketPath);
             request->SetNbdDevice(NbdDeviceFile);
+            request->SetBlockSize(BlockSize);
+            request->SetBlocksCount(BlocksCount);
         }
 
         STORAGE_DEBUG("Sending StartProxyEndpoint request");
@@ -79,6 +91,16 @@ private:
 
         if (!NbdDeviceFile) {
             STORAGE_ERROR("NbdDeviceFile is required");
+            return false;
+        }
+
+        if (!BlockSize) {
+            STORAGE_ERROR("BlockSize is required");
+            return false;
+        }
+
+        if (!BlocksCount) {
+            STORAGE_ERROR("BlocksCount is required");
             return false;
         }
 

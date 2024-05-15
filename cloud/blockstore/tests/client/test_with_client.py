@@ -958,12 +958,10 @@ def test_endpoint_proxy():
 
     port_manager = network.PortManager()
     port = port_manager.get_port()
-    sockets_dir = tempfile.TemporaryDirectory()
 
     run_async(
         [
             endpoint_proxy_path, "--server-port", str(port),
-            "--sockets-dir", sockets_dir.name
         ],
         "endpoint-proxy-%s.out" % port,
         "endpoint-proxy-%s.err" % port
@@ -982,5 +980,4 @@ def test_endpoint_proxy():
 
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)
-    sockets_dir.cleanup()
     return ret
