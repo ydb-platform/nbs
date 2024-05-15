@@ -44,6 +44,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(TruncateRange,                          __VA_ARGS__)                   \
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
+    xxx(GenerateCommitId,                       __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
@@ -525,13 +526,9 @@ struct TEvIndexTabletPrivate
     // CollectGarbage
     //
 
-    struct TCollectGarbageRequest
-    {
-    };
+    using TCollectGarbageRequest = TEmpty;
 
-    struct TCollectGarbageResponse
-    {
-    };
+    using TCollectGarbageResponse = TEmpty;
 
     using TCollectGarbageCompleted = TDataOperationCompleted;
 
@@ -678,6 +675,17 @@ struct TEvIndexTabletPrivate
             : CommitId(commitId)
             , Count(count)
         {}
+    };
+
+    //
+    // Generate commit id
+    //
+
+    using TGenerateCommitIdRequest = TEmpty;
+
+    struct TGenerateCommitIdResponse
+    {
+        ui64 CommitId = InvalidCommitId;
     };
 
     //

@@ -958,6 +958,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
+        tablet.GenerateCommitId();
         tablet.CollectGarbage();
 
         ui32 rangeId = GetMixedRangeIndex(id, 0);
@@ -979,6 +980,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         tablet.WriteData(handle, 0, block, 'a');
         tablet.Flush();
+        tablet.GenerateCommitId();
         tablet.CollectGarbage();
 
         tablet.DestroyHandle(handle);
@@ -1059,6 +1061,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 2 * block);   // new: 2, garbage: 0
         }
 
+        tablet.GenerateCommitId();
         tablet.CollectGarbage();
 
         {
@@ -1083,6 +1086,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             );  // new: 1 (x block), garbage: 2 (x block)
         }
 
+        tablet.GenerateCommitId();
         tablet.CollectGarbage();
 
         {
@@ -1097,6 +1101,35 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             auto response = tablet.ReadData(handle, 0, block);
             const auto& buffer = response->Record.GetBuffer();
             UNIT_ASSERT(CompareBuffer(buffer, block, 'b'));
+        }
+
+        tablet.WriteData(handle, 0, block, 'c');
+        tablet.Flush();
+        tablet.Compaction(rangeId);
+
+        tablet.CollectGarbage();
+
+        {
+            // default collect garbage should not consider the result of the last compaction
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 1 * block);   // new: 1, garbage: 0
+        }
+
+        // create a new node to trigger the generation of a new commitId
+        id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        handle = CreateHandle(tablet, id);
+
+        tablet.CollectGarbage();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetGarbageQueueSize(), 0);
         }
 
         tablet.DestroyHandle(handle);
@@ -5008,6 +5041,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             ));
         }
 
+        tablet.GenerateCommitId();
         tablet.CollectGarbage();
 
         {
@@ -5247,6 +5281,223 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 E_TRY_AGAIN,
                 response->GetStatus(),
                 response->GetErrorReason());
+        }
+    }
+
+    TABLET_TEST(CleanupShouldNotInterfereWithCollectGarbage)
+    {
+        const auto block = tabletConfig.BlockSize;
+        tabletConfig.BlockCount = 1'000'000;
+
+        NProto::TStorageConfig storageConfig;
+
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto handle = CreateHandle(tablet, id);
+
+        for (int i = 0; i < 2; i++) {
+            tablet.WriteData(handle, 0, BlockGroupSize * block * 3, 'a');
+        }
+
+        tablet.Cleanup(GetMixedRangeIndex(id, 0));
+        tablet.CollectGarbage();
+        tablet.Cleanup(GetMixedRangeIndex(id, BlockGroupSize));
+
+        auto& runtime = env.GetRuntime();
+
+        TAutoPtr<IEventHandle> cleanupCompletion, collectGarbageCompletion;
+        // See #652 for more details
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvTablet::EvCommitResult) {
+                    if (!cleanupCompletion) {
+                        cleanupCompletion = event.Release();
+                    } else if (!collectGarbageCompletion) {
+                        collectGarbageCompletion = event.Release();
+                    }
+                    return true;
+                }
+                return false;
+            });
+
+        tablet.SendCleanupRequest(GetMixedRangeIndex(id, BlockGroupSize * 2));
+        tablet.SendCollectGarbageRequest();
+
+        // We wait for both Cleanup and CollectGarbage tx to be completed
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return cleanupCompletion && collectGarbageCompletion;
+            }});
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        runtime.Send(cleanupCompletion.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvCleanupResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        runtime.Send(collectGarbageCompletion.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvCollectGarbageResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+    }
+
+    TABLET_TEST(ShouldGenerateCommitId)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        ui64 commitId = InvalidCommitId;
+        env.GetRuntime().SetEventFilter(
+            [&commitId](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPutResult: {
+                        using TResponse = TEvBlobStorage::TEvPutResult;
+                        auto* msg = event->template Get<TResponse>();
+                        if (msg->Id.Channel() >=
+                            TIndexTabletSchema::DataChannel) {
+                            commitId = MakeCommitId(
+                                msg->Id.Generation(),
+                                msg->Id.Step());
+                        }
+                    }
+                }
+
+                return false;
+            });
+        tablet.WriteData(handle, 0, block * BlockGroupSize, 'a');
+
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return commitId != InvalidCommitId;
+            }});
+
+        auto response = tablet.GenerateCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(commitId + 2, response->CommitId);
+
+        response = tablet.GenerateCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(commitId + 3, response->CommitId);
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(CollectGarbageWithTheSameCollectCommitIdShouldNotFail)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetMinChannelCount(1);
+
+        // ensure that all blobs use the same channel
+        TTestEnv env(
+            {.ChannelCount = TIndexTabletSchema::DataChannel + 1},
+            std::move(storageConfig));
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto handle = CreateHandle(tablet, id);
+
+        const int size = BlockGroupSize * block;
+        for (int i = 0; i < 2; i++) {
+            tablet.WriteData(handle, 0, size, 'a' + i);
+        }
+
+        auto& runtime = env.GetRuntime();
+
+        TVector<ui64> collectCommitIds;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg = event->template Get<
+                            TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel >= TIndexTabletSchema::DataChannel) {
+                            auto commitId = MakeCommitId(
+                                msg->CollectGeneration,
+                                msg->CollectStep);
+                            collectCommitIds.push_back(commitId);
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        {
+            auto response = tablet.CollectGarbage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, collectCommitIds.size());
+
+        {
+            tablet.Cleanup(GetMixedRangeIndex(id, 0));
+            auto response = tablet.CollectGarbage();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, collectCommitIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(collectCommitIds[0], collectCommitIds[1]);
+
+        {
+            auto readData = tablet.ReadData(handle, 0, size);
+            TString data(size, 'b');
+            UNIT_ASSERT_VALUES_EQUAL(data, readData->Record.GetBuffer());
         }
     }
 
