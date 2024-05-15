@@ -45,4 +45,6 @@ size_t CopyAndTrimVoidBuffers(
 // Count how many buffers are void.
 [[nodiscard]] ui32 CountVoidBuffers(const NProto::TIOVector& iov);
 
+// Checks that the buffer contains only zeros.
+[[nodiscard]] bool IsAllZeroes(const char* src, size_t size);
 }   // namespace NCloud::NBlockStore

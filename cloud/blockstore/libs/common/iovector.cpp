@@ -4,27 +4,6 @@
 
 namespace NCloud::NBlockStore {
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool IsAllZeroes(const char* src, size_t size)
-{
-    using TBigNumber = ui64;
-
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
-
-    const TBigNumber* const buffer = reinterpret_cast<const TBigNumber*>(src);
-    for (size_t i = 0, n = size / sizeof(TBigNumber); i != n; ++i) {
-        if (buffer[i] != 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blocksCount, ui32 blockSize)
@@ -72,10 +51,11 @@ TResultOrError<TSgList> GetSgList(
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer) {
             if (buffer.size() != expectedBlockSize) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "read-response has invalid buffer."
-                    << " BufferSize = " << buffer.size()
-                    << " BlockSize = " << expectedBlockSize);
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "read-response has invalid buffer."
+                                     << " BufferSize = " << buffer.size()
+                                     << " BlockSize = " << expectedBlockSize);
             }
             sglist.emplace_back(buffer.data(), buffer.size());
         } else {
@@ -189,6 +169,21 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
         }
     }
     return result;
+}
+
+bool IsAllZeroes(const char* src, size_t size)
+{
+    using TBigNumber = ui64;
+
+    if (size < sizeof(TBigNumber)) {
+        return false;
+    }
+
+    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
+    if (*a) {
+        return false;
+    }
+    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
 }
 
 }   // namespace NCloud::NBlockStore
