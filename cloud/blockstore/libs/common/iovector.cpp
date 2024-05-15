@@ -174,7 +174,10 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
 bool IsAllZeroes(const char* src, size_t size)
 {
     using TBigNumber = ui64;
-    Y_ABORT_UNLESS(size % sizeof(TBigNumber) == 0);
+
+    if (size < sizeof(TBigNumber)) {
+        return false;
+    }
 
     const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
     if (*a) {
