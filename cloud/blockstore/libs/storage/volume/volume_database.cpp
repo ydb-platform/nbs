@@ -254,7 +254,7 @@ void TVolumeDatabase::RemoveClient(const TString& clientId)
 bool TVolumeDatabase::ReadOutdatedHistory(
     TVector<THistoryLogKey>& records,
     TInstant oldestTimestamp,
-    ui32 itemsToRemove)
+    ui32 itemCount)
 {
     using TTable = TVolumeSchema::History;
 
@@ -272,7 +272,7 @@ bool TVolumeDatabase::ReadOutdatedHistory(
             it.GetValue<TTable::SeqNo>()};
         records.push_back(key);
 
-        if (records.size() == itemsToRemove) {
+        if (records.size() == itemCount) {
             return true;
         }
 

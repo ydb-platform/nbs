@@ -92,23 +92,23 @@ struct TEvVolumePrivate
 
     struct TReadHistoryRequest
     {
-        TInstant Timestamp;
-        std::optional<TInstant> OldestTimestamp;
+        TInstant StartTs;
+        std::optional<TInstant> EndTs;
         size_t RecordCount;
 
         TReadHistoryRequest(
                 TInstant timestamp,
                 size_t recordCount)
-            : Timestamp(timestamp)
+            : StartTs(timestamp)
             , RecordCount(recordCount)
         {}
 
         TReadHistoryRequest(
-                TInstant start_ts,
-                TInstant end_ts,
+                TInstant startTs,
+                TInstant endTs,
                 size_t recordCount)
-            : Timestamp(start_ts)
-            , OldestTimestamp(end_ts)
+            : StartTs(startTs)
+            , EndTs(endTs)
             , RecordCount(recordCount)
         {}
     };

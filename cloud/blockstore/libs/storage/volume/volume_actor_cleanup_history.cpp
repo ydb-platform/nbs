@@ -56,8 +56,7 @@ void TVolumeActor::ExecuteCleanupHistory(
     } else {
         LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
             "[" << TabletID() << "]"
-            << "Deleted " << args.OutdatedHistory.size()
-            << " volume history records");
+            << "Nothing to remove in volume history records");
     }
 }
 
@@ -66,7 +65,7 @@ void TVolumeActor::CompleteCleanupHistory(
     TTxVolume::TCleanupHistory& args)
 {
     Y_UNUSED(args);
-    if (!args.OutdatedHistory.size()) {
+    if (args.OutdatedHistory.empty()) {
         LastHistoryCleanup = ctx.Now();
     }
 }

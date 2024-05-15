@@ -552,7 +552,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetVolumeHistoryDuration(1000);
-        storageServiceConfig.SetVolumeHistoryCleanupItemsCount(20);
+        storageServiceConfig.SetVolumeHistoryCleanupItemCount(20);
 
         auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
 

@@ -575,7 +575,7 @@ public:
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
-    ui32 GetVolumeHistoryCleanupItemsCount() const;
+    ui32 GetVolumeHistoryCleanupItemCount() const;
 };
 
 ui64 GetAllocationUnit(
