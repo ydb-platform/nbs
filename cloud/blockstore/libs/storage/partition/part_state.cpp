@@ -143,6 +143,7 @@ TPartitionState::TPartitionState(
         / allocationUnit, 1ul) * maxBlobsPerUnit)
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
+    , CleanupQueue(GetBlockSize())
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , Stats(*Meta.MutableStats())
 {

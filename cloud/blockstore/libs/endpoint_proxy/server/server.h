@@ -10,13 +10,13 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServer: public IStartable
+struct IEndpointProxyServer: public IStartable
 {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TServerConfig
+struct TEndpointProxyServerConfig
 {
     ui16 Port;
     ui16 SecurePort;
@@ -25,7 +25,7 @@ struct TServerConfig
     TString CertFile;
     TString SocketsDir;
 
-    TServerConfig(
+    TEndpointProxyServerConfig(
             ui16 port,
             ui16 securePort,
             TString rootCertsFile,
@@ -44,6 +44,8 @@ struct TServerConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServerPtr CreateServer(TServerConfig config, ILoggingServicePtr logging);
+IEndpointProxyServerPtr CreateServer(
+    TEndpointProxyServerConfig config,
+    ILoggingServicePtr logging);
 
 }   // namespace NCloud::NBlockStore::NServer

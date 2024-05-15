@@ -142,13 +142,21 @@ private:
         for (ui32 i = 0; i < request.GetBlocksCount(); ++i) {
             auto& buf = *response->Record.MutableBlocks()->AddBuffers();
 
+            bool allZeroes = true;
             for (ui32 m = 0; m != k; ++m) {
                 auto it = content.find(startIndex++);
                 if (it != content.end()) {
                     buf += it->second;
+                    allZeroes = false;
                 } else {
                     buf += TString(config.GetBlockSize(), 0);
                 }
+            }
+            if (allZeroes &&
+                request.GetHeaders().GetOptimizeNetworkTransfer() ==
+                    NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+            {
+                buf.clear();
             }
         }
 

@@ -86,15 +86,13 @@ struct TStopRequestContext: TRequestContextBase
     }
 };
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TServer: IServer
+struct TServer: IEndpointProxyServer
 {
     TGrpcInitializer GrpcInitializer;
 
-    const TServerConfig Config;
+    const TEndpointProxyServerConfig Config;
     TLog Log;
 
     NProto::TBlockStoreEndpointProxy::AsyncService Service;
@@ -103,7 +101,7 @@ struct TServer: IServer
     THolder<IThreadFactory::IThread> Thread;
 
     TServer(
-            TServerConfig config,
+            TEndpointProxyServerConfig config,
             ILoggingServicePtr logging)
         : Config(std::move(config))
         , Log(logging->CreateLog("BLOCKSTORE_ENDPOINT_PROXY"))
@@ -198,6 +196,7 @@ struct TServer: IServer
         requestContext->Done = true;
 
         auto& r = requestContext->Response;
+        r.SetInternalUnixSocketPath("TODO-internal-socket");
         requestContext->Writer.Finish(
             r,
             grpc::Status::OK,
@@ -215,6 +214,8 @@ struct TServer: IServer
         requestContext->Done = true;
 
         auto& r = requestContext->Response;
+        r.SetInternalUnixSocketPath("TODO-internal-socket");
+        r.SetNbdDevice("TODO-nbd-device");
         requestContext->Writer.Finish(
             r,
             grpc::Status::OK,
@@ -246,7 +247,13 @@ struct TServer: IServer
     }
 };
 
-IServerPtr CreateServer(TServerConfig config, ILoggingServicePtr logging)
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+IEndpointProxyServerPtr CreateServer(
+    TEndpointProxyServerConfig config,
+    ILoggingServicePtr logging)
 {
     return std::make_shared<TServer>(std::move(config), std::move(logging));
 }

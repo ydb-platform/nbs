@@ -2,13 +2,16 @@
     "test_with_client.test_destroy_volume": {
         "uri": "file://test_with_client.test_destroy_volume/results.txt"
     },
-    "test_with_client.test_successive_remounts_and_writes": {
-        "uri": "file://test_with_client.test_successive_remounts_and_writes/results.txt"
-    },
     "test_with_client.test_enabled_configs_dispatcher": {
         "uri": "file://test_with_client.test_enabled_configs_dispatcher/results.txt"
     },
     "test_with_client.test_disabled_configs_dispatcher": {
         "uri": "file://test_with_client.test_disabled_configs_dispatcher/results.txt"
+    },
+    "test_with_client.test_endpoint_proxy": {
+        "uri": "file://test_with_client.test_endpoint_proxy/results.txt"
+    },
+    "test_with_client.test_successive_remounts_and_writes": {
+        "uri": "file://test_with_client.test_successive_remounts_and_writes/results.txt"
     }
 }

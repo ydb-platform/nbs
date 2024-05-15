@@ -1,8 +1,14 @@
 Vertices {
     Test {
+        Name: "create_and_shoot_volume"
         CreateVolumeRequest {
+            DiskId: "@volume"
             BlocksCount: 20000000
             BlockSize: 4096
+            PerformanceProfile {
+                MaxReadIops: 1
+                ThrottlingEnabled: 0
+            }
         }
         ArtificialLoadSpec {
             Ranges {
@@ -18,6 +24,34 @@ Vertices {
             }
         }
         SuccessOnError: 2147811330
-        Name: "Test for localhost tablet version 1"
+        SuccessOnError: 2147483650
+    }
+}
+
+Vertices {
+    Test {
+        Name: "read_volume"
+        VolumeName: "@volume"
+        ArtificialLoadSpec {
+            Ranges {
+                Start: 0
+                End: 19999999
+                WriteRate: 0
+                ReadRate: 100
+                ZeroRate: 0
+                LoadType: LOAD_TYPE_RANDOM
+                IoDepth: 20
+                RequestsCount: 100
+                MinRequestSize: 1000
+                MaxRequestSize: 1000
+            }
+        }
+    }
+}
+
+Dependencies {
+    key: "read_volume",
+    value {
+        Names: "create_and_shoot_volume"
     }
 }

@@ -483,9 +483,11 @@ TDuration MSeconds(ui32 value)
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
                                                                                   \
-    xxx(DataScrubbingEnabled,            bool,      false                     )\
-    xxx(ScrubbingInterval,               TDuration, MSeconds(50)              )\
-    xxx(VolumeHistoryCleanupItemsCount , ui32,      500                       )\
+    xxx(DataScrubbingEnabled,                           bool,      false         )\
+    xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\
+    xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
+    xxx(VolumeHistoryCleanupItemsCount,                 ui32,      500           )\
+    
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 

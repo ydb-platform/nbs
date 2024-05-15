@@ -58,6 +58,8 @@ jobs:
       if: ${{ github.event.pull_request.head.sha != '' && contains(github.event.pull_request.labels.*.name, 'rebase') }}
       shell: bash
       run: |
+        git config --global user.email "librarian@nebius.com"
+        git config --global user.name "Rebase Robotovich"
         git fetch origin ${{ github.event.pull_request.base.ref }}
         git rebase origin/${{ github.event.pull_request.base.ref }}
     - name: Checkout
@@ -75,6 +77,7 @@ jobs:
         s3_key_secret: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         folder_prefix: nebius-
         build_preset: ${{ inputs.build_preset }}
+        install: false
 
     - name: Build
       uses: ./.github/actions/build_cmake
