@@ -352,6 +352,11 @@ public:
             std::move(nodes));
     }
 
+    auto CreateGenerateCommitIdRequest()
+    {
+        return std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdRequest>();
+    }
+
     auto CreateDumpCompactionRangeRequest(ui32 rangeId)
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvDumpCompactionRangeRequest>(
