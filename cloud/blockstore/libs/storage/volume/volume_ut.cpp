@@ -3416,10 +3416,10 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // 2. testing that we start rejecting requests after our postponed limit saturates
         volume.SendReadBlocksRequest(twoBlocks, clientInfo.GetClientId());
-        TEST_QUICK_RESPONSE(runtime, ReadBlocks, E_REJECTED);
+        TEST_QUICK_RESPONSE(runtime, ReadBlocks, E_BS_THROTTLED);
 
         volume.SendDescribeBlocksRequest(oneBlock, clientInfo.GetClientId(), 1);
-        TEST_QUICK_RESPONSE_VOLUME_EVENT(runtime, DescribeBlocks, E_REJECTED);
+        TEST_QUICK_RESPONSE_VOLUME_EVENT(runtime, DescribeBlocks, E_BS_THROTTLED);
         // testing that DescribeBlocks requests with zero BlocksCountToRead are
         // not affected by limits
         volume.SendDescribeBlocksRequest(oneBlock, clientInfo.GetClientId(), 0);
@@ -3908,7 +3908,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         // TODO test that the second request gets rejected, not just any one of
         // the two requests
-        TEST_RESPONSE(volume, ReadBlocks, E_REJECTED, TDuration::Seconds(1));
+        TEST_RESPONSE(volume, ReadBlocks, E_BS_THROTTLED, TDuration::Seconds(1));
         TEST_RESPONSE(volume, ReadBlocks, S_OK, WaitTimeout);
     }
 
