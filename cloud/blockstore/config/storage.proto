@@ -973,4 +973,7 @@ message TStorageServiceConfig
 
     // Optimize all-zeros blocks transmission over the network.
     optional bool OptimizeVoidBuffersTransferForReadsEnabled = 366;
+
+    // Number of volume history entries to cleanup per run.
+    optional uint32 VolumeHistoryCleanupItemCount = 367;
 }

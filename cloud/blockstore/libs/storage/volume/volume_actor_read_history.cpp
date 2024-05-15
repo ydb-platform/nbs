@@ -35,7 +35,8 @@ void TVolumeActor::HandleReadHistory(
     ProcessReadHistory(
         ctx,
         std::move(requestInfo),
-        msg->Timestamp,
+        msg->StartTs,
+        msg->EndTs.value_or(ctx.Now() - Config->GetVolumeHistoryDuration()),
         msg->RecordCount,
         false);
 }
@@ -43,7 +44,8 @@ void TVolumeActor::HandleReadHistory(
 void TVolumeActor::ProcessReadHistory(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
-    TInstant ts,
+    TInstant startTs,
+    TInstant endTs,
     size_t recordCount,
     bool monRequest)
 {
@@ -52,8 +54,8 @@ void TVolumeActor::ProcessReadHistory(
     ExecuteTx<TReadHistory>(
         ctx,
         std::move(requestInfo),
-        ts,
-        ctx.Now() - Config->GetVolumeHistoryDuration(),
+        startTs,
+        endTs,
         recordCount,
         monRequest);
 }

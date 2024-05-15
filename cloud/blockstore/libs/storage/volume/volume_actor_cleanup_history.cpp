@@ -27,7 +27,10 @@ bool TVolumeActor::PrepareCleanupHistory(
     Y_UNUSED(ctx);
 
     TVolumeDatabase db(tx.DB);
-    return db.ReadOutdatedHistory(args.OutdatedHistory, args.Key);
+    return db.ReadOutdatedHistory(
+        args.OutdatedHistory,
+        args.Key,
+        args.ItemsToRemove);
 }
 
 void TVolumeActor::ExecuteCleanupHistory(
@@ -42,6 +45,19 @@ void TVolumeActor::ExecuteCleanupHistory(
     for (const auto& o : args.OutdatedHistory) {
         db.DeleteHistoryEntry(o);
     }
+
+    if (args.OutdatedHistory.size()) {
+        LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
+            "[" << TabletID() << "]"
+            << "Deleted " << args.OutdatedHistory.size()
+            << " volume history records in range ["
+            << args.OutdatedHistory.front().Timestamp
+            << "," << args.OutdatedHistory.back().Timestamp << "]");
+    } else {
+        LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME,
+            "[" << TabletID() << "]"
+            << "Nothing to remove in volume history records");
+    }
 }
 
 void TVolumeActor::CompleteCleanupHistory(
@@ -49,7 +65,9 @@ void TVolumeActor::CompleteCleanupHistory(
     TTxVolume::TCleanupHistory& args)
 {
     Y_UNUSED(args);
-    LastHistoryCleanup = ctx.Now();
+    if (args.OutdatedHistory.empty()) {
+        LastHistoryCleanup = ctx.Now();
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -31,7 +31,6 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadVolumeParams(args.VolumeParams),
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
-        db.ReadOutdatedHistory(args.OutdatedHistory, args.OldestLogEntry),
         db.ReadHistory(
             args.History,
             now,
@@ -89,10 +88,6 @@ void TVolumeActor::ExecuteLoadState(
 
     if (anyChanged) {
         db.WriteClients(args.Clients);
-    }
-
-    for (const auto& o: args.OutdatedHistory) {
-        db.DeleteHistoryEntry(o);
     }
 
     for (const auto& o: args.OutdatedCheckpointRequestIds) {
@@ -172,7 +167,6 @@ void TVolumeActor::CompleteLoadState(
     StateLoadFinished = true;
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();
-    LastHistoryCleanup = ctx.Now();
 
     LOG_INFO(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] State data loaded, time: %lu",
