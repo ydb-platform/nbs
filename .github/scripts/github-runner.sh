@@ -3,6 +3,7 @@ set -x
 set -e
 set -o pipefail
 
+# shellcheck disable=SC2317
 function on_exit() {
     local exit_code=$?
     echo "Caught signal $exit_code, exiting..."
@@ -12,6 +13,7 @@ function on_exit() {
     # shellcheck disable=SC2009
     ps auxf | grep -vE "]$"
     sudo ls -lsha "/home/${USER_TO_CREATE}/"
+    sudo ls -lsha "/home/${USER_TO_CREATE}/.ssh/"
     [ -d "/home/${USER_TO_CREATE}/.ya" ] && {
         sudo ls -lsha "/home/${USER_TO_CREATE}/.ya"
         sudo du -h -d 1 "/home/${USER_TO_CREATE}/.ya"
@@ -23,6 +25,7 @@ function on_exit() {
 
     sudo rm -rf "/home/${USER_TO_CREATE}/.aws" /root/.aws/
     sudo rm -rf /var/lib/apt/lists/*
+    sync
     exit $exit_code
 }
 trap on_exit EXIT
@@ -188,3 +191,18 @@ EOF
     esac
     sudo -E -H -u "$USER_TO_CREATE" time tar -S -I "$COMPRESS_ARGS" -C "/home/${USER_TO_CREATE}" --strip-components=2 -x -f "/home/${USER_TO_CREATE}/${FILENAME}"
 fi
+
+sync
+
+# some healthchecks
+healthchecks_exit_code=0
+sudo test -s "/home/${USER_TO_CREATE}/.ssh/authorized_keys" || {
+    echo "Authorized keys is empty"
+    sudo ls -lsha "/home/${USER_TO_CREATE}/.ssh/authorized_keys"
+    healthchecks_exit_code=1
+}
+sudo grep 'github:\$' /etc/shadow >/dev/null 2>/dev/null || {
+    echo "User github either do not exist or has wrong hash"
+    healthchecks_exit_code=1
+}
+exit $healthchecks_exit_code
