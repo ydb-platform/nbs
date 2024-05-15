@@ -1043,10 +1043,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         runtime->DispatchEvents(options, TDuration::Seconds(1));
 
         // Write block after migration.
-        client1.SendWriteBlocksRequest(
-            interceptedRange,
-            clientInfo.GetClientId(),
-            'a');
+        client1.WriteBlocks(interceptedRange, clientInfo.GetClientId(), 'a');
 
         // Check that we have read what we have written.
         auto resp =
