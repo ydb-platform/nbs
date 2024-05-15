@@ -123,16 +123,20 @@ public:
         bool haveInflight = false;
         with_lock (RequestsLock) {
             if (!Requests.erase(req)) {
+                Cerr << "req NOT FOUND" << Endl;
                 return 0;
             }
             CompletingCount.Add(1);
             haveInflight = !Requests.empty();
+            Cerr << "REQUESTS: " << Requests.size() << Endl;
+            Cerr << "COMPLETING: " << CompletingCount.Val() << Endl;
         }
 
         int ret = cb(req);
         bool haveCompleting = CompletingCount.Dec() > 0;
 
         if (!haveInflight && !haveCompleting && ShouldStop) {
+            Cerr << "SETTING StopPromise IN Complete" << Endl;
             StopPromise.TrySetValue();
         }
 
@@ -148,9 +152,12 @@ public:
 
         with_lock (RequestsLock) {
             canStop = Requests.empty() && CompletingCount.Val() == 0;
+            Cerr << "REQUESTS: " << Requests.size() << Endl;
+            Cerr << "COMPLETING: " << CompletingCount.Val() << Endl;
         }
 
         if (canStop) {
+            Cerr << "SETTING StopPromise IN StopAsync" << Endl;
             StopPromise.TrySetValue();
         }
 

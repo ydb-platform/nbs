@@ -204,6 +204,7 @@ struct TBootstrap
         auto p = NewPromise<void>();
         f.Subscribe([=] (auto f) mutable {
             f.GetValue();
+            Scheduler->Stop();
             p.SetValue();
         });
         return p;
@@ -788,6 +789,44 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         result = bootstrap.Fuse->SendRequest<TTestLockRequest>(0, F_RDLCK, 0, 100);
         UNIT_ASSERT(result.Wait(WaitTimeout));
         UNIT_ASSERT_EXCEPTION(result.GetValue(), yexception);
+    }
+
+    Y_UNIT_TEST(ShouldNotFailOnSuspendWithRequestsInFlight)
+    {
+        NAtomic::TBool sessionDestroyed = false;
+
+        TBootstrap bootstrap;
+        bootstrap.Service->DestroySessionHandler = [&sessionDestroyed] (auto, auto) {
+            sessionDestroyed = true;
+            return MakeFuture(NProto::TDestroySessionResponse());
+        };
+
+        auto response = NewPromise<NProto::TListNodesResponse>();
+        bootstrap.Service->ListNodesHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(request);
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+
+            return response.GetFuture();
+        };
+
+        bootstrap.Start();
+
+        const ui64 nodeId = 123;
+
+        auto handle = bootstrap.Fuse->SendRequest<TOpenDirRequest>(nodeId);
+        UNIT_ASSERT(handle.Wait(WaitTimeout));
+        auto handleId = handle.GetValue();
+
+        auto read =
+            bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
+        UNIT_ASSERT(!read.Wait(TDuration::Seconds(1)));
+
+        auto suspend = bootstrap.Loop->SuspendAsync();
+        UNIT_ASSERT(!suspend.Wait(TDuration::Seconds(1)));
+
+        response.SetValue(NProto::TListNodesResponse{});
+        UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        UNIT_ASSERT_NO_EXCEPTION(read.GetValueSync());
     }
 
     Y_UNIT_TEST(ShouldNotFailOnStopWithRequestsInFlight)
