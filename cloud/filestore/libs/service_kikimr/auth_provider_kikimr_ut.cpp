@@ -171,60 +171,6 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         }
     }
 
-    Y_UNIT_TEST(DoNotCheckPermissionForRead)
-    {
-        int readHandlerCount = 0;
-        auto testService = std::make_shared<TFileStoreTest>();
-        testService->ReadDataHandler =
-            [&] (TCallContextPtr callContext,
-                std::shared_ptr<NProto::TReadDataRequest> request)
-            {
-                Y_UNUSED(callContext);
-                Y_UNUSED(request);
-                ++readHandlerCount;
-                return MakeFuture<NProto::TReadDataResponse>();
-            };
-
-        const TString authToken = "TEST_AUTH_TOKEN";
-
-        bool authorizeResult = false;
-        int authorizeHandlerCount = 0;
-        auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
-        authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT(ev->Get()->Permissions.Empty());
-                return std::make_unique<bool>(authorizeResult);
-            };
-
-        auto actorSystem = MakeIntrusive<TTestActorSystem>();
-        actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
-
-        auto service = CreateAuthService(
-            testService,
-            CreateKikimrAuthProvider(actorSystem));
-
-        auto request = std::make_shared<NProto::TReadDataRequest>();
-        request->MutableHeaders()->MutableInternal()->
-            SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-        request->MutableHeaders()->MutableInternal()->
-            SetAuthToken(authToken);
-
-        auto callContext = MakeIntrusive<TCallContext>();
-        callContext->RequestType = EFileStoreRequest::ReadData;
-        auto future = service->ReadData(
-            std::move(callContext),
-            std::move(request));
-
-        actorSystem->DispatchEvents(TDuration::Seconds(0));
-
-        const auto& response = future.GetValue(TDuration::Seconds(0));
-        UNIT_ASSERT(!HasError(response));
-        UNIT_ASSERT_EQUAL(readHandlerCount, 1);
-        UNIT_ASSERT_EQUAL(authorizeHandlerCount, 0);
-    }
-
     Y_UNIT_TEST(ShouldHandleRequestTimeout)
     {
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();

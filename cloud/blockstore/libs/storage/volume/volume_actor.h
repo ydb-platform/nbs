@@ -299,7 +299,6 @@ private:
     std::optional<TCompositeId> VolumeRequestIdGenerator;
 
     TIntrusiveList<TRequestInfo> ActiveReadHistoryRequests;
-    TInstant LastHistoryCleanup;
 
     EPartitionsStartedReason PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
     ui32 FailedBoots = 0;
@@ -500,7 +499,8 @@ private:
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TInstant ts,
+        TInstant startTs,
+        TInstant endTs,
         size_t recordCount,
         bool monRequest);
 

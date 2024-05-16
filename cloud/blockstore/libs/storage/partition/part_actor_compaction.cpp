@@ -1048,7 +1048,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     const auto blockCount = State->GetMixedBlocksCount()
-        + State->GetMergedBlocksCount();
+        + State->GetMergedBlocksCount() - State->GetCleanupQueue().GetQueueBlocks();
     const auto diskGarbage =
         GetPercentage(State->GetUsedBlocksCount(), blockCount);
 
@@ -1059,7 +1059,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         State->GetMergedBlobsCount();
 
     const bool diskBlobCountOverThreshold = State->GetMaxBlobsPerDisk() &&
-        blobCount > State->GetMaxBlobsPerDisk();
+        blobCount > State->GetMaxBlobsPerDisk() + State->GetCleanupQueue().GetCount();
 
     ui32 rangeGarbage = 0;
 

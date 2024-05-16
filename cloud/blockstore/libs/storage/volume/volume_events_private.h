@@ -12,6 +12,8 @@
 
 #include <library/cpp/actors/core/scheduler_cookie.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,13 +92,23 @@ struct TEvVolumePrivate
 
     struct TReadHistoryRequest
     {
-        TInstant Timestamp;
+        TInstant StartTs;
+        std::optional<TInstant> EndTs;
         size_t RecordCount;
 
         TReadHistoryRequest(
                 TInstant timestamp,
                 size_t recordCount)
-            : Timestamp(timestamp)
+            : StartTs(timestamp)
+            , RecordCount(recordCount)
+        {}
+
+        TReadHistoryRequest(
+                TInstant startTs,
+                TInstant endTs,
+                size_t recordCount)
+            : StartTs(startTs)
+            , EndTs(endTs)
             , RecordCount(recordCount)
         {}
     };

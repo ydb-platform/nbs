@@ -38,6 +38,9 @@ struct TCleanupQueue::TImpl
 
     size_t GetCount(ui64 maxCommitId) const
     {
+        if (maxCommitId == InvalidCommitId) {
+            return Items.size();
+        }
         size_t result = 0;
         for (const auto& item: Items) {
             if (item.CommitId > maxCommitId) {
@@ -66,8 +69,9 @@ struct TCleanupQueue::TImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCleanupQueue::TCleanupQueue()
+TCleanupQueue::TCleanupQueue(ui64 blockSize)
     : Impl(new TImpl())
+    , BlockSize(blockSize)
 {}
 
 TCleanupQueue::~TCleanupQueue()
@@ -78,6 +82,7 @@ bool TCleanupQueue::Add(const TCleanupQueueItem& item)
     bool result = Impl->Add(item);
     if (result) {
         QueueBytes += item.BlobId.BlobSize();
+        QueueBlocks += item.BlobId.BlobSize() / BlockSize;
     }
     return result;
 }
@@ -90,6 +95,7 @@ bool TCleanupQueue::Add(const TVector<TCleanupQueueItem>& items)
             return false;
         }
         QueueBytes += item.BlobId.BlobSize();
+        QueueBlocks += item.BlobId.BlobSize() / BlockSize;
     }
     return true;
 }
@@ -99,6 +105,7 @@ bool TCleanupQueue::Remove(const TCleanupQueueItem& item)
     bool result = Impl->Remove(item);
     if (result) {
         QueueBytes -= item.BlobId.BlobSize();
+        QueueBlocks -= item.BlobId.BlobSize() / BlockSize;
     }
     return result;
 }
@@ -116,6 +123,11 @@ TVector<TCleanupQueueItem> TCleanupQueue::GetItems(ui64 maxCommitId, size_t limi
 ui64 TCleanupQueue::GetQueueBytes() const
 {
     return QueueBytes;
+}
+
+ui64 TCleanupQueue::GetQueueBlocks() const
+{
+    return QueueBlocks;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
