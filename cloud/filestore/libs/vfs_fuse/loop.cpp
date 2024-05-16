@@ -132,9 +132,9 @@ public:
             Cerr << "COMPLETING: " << CompletingCount.Val() << Endl;
         }
 
-        Cerr << "STARTED CB FOR " << req->unique << Endl;
+        Cerr << "STARTED CB FOR " << reinterpret_cast<ui64>(req) << Endl;
         int ret = cb(req);
-        Cerr << "FINISHED CB FOR " << req->unique << Endl;
+        Cerr << "FINISHED CB FOR " << reinterpret_cast<ui64>(req) << Endl;
         bool haveCompleting = CompletingCount.Dec() > 0;
 
         if (!haveInflight && !haveCompleting && ShouldStop) {
