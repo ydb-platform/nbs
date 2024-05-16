@@ -428,9 +428,8 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
 
         auto ptr = weakPtr.lock();
         if (!ptr) {
-            return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
-                E_REJECTED,
-                "Encryption client is destroyed"));
+            return NProto::TReadBlocksLocalResponse(
+                TErrorResponse(E_REJECTED, "Encryption client is destroyed"));
         }
 
         Y_UNUSED(buf);

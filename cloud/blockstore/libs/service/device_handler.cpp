@@ -651,7 +651,7 @@ TReadBlocksResponseFuture TDeviceHandler::ExecuteUnalignedReadRequest(
         BlockSize);
 
     if (HasError(sgListOrError)) {
-        return MakeFuture<NProto::TReadBlocksResponse>(
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(
             TErrorResponse(sgListOrError.GetError()));
     }
 
@@ -995,4 +995,3 @@ IDeviceHandlerFactoryPtr CreateDefaultDeviceHandlerFactory()
 }
 
 }   // namespace NCloud::NBlockStore
-

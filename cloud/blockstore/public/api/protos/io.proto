@@ -63,6 +63,10 @@ message TReadBlocksResponse
 
     // Throttler delay.
     uint64 ThrottlerDelay = 5;
+
+    // If true, it means that all the data read was zeros.
+    // It's a hint, false negatives are allowed.
+    bool AllZeroes = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
