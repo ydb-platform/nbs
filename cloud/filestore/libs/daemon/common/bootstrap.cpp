@@ -21,7 +21,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/diagnostics/trace_reader.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -379,14 +380,15 @@ void TBootstrapCommon::InitLWTrace(
     }
 
     if (traceReaders.size()) {
-        TraceProcessor = CreateTraceProcessor(
-            Timer,
-            BackgroundScheduler,
-            Logging,
+        TraceProcessor = CreateTraceProcessorMon(
             Monitoring,
-            "NFS_TRACE",
-            NLwTraceMonPage::TraceManager(false),
-            std::move(traceReaders));
+            CreateTraceProcessor(
+                Timer,
+                BackgroundScheduler,
+                Logging,
+                "NFS_TRACE",
+                NLwTraceMonPage::TraceManager(false),
+                std::move(traceReaders)));
 
         STORAGE_INFO("TraceProcessor initialized");
     } else {

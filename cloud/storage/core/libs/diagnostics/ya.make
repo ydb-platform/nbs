@@ -16,6 +16,8 @@ SRCS(
     request_counters.cpp
     solomon_counters.cpp
     stats_updater.cpp
+    trace_processor_mon.cpp
+    trace_processor.cpp
     trace_reader.cpp
     trace_serializer.cpp
     weighted_percentile.cpp

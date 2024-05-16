@@ -1,37 +1,15 @@
 #include "trace_reader.h"
 
-#include "logging.h"
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <cloud/storage/core/libs/common/scheduler.h>
-#include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/protos/media.pb.h>
-
+#include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/json/writer/json.h>
-#include <library/cpp/lwtrace/control.h>
 #include <library/cpp/lwtrace/log.h>
-
-#include <util/datetime/cputimer.h>
-#include <util/generic/hash.h>
-#include <util/generic/size_literals.h>
-#include <util/generic/string.h>
-#include <util/stream/str.h>
+#include <library/cpp/protobuf/util/pb_io.h>
 
 namespace NCloud {
 
-using namespace NMonitoring;
-
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TTraceKey = std::pair<TStringBuf, TStringBuf>;
-using TTraceLog = std::pair<TStringBuf, TEntry>;
-
-const TStringBuf slowName = "slow";
-const TStringBuf randomName = "random";
-
-const TTraceKey TRACE_TYPE_SLOW{slowName, "st_slow_requests_filter"};
-const TTraceKey TRACE_TYPE_RANDOM{randomName, "st_trace_logger"};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,59 +28,7 @@ const NLWTrace::TParam* FindParam(
     return nullptr;
 }
 
-template <typename TResult>
-requires std::is_default_constructible_v<TResult>
-TResult GetIdParam(const NLWTrace::TTrackLog::TItem& ringItem)
-{
-    if (auto* diskId = FindParam(ringItem, NProbeParam::DiskId); diskId) {
-        return diskId->Get<TResult>();
-    } else if (auto* fsId = FindParam(ringItem, NProbeParam::FsId); fsId) {
-        return fsId->Get<TResult>();
-    }
-
-    return TResult{};
-}
-
-template <typename TResult>
-requires std::is_default_constructible_v<TResult>
-TResult GetIdParam(const TCgiParameters& cgiParams)
-{
-    if (auto diskId = cgiParams.Get(NProbeParam::DiskId); !diskId.empty()) {
-        return diskId;
-    } else if (auto fsId = cgiParams.Get(NProbeParam::FsId); !fsId.empty()) {
-        return fsId;
-    }
-
-    return TResult{};
-}
-
-[[maybe_unused]] TString DumpLogItem(const NLWTrace::TLogItem& logItem)
-{
-    TStringStream ss;
-    if (const auto* probe = logItem.Probe) {
-        ss << "probe: " << probe->Event.Name << ", params: " ;
-        for (ui32 i = 0; i < probe->Event.Signature.ParamCount; ++i) {
-            ss << probe->Event.Signature.ParamNames[i] << "|";
-        }
-    } else {
-        ss << "no probe attached";
-    }
-
-    if (ss.Str().EndsWith("|")) {
-        ss.Str().pop_back();
-    }
-
-    return std::move(ss.Str());
-}
-
-void DisplayJsonErrorMessage(IOutputStream& out, const TString& message) {
-    out <<  "HTTP/1.1 400 Invalid Request\r\n"
-            "Content-Type: application/json\r\n"
-            "Connection: Close\r\n\r\n";
-    out << "{\"status\": \"error\", \"message\": \"" << message << "\"}";
-}
-
-void SerializeTraceEntry(
+void SerializeTraceToJson(
     const NLWTrace::TTrackLog& tl,
     ui64 minSeenTimestamp,
     const TString& tag,
@@ -140,7 +66,7 @@ void SerializeTraceEntry(
     writer.EndList();
 }
 
-TString SerializeTrace(
+TString SerializeTraceToString(
     const NLWTrace::TTrackLog& tl,
     ui64 minSeenTimestamp,
     const TString& tag)
@@ -148,90 +74,9 @@ TString SerializeTrace(
     TStringStream ss;
     NJsonWriter::TBuf writer(NJsonWriter::HEM_UNSAFE, &ss);
 
-    SerializeTraceEntry(tl, minSeenTimestamp, tag, writer);
+    SerializeTraceToJson(tl, minSeenTimestamp, tag, writer);
 
     return ss.Str();
-}
-
-
-bool ReaderIdMatch(const TString& traceType, const TString& readerId)
-{
-    const TTraceKey key{traceType, readerId};
-    return traceType.empty() || key == TRACE_TYPE_SLOW || key == TRACE_TYPE_RANDOM;
-}
-
-TVector<TTraceLog> PrepareTraceLogDump(
-    const TVector<ITraceReaderPtr>& readers,
-    const TString& traceType,
-    const TString& id)
-{
-    TVector<TTraceLog> traceLogDump;
-
-    for (auto& reader: readers) {
-        const auto& readerId = reader->Id;
-
-        if (traceType && !ReaderIdMatch(traceType, readerId)) {
-            continue;
-        }
-
-        reader->ForEachTraceLog([&] (const auto& item) {
-            const auto traceId = GetIdParam<TString>(item.TrackLog.Items.front());
-
-            if (!traceId.empty() && (id.empty() || traceId == id)) {
-                traceLogDump.emplace_back(readerId, item);
-            }
-        });
-    }
-
-    return traceLogDump;
-}
-
-void DumpTraceLogHtml(
-    IOutputStream& out,
-    const TVector<TTraceLog>& traceLogDump)
-{
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Date"; }
-                    TABLED() { out << "Id"; }
-                    TABLED() { out << "Trace"; }
-                    TABLED() { out << "Actions"; }
-                }
-            }
-            TABLEBODY() {
-                for (auto& [requestId, entry]: traceLogDump) {
-                    TABLER() {
-                        TABLED() { out << entry.Ts.ToStringLocalUpToSeconds(); }
-                        TABLED() { out << requestId; }
-                        TABLED() { out << SerializeTrace(entry.TrackLog, entry.Date, entry.Tag); }
-                        TABLED() { out << ""; }
-                    }
-                }
-            }
-        }
-    }
-}
-
-void DumpTraceLogJson(
-    IOutputStream& out,
-    const TVector<TTraceLog>& traceLogDump)
-{
-    TStringStream ss;
-    NJsonWriter::TBuf writer(NJsonWriter::HEM_UNSAFE, &ss);
-
-    writer.BeginList();
-    for (auto& [requestId, entry]: traceLogDump) {
-        writer.BeginList();
-        writer.WriteString(entry.Ts.ToStringLocalUpToSeconds());
-        writer.WriteString(requestId);
-        SerializeTraceEntry(entry.TrackLog, entry.Date, entry.Tag, writer);
-        writer.EndList();
-    }
-    writer.EndList();
-
-    out << ss.Str();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -241,18 +86,20 @@ struct TTraceReaderWithRingBuffer
 {
     TSimpleRingBuffer<TEntry> RingBuffer;
 
-    TTraceReaderWithRingBuffer(TString id)
+    explicit TTraceReaderWithRingBuffer(TString id)
         : ITraceReader(std::move(id))
         , RingBuffer(1000)
     {}
 
-    void ForEachTraceLog(std::function<void (const TEntry&)> fn) override
+    void ForEach(std::function<void(const TEntry&)> fn) override
     {
         for (ui64 i = RingBuffer.FirstIndex(); i < RingBuffer.TotalSize(); ++i) {
             fn(RingBuffer[i]);
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TTraceLogger final
     : public TTraceReaderWithRingBuffer
@@ -262,10 +109,13 @@ private:
     ui64 TracksCount = 0;
 
 public:
-    TTraceLogger(TString id, ILoggingServicePtr logging, TString componentName)
+    TTraceLogger(
+            TString id,
+            ILoggingServicePtr logging,
+            const TString& componentName)
         : TTraceReaderWithRingBuffer(std::move(id))
     {
-        Log = logging->CreateLog(std::move(componentName));
+        Log = logging->CreateLog(componentName);
     }
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
@@ -280,11 +130,10 @@ public:
 
         Log.Write(
             ELogPriority::TLOG_INFO,
-            SerializeTrace(tl, minSeenTimestamp, "AllRequests"));
+            SerializeTraceToString(tl, minSeenTimestamp, "AllRequests"));
 
         RingBuffer.PushBack(
-            {TInstant::Now(), minSeenTimestamp, tl, "AllRequests"}
-        );
+            {TInstant::Now(), minSeenTimestamp, tl, "AllRequests"});
     }
 
     void Reset() override
@@ -299,7 +148,6 @@ class TSlowRequestsFilter final
     : public TTraceReaderWithRingBuffer
 {
 private:
-    const TString Id;
     TLog Log;
 
     TRequestThresholds RequestThresholds;
@@ -312,13 +160,12 @@ public:
     TSlowRequestsFilter(
             TString id,
             ILoggingServicePtr logging,
-            TString componentName,
+            const TString& componentName,
             TRequestThresholds requestThresholds)
-        : TTraceReaderWithRingBuffer(id)
-        , Id(std::move(id))
+        : TTraceReaderWithRingBuffer(std::move(id))
         , RequestThresholds(std::move(requestThresholds))
     {
-        Log = logging->CreateLog(std::move(componentName));
+        Log = logging->CreateLog(componentName);
     }
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
@@ -348,9 +195,6 @@ public:
             ++SeenStartProbes[tl.Items.front().Probe->Event.Name];
         }
 
-        Y_DEBUG_ABORT_UNLESS(mediaKindParam, "expected to find mediaKind at start: %s",
-            DumpLogItem(tl.Items.front()).c_str());
-
         if (!mediaKindParam) {
             return;
         }
@@ -365,13 +209,13 @@ public:
             requestTypeParam,
             requestSizeParam);
 
-        const auto* executionTimeParam = FindParam(
-            tl.Items.back(), RequestExecutionTime);
+        const auto* executionTimeParam =
+            FindParam(tl.Items.back(), RequestExecutionTime);
 
         TDuration trackLength;
         if (executionTimeParam) {
-            trackLength = TDuration::MicroSeconds(
-                executionTimeParam->Get<ui64>());
+            trackLength =
+                TDuration::MicroSeconds(executionTimeParam->Get<ui64>());
         } else {
             trackLength =
                 CyclesToDurationSafe(maxSeenTimestamp - minSeenTimestamp);
@@ -380,11 +224,10 @@ public:
         if (trackLength >= srt && ++TracksCount <= DumpTracksLimit) {
             Log.Write(
                 ELogPriority::TLOG_WARNING,
-                SerializeTrace(tl, minSeenTimestamp, "SlowRequests"));
+                SerializeTraceToString(tl, minSeenTimestamp, "SlowRequests"));
 
             RingBuffer.PushBack(
-                {TInstant::Now(), minSeenTimestamp, tl, "SlowRequests"}
-            );
+                {TInstant::Now(), minSeenTimestamp, tl, "SlowRequests"});
         }
     }
 
@@ -401,205 +244,9 @@ public:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TTraceProcessor final
-    : public ITraceProcessor
-    , public std::enable_shared_from_this<TTraceProcessor>
-{
-    class TMonPageHtml final
-        : public THtmlMonPage
-    {
-    private:
-        TTraceProcessor& TraceProcessor;
-        const TString TraceType;
-
-    public:
-        TMonPageHtml(
-                TTraceProcessor& traceProcessor,
-                const TString& traceType,
-                const TString& traceName)
-            : THtmlMonPage(traceType, traceName, true)
-            , TraceProcessor(traceProcessor)
-            , TraceType(traceType)
-        {
-        }
-
-        void OutputContent(IMonHttpRequest& request) override
-        {
-            TraceProcessor.OutputHtml(request.Output(), request, TraceType);
-        }
-    };
-
-    class TMonPageJson final
-        : public IMonPage
-    {
-    public:
-        TTraceProcessor& TraceProcessor;
-
-        TMonPageJson(
-                TTraceProcessor& traceProcessor,
-                const TString& path)
-            : IMonPage(path)
-            , TraceProcessor(traceProcessor)
-        {}
-
-        void Output(IMonHttpRequest& request) override
-        {
-            return TraceProcessor.OutputJson(request.Output(), request);
-        }
-    };
-
-private:
-    const ITimerPtr Timer;
-    const ISchedulerPtr Scheduler;
-    const ILoggingServicePtr Logging;
-    const TString ComponentName;
-    NLWTrace::TManager& LWManager;
-    TVector<ITraceReaderPtr> Readers;
-
-    TLog Log;
-    TAtomic ShouldStop = 0;
-
-public:
-    TTraceProcessor(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            TString componentName,
-            NLWTrace::TManager& lwManager,
-            TVector<ITraceReaderPtr> readers)
-        : Timer(std::move(timer))
-        , Scheduler(std::move(scheduler))
-        , Logging(std::move(logging))
-        , ComponentName(std::move(componentName))
-        , LWManager(lwManager)
-        , Readers(std::move(readers))
-    {
-        Y_DEBUG_ABORT_UNLESS(Readers.size());
-
-        auto rootPage = monitoring->RegisterIndexPage("tracelogs", "Traces Logs");
-        auto& index = static_cast<TIndexMonPage&>(*rootPage);
-        index.Register(new TMonPageHtml(*this, randomName.Data(), "Random samples"));
-        index.Register(new TMonPageHtml(*this, slowName.Data(), "Slow samples"));
-        index.Register(new TMonPageJson(*this, "json"));
-    }
-
-    void Start() override
-    {
-        Log = Logging->CreateLog(ComponentName);
-        ScheduleProcessLWDepot();
-    }
-
-    void Stop() override
-    {
-        AtomicSet(ShouldStop, 1);
-    }
-
-private:
-    void ScheduleProcessLWDepot()
-    {
-        if (AtomicGet(ShouldStop)) {
-            return;
-        }
-
-        auto weak_ptr = weak_from_this();
-
-        Scheduler->Schedule(
-            Timer->Now() + DumpTracksInterval,
-            [weak_ptr = std::move(weak_ptr)] {
-                if (auto p = weak_ptr.lock()) {
-                    p->ProcessLWDepot();
-                    p->ScheduleProcessLWDepot();
-                }
-            });
-    }
-
-    void ProcessLWDepot()
-    {
-        for (auto& reader: Readers) {
-            try {
-                reader->Reset();
-                LWManager.ExtractItemsFromCyclicDepot(reader->Id, *reader);
-            } catch (...) {
-                STORAGE_ERROR("Tracing error: " << CurrentExceptionMessage());
-                Y_DEBUG_ABORT_UNLESS(0);
-            }
-        }
-    }
-
-    void OutputHtml(
-        IOutputStream& out,
-        IMonHttpRequest& request,
-        const TString& traceType)
-    {
-        const auto traceLogDump = PrepareTraceLogDump(
-            Readers, traceType, GetIdParam<TString>(request.GetParams())
-        );
-        DumpTraceLogHtml(out, traceLogDump);
-    }
-
-    void OutputJson(IOutputStream& out, IMonHttpRequest& request)
-    {
-        const TString traceType = request.GetParams().Get("traceType");
-        if (slowName != traceType &&
-            randomName != traceType &&
-            !traceType.empty())
-        {
-            DisplayJsonErrorMessage(
-                out, "Invalid traceType set '" + traceType + "'"
-            );
-        }
-
-        const auto traceLogDump = PrepareTraceLogDump(
-            Readers, traceType, GetIdParam<TString>(request.GetParams())
-        );
-
-        out << HTTPOKJSON;
-        DumpTraceLogJson(out, traceLogDump);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TTraceProcessorStub final
-    : public ITraceProcessor
-{
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-ITraceProcessorPtr CreateTraceProcessor(
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring,
-    TString componentName,
-    NLWTrace::TManager& lwManager,
-    TVector<ITraceReaderPtr> readers)
-{
-    return std::make_shared<TTraceProcessor>(
-        std::move(timer),
-        std::move(scheduler),
-        std::move(logging),
-        std::move(monitoring),
-        std::move(componentName),
-        lwManager,
-        std::move(readers));
-}
-
-ITraceProcessorPtr CreateTraceProcessorStub()
-{
-    return std::make_shared<TTraceProcessorStub>();
-}
 
 ITraceReaderPtr CreateTraceLogger(
     TString id,
@@ -669,12 +316,12 @@ TRequestThresholds ConvertRequestThresholds(
     TRequestThresholds requestThresholds;
     for (const auto& threshold: value) {
         TLWTraceThreshold requestThreshold;
-        requestThreshold.Default = TDuration::MilliSeconds(
-            threshold.GetDefault());
-        requestThreshold.PerSizeUnit = TDuration::MilliSeconds(
-            threshold.GetPerSizeUnit());
+        requestThreshold.Default =
+            TDuration::MilliSeconds(threshold.GetDefault());
+        requestThreshold.PerSizeUnit =
+            TDuration::MilliSeconds(threshold.GetPerSizeUnit());
         for (const auto& [rType, typeThresh]: threshold.GetByRequestType()) {
-            requestThreshold.ByRequestType[rType] = \
+            requestThreshold.ByRequestType[rType] =
                 TDuration::MilliSeconds(typeThresh);
         }
         const auto mediaKind = threshold.GetMediaKind();
@@ -719,7 +366,7 @@ TDuration GetThresholdByRequestType(
         const auto& mediaKindThresholds = mediaKindThresholdsIt->second;
         srt = mediaKindThresholds.Default;
         if (requestTypeParam) {
-            auto requestType = requestTypeParam->Get<TString>();
+            const auto& requestType = requestTypeParam->Get<TString>();
             const auto threshold =
                 mediaKindThresholds.ByRequestType.find(requestType);
             if (threshold != mediaKindThresholds.ByRequestType.end()) {
