@@ -33,6 +33,27 @@ TBlockRange64 GetBlockRangeById(ui32 blockIndex)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ETransferMethod
+{
+    Write,
+    Zero
+};
+
+IOutputStream& operator<<(IOutputStream& out, ETransferMethod rhs)
+{
+    switch (rhs) {
+        case ETransferMethod::Write:
+            out << "Write";
+            break;
+        case ETransferMethod::Zero:
+            out << "Zero";
+            break;
+    }
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TVolumeTest)
 {
     Y_UNIT_TEST(ShouldUpdateVolumeConfig)
@@ -1861,11 +1882,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         // were simply zeroed.
         state->MigrationMode = EMigrationMode::InProgress;
 
-        enum class ETransferMethod
-        {
-            Write,
-            Zero
-        };
         TMap<size_t, ETransferMethod> migratedRanges;
         auto watchZeroAndWriteRequests =
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
@@ -1902,12 +1918,12 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             totalRangesToMigrateCount,
             migratedRanges.size());
-        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[0]);
-        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[1]);
-        UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[2]);
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[0]);
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[1]);
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[2]);
         for (const auto& [migrationRangeIndex, method]: migratedRanges) {
             if (migrationRangeIndex > 2) {
-                UNIT_ASSERT_EQUAL(ETransferMethod::Zero, method);
+                UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Zero, method);
             }
         }
     }
