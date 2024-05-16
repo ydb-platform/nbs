@@ -725,6 +725,51 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             UNIT_ASSERT_VALUES_EQUAL(1, response->History.size());
         }
     }
+
+    Y_UNIT_TEST(ShouldProperlyShowLastHistoryOnHistoryPage)
+    {
+        const TDuration historyDuration = TDuration::Seconds(100);
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetVolumeHistoryDuration(historyDuration.MilliSeconds());
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.SendToPipe(
+            std::make_unique<TEvVolumePrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        auto httpResponse = volume.RemoteHttpInfo(
+            BuildRemoteHttpQuery(
+                TestTabletId,
+                {}),
+            HTTP_METHOD::HTTP_METHOD_GET);
+        const auto& html = httpResponse->Html;
+
+        auto historyPos = html.find("<h3>History");
+
+        UNIT_ASSERT_C(
+            historyPos != TString::npos,
+            "History table is not found in response");
+
+        UNIT_ASSERT_C(
+            html.Contains(clientInfo.GetClientId(), historyPos),
+            TString("History entry is not found in response: ") + html);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
