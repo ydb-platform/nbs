@@ -575,7 +575,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
                 device.Data() + request->GetStartIndex() * blockSize,
                 request->GetBlocksCount() * blockSize);
 
-            NProto::TReadBlocksResponse response;
+            NProto::TReadBlocksLocalResponse response;
 
             auto guard = request->Sglist.Acquire();
             UNIT_ASSERT(guard);
@@ -632,7 +632,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
-            return MakeFuture(NProto::TReadBlocksResponse());
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
         };
 
         ui64 from = 1;
@@ -696,7 +696,7 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
         {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
-            return MakeFuture(NProto::TReadBlocksResponse());
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
         };
 
         ui64 from = 0;

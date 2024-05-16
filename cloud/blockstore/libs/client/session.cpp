@@ -35,7 +35,7 @@ NCloud::NProto::EStorageMediaKind GetStorageMediaKind(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReadBlocksMethod
+struct TReadBlocksLocalMethod
 {
     static constexpr EBlockStoreRequest RequestType = EBlockStoreRequest::ReadBlocks;
 
@@ -468,7 +468,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TSession::ReadBlocksLocal(
     request->SetDiskId(SessionConfig.DiskId);
 
     auto response = NewPromise<NProto::TReadBlocksLocalResponse>();
-    HandleRequest<TReadBlocksMethod>(
+    HandleRequest<TReadBlocksLocalMethod>(
         std::move(callContext),
         std::move(request),
         response);
@@ -983,13 +983,12 @@ void TSession::HandleResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-TFuture<NProto::TReadBlocksResponse> TSession::SendRequest<TReadBlocksMethod>(
+TFuture<NProto::TReadBlocksLocalResponse>
+TSession::SendRequest<TReadBlocksLocalMethod>(
     TCallContextPtr callContext,
-    TReadBlocksMethod::TRequest request)
+    TReadBlocksLocalMethod::TRequest request)
 {
-    return Client->ReadBlocksLocal(
-        std::move(callContext),
-        std::move(request));
+    return Client->ReadBlocksLocal(std::move(callContext), std::move(request));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

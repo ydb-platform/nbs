@@ -42,6 +42,7 @@ private:
     NProto::TReadBlocksResponse Response;
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    ui32 VoidBlockCount = 0;
 
 public:
     TDiskAgentReadActor(
@@ -247,20 +248,21 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         return;
     }
 
-    auto& responseBuffers = *Response.MutableBlocks()->MutableBuffers();
+    auto& srcBuffers = *msg->Record.MutableBlocks()->MutableBuffers();
+    auto& destBuffers = *Response.MutableBlocks()->MutableBuffers();
     const auto blockSize = PartConfig->GetBlockSize();
 
     const auto& blockRange = DeviceRequests[ev->Cookie].BlockRange;
     Y_ABORT_UNLESS(msg->Record.GetBlocks().BuffersSize() == blockRange.Size());
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
-        auto& responseBuffer =
-            responseBuffers[blockRange.Start + i - Request.GetStartIndex()];
-        responseBuffer =
-            std::move(*msg->Record.MutableBlocks()->MutableBuffers(i));
-        if (responseBuffer.Empty()) {
-            STORAGE_CHECK_PRECONDITION(
-                SkipVoidBlocksToOptimizeNetworkTransfer);
-            responseBuffer.resize(blockSize, 0);
+        auto& srcBuffer = srcBuffers[i];
+        auto& destBuffer =
+            destBuffers[blockRange.Start + i - Request.GetStartIndex()];
+        destBuffer.swap(srcBuffer);
+        if (destBuffer.Empty()) {
+            STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
+            destBuffer.resize(blockSize, 0);
+            ++VoidBlockCount;
         }
     }
 
@@ -270,6 +272,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
     response->Record = std::move(Response);
+    response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
     Done(ctx, std::move(response), false);
 }
 

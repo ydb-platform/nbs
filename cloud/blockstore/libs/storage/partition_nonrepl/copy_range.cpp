@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/public.h>
-
 #include <cloud/storage/core/libs/common/sglist.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -27,18 +26,13 @@ TCopyRangeActor::TCopyRangeActor(
         TString writerClientId,
         IBlockDigestGeneratorPtr blockDigestGenerator)
     : RequestInfo(std::move(requestInfo))
+    , BlockSize(blockSize)
     , Range(range)
     , Source(source)
     , Target(target)
     , WriterClientId(std::move(writerClientId))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
-    , Buffer(TString(Range.Size() * blockSize, 0))
-    , SgList(Buffer.GetGuardedSgList())
 {
-    auto sgListOrError = SgListNormalize(SgList.Acquire().Get(), blockSize);
-
-    Y_ABORT_UNLESS(!HasError(sgListOrError));
-    SgList.SetSgList(sgListOrError.ExtractResult());
 }
 
 void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
@@ -58,13 +52,9 @@ void TCopyRangeActor::Bootstrap(const TActorContext& ctx)
 
 void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
 {
-    const auto blockSize = Buffer.Get().Size() / Range.Size();
-
-    auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
+    auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.SetBlocksCount(Range.Size());
-    request->Record.BlockSize = blockSize;
-    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
@@ -84,29 +74,26 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     ReadStartTs = ctx.Now();
 }
 
-void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
+void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector blocks)
 {
-    const auto blockSize = Buffer.Get().Size() / Range.Size();
-
-    auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+    auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
+    request->Record.MutableBlocks()->Swap(&blocks);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
-    request->Record.BlocksCount = Range.Size();
-    request->Record.BlockSize = blockSize;
-    request->Record.Sglist = SgList;
 
     auto* headers = request->Record.MutableHeaders();
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
 
-    for (const auto blockIndex: xrange(Range)) {
-        auto* data = Buffer.Get().Data() + (blockIndex - Range.Start) * blockSize;
+    const auto& buffers = request->Record.GetBlocks().GetBuffers();
+    for (int i = 0; i < buffers.size();++i) {
+        const TString& block = buffers.Get(i);
+        auto blockIndex = i + Range.Start;
 
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,
-            TBlockDataRef(data, blockSize)
-        );
+            TBlockDataRef(block.data(), block.size()));
 
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -127,18 +114,54 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx)
     WriteStartTs = ctx.Now();
 }
 
-void TCopyRangeActor::Done(const TActorContext& ctx)
+void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
-        std::move(Error),
-        Range,
-        ReadStartTs,
-        ReadDuration,
-        WriteStartTs,
-        WriteDuration,
-        std::move(AffectedBlockInfos),
-        RequestInfo->GetExecCycles()
+    auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
+    request->Record.SetStartIndex(Range.Start);
+    auto clientId =
+        WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
+    request->Record.SetBlocksCount(Range.Size());
+
+    auto* headers = request->Record.MutableHeaders();
+    headers->SetIsBackgroundRequest(true);
+    headers->SetClientId(std::move(clientId));
+
+    for (const auto blockIndex: xrange(Range)) {
+        const auto digest = BlockDigestGenerator->ComputeDigest(
+            blockIndex,
+            TBlockDataRef::CreateZeroBlock(BlockSize));
+
+        if (digest.Defined()) {
+            AffectedBlockInfos.push_back({blockIndex, *digest});
+        }
+    }
+
+    auto event = std::make_unique<IEventHandle>(
+        Target,
+        ctx.SelfID,
+        request.release(),
+        IEventHandle::FlagForwardOnNondelivery,
+        0,            // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
+
+    ctx.Send(event.release());
+
+    WriteStartTs = ctx.Now();
+}
+
+void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
+{
+    auto response =
+        std::make_unique<TEvNonreplPartitionPrivate::TEvRangeMigrated>(
+            std::move(error),
+            Range,
+            ReadStartTs,
+            ReadDuration,
+            WriteStartTs,
+            WriteDuration,
+            std::move(AffectedBlockInfos),
+            RequestInfo->GetExecCycles());
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -154,59 +177,78 @@ void TCopyRangeActor::Done(const TActorContext& ctx)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TCopyRangeActor::HandleReadUndelivery(
-    const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+    const TEvService::TEvReadBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     ReadDuration = ctx.Now() - ReadStartTs;
 
     Y_UNUSED(ev);
 
-    Error = MakeError(E_REJECTED, "ReadBlocks request undelivered");
-
-    Done(ctx);
+    Done(ctx, MakeError(E_REJECTED, "ReadBlocks request undelivered"));
 }
 
 void TCopyRangeActor::HandleReadResponse(
-    const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
+    const TEvService::TEvReadBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     ReadDuration = ctx.Now() - ReadStartTs;
 
     auto* msg = ev->Get();
 
-    Error = msg->Record.GetError();
-
-    if (HasError(Error)) {
-        Done(ctx);
+    if (HasError(msg->Record.GetError())) {
+        Done(ctx, msg->Record.GetError());
         return;
     }
 
-    WriteBlocks(ctx);
+    if (msg->Record.GetAllZeroes()) {
+        ZeroBlocks(ctx);
+    } else {
+        WriteBlocks(ctx, std::move(*msg->Record.MutableBlocks()));
+    }
 }
 
 void TCopyRangeActor::HandleWriteUndelivery(
-    const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
+    const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 
     Y_UNUSED(ev);
 
-    Error = MakeError(E_REJECTED, "WriteBlocks request undelivered");
-
-    Done(ctx);
+    Done(ctx, MakeError(E_REJECTED, "WriteBlocks request undelivered"));
 }
 
 void TCopyRangeActor::HandleWriteResponse(
-    const TEvService::TEvWriteBlocksLocalResponse::TPtr& ev,
+    const TEvService::TEvWriteBlocksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     WriteDuration = ctx.Now() - WriteStartTs;
 
     auto* msg = ev->Get();
 
-    Error = msg->Record.GetError();
-    Done(ctx);
+    Done(ctx, msg->Record.GetError());
+}
+
+void TCopyRangeActor::HandleZeroUndelivery(
+    const TEvService::TEvZeroBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    WriteDuration = ctx.Now() - WriteStartTs;
+
+    Y_UNUSED(ev);
+
+    Done(ctx, MakeError(E_REJECTED, "ZeroBlocks request undelivered"));
+}
+
+void TCopyRangeActor::HandleZeroResponse(
+    const TEvService::TEvZeroBlocksResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    WriteDuration = ctx.Now() - WriteStartTs;
+
+    auto* msg = ev->Get();
+
+    Done(ctx, msg->Record.GetError());
 }
 
 void TCopyRangeActor::HandlePoisonPill(
@@ -215,8 +257,7 @@ void TCopyRangeActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    Error = MakeError(E_REJECTED, "Dead");
-    Done(ctx);
+    Done(ctx, MakeError(E_REJECTED, "Dead"));
 }
 
 STFUNC(TCopyRangeActor::StateWork)
@@ -226,10 +267,12 @@ STFUNC(TCopyRangeActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadUndelivery);
-        HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteUndelivery);
-        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadResponse);
-        HFunc(TEvService::TEvWriteBlocksLocalResponse, HandleWriteResponse);
+        HFunc(TEvService::TEvReadBlocksRequest, HandleReadUndelivery);
+        HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteUndelivery);
+        HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroUndelivery);
+        HFunc(TEvService::TEvReadBlocksResponse, HandleReadResponse);
+        HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteResponse);
+        HFunc(TEvService::TEvZeroBlocksResponse, HandleZeroResponse);
 
         default:
             HandleUnexpectedEvent(

@@ -33,6 +33,27 @@ TBlockRange64 GetBlockRangeById(ui32 blockIndex)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class ETransferMethod
+{
+    Write,
+    Zero
+};
+
+IOutputStream& operator<<(IOutputStream& out, ETransferMethod rhs)
+{
+    switch (rhs) {
+        case ETransferMethod::Write:
+            out << "Write";
+            break;
+        case ETransferMethod::Zero:
+            out << "Zero";
+            break;
+    }
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TVolumeTest)
 {
     Y_UNIT_TEST(ShouldUpdateVolumeConfig)
@@ -1790,6 +1811,121 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         DoShouldMigrateWhenErrorHappens(1, 1000000);
         DoShouldMigrateWhenErrorHappens(8, 1000000);
         DoShouldMigrateWhenErrorHappens(16, 1000000);
+    }
+
+    Y_UNIT_TEST(ShouldUseZeroBlocksRequestsForMigration)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMaxMigrationBandwidth(999'999'999);
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        const auto blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+        const auto migrationRangesPerDevice =
+            blocksPerDevice * DefaultBlockSize / ProcessingRangeSize;
+        const auto totalRangesToMigrateCount = migrationRangesPerDevice * 2;
+        const ui64 blockPerMigratedRange =
+            ProcessingRangeSize / DefaultBlockSize;
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            2.5 * blocksPerDevice);
+
+        volume.WaitReady();
+
+        // We write the data to a part of the blocks. Some of the blocks remain
+        // filled with zeros.
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        auto makeRange = [&](ui32 migrationRangeIndex,
+                             ui32 blockInRangeIndex) -> TBlockRange64
+        {
+            Y_DEBUG_ABORT_UNLESS(blockInRangeIndex < blockPerMigratedRange);
+            return TBlockRange64::MakeOneBlock(
+                migrationRangeIndex * blockPerMigratedRange +
+                blockInRangeIndex);
+        };
+        auto getRangeIndex = [&](ui64 startIndex) -> ui32
+        {
+            return startIndex / blockPerMigratedRange;
+        };
+
+        // Write to the first block of the first migration range
+        volume.WriteBlocks(makeRange(0, 0), clientInfo.GetClientId(), 1);
+        // write to last block of first migration range
+        volume.WriteBlocks(
+            makeRange(1, blockPerMigratedRange - 1),
+            clientInfo.GetClientId(),
+            2);
+        // Write in the middle of the third migration range.
+        volume.WriteBlocks(
+            makeRange(2, blockPerMigratedRange / 2),
+            clientInfo.GetClientId(),
+            3);
+
+        // Start the migration and check which blocks were copied and which ones
+        // were simply zeroed.
+        state->MigrationMode = EMigrationMode::InProgress;
+
+        TMap<size_t, ETransferMethod> migratedRanges;
+        auto watchZeroAndWriteRequests =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
+                auto* msg = event->Get<TEvService::TEvWriteBlocksRequest>();
+                migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
+                    ETransferMethod::Write;
+            }
+
+            if (event->GetTypeRewrite() == TEvService::EvZeroBlocksRequest) {
+                auto* msg = event->Get<TEvService::TEvZeroBlocksRequest>();
+                migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
+                    ETransferMethod::Zero;
+            }
+
+            return false;
+        };
+        runtime->SetEventFilter(watchZeroAndWriteRequests);
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvDiskRegistry::EvFinishMigrationRequest);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+        // Check used transfer methods.
+        UNIT_ASSERT_VALUES_EQUAL(
+            totalRangesToMigrateCount,
+            migratedRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[0]);
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[1]);
+        UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Write, migratedRanges[2]);
+        for (const auto& [migrationRangeIndex, method]: migratedRanges) {
+            if (migrationRangeIndex > 2) {
+                UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Zero, method);
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldRegularlyReacquireNonreplicatedDisks)
@@ -8432,6 +8568,87 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, writeBw.GetChannel());
         UNIT_ASSERT_VALUES_EQUAL(2, writeBw.GetGroupID());
         UNIT_ASSERT_VALUES_UNEQUAL(0, writeBw.GetThroughput());
+    }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlag)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        const auto blocks =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            blocks);
+
+        volume.WaitReady();
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            blocks);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Let's write something in the block with index 0.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+
+        const TBlockRange64 ranges[] = {
+            TBlockRange64::MakeOneBlock(0),
+            TBlockRange64::MakeOneBlock(1),
+            TBlockRange64::WithLength(0, 10),
+            TBlockRange64::WithLength(1, 10),
+        };
+
+        // Check that the AllZeros flag is set correctly for ReadBlock requests.
+        for (auto range: ranges) {
+            auto resp = volume.ReadBlocks(
+                range,
+                clientInfo.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !range.Contains(0),
+                resp->Record.GetAllZeroes());
+        }
+
+        // Check that the AllZeros flag is set correctly for ReadBlockLocal
+        // requests.
+        for (auto range: ranges) {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                range.Size(),
+                TString::TUninitialized(DefaultBlockSize));
+            auto resp = volume.ReadBlocksLocal(
+                range,
+                TGuardedSgList(std::move(sglist)),
+                clientInfo.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !range.Contains(0),
+                resp->Record.GetAllZeroes());
+        }
     }
 }
 
