@@ -1867,8 +1867,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             Zero
         };
         TMap<size_t, ETransferMethod> migratedRanges;
-        auto watchZeroAndWriteRequests = [&](TAutoPtr<IEventHandle>& event)
+        auto watchZeroAndWriteRequests =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
+            Y_UNUSED(runtime);
+
             if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest) {
                 auto* msg = event->Get<TEvService::TEvWriteBlocksRequest>();
                 migratedRanges[getRangeIndex(msg->Record.GetStartIndex())] =
@@ -1881,9 +1884,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                     ETransferMethod::Zero;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
-        runtime->SetObserverFunc(watchZeroAndWriteRequests);
+        runtime->SetEventFilter(watchZeroAndWriteRequests);
 
         // reallocating disk
         volume.ReallocateDisk();
@@ -1902,10 +1905,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[0]);
         UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[1]);
         UNIT_ASSERT_EQUAL(ETransferMethod::Write, migratedRanges[2]);
-        for (const auto& [migrationRangeIndex, transferMethod]: migratedRanges)
-        {
+        for (const auto& [migrationRangeIndex, method]: migratedRanges) {
             if (migrationRangeIndex > 2) {
-                UNIT_ASSERT_EQUAL(ETransferMethod::Zero, transferMethod);
+                UNIT_ASSERT_EQUAL(ETransferMethod::Zero, method);
             }
         }
     }

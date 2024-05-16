@@ -126,11 +126,10 @@ void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
     headers->SetIsBackgroundRequest(true);
     headers->SetClientId(std::move(clientId));
 
-    const TString voidBuffer {BlockSize, 0};
     for (const auto blockIndex: xrange(Range)) {
         const auto digest = BlockDigestGenerator->ComputeDigest(
             blockIndex,
-            TBlockDataRef(voidBuffer.data(), voidBuffer.size()));
+            TBlockDataRef::CreateZeroBlock(BlockSize));
 
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
