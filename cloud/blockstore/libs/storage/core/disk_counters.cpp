@@ -188,9 +188,11 @@ Cumulative.name.Register(counters, #name);                                     \
     }
 #undef BLOCKSTORE_REQUEST_COUNTER
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Register(                                             \
-        counters->GetSubgroup("request", #name), counterOptions);              \
+#define BLOCKSTORE_REQUEST_COUNTER(name, hasVoidBytes, ...)                 \
+    RequestCounters.name.Register(                                          \
+        counters->GetSubgroup("request", #name),                            \
+        hasVoidBytes ? counterOptions | ERequestCounterOption::HasVoidBytes \
+                     : counterOptions);
 
     BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
 #undef BLOCKSTORE_REQUEST_COUNTER

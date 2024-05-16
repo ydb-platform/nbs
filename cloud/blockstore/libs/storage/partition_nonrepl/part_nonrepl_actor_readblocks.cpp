@@ -43,7 +43,6 @@ private:
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
-    ui32 UnknownVoidBlockCount = 0;
     ui32 VoidBlockCount = 0;
     ui32 NonVoidBlockCount = 0;
 
@@ -199,7 +198,6 @@ void TDiskAgentReadActor::Done(
     completion->Failed = failed;
     completion->ExecCycles = RequestInfo->GetExecCycles();
 
-    completion->UnknownVoidBlockCount = UnknownVoidBlockCount;
     completion->NonVoidBlockCount = NonVoidBlockCount;
     completion->VoidBlockCount = VoidBlockCount;
 
@@ -273,9 +271,6 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         } else {
             ++NonVoidBlockCount;
         }
-    }
-    if (!SkipVoidBlocksToOptimizeNetworkTransfer) {
-        UnknownVoidBlockCount += blockRange.Size();
     }
 
     if (++RequestsCompleted < DeviceRequests.size()) {
@@ -378,8 +373,10 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
 
-    PartCounters->Cumulative.ReadNonVoidBlockCount.Increment(msg->NonVoidBlockCount);
-    PartCounters->Cumulative.ReadVoidBlockCount.Increment(msg->VoidBlockCount);
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+        static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
 
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);

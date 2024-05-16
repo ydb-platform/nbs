@@ -19,7 +19,8 @@ enum class ERequestCounterOption
 {
     ReportHistogram = (1 << 0),
     OnlySimple      = (1 << 1),
-    HasKind         = (1 << 2)
+    HasKind         = (1 << 2),
+    HasVoidBytes    = (1 << 3),
 };
 
 Y_DECLARE_FLAGS(ERequestCounterOptions, ERequestCounterOption);
@@ -54,6 +55,8 @@ struct TRequestCounters
 
     NMonitoring::TDynamicCounters::TCounterPtr SolomonCount;
     NMonitoring::TDynamicCounters::TCounterPtr SolomonRequestBytes;
+    NMonitoring::TDynamicCounters::TCounterPtr SolomonRequestVoidBytes;
+    NMonitoring::TDynamicCounters::TCounterPtr SolomonRequestNonVoidBytes;
 
     NMonitoring::TDynamicCounters::TCounterPtr SolomonFreshCount;
     NMonitoring::TDynamicCounters::TCounterPtr SolomonFreshRequestBytes;
@@ -197,6 +200,11 @@ struct TRequestCounters
         SolomonCount = counters->GetCounter("Count", true);
         SolomonRequestBytes = counters->GetCounter("RequestBytes", true);
 
+        if (options & ERequestCounterOption::HasVoidBytes) {
+            SolomonRequestVoidBytes = counters->GetCounter("RequestVoidBytes", true);
+            SolomonRequestNonVoidBytes = counters->GetCounter("RequestNonVoidBytes", true);
+        }
+
         if (options & ERequestCounterOption::HasKind) {
             auto freshCounters = counters->GetSubgroup("kind", "Fresh");
             auto mixedCounters = counters->GetSubgroup("kind", "Mixed");
@@ -249,6 +257,12 @@ struct TRequestCounters
     {
         *SolomonCount += Count;
         *SolomonRequestBytes += RequestBytes;
+
+        if (Options & ERequestCounterOption::HasVoidBytes) {
+            *SolomonRequestVoidBytes += RequestVoidBytes;
+            *SolomonRequestNonVoidBytes += RequestNonVoidBytes;
+        }
+
         if (!(Options & ERequestCounterOption::OnlySimple)) {
             Total.Publish();
             if ((Options & ERequestCounterOption::HasKind) &&

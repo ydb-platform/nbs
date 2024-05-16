@@ -159,7 +159,6 @@ struct TEvNonreplPartitionPrivate
 
         bool Failed = false;
 
-        ui32 UnknownVoidBlockCount = 0;
         ui32 NonVoidBlockCount = 0;
         ui32 VoidBlockCount = 0;
     };
