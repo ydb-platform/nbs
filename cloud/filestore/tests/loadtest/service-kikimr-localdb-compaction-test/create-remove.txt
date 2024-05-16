@@ -20,9 +20,5 @@ Tests {
         }
         IODepth: 64
         TestDuration: 120
-        # E_FS_NOENT and E_FS_EXIST: we ignore these errors, as they might have
-        # occured due to the filestore restart
-        SuccessOnError: 2147942402
-        SuccessOnError: 2147942405
     }
 }
