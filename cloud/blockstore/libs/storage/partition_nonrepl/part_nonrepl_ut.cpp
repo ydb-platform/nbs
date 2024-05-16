@@ -1668,13 +1668,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         // Check statistics for requests with SKIP_VOID_BLOCKS.
-        auto& counters = env.StorageStatsServiceState->Counters.Cumulative;
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         client.SendRequest(
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadNonVoidBlockCount.Value);
-        UNIT_ASSERT_VALUES_EQUAL(13, counters.ReadVoidBlockCount.Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            13 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestVoidBytes());
 
         // Check statistics for requests without SKIP_VOID_BLOCKS.
         auto secondResponse =
@@ -1688,8 +1692,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadNonVoidBlockCount.Value);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadVoidBlockCount.Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlocks.GetRequestVoidBytes());
 
         // Verify that the data read by the first and second requests are
         // identical.
@@ -1764,13 +1770,17 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
         }
 
         // Check statistics for requests with SKIP_VOID_BLOCKS.
-        auto& counters = env.StorageStatsServiceState->Counters.Cumulative;
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         client.SendRequest(
             env.ActorId,
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadNonVoidBlockCount.Value);
-        UNIT_ASSERT_VALUES_EQUAL(13, counters.ReadVoidBlockCount.Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            13 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestVoidBytes());
 
         // Check statistics for requests without SKIP_VOID_BLOCKS.
         TString buffer2(dataSize, 100);
@@ -1785,8 +1795,10 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadNonVoidBlockCount.Value);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadVoidBlockCount.Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlocks.GetRequestVoidBytes());
 
         // Verify that the data read by the first and second requests are
         // identical.
