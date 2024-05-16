@@ -10,7 +10,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	common_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vmdk"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,17 +40,9 @@ func getVMDKReader(
 	reader common.Reader,
 ) common.ImageMapReader {
 
-	vmdkReader := vmdk.NewImageMapReader(reader)
-
-	for {
-		err := vmdkReader.ReadHeader(ctx)
-		if !errors.CanRetry(err) {
-			require.NoError(t, err)
-			break
-		}
-	}
-
-	return vmdkReader
+	imageMapReader, err := vmdk.NewImageMapReader(ctx, reader)
+	require.NoError(t, err)
+	return imageMapReader
 }
 
 ////////////////////////////////////////////////////////////////////////////////
