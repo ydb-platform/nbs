@@ -1135,9 +1135,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             UNIT_ASSERT_C(!HasError(writeResponse), writeResponse);
 
             auto localReadResponse = localReadFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_C(
-                !HasError(localReadResponse),
-                static_cast<const NProto::TReadBlocksResponse&>(localReadResponse));
+            UNIT_ASSERT_C(!HasError(localReadResponse), localReadResponse);
 
             auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);

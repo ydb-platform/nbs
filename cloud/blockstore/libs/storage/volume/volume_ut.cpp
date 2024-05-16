@@ -8551,6 +8551,87 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(2, writeBw.GetGroupID());
         UNIT_ASSERT_VALUES_UNEQUAL(0, writeBw.GetThroughput());
     }
+
+    Y_UNIT_TEST(ShouldSetAllZeroesFlag)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+        const auto blocks =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            blocks);
+
+        volume.WaitReady();
+
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            2,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            blocks);
+
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Let's write something in the block with index 0.
+        volume.WriteBlocks(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            1);
+
+        const TBlockRange64 ranges[] = {
+            TBlockRange64::MakeOneBlock(0),
+            TBlockRange64::MakeOneBlock(1),
+            TBlockRange64::WithLength(0, 10),
+            TBlockRange64::WithLength(1, 10),
+        };
+
+        // Check that the AllZeros flag is set correctly for ReadBlock requests.
+        for (auto range: ranges) {
+            auto resp = volume.ReadBlocks(
+                range,
+                clientInfo.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !range.Contains(0),
+                resp->Record.GetAllZeroes());
+        }
+
+        // Check that the AllZeros flag is set correctly for ReadBlockLocal
+        // requests.
+        for (auto range: ranges) {
+            TVector<TString> blocks;
+            auto sglist = ResizeBlocks(
+                blocks,
+                range.Size(),
+                TString::TUninitialized(DefaultBlockSize));
+            auto resp = volume.ReadBlocksLocal(
+                range,
+                TGuardedSgList(std::move(sglist)),
+                clientInfo.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !range.Contains(0),
+                resp->Record.GetAllZeroes());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

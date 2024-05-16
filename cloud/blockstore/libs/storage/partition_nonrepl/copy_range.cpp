@@ -76,8 +76,6 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
 
 void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector blocks)
 {
-    Cout << "w";
-
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     request->Record.MutableBlocks()->Swap(&blocks);
@@ -118,8 +116,6 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector bl
 
 void TCopyRangeActor::ZeroBlocks(const TActorContext& ctx)
 {
-    Cout << "z";
-
     auto request = std::make_unique<TEvService::TEvZeroBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
     auto clientId =
