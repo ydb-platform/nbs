@@ -183,6 +183,8 @@ struct TServer: IEndpointProxyServer
     {
         IBlockStorePtr Client;
         NBD::IDeviceConnectionPtr NbdDevice;
+        std::unique_ptr<TNetworkAddress> ListenAddress;
+
         TString SockPath;
         TString NbdDevicePath;
     };
@@ -300,11 +302,96 @@ struct TServer: IEndpointProxyServer
         STORAGE_INFO("Exiting loop");
     }
 
+    /*
+     *  Logging/error helpers
+     */
+
+    template <typename TRequest>
+    void RequestReceived(const TRequest& request)
+    {
+        STORAGE_INFO(request.ShortDebugString().Quote() << "- Received");
+    }
+
+    template <typename TResponse>
+    void ShitHappened(TResponse& response)
+    {
+        *response.MutableError() = MakeError(
+            E_FAIL,
+            TStringBuilder() << "Shit happened: "
+            << CurrentExceptionMessage());
+    }
+
+    template <typename TRequest, typename TResponse>
+    void Already(
+        const TRequest& request,
+        const TString& message,
+        TResponse& response)
+    {
+        *response.MutableError() = MakeError(S_ALREADY, message);
+
+        STORAGE_INFO(request.ShortDebugString().Quote() << " - " << message);
+    }
+
+    template <typename TRequest, typename TResponse>
+    void RequestCompleted(const TRequest& request, const TResponse& response)
+    {
+        if (HasError(response.GetError())) {
+            STORAGE_ERROR(
+                request.ShortDebugString().Quote() << " - Got error "
+                << FormatError(response.GetError()).Quote())
+        } else {
+            STORAGE_INFO(
+                request.ShortDebugString().Quote() << " - Success "
+                << FormatError(response.GetError()).Quote())
+        }
+    }
+
+    template <typename TRequest>
+    void ResponseSent(const TRequest& request)
+    {
+        STORAGE_INFO(request.ShortDebugString().Quote() << " - Response sent");
+    }
+
+    /*
+     *  Request handling
+     */
+
+    static bool ValidateRequest(
+        const NProto::TStartProxyEndpointRequest& request,
+        NProto::TStartProxyEndpointResponse& response)
+    {
+        TString message;
+        if (!request.GetNbdDevice()) {
+            message = "NbdDevice not specified";
+        } else if (!request.GetUnixSocketPath()) {
+            message = "UnixSocketPath not specified";
+        } else if (!request.GetBlockSize()) {
+            message = "BlockSize not specified";
+        } else if (!request.GetBlocksCount()) {
+            message = "BlocksCount not specified";
+        }
+
+        if (message) {
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, std::move(message));
+            return false;
+        }
+
+        return true;
+    }
+
     void DoProcessRequest(
         const NProto::TStartProxyEndpointRequest& request,
         TEndpoint& ep,
         NProto::TStartProxyEndpointResponse& response)
     {
+        if (!ValidateRequest(request, response)) {
+            return;
+        }
+
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Validated request");
+
         TNetworkAddress connectAddress(
             TUnixSocketPath{request.GetUnixSocketPath()});
         ep.Client = NbdClient->CreateEndpoint(
@@ -312,6 +399,9 @@ struct TServer: IEndpointProxyServer
             NBD::CreateClientHandler(Logging),
             CreateBlockStoreStub());
         ep.Client->Start();
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started NBD client endpoint");
+
         auto retryPolicy = CreateRetryPolicy(ClientConfig);
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -325,6 +415,10 @@ struct TServer: IEndpointProxyServer
             requestStats,
             volumeStats);
 
+        ep.Client->Start();
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started DurableClient");
+
         NBD::TStorageOptions options;
         options.BlockSize = request.GetBlockSize();
         options.BlocksCount = request.GetBlocksCount();
@@ -337,23 +431,30 @@ struct TServer: IEndpointProxyServer
             options);
 
         ep.SockPath = request.GetUnixSocketPath() + ".proxy";
-        TNetworkAddress listenAddress(TUnixSocketPath{ep.SockPath});
+        ep.ListenAddress = std::make_unique<TNetworkAddress>(
+            TUnixSocketPath{ep.SockPath});
 
-        // TODO fix StartEndpoint signature - it's actually a synchronous
+        // TODO fix StartEndpoint signature - it's actually synchronous
         auto startResult = NbdServer->StartEndpoint(
-            listenAddress,
+            *ep.ListenAddress,
             std::move(handlerFactory)).GetValueSync();
 
         if (HasError(startResult)) {
             *response.MutableError() = std::move(startResult);
         } else {
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Started NBD server endpoint");
+
             ep.NbdDevicePath = request.GetNbdDevice();
             ep.NbdDevice = NBD::CreateDeviceConnection(
                 Logging,
-                listenAddress,
+                *ep.ListenAddress,
                 request.GetNbdDevice(),
                 TDuration::Days(1));
             ep.NbdDevice->Start();
+
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Started NBD device connection");
 
             response.SetInternalUnixSocketPath(ep.SockPath);
         }
@@ -364,25 +465,28 @@ struct TServer: IEndpointProxyServer
         const auto& request = requestContext->Request;
         auto& response = requestContext->Response;
 
-        STORAGE_INFO("StartRequest: " << request.DebugString().Quote());
+        RequestReceived(request);
 
         auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
         if (ep) {
-            // TODO: check ep storage options
             if (ep->NbdDevicePath == request.GetNbdDevice()) {
-                *response.MutableError() = MakeError(S_ALREADY);
+                Already(request, "Endpoint already up", response);
             } else {
                 *response.MutableError() = MakeError(
                     E_INVALID_STATE,
-                    TStringBuilder() << "Endpoint for socket "
-                        << request.GetUnixSocketPath() << " already started"
-                        << " with device " << ep->NbdDevicePath << " != "
-                        << request.GetNbdDevice());
+                    TStringBuilder() << "Endpoint already started with device "
+                    << ep->NbdDevicePath << " != " << request.GetNbdDevice());
             }
         } else {
             ep = std::make_shared<TEndpoint>();
-            DoProcessRequest(request, *ep, response);
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
         }
+
+        RequestCompleted(request, response);
 
         requestContext->Done = true;
 
@@ -391,6 +495,35 @@ struct TServer: IEndpointProxyServer
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
+    }
+
+    void DoProcessRequest(
+        const NProto::TStopProxyEndpointRequest& request,
+        TEndpoint& ep,
+        NProto::TStopProxyEndpointResponse& response) const
+    {
+        response.SetInternalUnixSocketPath(ep.SockPath);
+        response.SetNbdDevice(ep.NbdDevicePath);
+
+        if (ep.NbdDevice) {
+            ep.NbdDevice->Stop();
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD device connection");
+        }
+
+        if (ep.ListenAddress) {
+            NbdServer->StopEndpoint(*ep.ListenAddress);
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD server endpoint");
+        }
+
+        if (ep.Client) {
+            ep.Client->Stop();
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD client");
+        }
     }
 
     void ProcessRequest(TStopRequestContext* requestContext)
@@ -398,18 +531,22 @@ struct TServer: IEndpointProxyServer
         const auto& request = requestContext->Request;
         auto& response = requestContext->Response;
 
-        STORAGE_INFO("StopRequest: " << request.DebugString().Quote());
+        RequestReceived(request);
 
         auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
         if (ep) {
-            response.SetInternalUnixSocketPath(ep->SockPath);
-            response.SetNbdDevice(ep->NbdDevicePath);
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
 
-            ep->NbdDevice->Stop();
-            ep->Client->Stop();
             Socket2Endpoint.erase(request.GetUnixSocketPath());
         } else {
-            *response.MutableError() = MakeError(S_ALREADY);
+            Already(
+                request,
+                "Endpoint already stopped / Endpoint not found",
+                response);
         }
 
         requestContext->Done = true;
@@ -419,6 +556,8 @@ struct TServer: IEndpointProxyServer
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
     }
 
     void Start() override
