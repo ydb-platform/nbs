@@ -42,10 +42,10 @@ def verify_coreutils_output(
             failed_tests = report['ERROR'] + report['FAIL']
             with open(_COREUTILS_JUNIT_OUTPUT_LOCAL_PATH, 'w') as f:
                 print(create_junit_xml_prettyprint(report), file=f)
-            logger.info(
-                f'Coreutils parser stats: { {key: len(report[key]) for key in report} }')
+            stats = {key: len(report[key]) for key in report}
+            logger.info(f'Coreutils parser stats: {stats}')
             if len(failed_tests) > 0:
-                logger.warn(f'Some of the tests failed: { failed_tests }')
+                logger.warn(f'Some of the tests failed: {failed_tests}')
     except Error as e:
         logger.error(f'Failed to verify coreutils output:\n {e}')
         if debug_mode:
