@@ -114,6 +114,24 @@ TVolumeState CreateVolumeState(
         false);
 }
 
+TVolumeState CreateVolumeState(
+    const NProto::TStorageServiceConfig& config,
+    TDeque<THistoryLogItem> history)
+{
+    return {
+        std::make_shared<TStorageConfig>(
+            config,
+            std::make_shared<NFeatures::TFeaturesConfig>()),
+        CreateVolumeMeta({}),
+        {}, // metaHistory
+        {},
+        CreateThrottlerConfig(),
+        {},
+        std::move(history),
+        {},
+        false};
+}
+
 TActorId CreateActor(ui64 id)
 {
     return TActorId(0, 0, id, 0);
@@ -1694,6 +1712,44 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
             TVector<TString>(
                 volumeState.GetFilteredFreshDevices().begin(),
                 volumeState.GetFilteredFreshDevices().end()));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveOutdatedItemsFromCachedHistory)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeHistoryDuration(TDuration::Seconds(1).MilliSeconds());
+        auto volumeState = CreateVolumeState(
+            config,
+            {
+                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(9), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
+            }
+        );
+
+        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(8));
+        UNIT_ASSERT_VALUES_EQUAL(3, volumeState.GetHistory().size());
+
+        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetHistory().size());
+
+        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(30));
+        UNIT_ASSERT_VALUES_EQUAL(0, volumeState.GetHistory().size());
+    }
+
+    Y_UNIT_TEST(ShouldNotExceedCacheSizeWhenAddingHistoryRecords)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeHistoryCacheSize(4);
+        auto volumeState = CreateVolumeState(config, {});
+
+        volumeState.LogAddClient(TInstant::FromValue(0), {}, {}, {}, {});
+        volumeState.LogAddClient(TInstant::FromValue(1), {}, {}, {}, {});
+        volumeState.LogAddClient(TInstant::FromValue(2), {}, {}, {}, {});
+        volumeState.LogRemoveClient(TInstant::FromValue(3), {}, {}, {});
+        volumeState.LogRemoveClient(TInstant::FromValue(4), {}, {}, {});
+
+        UNIT_ASSERT_VALUES_EQUAL(4, volumeState.GetHistory().size());
     }
 }
 
