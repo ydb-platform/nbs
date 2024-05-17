@@ -19,6 +19,7 @@ PEERDIR(
 )
 
 SET(NFS_RESTART_INTERVAL 10)
+SET(NFS_FORCE_VERBOSE 1)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
