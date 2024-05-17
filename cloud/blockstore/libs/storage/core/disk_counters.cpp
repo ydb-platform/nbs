@@ -23,6 +23,7 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
     Cumulative.name.Add(source.Cumulative.name);                               \
 // BLOCKSTORE_CUMULATIVE_COUNTER
 
+    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
     BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
@@ -58,6 +59,7 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
     Cumulative.name.AggregateWith(source.Cumulative.name);                     \
 // BLOCKSTORE_CUMULATIVE_COUNTER
 
+    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
     BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
@@ -101,6 +103,10 @@ void TPartitionDiskCounters::Publish(TInstant now)
 
     if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
         BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
+    }
+    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::DiskRegistryBased) {
+        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(
+            BLOCKSTORE_CUMULATIVE_COUNTER)
     }
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
@@ -164,6 +170,12 @@ Cumulative.name.Register(counters, #name);                                     \
     if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
         BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
     }
+    if (Policy == EPublishingPolicy::All ||
+        Policy == EPublishingPolicy::DiskRegistryBased)
+    {
+        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(
+            BLOCKSTORE_CUMULATIVE_COUNTER)
+    }
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
@@ -176,9 +188,11 @@ Cumulative.name.Register(counters, #name);                                     \
     }
 #undef BLOCKSTORE_REQUEST_COUNTER
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Register(                                             \
-        counters->GetSubgroup("request", #name), counterOptions);              \
+#define BLOCKSTORE_REQUEST_COUNTER(name, hasVoidBytes, ...)                 \
+    RequestCounters.name.Register(                                          \
+        counters->GetSubgroup("request", #name),                            \
+        hasVoidBytes ? counterOptions | ERequestCounterOption::HasVoidBytes \
+                     : counterOptions);
 
     BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
 #undef BLOCKSTORE_REQUEST_COUNTER
@@ -218,6 +232,7 @@ void TPartitionDiskCounters::Reset()
 // BLOCKSTORE_CUMULATIVE_COUNTER
 
     BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
+    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
@@ -401,4 +416,3 @@ TPartitionDiskCountersPtr CreatePartitionDiskCounters(EPublishingPolicy policy)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

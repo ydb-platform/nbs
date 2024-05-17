@@ -42,7 +42,9 @@ private:
     NProto::TReadBlocksResponse Response;
 
     const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+
     ui32 VoidBlockCount = 0;
+    ui32 NonVoidBlockCount = 0;
 
 public:
     TDiskAgentReadActor(
@@ -196,6 +198,9 @@ void TDiskAgentReadActor::Done(
     completion->Failed = failed;
     completion->ExecCycles = RequestInfo->GetExecCycles();
 
+    completion->NonVoidBlockCount = NonVoidBlockCount;
+    completion->VoidBlockCount = VoidBlockCount;
+
     NCloud::Send(
         ctx,
         Part,
@@ -263,6 +268,8 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
             destBuffer.resize(blockSize, 0);
             ++VoidBlockCount;
+        } else if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+            ++NonVoidBlockCount;
         }
     }
 
@@ -365,6 +372,12 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+        static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 

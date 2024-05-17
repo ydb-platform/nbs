@@ -19,7 +19,7 @@ enum EControlRequestSource
 enum EOptimizeNetworkTransfer
 {
     // No optimization enabled
-    NOT_OPTIMIZE = 0;
+    NO_OPTIMIZATION = 0;
 
     // When the block contains only zeros, then pass it with a size of 0.
     SKIP_VOID_BLOCKS = 1;

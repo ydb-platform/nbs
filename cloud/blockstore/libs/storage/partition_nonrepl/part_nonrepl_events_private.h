@@ -158,6 +158,9 @@ struct TEvNonreplPartitionPrivate
         TDuration ActorSystemTime;
 
         bool Failed = false;
+
+        ui32 NonVoidBlockCount = 0;
+        ui32 VoidBlockCount = 0;
     };
 
     //

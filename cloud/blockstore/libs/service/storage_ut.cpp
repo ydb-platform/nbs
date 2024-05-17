@@ -442,7 +442,7 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             request->MutableHeaders()->SetOptimizeNetworkTransfer(
                 enableOptimization
                     ? NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS
-                    : NProto::EOptimizeNetworkTransfer::NOT_OPTIMIZE);
+                    : NProto::EOptimizeNetworkTransfer::NO_OPTIMIZATION);
             request->SetBlocksCount(2);
 
             auto response = adapter->ReadBlocks(

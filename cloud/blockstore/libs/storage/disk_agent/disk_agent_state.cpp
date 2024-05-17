@@ -718,7 +718,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     readRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
     // Reset the optimization flag just in case.
     readRequest->MutableHeaders()->SetOptimizeNetworkTransfer(
-        NProto::EOptimizeNetworkTransfer::NOT_OPTIMIZE);
+        NProto::EOptimizeNetworkTransfer::NO_OPTIMIZATION);
 
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
