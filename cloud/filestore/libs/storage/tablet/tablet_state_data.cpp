@@ -1214,13 +1214,11 @@ void TIndexTabletState::InvalidateNodeIndexCache(
     ui64 parentNodeId,
     const TString& name)
 {
-    Cerr << "InvalidateNodeIndexCache: " << parentNodeId << " " << name << Endl;
     Impl->NodeIndexCache.InvalidateCache(parentNodeId, name);
 }
 
 void TIndexTabletState::InvalidateNodeIndexCache(ui64 nodeId)
 {
-    Cerr << "InvalidateNodeIndexCache: " << nodeId << Endl;
     Impl->NodeIndexCache.InvalidateCache(nodeId);
 }
 
@@ -1229,8 +1227,6 @@ void TIndexTabletState::RegisterGetNodeAttrResult(
     const TString& name,
     const NProto::TNodeAttr& result)
 {
-    Cerr << "RegisterGetNodeAttrResult: " << parentNodeId << " " << name << " "
-         << result.DebugString().Quote() << Endl;
     Impl->NodeIndexCache.RegisterGetNodeAttrResult(parentNodeId, name, result);
 }
 
