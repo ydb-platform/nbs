@@ -1,4 +1,5 @@
 #include "part_nonrepl_rdma_actor.h"
+
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
@@ -22,26 +23,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TResponse = TEvService::TEvReadBlocksLocalResponse;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TRdmaRequestContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksLocalContext: public NRdma::IClientHandler
 {
 private:
     TActorSystem* ActorSystem;
-    TNonreplicatedPartitionConfigPtr PartConfig;
-    TRequestInfoPtr RequestInfo;
+    const TNonreplicatedPartitionConfigPtr PartConfig;
+    const TRequestInfoPtr RequestInfo;
+    const ui32 RequestBlockCount;
+    const NActors::TActorId ParentActorId;
+    const ui64 RequestId;
+
     TAdaptiveLock Lock;
     size_t ResponseCount;
     TGuardedSgList SgList;
     NProto::TError Error;
-    const ui32 RequestBlockCount;
-    NActors::TActorId ParentActorId;
-    ui64 RequestId;
 
 public:
-    TRdmaRequestContext(
+    TRdmaRequestReadBlocksLocalContext(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -53,50 +51,53 @@ public:
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , ResponseCount(requestCount)
-        , SgList(std::move(sglist))
         , RequestBlockCount(requestBlockCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
+        , ResponseCount(requestCount)
+        , SgList(std::move(sglist))
     {
     }
 
     void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
     {
-        if (auto guard = SgList.Acquire()) {
-            auto* serializer = TBlockStoreProtocol::Serializer();
-            auto [result, err] = serializer->Parse(buffer);
+        auto guard = SgList.Acquire();
+        if (!guard) {
+            return;
+        }
 
-            if (HasError(err)) {
-                Error = std::move(err);
-                return;
-            }
+        auto* serializer = TBlockStoreProtocol::Serializer();
+        auto [result, err] = serializer->Parse(buffer);
 
-            const auto& concreteProto =
-                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-            if (HasError(concreteProto.GetError())) {
-                Error = concreteProto.GetError();
-                return;
-            }
+        if (HasError(err)) {
+            Error = std::move(err);
+            return;
+        }
 
-            TSgList data = guard.Get();
-            ui64 offset = 0;
-            ui64 b = 0;
-            while (offset < result.Data.Size()) {
-                ui64 targetBlock = dr.StartIndexOffset + b;
-                Y_ABORT_UNLESS(targetBlock < data.size());
-                ui64 bytes = Min(
-                    result.Data.Size() - offset,
-                    data[targetBlock].Size());
-                Y_ABORT_UNLESS(bytes);
+        const auto& concreteProto =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
+        if (HasError(concreteProto.GetError())) {
+            Error = concreteProto.GetError();
+            return;
+        }
 
-                memcpy(
-                    const_cast<char*>(data[targetBlock].Data()),
-                    result.Data.data() + offset,
-                    bytes);
-                offset += bytes;
-                ++b;
-            }
+        TSgList data = guard.Get();
+
+        ui64 offset = 0;
+        ui64 b = 0;
+        while (offset < result.Data.Size()) {
+            ui64 targetBlock = dr.StartIndexOffset + b;
+            Y_ABORT_UNLESS(targetBlock < data.size());
+            ui64 bytes =
+                Min(result.Data.Size() - offset, data[targetBlock].Size());
+            Y_ABORT_UNLESS(bytes);
+
+            memcpy(
+                const_cast<char*>(data[targetBlock].Data()),
+                result.Data.data() + offset,
+                bytes);
+            offset += bytes;
+            ++b;
         }
     }
 
@@ -113,9 +114,9 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, std::move(buffer));
+            HandleResult(*dr, buffer);
         } else {
-            HandleError(PartConfig, std::move(buffer), Error);
+            HandleError(PartConfig, buffer, Error);
         }
 
         if (--ResponseCount != 0) {
@@ -126,7 +127,8 @@ public:
 
         ProcessError(*ActorSystem, *PartConfig, Error);
 
-        auto response = std::make_unique<TResponse>(Error);
+        auto response =
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -198,7 +200,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestReadBlocksLocalContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -219,7 +221,8 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TResponse>(std::move(error)));
+            std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
+                std::move(error)));
 
         return;
     }
