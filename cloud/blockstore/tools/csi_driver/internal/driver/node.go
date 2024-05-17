@@ -379,7 +379,7 @@ func (s *nodeService) startNbsEndpoint(
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbsapi.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+		VolumeMountMode:  nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbsapi.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			ipcType == nbdIpc,
