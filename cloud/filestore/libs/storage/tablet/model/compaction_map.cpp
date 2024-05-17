@@ -264,6 +264,43 @@ struct TCompactionMap::TImpl
         }
     }
 
+    void UpdateGroup(
+        const TVector<TCompactionRangeInfo>& compactionMap,
+        ui32 startIndex,
+        ui32 endIndex)
+    {
+        ui32 groupIndex = GetGroupIndex(compactionMap[startIndex].RangeId);
+
+        auto* group = FindGroup(groupIndex);
+        bool exist = false;
+        if (group) {
+            exist = true;
+        } else {
+            group = LinkGroup(groupIndex);
+        }
+
+        for (ui32 i = startIndex; i < endIndex; ++i) {
+            if (exist) {
+                TotalBlobsCount -= group->Get(compactionMap[i].RangeId).BlobsCount;
+                TotalDeletionsCount -= group->Get(compactionMap[i].RangeId).DeletionsCount;
+            }
+            TotalBlobsCount += compactionMap[i].Stats.BlobsCount;
+            TotalDeletionsCount += compactionMap[i].Stats.DeletionsCount;
+
+            UsedRangesCount += group->Update(
+                compactionMap[i].RangeId,
+                compactionMap[i].Stats.BlobsCount,
+                compactionMap[i].Stats.DeletionsCount);
+        }
+
+        if (group->Empty()) {
+            UnLinkGroup(group);
+        } else {
+            GroupByCompactionScore.Insert(group);
+            GroupByCleanupScore.Insert(group);
+        }
+    }
+
     const TGroup* GetTopCompactionScore() const
     {
         if (!GroupByCompactionScore.Empty()) {
@@ -397,6 +434,28 @@ TCompactionMap::~TCompactionMap()
 void TCompactionMap::Update(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount)
 {
     Impl->UpdateGroup(rangeId, blobsCount, deletionsCount);
+}
+
+void TCompactionMap::Update(
+    const TVector<TCompactionRangeInfo>& compactionMap)
+{
+    if (compactionMap.empty()) {
+        return;
+    }
+    ui32 currentGroupIndex = GetGroupIndex(compactionMap[0].RangeId);
+    ui32 startIndex = 0;
+    ui32 endIndex = 1;
+    for (ui32 i = 1; i < compactionMap.size(); ++i) {
+        if (currentGroupIndex == GetGroupIndex(compactionMap[i].RangeId)) {
+            endIndex++;
+        } else {
+            Impl->UpdateGroup(compactionMap, startIndex, endIndex);
+            currentGroupIndex = GetGroupIndex(compactionMap[i].RangeId);
+            startIndex = i;
+            endIndex = i + 1;
+        }
+    }
+    Impl->UpdateGroup(compactionMap, startIndex, endIndex);
 }
 
 TCompactionStats TCompactionMap::Get(ui32 rangeId) const
