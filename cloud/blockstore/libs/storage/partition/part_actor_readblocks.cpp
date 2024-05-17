@@ -440,8 +440,8 @@ void TReadBlocksActor::ReadBlocks(
             batch.BlobOffsets,
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
             batch.GroupId,
-            false,
-            TInstant::Max(),
+            false,           // async
+            TInstant::Max(), // deadline
             ChecksumsEnabled);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {

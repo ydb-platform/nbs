@@ -43,7 +43,6 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     {
         const ui32 groupId = 12;
         const ui32 blockSize = 512;
-        const ui32 blockSizeForChecksums = 0;
         const NKikimr::TLogoBlobID logoBlobID(142, 143, 0x8000);  //blob size 2028
         const TVector<ui16> blobOffsets{0 , 2, 3};
 
@@ -72,7 +71,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
-                blockSizeForChecksums,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));
@@ -131,7 +130,6 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     {
         const ui32 groupId = 12;
         const ui32 blockSize = 512;
-        const ui32 blockSizeForChecksums = 0;
         const NKikimr::TLogoBlobID logoBlobID(142, 143, 0x8000);  //blob size 2028
         const TVector<ui16> blobOffsets{0 , 2, 3};
 
@@ -160,7 +158,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
-                blockSizeForChecksums,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));
@@ -203,7 +201,6 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     {
         const ui32 groupId = 12;
         const ui32 blockSize = 512;
-        const ui32 blockSizeForChecksums = 0;
         const NKikimr::TLogoBlobID logoBlobID(142, 143, 0x8000);  //blob size 2028
         const TVector<ui16> blobOffsets{0 , 2, 3};
 
@@ -232,7 +229,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
-                blockSizeForChecksums,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));

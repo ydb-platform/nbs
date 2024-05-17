@@ -240,7 +240,7 @@ void TReadBlobActor::HandleGetResult(
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
                 if (ShouldCalculateChecksums) {
                     auto block = TString::Uninitialized(BlockSize);
-                    iter.ExtractPlainDataAndAdvance(to, BlockSize);
+                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
                     blockChecksums.push_back(
                         ComputeDefaultDigest({block.Data(), BlockSize}));
 
