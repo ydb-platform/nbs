@@ -25,8 +25,12 @@ public:
             ythrow TServiceError(response.GetError());
         }
 
-        for (const auto& endpoint: response.GetEndpoints()) {
-            Cout << DumpMessage(endpoint) << Endl;
+        if (JsonOutput) {
+            response.PrintJSON(Cout);
+        } else {
+            for (const auto& endpoint: response.GetEndpoints()) {
+                Cout << DumpMessage(endpoint) << Endl;
+            }
         }
 
         return true;
