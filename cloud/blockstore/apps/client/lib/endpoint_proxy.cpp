@@ -90,8 +90,8 @@ private:
         }
 
         if (!NbdDeviceFile) {
-            STORAGE_ERROR("NbdDeviceFile is required");
-            return false;
+            STORAGE_WARN("NbdDeviceFile missing, no nbd connection with the"
+                " kernel will be established");
         }
 
         if (!BlockSize) {

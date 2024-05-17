@@ -201,8 +201,6 @@ struct TServer: IEndpointProxyServer
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
-        , ClientConfig(std::make_shared<NClient::TClientAppConfig>(
-            NProto::TClientAppConfig{}))
         , Log(Logging->CreateLog("BLOCKSTORE_ENDPOINT_PROXY"))
     {
         NProto::TClientAppConfig clientConfig;
@@ -361,9 +359,7 @@ struct TServer: IEndpointProxyServer
         NProto::TStartProxyEndpointResponse& response)
     {
         TString message;
-        if (!request.GetNbdDevice()) {
-            message = "NbdDevice not specified";
-        } else if (!request.GetUnixSocketPath()) {
+        if (!request.GetUnixSocketPath()) {
             message = "UnixSocketPath not specified";
         } else if (!request.GetBlockSize()) {
             message = "BlockSize not specified";
@@ -446,15 +442,21 @@ struct TServer: IEndpointProxyServer
                 << " - Started NBD server endpoint");
 
             ep.NbdDevicePath = request.GetNbdDevice();
-            ep.NbdDevice = NBD::CreateDeviceConnection(
-                Logging,
-                *ep.ListenAddress,
-                request.GetNbdDevice(),
-                TDuration::Days(1));
-            ep.NbdDevice->Start();
+            if (ep.NbdDevicePath) {
+                ep.NbdDevice = NBD::CreateDeviceConnection(
+                    Logging,
+                    *ep.ListenAddress,
+                    request.GetNbdDevice(),
+                    TDuration::Days(1));
+                ep.NbdDevice->Start();
 
-            STORAGE_INFO(request.ShortDebugString().Quote()
-                << " - Started NBD device connection");
+                STORAGE_INFO(request.ShortDebugString().Quote()
+                    << " - Started NBD device connection");
+            } else {
+                STORAGE_WARN(request.ShortDebugString().Quote()
+                    << " - NbdDevice missing - no nbd connection with the"
+                    << " kernel will be established");
+            }
 
             response.SetInternalUnixSocketPath(ep.SockPath);
         }
@@ -522,7 +524,7 @@ struct TServer: IEndpointProxyServer
         if (ep.Client) {
             ep.Client->Stop();
             STORAGE_INFO(request.ShortDebugString().Quote()
-                << " - Stopped NBD client");
+                << " - Stopped NBD client endpoint");
         }
     }
 

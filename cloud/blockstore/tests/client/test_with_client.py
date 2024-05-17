@@ -950,6 +950,7 @@ def test_enabled_configs_dispatcher():
     return ret
 
 
+# it's a smoke test right now - it doesn't test nbd proxying logic
 def test_endpoint_proxy():
     env, run = setup()
 
@@ -971,7 +972,10 @@ def test_endpoint_proxy():
         "--endpoint-proxy-host", "localhost",
         "--endpoint-proxy-port", str(port),
         "--socket", "TODO-nbs-socket",
-        "--nbd-device", "TODO-nbd-device")
+        # can't use modprobe nbd in tests
+        # "--nbd-device", "TODO-nbd-device",
+        "--block-size", "4096",
+        "--blocks-count", "1024")
 
     run("stopproxyendpoint",
         "--endpoint-proxy-host", "localhost",
