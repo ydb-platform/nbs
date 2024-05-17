@@ -79,6 +79,8 @@ struct TVolumeRequestCounters
 {
     TCumulativeCounter ReadCount;
     TCumulativeCounter ReadBytes;
+    TCumulativeCounter ReadVoidBytes;
+    TCumulativeCounter ReadNonVoidBytes;
     TCumulativeCounter WriteCount;
     TCumulativeCounter WriteBytes;
     TCumulativeCounter ZeroCount;
