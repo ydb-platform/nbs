@@ -311,6 +311,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             UNIT_ASSERT_VALUES_EQUAL(stats.TopRangesByCompactionScore[1].Stats.DeletionsCount, 444);
         }
     }
+
     Y_UNIT_TEST(ShouldTrackTotalBlobsCountAndDeletionsCount)
     {
         TCompactionMap compactionMap(TDefaultAllocator::Instance());
@@ -330,11 +331,11 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         TCompactionMap compactionMap(TDefaultAllocator::Instance());
 
         TVector<TCompactionRangeInfo> rangeInfos;
-        const auto group = TCompactionMap::GroupSize;
+        const auto groupSize = TCompactionMap::GroupSize;
         ui32 rangeId = 0;
         ui32 totalBlobsCount = 0;
         ui32 totalDeletionsCount = 0;
-        while (rangeId < 3 * group) {
+        while (rangeId < 3 * groupSize) {
             rangeInfos.emplace_back(rangeId, TCompactionStats{rangeId * 2, rangeId + 1});
             totalBlobsCount += rangeId * 2;
             totalDeletionsCount += rangeId + 1;
@@ -342,7 +343,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         }
         compactionMap.Update(rangeInfos);
 
-        for (ui32 i = 0; i < 3 * group; ++i) {
+        for (ui32 i = 0; i < 3 * groupSize; ++i) {
             auto stats = compactionMap.Get(i);
             if (i % 2) {
                 UNIT_ASSERT_VALUES_EQUAL(0, stats.BlobsCount);
@@ -369,13 +370,13 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             stats.TopRangesByCompactionScore[0].Stats.DeletionsCount);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            3 * group - 2,
+            3 * groupSize - 2,
             stats.TopRangesByCompactionScore[1].RangeId);
         UNIT_ASSERT_VALUES_EQUAL(
-            (3 * group - 2) * 2,
+            (3 * groupSize - 2) * 2,
             stats.TopRangesByCompactionScore[1].Stats.BlobsCount);
         UNIT_ASSERT_VALUES_EQUAL(
-            3 * group - 1,
+            3 * groupSize - 1,
             stats.TopRangesByCompactionScore[1].Stats.DeletionsCount);
     }
 }

@@ -272,18 +272,14 @@ struct TCompactionMap::TImpl
         ui32 groupIndex = GetGroupIndex(compactionMap[startIndex].RangeId);
 
         auto* group = FindGroup(groupIndex);
-        bool exist = false;
-        if (group) {
-            exist = true;
-        } else {
+        if (!group) {
             group = LinkGroup(groupIndex);
         }
 
         for (ui32 i = startIndex; i < endIndex; ++i) {
-            if (exist) {
-                TotalBlobsCount -= group->Get(compactionMap[i].RangeId).BlobsCount;
-                TotalDeletionsCount -= group->Get(compactionMap[i].RangeId).DeletionsCount;
-            }
+            TotalBlobsCount -= group->Get(compactionMap[i].RangeId).BlobsCount;
+            TotalDeletionsCount -= group->Get(compactionMap[i].RangeId).DeletionsCount;
+
             TotalBlobsCount += compactionMap[i].Stats.BlobsCount;
             TotalDeletionsCount += compactionMap[i].Stats.DeletionsCount;
 
@@ -447,7 +443,7 @@ void TCompactionMap::Update(
     ui32 endIndex = 1;
     for (ui32 i = 1; i < compactionMap.size(); ++i) {
         if (currentGroupIndex == GetGroupIndex(compactionMap[i].RangeId)) {
-            endIndex++;
+            ++endIndex;
         } else {
             Impl->UpdateGroup(compactionMap, startIndex, endIndex);
             currentGroupIndex = GetGroupIndex(compactionMap[i].RangeId);
