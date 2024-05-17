@@ -36,12 +36,11 @@ private:
     const TVector<TDeviceRequest> DeviceRequests;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TActorId Part;
+    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
-    ui32 VoidBlockCount = 0;
 
-    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
     ui32 VoidBlockCount = 0;
     ui32 NonVoidBlockCount = 0;
 
