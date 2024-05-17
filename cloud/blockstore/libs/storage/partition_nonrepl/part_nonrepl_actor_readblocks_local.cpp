@@ -40,7 +40,6 @@ private:
 
     TInstant StartTime;
     ui32 RequestsCompleted = 0;
-
     ui32 VoidBlockCount = 0;
     ui32 NonVoidBlockCount = 0;
 
@@ -265,8 +264,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             VoidBlockCount += voidBlockStat.VoidBlockCount;
         } else {
             STORAGE_CHECK_PRECONDITION(voidBlockStat.VoidBlockCount == 0);
-        };
-        VoidBlockCount += voidBlockStat.VoidBlockCount;
+        }
     }
 
     if (++RequestsCompleted < DeviceRequests.size()) {

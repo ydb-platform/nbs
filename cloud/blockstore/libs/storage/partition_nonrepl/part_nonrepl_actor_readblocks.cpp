@@ -268,7 +268,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
             STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
             destBuffer.resize(blockSize, 0);
             ++VoidBlockCount;
-        } else {
+        } else if (SkipVoidBlocksToOptimizeNetworkTransfer) {
             ++NonVoidBlockCount;
         }
     }
