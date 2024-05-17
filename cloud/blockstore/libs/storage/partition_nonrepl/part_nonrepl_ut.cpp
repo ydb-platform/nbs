@@ -1,15 +1,16 @@
 #include "part_nonrepl.h"
+
 #include "part_nonrepl_actor.h"
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
-
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <ydb/core/testlib/basics/runtime.h>
@@ -1611,6 +1612,198 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
             doZeroBlocks(true, 102);
             UNIT_ASSERT_VALUES_EQUAL(0, interceptedVolumeRequestId);
         }
+    }
+
+    Y_UNIT_TEST(ShouldReadVoidBuffers)
+    {
+        const ui32 blockCount = 16;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        client.WriteBlocks(dirtyBlocks, 100);
+
+        // Read 16 blocks.
+        ui32 voidBlockCount = 0;
+        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksResponse)
+            {
+                auto& msg =
+                    *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime.SetObserverFunc(countVoidBlocks);
+
+        auto request = client.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(0, blockCount));
+        request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+            NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+        client.SendRequest(client.GetActorId(), std::move(request));
+
+        auto response = client.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount - dirtyBlocks.Size(),
+            voidBlockCount);
+        voidBlockCount = 0;
+
+        const auto& blocks = response->Record.GetBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(blockCount, blocks.BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+        size_t i = 0;
+        for (const auto& buffer: blocks.GetBuffers()) {
+            if (dirtyBlocks.Contains(i)) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 100),
+                    buffer);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 0), buffer);
+            }
+            ++i;
+        }
+
+        // Check statistics for requests with SKIP_VOID_BLOCKS.
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            13 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestVoidBytes());
+
+        // Check statistics for requests without SKIP_VOID_BLOCKS.
+        auto secondResponse =
+            client.ReadBlocks(TBlockRange64::WithLength(0, blockCount));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, secondResponse->GetError().GetCode());
+
+        const auto& blocks2 = secondResponse->Record.GetBlocks();
+
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlocks.GetRequestVoidBytes());
+
+        // Verify that the data read by the first and second requests are
+        // identical.
+        for (size_t i = 0; i < blockCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocks.GetBuffers(i),
+                blocks2.GetBuffers(i));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadLocalVoidBuffers)
+    {
+        const ui32 blockCount = 16;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TPartitionClient client(runtime, env.ActorId);
+
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        client.WriteBlocks(dirtyBlocks, 100);
+
+        // Read 16 blocks.
+        ui32 voidBlockCount = 0;
+        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskAgent::EvReadDeviceBlocksResponse)
+            {
+                auto& msg =
+                    *event->Get<TEvDiskAgent::TEvReadDeviceBlocksResponse>();
+                voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+        runtime.SetObserverFunc(countVoidBlocks);
+
+        // Create local buffer and fill with some data
+        const size_t dataSize = blockCount * DefaultBlockSize;
+        TString buffer(dataSize, 100);
+        TSgList sgList{TBlockDataRef{buffer.data(), buffer.size()}};
+        auto request = client.CreateReadBlocksLocalRequest(
+            TBlockRange64::WithLength(0, blockCount),
+            TGuardedSgList(sgList));
+
+        request->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+            NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+        client.SendRequest(client.GetActorId(), std::move(request));
+
+        auto response = client.RecvReadBlocksLocalResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount - dirtyBlocks.Size(),
+            voidBlockCount);
+        voidBlockCount = 0;
+
+        size_t i = 0;
+        auto sgListOrError = SgListNormalize(sgList, DefaultBlockSize);
+        UNIT_ASSERT(!HasError(sgListOrError));
+        auto blocks = sgListOrError.ExtractResult();
+        for (const auto& buffer: blocks) {
+            if (dirtyBlocks.Contains(i)) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 100),
+                    buffer.AsStringBuf());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 0),
+                    buffer.AsStringBuf());
+            }
+            ++i;
+        }
+
+        // Check statistics for requests with SKIP_VOID_BLOCKS.
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            13 * DefaultBlockSize,
+            counters.ReadBlocks.GetRequestVoidBytes());
+
+        // Check statistics for requests without SKIP_VOID_BLOCKS.
+        TString buffer2(dataSize, 100);
+        TSgList sgList2{TBlockDataRef{buffer2.data(), buffer2.size()}};
+        auto secondResponse = client.ReadBlocksLocal(
+            TBlockRange64::WithLength(0, blockCount),
+            TGuardedSgList(sgList2));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, secondResponse->GetError().GetCode());
+
+        client.SendRequest(
+            env.ActorId,
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, voidBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters.ReadBlocks.GetRequestNonVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlocks.GetRequestVoidBytes());
+
+        // Verify that the data read by the first and second requests are
+        // identical.
+        UNIT_ASSERT_EQUAL(buffer, buffer2);
     }
 }
 

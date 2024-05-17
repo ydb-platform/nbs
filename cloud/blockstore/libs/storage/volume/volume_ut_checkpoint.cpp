@@ -3962,6 +3962,89 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT(tryWriteBlock(expectedBlockCount - 1, 0));
     }
 
+    Y_UNIT_TEST(ShouldNotReleaseWhenPeriodicalReAcquiringExceptForSessionError)
+    {
+        NProto::TStorageServiceConfig config;
+        auto remountPeriod = TDuration::Seconds(2);
+        config.SetClientRemountPeriod(remountPeriod.MilliSeconds());
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        // Watch acquiring and releases
+        ui32 releaseCount = 0;
+        ui32 acquireCount = 0;
+        bool responseWithSessionError = false;
+        auto watchReleasesAndAcquiring =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                auto* msg =
+                    event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
+                if (responseWithSessionError) {
+                    responseWithSessionError = false;
+                    msg->Record.MutableError()->SetCode(E_BS_INVALID_SESSION);
+                }
+                ++acquireCount;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvReleaseDiskResponse)
+            {
+                ++releaseCount;
+            }
+            return false;
+        };
+        runtime->SetEventFilter(watchReleasesAndAcquiring);
+
+        // Create volume.
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+
+        volume.WaitReady();
+
+        // Create checkpoint.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // We do the first acquiring together with the release.
+        UNIT_ASSERT_VALUES_EQUAL(1, releaseCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, acquireCount);
+
+        auto advanceTime = [&]()
+        {
+            runtime->AdvanceCurrentTime(remountPeriod);
+            TDispatchOptions options;
+            options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                TEvVolumePrivate::EvShadowDiskAcquired)};
+            runtime->DispatchEvents(options, TDuration::MilliSeconds(1));
+        };
+
+        // When we do a periodic disk re-acquire, we do not need to release the
+        // devices.
+        advanceTime();
+        UNIT_ASSERT_VALUES_EQUAL(1, releaseCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, acquireCount);
+
+        // If a session error occurs, we release the session and try to acquire
+        // once again.
+        responseWithSessionError = true;
+        advanceTime();
+        UNIT_ASSERT_VALUES_EQUAL(2, releaseCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, acquireCount);
+    }
+
     Y_UNIT_TEST(ShouldCreateShadowDiskWhenClientChanged)
     {
         NProto::TStorageServiceConfig config;

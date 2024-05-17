@@ -93,7 +93,7 @@ private:
     // This is necessary to check that all disk devices have been acquired.
     TDevices ShadowDiskDevices;
     TDevices AcquiredShadowDiskDevices;
-    bool WaitingForDiskToBeReleased = true;
+    bool WaitingForDiskToBeReleased = false;
 
     // Delay provider when retrying describe and acquire requests to disk
     // registry.
@@ -115,7 +115,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void ReleaseShadowDisk(const NActors::TActorContext& ctx);
+    void ReleaseShadowDisk(const NActors::TActorContext& ctx, bool force);
     void DescribeShadowDisk(const NActors::TActorContext& ctx);
     void AcquireShadowDisk(const NActors::TActorContext& ctx);
 
@@ -203,24 +203,33 @@ void TAcquireShadowDiskActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::Work);
 
-    ReleaseShadowDisk(ctx);
-    DescribeShadowDisk(ctx);
-
     AcquireStartedAt = ctx.Now();
+
+    ReleaseShadowDisk(ctx, false);
+    DescribeShadowDisk(ctx);
+    AcquireShadowDisk(ctx);
+
     ctx.Schedule(TotalTimeout, new TEvents::TEvWakeup());
 }
 
 void TAcquireShadowDiskActor::ReleaseShadowDisk(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx,
+    bool force)
 {
-    if (AcquireReason != TShadowDiskActor::EAcquireReason::PeriodicalReAcquire)
+    if (AcquireReason ==
+            TShadowDiskActor::EAcquireReason::PeriodicalReAcquire &&
+        !force)
     {
-        LOG_INFO_S(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "Releasing shadow disk " << ShadowDiskId.Quote());
+        WaitingForDiskToBeReleased = false;
+        return;
     }
 
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "Releasing shadow disk " << ShadowDiskId.Quote());
+
+    WaitingForDiskToBeReleased = true;
     NCloud::Send(
         ctx,
         MakeDiskRegistryProxyServiceId(),
@@ -320,9 +329,11 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
     // An ErrorSession can be received in response to a disk acquiring request.
     // In this case, we can try to acquire again, hoping that the old session
     // has ended.
-    const bool canRetry = (GetErrorKind(error) == EErrorKind::ErrorRetriable ||
-                           GetErrorKind(error) == EErrorKind::ErrorSession) &&
-                          timeoutElapsedAt > ctx.Now();
+    const bool retriableError =
+        GetErrorKind(error) == EErrorKind::ErrorRetriable;
+    const bool sessionError = GetErrorKind(error) == EErrorKind::ErrorSession;
+    const bool canRetry =
+        (retriableError || sessionError) && timeoutElapsedAt > ctx.Now();
 
     if (canRetry) {
         LOG_WARN_S(
@@ -332,6 +343,10 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
                                << ShadowDiskId.Quote()
                                << " Error: " << FormatError(error)
                                << " with delay " << RetryDelayProvider.GetDelay().ToString());
+
+        if (sessionError) {
+            ReleaseShadowDisk(ctx, true);
+        }
 
         TActivationContext::Schedule(
             RetryDelayProvider.GetDelayAndIncrease(),

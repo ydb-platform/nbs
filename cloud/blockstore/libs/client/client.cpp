@@ -72,7 +72,7 @@ const char AUTH_METHOD[] = "Bearer";
 
 NProto::TError CompleteReadBlocksLocalRequest(
     NProto::TReadBlocksLocalRequest& request,
-    const NProto::TReadBlocksResponse& response)
+    const NProto::TReadBlocksLocalResponse& response)
 {
     if (request.BlockSize == 0) {
         return TErrorResponse(E_ARGUMENT, "block size is zero");
@@ -859,12 +859,13 @@ protected:
         return future.Apply([request = std::move(request)] (
             TFuture<NProto::TReadBlocksResponse> f)
         {
-            auto response = f.ExtractValue();
+            NProto::TReadBlocksLocalResponse response(f.ExtractValue());
             if (HasError(response)) {
                 return response;
             }
 
-            auto error = CompleteReadBlocksLocalRequest(*request, response);
+            auto error =
+                CompleteReadBlocksLocalRequest(*request, response);
             if (HasError(error)) {
                 NProto::TReadBlocksLocalResponse response;
                 *response.MutableError() = std::move(error);
@@ -874,7 +875,7 @@ protected:
             // no more need response's Blocks; free memory
             response.MutableBlocks()->Clear();
 
-            return NProto::TReadBlocksLocalResponse(std::move(response));
+            return response;
         });
     }
 

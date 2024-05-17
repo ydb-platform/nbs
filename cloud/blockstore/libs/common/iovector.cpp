@@ -51,10 +51,11 @@ TResultOrError<TSgList> GetSgList(
     for (const auto& buffer: iov.GetBuffers()) {
         if (buffer) {
             if (buffer.size() != expectedBlockSize) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "read-response has invalid buffer."
-                    << " BufferSize = " << buffer.size()
-                    << " BlockSize = " << expectedBlockSize);
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "read-response has invalid buffer."
+                                     << " BufferSize = " << buffer.size()
+                                     << " BlockSize = " << expectedBlockSize);
             }
             sglist.emplace_back(buffer.data(), buffer.size());
         } else {
@@ -66,14 +67,17 @@ TResultOrError<TSgList> GetSgList(
     return sglist;
 }
 
-void CopyToSgList(
+TCopyStats CopyToSgList(
     const NProto::TIOVector& iov,
     const TSgList& sglist,
     ui64 offsetInBlocks,
     ui32 blockSize)
 {
+    TCopyStats result;
+
     ui64 offsetInBytes = offsetInBlocks * blockSize;
 
+    // Skip offsetInBytes in destination
     size_t dstIndex = 0;
     for (; dstIndex != sglist.size(); ++dstIndex) {
         const size_t size = sglist[dstIndex].Size();
@@ -87,7 +91,7 @@ void CopyToSgList(
     }
 
     for (const auto& src: iov.GetBuffers()) {
-        Y_ABORT_UNLESS(src.size() == blockSize);
+        Y_ABORT_UNLESS(src.size() == blockSize || src.size() == 0);
         Y_ABORT_UNLESS(dstIndex != sglist.size());
 
         TBlockDataRef dst = sglist[dstIndex];
@@ -96,10 +100,13 @@ void CopyToSgList(
         Y_ABORT_UNLESS(dst.Size() - offsetInBytes >= blockSize);
 
         if (dst.Data()) {
-            memcpy(
-                const_cast<char*>(dst.Data()) + offsetInBytes,
-                src.data(),
-                blockSize);
+            char* destBuff = const_cast<char*>(dst.Data()) + offsetInBytes;
+            if (src.empty()) {
+                memset(destBuff, 0, blockSize);
+                ++result.VoidBlockCount;
+            } else {
+                memcpy(destBuff, src.data(), blockSize);
+            }
         }
 
         offsetInBytes += blockSize;
@@ -109,6 +116,74 @@ void CopyToSgList(
             offsetInBytes = 0;
         }
     }
+
+    result.TotalBlockCount = iov.GetBuffers().size();
+    return result;
+}
+
+void TrimVoidBuffers(NProto::TIOVector& iov)
+{
+    for (auto& buffer: *iov.MutableBuffers()) {
+        if (IsAllZeroes(buffer.data(), buffer.size())) {
+            buffer.clear();
+        }
+    }
+}
+
+size_t CopyAndTrimVoidBuffers(
+    TBlockDataRef src,
+    ui32 blockCount,
+    ui32 blockSize,
+    NProto::TIOVector* iov)
+{
+    Y_ABORT_UNLESS(static_cast<size_t>(blockCount) * blockSize == src.Size());
+
+    size_t bytesCount = 0;
+
+    auto& buffers = *iov->MutableBuffers();
+    buffers.Clear();
+    buffers.Reserve(blockCount);
+
+    const char* srcBuffer = src.Data();
+    for (size_t i = 0; i < blockCount; ++i) {
+        if (IsAllZeroes(srcBuffer, blockSize)) {
+            // Add an empty buffer when data contains all zeros.
+            buffers.Add();
+        } else {
+            buffers.Add()->assign(srcBuffer, blockSize);
+        }
+
+        srcBuffer += blockSize;
+        bytesCount += blockSize;
+    }
+
+    return bytesCount;
+}
+
+ui32 CountVoidBuffers(const NProto::TIOVector& iov)
+{
+    ui32 result = 0;
+    for (const auto& buffer: iov.GetBuffers()) {
+        if (buffer.Empty()) {
+            ++result;
+        }
+    }
+    return result;
+}
+
+bool IsAllZeroes(const char* src, size_t size)
+{
+    using TBigNumber = ui64;
+
+    if (size < sizeof(TBigNumber)) {
+        return false;
+    }
+
+    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
+    if (*a) {
+        return false;
+    }
+    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
 }
 
 }   // namespace NCloud::NBlockStore

@@ -716,6 +716,10 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     // TODO: Pass checksum request down to the device to avoid data copying
     auto readRequest = std::make_shared<NProto::TReadBlocksRequest>();
     readRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
+    // Reset the optimization flag just in case.
+    readRequest->MutableHeaders()->SetOptimizeNetworkTransfer(
+        NProto::EOptimizeNetworkTransfer::NO_OPTIMIZATION);
+
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
 

@@ -1,4 +1,5 @@
 #include "part_nonrepl_actor.h"
+
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -6,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
@@ -38,6 +40,11 @@ private:
     ui32 RequestsCompleted = 0;
 
     NProto::TReadBlocksResponse Response;
+
+    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+
+    ui32 VoidBlockCount = 0;
+    ui32 NonVoidBlockCount = 0;
 
 public:
     TDiskAgentReadActor(
@@ -85,6 +92,9 @@ TDiskAgentReadActor::TDiskAgentReadActor(
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , Part(part)
+    , SkipVoidBlocksToOptimizeNetworkTransfer(
+          Request.GetHeaders().GetOptimizeNetworkTransfer() ==
+          NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
 {}
 
 void TDiskAgentReadActor::Bootstrap(const TActorContext& ctx)
@@ -113,8 +123,10 @@ void TDiskAgentReadActor::ReadBlocks(const TActorContext& ctx)
 
     const auto blockSize = PartConfig->GetBlockSize();
 
+    auto* responseBuffers = Response.MutableBlocks()->MutableBuffers();
+    responseBuffers->Reserve(blockRange.Size());
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
-        Response.MutableBlocks()->MutableBuffers()->Add();
+        responseBuffers->Add();
     }
 
     ui32 cookie = 0;
@@ -127,18 +139,16 @@ void TDiskAgentReadActor::ReadBlocks(const TActorContext& ctx)
         request->Record.SetBlockSize(blockSize);
         request->Record.SetBlocksCount(deviceRequest.DeviceBlockRange.Size());
 
-        TAutoPtr<IEventHandle> event(
-            new IEventHandle(
-                MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
-                ctx.SelfID,
-                request.get(),
-                IEventHandle::FlagForwardOnNondelivery,
-                cookie++,
-                &ctx.SelfID // forwardOnNondelivery
-            ));
-        request.release();
+        auto event = std::make_unique<IEventHandle>(
+            MakeDiskAgentServiceId(deviceRequest.Device.GetNodeId()),
+            ctx.SelfID,
+            request.release(),
+            IEventHandle::FlagForwardOnNondelivery,
+            cookie++,
+            &ctx.SelfID   // forwardOnNondelivery
+        );
 
-        ctx.Send(event);
+        ctx.Send(std::move(event));
     }
 }
 
@@ -187,6 +197,9 @@ void TDiskAgentReadActor::Done(
     counters.SetBlocksCount(blocks);
     completion->Failed = failed;
     completion->ExecCycles = RequestInfo->GetExecCycles();
+
+    completion->NonVoidBlockCount = NonVoidBlockCount;
+    completion->VoidBlockCount = VoidBlockCount;
 
     NCloud::Send(
         ctx,
@@ -240,13 +253,24 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
         return;
     }
 
-    auto& respBuffers = *Response.MutableBlocks()->MutableBuffers();
+    auto& srcBuffers = *msg->Record.MutableBlocks()->MutableBuffers();
+    auto& destBuffers = *Response.MutableBlocks()->MutableBuffers();
+    const auto blockSize = PartConfig->GetBlockSize();
 
     const auto& blockRange = DeviceRequests[ev->Cookie].BlockRange;
     Y_ABORT_UNLESS(msg->Record.GetBlocks().BuffersSize() == blockRange.Size());
     for (ui32 i = 0; i < blockRange.Size(); ++i) {
-        respBuffers[blockRange.Start + i - Request.GetStartIndex()] =
-            std::move(*msg->Record.MutableBlocks()->MutableBuffers(i));
+        auto& srcBuffer = srcBuffers[i];
+        auto& destBuffer =
+            destBuffers[blockRange.Start + i - Request.GetStartIndex()];
+        destBuffer.swap(srcBuffer);
+        if (destBuffer.Empty()) {
+            STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
+            destBuffer.resize(blockSize, 0);
+            ++VoidBlockCount;
+        } else if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+            ++NonVoidBlockCount;
+        }
     }
 
     if (++RequestsCompleted < DeviceRequests.size()) {
@@ -255,6 +279,7 @@ void TDiskAgentReadActor::HandleReadDeviceBlocksResponse(
 
     auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
     response->Record = std::move(Response);
+    response->Record.SetAllZeroes(VoidBlockCount == Request.GetBlocksCount());
     Done(ctx, std::move(response), false);
 }
 
@@ -316,6 +341,11 @@ void TNonreplicatedPartitionActor::HandleReadBlocks(
         return;
     }
 
+    if (Config->GetOptimizeVoidBuffersTransferForReadsEnabled()) {
+        msg->Record.MutableHeaders()->SetOptimizeNetworkTransfer(
+            NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+    }
+
     auto actorId = NCloud::Register<TDiskAgentReadActor>(
         ctx,
         requestInfo,
@@ -342,6 +372,12 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+        static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 

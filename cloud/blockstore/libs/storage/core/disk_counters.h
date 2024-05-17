@@ -56,8 +56,6 @@ enum class EPublishingPolicy
     xxx(HasBrokenDeviceSilent,  Generic, Permanent,                __VA_ARGS__)\
 // BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS
 
-////////////////////////////////////////////////////////////////////////////////
-
 #define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \
     xxx(ScrubbingThroughput, Generic, Permanent,                   __VA_ARGS__)\
 // BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS
@@ -94,12 +92,12 @@ enum class EPublishingPolicy
 // BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
 
 #define BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(xxx, ...)                   \
-    xxx(ReadBlocks,                                                __VA_ARGS__)\
-    xxx(WriteBlocks,                                               __VA_ARGS__)\
-    xxx(ZeroBlocks,                                                __VA_ARGS__)\
-    xxx(DescribeBlocks,                                            __VA_ARGS__)\
-    xxx(ChecksumBlocks,                                            __VA_ARGS__)\
-// BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE
+    xxx(ReadBlocks,     true,                                      __VA_ARGS__)\
+    xxx(WriteBlocks,    false,                                     __VA_ARGS__)\
+    xxx(ZeroBlocks,     false,                                     __VA_ARGS__)\
+    xxx(DescribeBlocks, false,                                     __VA_ARGS__)\
+    xxx(ChecksumBlocks, false,                                     __VA_ARGS__)\
+    // BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE
 
 #define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(xxx, ...)     \
     xxx(WriteBlob,                                                 __VA_ARGS__)\
