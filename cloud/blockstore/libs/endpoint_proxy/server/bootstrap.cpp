@@ -19,16 +19,16 @@ void TBootstrap::Init()
     TLogSettings logSettings;
     Scheduler = CreateScheduler();
     logSettings.UseLocalTimestamps = true;
-Server = CreateServer({
-            static_cast<ui16>(Options.ServerPort),
-            static_cast<ui16>(Options.SecureServerPort),
-            Options.RootCertsFile,
-            Options.KeyFile,
-            Options.CertFile
-        },
-        CreateWallClockTimer(),
-        Scheduler,
-        CreateLoggingService("console", logSettings));
+    Server = CreateServer({
+        static_cast<ui16>(Options.ServerPort),
+        static_cast<ui16>(Options.SecureServerPort),
+        Options.RootCertsFile,
+        Options.KeyFile,
+        Options.CertFile
+    },
+    CreateWallClockTimer(),
+    Scheduler,
+    CreateLoggingService("console", logSettings));
 }
 
 void TBootstrap::Start()
