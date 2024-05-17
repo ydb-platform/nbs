@@ -118,27 +118,47 @@ public:
         return Nothing();
     }
 
+    void DebugLog(const TString& m)
+    {
+        static TMutex l;
+        with_lock (l) {
+            Cerr << m << Endl;
+        }
+    }
+
     int Complete(fuse_req_t req, TCompletionCallback cb) noexcept override
     {
         bool haveInflight = false;
         with_lock (RequestsLock) {
             if (!Requests.erase(req)) {
-                Cerr << "req NOT FOUND" << Endl;
+                DebugLog("req NOT FOUND");
                 return 0;
             }
-            CompletingCount.Add(1);
+            CompletingCount.Inc();
             haveInflight = !Requests.empty();
-            Cerr << "REQUESTS: " << Requests.size() << Endl;
-            Cerr << "COMPLETING: " << CompletingCount.Val() << Endl;
+            if (ShouldStop) {
+                DebugLog(TStringBuilder() << "REQUESTS: "
+                    << Requests.size());
+                DebugLog(TStringBuilder() << "COMPLETING: "
+                    << CompletingCount.Val());
+            }
         }
 
-        Cerr << "STARTED CB FOR " << reinterpret_cast<ui64>(req) << Endl;
+        if (ShouldStop) {
+            DebugLog(TStringBuilder() << "STARTED CB FOR "
+                << reinterpret_cast<ui64>(req));
+        }
         int ret = cb(req);
-        Cerr << "FINISHED CB FOR " << reinterpret_cast<ui64>(req) << Endl;
+        if (ShouldStop) {
+            DebugLog(TStringBuilder() << "FINISHED CB FOR "
+                << reinterpret_cast<ui64>(req));
+        }
         bool haveCompleting = CompletingCount.Dec() > 0;
 
         if (!haveInflight && !haveCompleting && ShouldStop) {
-            Cerr << "SETTING StopPromise IN Complete" << Endl;
+            if (ShouldStop) {
+                DebugLog("SETTING StopPromise IN Complete");
+            }
             StopPromise.TrySetValue();
         }
 
