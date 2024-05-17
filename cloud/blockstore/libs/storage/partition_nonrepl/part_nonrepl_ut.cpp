@@ -1627,7 +1627,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // Read 16 blocks.
         ui32 voidBlockCount = 0;
-        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
+        auto countVoidBlocks =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvReadDeviceBlocksResponse)
@@ -1637,7 +1638,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                 voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime.SetObserverFunc(countVoidBlocks);
 
@@ -1720,7 +1721,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         // Read 16 blocks.
         ui32 voidBlockCount = 0;
-        auto countVoidBlocks = [&](TAutoPtr<IEventHandle>& event)
+        auto countVoidBlocks =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvDiskAgent::EvReadDeviceBlocksResponse)
@@ -1730,7 +1732,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
                 voidBlockCount += CountVoidBuffers(msg.Record.GetBlocks());
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
         runtime.SetObserverFunc(countVoidBlocks);
 
