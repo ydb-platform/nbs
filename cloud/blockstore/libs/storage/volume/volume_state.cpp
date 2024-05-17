@@ -834,7 +834,7 @@ THistoryLogKey TVolumeState::AllocateHistoryLogKey(TInstant timestamp)
 
 void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
 {
-    while (History.size() && (History.back().Key.Timestamp > oldest)) {
+    while (History.size() && (History.back().Key.Timestamp < oldest)) {
         History.pop_back();
     }
 }
