@@ -31,9 +31,6 @@ struct IReadBlocksHandler
         const TVector<ui64>& blockIndices,
         bool baseDisk) = 0;
 
-    virtual TGuardedSgList GetGuardedSgList(
-        const TVector<ui64>& blockIndices) const = 0;
-
     virtual bool SetBlock(
         ui64 blockIndex,
         TBlockDataRef blockContent,

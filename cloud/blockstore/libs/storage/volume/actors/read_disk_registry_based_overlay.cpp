@@ -371,6 +371,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
                     VolumeActorId,
                     VolumeTabletId,
                     BlockSize,
+                    false, // shouldCalculateChecksums
                     Mode,
                     std::move(currentRequest),
                     LongRunningThreshold);
@@ -397,6 +398,7 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             VolumeActorId,
             VolumeTabletId,
             BlockSize,
+            false, // shouldCalculateChecksums
             EStorageAccessMode::Default,
             std::move(currentRequest),
             LongRunningThreshold);

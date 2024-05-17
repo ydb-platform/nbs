@@ -666,7 +666,7 @@ void SetCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError VerifyBlockChecksum(
-    const TBlockDataRef& block,
+    const ui32 actualChecksum,
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,

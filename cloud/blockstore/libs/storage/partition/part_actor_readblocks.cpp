@@ -46,7 +46,7 @@ void FillReadStats(
     ui32 blobCount = 0;
     ui32 prevCompactionRange = Max<ui32>();
 
-    for (auto& r: requests) {
+    for (const auto& r: requests) {
         const auto compactionRange =
             TCompactionMap::GetRangeStart(r.BlockIndex, compactionRangeSize);
         if (compactionRange != prevCompactionRange) {
@@ -314,7 +314,10 @@ private:
         IEventBasePtr response,
         const NProto::TError& error);
 
-    bool VerifyChecksums(const TActorContext& ctx, const TBatchRequest& batch);
+    bool VerifyChecksums(
+        const TActorContext& ctx,
+        const TVector<ui32>& actualChecksums,
+        const TBatchRequest& batch);
 
 private:
     STFUNC(StateWork);
@@ -436,7 +439,10 @@ void TReadBlocksActor::ReadBlocks(
             batch.Proxy,
             batch.BlobOffsets,
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId);
+            batch.GroupId,
+            false,
+            TInstant::Max(),
+            ChecksumsEnabled);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -508,30 +514,13 @@ void TReadBlocksActor::ReplyAndDie(
 
 bool TReadBlocksActor::VerifyChecksums(
     const TActorContext& ctx,
+    const TVector<ui32>& actualChecksums,
     const TBatchRequest& batch)
 {
-    if (!ChecksumsEnabled) {
-        return true;
-    }
-
-    const auto sublist = ReadHandler->GetGuardedSgList(batch.Requests);
-    const auto guard = sublist.Acquire();
-    if (!guard) {
-        return true;
-    }
-
-    const auto& sgList = guard.Get();
-
-    Y_DEBUG_ABORT_UNLESS(batch.Requests.size() == sgList.size());
-    if (batch.Requests.size() != sgList.size()) {
-        return true;
-    }
-
-    for (ui32 i = 0; i < batch.Requests.size(); ++i) {
-        const auto block = sgList[i];
-
+    const auto n = Min(batch.Requests.size(), actualChecksums.size());
+    for (ui32 i = 0; i < n; ++i) {
         auto error = VerifyBlockChecksum(
-            block,
+            actualChecksums[i],
             batch.BlobId,
             batch.Requests[i],
             batch.BlobOffsets[i],
@@ -566,7 +555,7 @@ void TReadBlocksActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
-    if (!VerifyChecksums(ctx, batch)) {
+    if (!VerifyChecksums(ctx, msg->BlockChecksums, batch)) {
         return;
     }
 

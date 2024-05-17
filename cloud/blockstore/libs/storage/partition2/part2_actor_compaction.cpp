@@ -283,7 +283,10 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 req.Proxy,
                 std::move(req.DataBlobOffsets),
                 req.BlobContent.GetGuardedSgList(),
-                req.GroupId);
+                req.GroupId,
+                true,           // async
+                TInstant::Max() // deadline
+            );
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
