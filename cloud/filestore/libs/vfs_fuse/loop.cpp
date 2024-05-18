@@ -118,48 +118,27 @@ public:
         return Nothing();
     }
 
-    void DebugLog(const TString& m)
-    {
-        static TMutex l;
-        with_lock (l) {
-            Cerr << m << Endl;
-        }
-    }
-
     int Complete(fuse_req_t req, TCompletionCallback cb) noexcept override
     {
-        bool haveInflight = false;
         with_lock (RequestsLock) {
             if (!Requests.erase(req)) {
-                DebugLog("req NOT FOUND");
                 return 0;
             }
             CompletingCount.Inc();
-            haveInflight = !Requests.empty();
-            if (ShouldStop) {
-                DebugLog(TStringBuilder() << "REQUESTS: "
-                    << Requests.size());
-                DebugLog(TStringBuilder() << "COMPLETING: "
-                    << CompletingCount.Val());
-            }
         }
 
-        if (ShouldStop) {
-            DebugLog(TStringBuilder() << "STARTED CB FOR "
-                << reinterpret_cast<ui64>(req));
-        }
         int ret = cb(req);
-        if (ShouldStop) {
-            DebugLog(TStringBuilder() << "FINISHED CB FOR "
-                << reinterpret_cast<ui64>(req));
-        }
-        bool haveCompleting = CompletingCount.Dec() > 0;
+        bool noCompleting = CompletingCount.Dec() == 0;
 
-        if (!haveInflight && !haveCompleting && ShouldStop) {
-            if (ShouldStop) {
-                DebugLog("SETTING StopPromise IN Complete");
+        if (ShouldStop && noCompleting) {
+            bool noInflight = false;
+            with_lock (RequestsLock) {
+                noInflight = Requests.empty();
             }
-            StopPromise.TrySetValue();
+
+            if (noInflight) {
+                StopPromise.TrySetValue();
+            }
         }
 
         return ret;
@@ -174,12 +153,9 @@ public:
 
         with_lock (RequestsLock) {
             canStop = Requests.empty() && CompletingCount.Val() == 0;
-            Cerr << "REQUESTS: " << Requests.size() << Endl;
-            Cerr << "COMPLETING: " << CompletingCount.Val() << Endl;
         }
 
         if (canStop) {
-            Cerr << "SETTING StopPromise IN StopAsync" << Endl;
             StopPromise.TrySetValue();
         }
 
