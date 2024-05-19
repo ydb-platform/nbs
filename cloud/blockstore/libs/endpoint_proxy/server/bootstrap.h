@@ -3,6 +3,8 @@
 #include "public.h"
 #include "options.h"
 
+#include <cloud/storage/core/libs/common/public.h>
+
 #include <contrib/ydb/library/actors/util/should_continue.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -13,6 +15,7 @@ class TBootstrap
 {
 private:
     TOptions Options;
+    ISchedulerPtr Scheduler;
     IEndpointProxyServerPtr Server;
     TProgramShouldContinue ShouldContinue;
 

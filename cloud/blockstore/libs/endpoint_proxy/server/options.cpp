@@ -8,10 +8,6 @@ using namespace NLastGetopt;
 
 TOptions::TOptions()
 {
-    Opts.AddLongOption("sockets-dir")
-        .RequiredArgument("FILE")
-        .StoreResult(&SocketsDir);
-
     Opts.AddLongOption("root-certs-file")
         .RequiredArgument("FILE")
         .StoreResult(&RootCertsFile);
