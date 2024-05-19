@@ -1,9 +1,25 @@
 #include "server.h"
+#include "cloud/blockstore/config/client.pb.h"
 
+#include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/client/durable.h>
+#include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/nbd/client.h>
+#include <cloud/blockstore/libs/nbd/client_handler.h>
+#include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/server.h>
+#include <cloud/blockstore/libs/nbd/server_handler.h>
+#include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/public/api/grpc/endpoint_proxy.grpc.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
 
@@ -15,6 +31,8 @@
 #include <contrib/libs/grpc/include/grpcpp/server.h>
 #include <contrib/libs/grpc/include/grpcpp/server_builder.h>
 
+#include <util/generic/guid.h>
+#include <util/generic/hash.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
 #include <util/string/printf.h>
@@ -88,11 +106,71 @@ struct TStopRequestContext: TRequestContextBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TStorageProxy final: public IStorage
+{
+private:
+    const IBlockStorePtr Service;
+
+public:
+    explicit TStorageProxy(IBlockStorePtr service)
+        : Service(std::move(service))
+    {}
+
+    NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
+    {
+        return Service->ZeroBlocks(
+            std::move(callContext),
+            std::move(request));
+    }
+
+    NThreading::TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
+    {
+        return Service->ReadBlocksLocal(
+            std::move(callContext),
+            std::move(request));
+    }
+
+    NThreading::TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
+    {
+        return Service->WriteBlocksLocal(
+            std::move(callContext),
+            std::move(request));
+    }
+
+    NThreading::TFuture<NProto::TError> EraseDevice(
+        NProto::EDeviceEraseMethod method) override
+    {
+        Y_UNUSED(method);
+        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        Y_UNUSED(bytesCount);
+        return nullptr;
+    }
+
+    void ReportIOError() override
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TServer: IEndpointProxyServer
 {
     TGrpcInitializer GrpcInitializer;
 
     const TEndpointProxyServerConfig Config;
+    const ITimerPtr Timer;
+    const ISchedulerPtr Scheduler;
+    const ILoggingServicePtr Logging;
+    NClient::TClientAppConfigPtr ClientConfig;
     TLog Log;
 
     NProto::TBlockStoreEndpointProxy::AsyncService Service;
@@ -100,12 +178,36 @@ struct TServer: IEndpointProxyServer
     std::unique_ptr<grpc::Server> Server;
     THolder<IThreadFactory::IThread> Thread;
 
+    NBD::IServerPtr NbdServer;
+    struct TEndpoint
+    {
+        IBlockStorePtr Client;
+        NBD::IDeviceConnectionPtr NbdDevice;
+        std::unique_ptr<TNetworkAddress> ListenAddress;
+
+        TString SockPath;
+        TString NbdDevicePath;
+    };
+    THashMap<TString, std::shared_ptr<TEndpoint>> Socket2Endpoint;
+
+    NBD::IClientPtr NbdClient;
+
     TServer(
             TEndpointProxyServerConfig config,
+            ITimerPtr timer,
+            ISchedulerPtr scheduler,
             ILoggingServicePtr logging)
         : Config(std::move(config))
-        , Log(logging->CreateLog("BLOCKSTORE_ENDPOINT_PROXY"))
+        , Timer(std::move(timer))
+        , Scheduler(std::move(scheduler))
+        , Logging(std::move(logging))
+        , Log(Logging->CreateLog("BLOCKSTORE_ENDPOINT_PROXY"))
     {
+        NProto::TClientAppConfig clientConfig;
+        clientConfig.MutableClientConfig()->SetRetryTimeout(
+            TDuration::Days(1).MilliSeconds());
+        ClientConfig = std::make_shared<NClient::TClientAppConfig>(
+            std::move(clientConfig));
     }
 
     ~TServer() override
@@ -120,6 +222,18 @@ struct TServer: IEndpointProxyServer
 
     void PreStart()
     {
+        NBD::TServerConfig serverConfig {
+            .ThreadsCount = 4,
+            .MaxInFlightBytesPerThread = 1_GB,
+            .Affinity = {}
+        };
+
+        NbdServer = CreateServer(Logging, serverConfig);
+        NbdServer->Start();
+
+        NbdClient = NBD::CreateClient(Logging, 4);
+        NbdClient->Start();
+
         grpc::ServerBuilder sb;
         const auto addr = Sprintf("0.0.0.0:%u", Config.Port);
         sb.AddListeningPort(addr, grpc::InsecureServerCredentials());
@@ -186,41 +300,266 @@ struct TServer: IEndpointProxyServer
         STORAGE_INFO("Exiting loop");
     }
 
+    /*
+     *  Logging/error helpers
+     */
+
+    template <typename TRequest>
+    void RequestReceived(const TRequest& request)
+    {
+        STORAGE_INFO(request.ShortDebugString().Quote() << "- Received");
+    }
+
+    template <typename TResponse>
+    void ShitHappened(TResponse& response)
+    {
+        *response.MutableError() = MakeError(
+            E_FAIL,
+            TStringBuilder() << "Shit happened: "
+            << CurrentExceptionMessage());
+    }
+
+    template <typename TRequest, typename TResponse>
+    void Already(
+        const TRequest& request,
+        const TString& message,
+        TResponse& response)
+    {
+        *response.MutableError() = MakeError(S_ALREADY, message);
+
+        STORAGE_INFO(request.ShortDebugString().Quote() << " - " << message);
+    }
+
+    template <typename TRequest, typename TResponse>
+    void RequestCompleted(const TRequest& request, const TResponse& response)
+    {
+        if (HasError(response.GetError())) {
+            STORAGE_ERROR(
+                request.ShortDebugString().Quote() << " - Got error "
+                << FormatError(response.GetError()).Quote())
+        } else {
+            STORAGE_INFO(
+                request.ShortDebugString().Quote() << " - Success "
+                << FormatError(response.GetError()).Quote())
+        }
+    }
+
+    template <typename TRequest>
+    void ResponseSent(const TRequest& request)
+    {
+        STORAGE_INFO(request.ShortDebugString().Quote() << " - Response sent");
+    }
+
+    /*
+     *  Request handling
+     */
+
+    static bool ValidateRequest(
+        const NProto::TStartProxyEndpointRequest& request,
+        NProto::TStartProxyEndpointResponse& response)
+    {
+        TString message;
+        if (!request.GetUnixSocketPath()) {
+            message = "UnixSocketPath not specified";
+        } else if (!request.GetBlockSize()) {
+            message = "BlockSize not specified";
+        } else if (!request.GetBlocksCount()) {
+            message = "BlocksCount not specified";
+        }
+
+        if (message) {
+            *response.MutableError() =
+                MakeError(E_ARGUMENT, std::move(message));
+            return false;
+        }
+
+        return true;
+    }
+
+    void DoProcessRequest(
+        const NProto::TStartProxyEndpointRequest& request,
+        TEndpoint& ep,
+        NProto::TStartProxyEndpointResponse& response)
+    {
+        if (!ValidateRequest(request, response)) {
+            return;
+        }
+
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Validated request");
+
+        TNetworkAddress connectAddress(
+            TUnixSocketPath{request.GetUnixSocketPath()});
+        ep.Client = NbdClient->CreateEndpoint(
+            connectAddress,
+            NBD::CreateClientHandler(Logging),
+            CreateBlockStoreStub());
+        ep.Client->Start();
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started NBD client endpoint");
+
+        auto retryPolicy = CreateRetryPolicy(ClientConfig);
+        auto requestStats = CreateRequestStatsStub();
+        auto volumeStats = CreateVolumeStatsStub();
+        ep.Client = CreateDurableClient(
+            ClientConfig,
+            std::move(ep.Client),
+            std::move(retryPolicy),
+            Logging,
+            Timer,
+            Scheduler,
+            requestStats,
+            volumeStats);
+
+        ep.Client->Start();
+        STORAGE_INFO(request.ShortDebugString().Quote()
+            << " - Started DurableClient");
+
+        NBD::TStorageOptions options;
+        options.BlockSize = request.GetBlockSize();
+        options.BlocksCount = request.GetBlocksCount();
+
+        auto handlerFactory = CreateServerHandlerFactory(
+            CreateDefaultDeviceHandlerFactory(),
+            Logging,
+            std::make_shared<TStorageProxy>(ep.Client),
+            CreateServerStatsStub(),
+            options);
+
+        ep.SockPath = request.GetUnixSocketPath() + ".proxy";
+        ep.ListenAddress = std::make_unique<TNetworkAddress>(
+            TUnixSocketPath{ep.SockPath});
+
+        // TODO fix StartEndpoint signature - it's actually synchronous
+        auto startResult = NbdServer->StartEndpoint(
+            *ep.ListenAddress,
+            std::move(handlerFactory)).GetValueSync();
+
+        if (HasError(startResult)) {
+            *response.MutableError() = std::move(startResult);
+        } else {
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Started NBD server endpoint");
+
+            ep.NbdDevicePath = request.GetNbdDevice();
+            if (ep.NbdDevicePath) {
+                ep.NbdDevice = NBD::CreateDeviceConnection(
+                    Logging,
+                    *ep.ListenAddress,
+                    request.GetNbdDevice(),
+                    TDuration::Days(1));
+                ep.NbdDevice->Start();
+
+                STORAGE_INFO(request.ShortDebugString().Quote()
+                    << " - Started NBD device connection");
+            } else {
+                STORAGE_WARN(request.ShortDebugString().Quote()
+                    << " - NbdDevice missing - no nbd connection with the"
+                    << " kernel will be established");
+            }
+
+            response.SetInternalUnixSocketPath(ep.SockPath);
+        }
+    }
+
     void ProcessRequest(TStartRequestContext* requestContext)
     {
-        STORAGE_INFO("StartRequest: "
-            << requestContext->Request.DebugString().Quote());
+        const auto& request = requestContext->Request;
+        auto& response = requestContext->Response;
 
-        // TODO: impl
+        RequestReceived(request);
+
+        auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
+        if (ep) {
+            if (ep->NbdDevicePath == request.GetNbdDevice()) {
+                Already(request, "Endpoint already up", response);
+            } else {
+                *response.MutableError() = MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Endpoint already started with device "
+                    << ep->NbdDevicePath << " != " << request.GetNbdDevice());
+            }
+        } else {
+            ep = std::make_shared<TEndpoint>();
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
+        }
+
+        RequestCompleted(request, response);
 
         requestContext->Done = true;
 
-        auto& r = requestContext->Response;
-        r.SetInternalUnixSocketPath("TODO-internal-socket");
         requestContext->Writer.Finish(
-            r,
+            response,
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
+    }
+
+    void DoProcessRequest(
+        const NProto::TStopProxyEndpointRequest& request,
+        TEndpoint& ep,
+        NProto::TStopProxyEndpointResponse& response) const
+    {
+        response.SetInternalUnixSocketPath(ep.SockPath);
+        response.SetNbdDevice(ep.NbdDevicePath);
+
+        if (ep.NbdDevice) {
+            ep.NbdDevice->Stop();
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD device connection");
+        }
+
+        if (ep.ListenAddress) {
+            NbdServer->StopEndpoint(*ep.ListenAddress);
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD server endpoint");
+        }
+
+        if (ep.Client) {
+            ep.Client->Stop();
+            STORAGE_INFO(request.ShortDebugString().Quote()
+                << " - Stopped NBD client endpoint");
+        }
     }
 
     void ProcessRequest(TStopRequestContext* requestContext)
     {
-        STORAGE_INFO("StopRequest: "
-            << requestContext->Request.DebugString().Quote());
+        const auto& request = requestContext->Request;
+        auto& response = requestContext->Response;
 
-        // TODO: impl
+        RequestReceived(request);
+
+        auto& ep = Socket2Endpoint[request.GetUnixSocketPath()];
+        if (ep) {
+            try {
+                DoProcessRequest(request, *ep, response);
+            } catch (...) {
+                ShitHappened(response);
+            }
+
+            Socket2Endpoint.erase(request.GetUnixSocketPath());
+        } else {
+            Already(
+                request,
+                "Endpoint already stopped / Endpoint not found",
+                response);
+        }
 
         requestContext->Done = true;
 
-        auto& r = requestContext->Response;
-        r.SetInternalUnixSocketPath("TODO-internal-socket");
-        r.SetNbdDevice("TODO-nbd-device");
         requestContext->Writer.Finish(
-            r,
+            response,
             grpc::Status::OK,
             requestContext
         );
+
+        ResponseSent(request);
     }
 
     void Start() override
@@ -244,6 +583,11 @@ struct TServer: IEndpointProxyServer
 
             Server.reset();
         }
+
+        if (NbdServer) {
+            NbdServer->Stop();
+            NbdServer.reset();
+        }
     }
 };
 
@@ -253,9 +597,15 @@ struct TServer: IEndpointProxyServer
 
 IEndpointProxyServerPtr CreateServer(
     TEndpointProxyServerConfig config,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
     ILoggingServicePtr logging)
 {
-    return std::make_shared<TServer>(std::move(config), std::move(logging));
+    return std::make_shared<TServer>(
+        std::move(config),
+        std::move(timer),
+        std::move(scheduler),
+        std::move(logging));
 }
 
 }   // namespace NCloud::NBlockStore::NServer

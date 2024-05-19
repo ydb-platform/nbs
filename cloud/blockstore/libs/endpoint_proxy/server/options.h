@@ -10,7 +10,6 @@ namespace NCloud::NBlockStore::NServer {
 
 struct TOptions final: TOptionsBase
 {
-    TString SocketsDir;
     TString RootCertsFile;
     TString KeyFile;
     TString CertFile;

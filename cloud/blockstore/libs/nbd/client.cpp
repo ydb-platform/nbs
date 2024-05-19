@@ -16,12 +16,14 @@
 
 #include <library/cpp/coroutine/engine/network.h>
 #include <library/cpp/coroutine/engine/sockpool.h>
+#include <library/cpp/deprecated/atomic/atomic.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/network/address.h>
 #include <util/network/socket.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/thread.h>
+
+#include <atomic>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -83,6 +85,14 @@ using TClientMountRequest = TClientRequestImpl<NProto::TError>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ui64 RequestConnectionId()
+{
+    static std::atomic<ui64> id = 0;
+    return id.fetch_add(1, std::memory_order_relaxed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TConnection
     : public TAtomicRefCount<TConnection>
 {
@@ -90,6 +100,7 @@ private:
     TLog Log;
     const IClientHandlerPtr Handler;
     const TNetworkAddress ConnectAddress;
+    const TString LogTag;
 
     TSocketHolder Socket;
     TContLockFreeQueue<TClientRequestPtr> RequestQueue;
@@ -106,6 +117,8 @@ public:
         : Log(log)
         , Handler(std::move(handler))
         , ConnectAddress(connectAddress)
+        , LogTag(TStringBuilder() << "Conn#" << RequestConnectionId()
+            << " " << PrintHostAndPort(ConnectAddress))
         , RequestQueue(e)
     {}
 
@@ -150,6 +163,8 @@ private:
             ExportInfo.SetValue(Handler->GetExportInfo());
         }
 
+        STORAGE_INFO(LogTag << " - connected client endpoint");
+
         // start coroutine to read responses
         c->Executor()->Create<TConnection, &TConnection::Receive>(this, "recv");
         NeedConnect = false;
@@ -158,6 +173,8 @@ private:
     void Send(TCont* c)
     {
         TIntrusivePtr<TConnection> holder(this);
+
+        STORAGE_INFO(LogTag << " - started Send loop");
 
         TClientRequestPtr request;
         while (RequestQueue.Dequeue(&request)) {
@@ -170,7 +187,7 @@ private:
                 DoSendRequest(c, request);
             } catch (...) {
                 auto exceptionMessage = CurrentExceptionMessage();
-                STORAGE_WARN("unhandled error in Send: "
+                STORAGE_WARN(LogTag << " - unhandled error in Send: "
                     << exceptionMessage);
 
                 request->Complete(
@@ -180,6 +197,8 @@ private:
 
             request.Reset();
         }
+
+        Socket.ShutDown(SHUT_RDWR);
     }
 
     void DoSendRequest(TCont* c, TClientRequestPtr request)
@@ -195,11 +214,14 @@ private:
     void Receive(TCont* c)
     {
         TIntrusivePtr<TConnection> holder(this);
+
+        STORAGE_INFO(LogTag << " - started Receive loop");
+
         try {
             DoReceive(c);
         } catch (...) {
             if (!c->Cancelled()) {
-                STORAGE_WARN("unhandled error in Receive: "
+                STORAGE_WARN(LogTag << " - unhandled error in Receive: "
                     << CurrentExceptionMessage());
             }
         }
@@ -264,7 +286,7 @@ public:
 
         Executor->Execute([&] {
             Connection->Start(Executor->GetContExecutor());
-        });
+        }).GetValueSync();
     }
 
     void Stop() override

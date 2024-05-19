@@ -155,9 +155,9 @@ struct TEndpointProxyClient
         , Timer(std::move(timer))
         , Log(logging->CreateLog("ENDPOINT_PROXY_CLIENT"))
     {
-        if (config.SecurePort) {
+        if (Config.SecurePort) {
             ChannelCredentials = grpc::SslCredentials({
-                .pem_root_certs = ReadFile(config.RootCertsFile)
+                .pem_root_certs = ReadFile(Config.RootCertsFile)
             });
         } else {
             ChannelCredentials = grpc::InsecureChannelCredentials();

@@ -1,5 +1,4 @@
-InternalUnixSocketPath: "TODO-internal-socket"
+InternalUnixSocketPath: "TODO-nbs-socket.proxy"
 
-InternalUnixSocketPath: "TODO-internal-socket"
-NbdDevice: "TODO-nbd-device"
+InternalUnixSocketPath: "TODO-nbs-socket.proxy"
 
