@@ -123,23 +123,6 @@ public:
         return SgList.Create(std::move(sglist));
     }
 
-    TGuardedSgList GetGuardedSgList(
-        const TVector<ui64>& blockIndices) const override
-    {
-        TSgList sglist(Reserve(blockIndices.size()));
-
-        for (const auto blockIndex: blockIndices) {
-            Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
-
-            size_t index = blockIndex - ReadRange.Start;
-            Y_ABORT_UNLESS(index < Blocks.BuffersSize());
-            const auto& block = Blocks.GetBuffers(index);
-            sglist.emplace_back(block.data(), BlockSize);
-        }
-
-        return SgList.Create(std::move(sglist));
-    }
-
     bool SetBlock(
         ui64 blockIndex,
         TBlockDataRef blockContent,
@@ -293,25 +276,6 @@ public:
 
                 BlockMarks[index] = true;
                 SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
-            }
-
-            return GuardedSgList.Create(std::move(subset));
-        }
-
-        return GuardedSgList;
-    }
-
-    TGuardedSgList GetGuardedSgList(
-        const TVector<ui64>& blockIndices) const override
-    {
-        if (auto guard = GuardedSgList.Acquire()) {
-            const auto& src = guard.Get();
-            TSgList subset(Reserve(blockIndices.size()));
-
-            for (auto blockIndex: blockIndices) {
-                Y_ABORT_UNLESS(ReadRange.Contains(blockIndex));
-                const auto index = blockIndex - ReadRange.Start;
-                subset.push_back(src[index]);
             }
 
             return GuardedSgList.Create(std::move(subset));

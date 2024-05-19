@@ -59,7 +59,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 EdgeActor,
                 blobOffsets,
                 guardedSglist,
-                groupId);
+                groupId,
+                false,           // async
+                TInstant::Max(), // deadline
+                false            // shouldCalculateChecksums
+            );
 
         auto readActor = ActorSystem.Register(
             new TReadBlobActor(
@@ -71,6 +75,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));
@@ -145,7 +150,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 EdgeActor,
                 blobOffsets,
                 guardedSglist,
-                groupId);
+                groupId,
+                false,           // async
+                TInstant::Max(), // deadline
+                false            // shouldCalculateChecksums
+            );
 
         auto readActor = ActorSystem.Register(
             new TReadBlobActor(
@@ -157,6 +166,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));
@@ -215,7 +225,11 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 EdgeActor,
                 blobOffsets,
                 guardedSglist,
-                groupId);
+                groupId,
+                false,           // async
+                TInstant::Max(), // deadline
+                false            // shouldCalculateChecksums
+            );
 
         auto readActor = ActorSystem.Register(
             new TReadBlobActor(
@@ -227,6 +241,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 NActors::TActorId(),
                 0,
                 blockSize,
+                false, // shouldCalculateChecksums
                 EStorageAccessMode::Default,
                 std::move(request),
                 TDuration()));
