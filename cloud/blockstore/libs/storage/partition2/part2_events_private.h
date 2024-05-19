@@ -98,8 +98,8 @@ struct TEvPartitionPrivate
                 TVector<ui16> blobOffsets,
                 TGuardedSgList sglist,
                 ui32 groupId,
-                bool async = false,
-                TInstant deadline = TInstant::Max())
+                bool async,
+                TInstant deadline)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))

@@ -414,13 +414,19 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         auto subSgList = blobContent.CreateGuardedSgList(std::move(subset));
 
+        const bool shouldCalculateChecksums =
+            !batch.RangeCompactionInfo->BlockChecksums.empty();
         auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             MakeBlobId(TabletId, batch.BlobId),
             batch.Proxy,
             std::move(batch.BlobOffsets),
             std::move(subSgList),
             batch.GroupId,
-            true);  // async
+            true,            // async
+            TInstant::Max(), // deadline
+            shouldCalculateChecksums
+        );
+
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -780,24 +786,22 @@ void TCompactionActor::HandleReadBlobResponse(
     auto& batch = BatchRequests[batchIndex];
     const auto& rc = *batch.RangeCompactionInfo;
 
-    if (rc.BlockChecksums) {
-        const auto& buffer = rc.BlobContent.Get();
-        for (const auto* r: batch.Requests) {
-            const auto block = buffer.GetBlock(r->IndexInBlobContent);
-            const auto expectedChecksum =
-                rc.BlockChecksums[r->IndexInBlobContent];
+    const auto n = Min(batch.Requests.size(), msg->BlockChecksums.size());
+    for (ui32 i = 0; i < n; ++i) {
+        const auto* r = batch.Requests[i];
+        const auto expectedChecksum =
+            rc.BlockChecksums[r->IndexInBlobContent];
 
-            auto error = VerifyBlockChecksum(
-                block,
-                MakeBlobId(TabletId, r->BlobId),
-                r->BlockIndex,
-                r->BlobOffset,
-                expectedChecksum);
+        auto error = VerifyBlockChecksum(
+            msg->BlockChecksums[i],
+            MakeBlobId(TabletId, r->BlobId),
+            r->BlockIndex,
+            r->BlobOffset,
+            expectedChecksum);
 
-            if (HasError(error)) {
-                HandleError(ctx, error);
-                return;
-            }
+        if (HasError(error)) {
+            HandleError(ctx, error);
+            return;
         }
     }
 

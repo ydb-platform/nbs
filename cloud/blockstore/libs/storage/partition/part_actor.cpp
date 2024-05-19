@@ -973,7 +973,7 @@ void SetCounters(
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError VerifyBlockChecksum(
-    const TBlockDataRef& block,
+    const ui32 actualChecksum,
     const NKikimr::TLogoBlobID& blobID,
     const ui64 blockIndex,
     const ui16 blobOffset,
@@ -988,8 +988,6 @@ NProto::TError VerifyBlockChecksum(
 
         return {};
     }
-
-    const auto actualChecksum = ComputeDefaultDigest(block);
 
     if (actualChecksum != expectedChecksum) {
         ReportBlockDigestMismatchInBlob();

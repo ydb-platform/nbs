@@ -28,6 +28,7 @@ private:
     const NActors::TActorId PartitionActorId;
     const ui64 PartitionTabletId;
     const ui32 BlockSize;
+    const bool ShouldCalculateChecksums;
     const EStorageAccessMode StorageAccessMode;
     const std::unique_ptr<TRequest> Request;
 
@@ -41,6 +42,7 @@ public:
         const NActors::TActorId& volumeActorId,
         ui64 partitionTabletId,
         ui32 blockSize,
+        bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold);

@@ -771,7 +771,10 @@ public:
                 MakeBlobStorageProxyID(bSGroupId),
                 blobOffsets,
                 std::move(sglist),
-                bSGroupId);
+                bSGroupId,
+                false,          // async
+                TInstant::Max() // deadline
+            );
         return request;
     }
 

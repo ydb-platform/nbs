@@ -517,7 +517,10 @@ void TReadBlocksActor::ReadBlocks(
             batch.Proxy,
             std::move(batch.BlobOffsets),
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId);
+            batch.GroupId,
+            false,          // async
+            TInstant::Max() // deadline
+        );
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(

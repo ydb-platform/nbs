@@ -72,6 +72,7 @@ struct TEvPartitionCommonPrivate
         ui32 GroupId = 0;
         bool Async = false;
         TInstant Deadline;
+        bool ShouldCalculateChecksums = false;
 
         TReadBlobRequest() = default;
 
@@ -81,8 +82,9 @@ struct TEvPartitionCommonPrivate
                 TVector<ui16> blobOffsets,
                 TGuardedSgList sglist,
                 ui32 groupId,
-                bool async = false,
-                TInstant deadline = TInstant::Max())
+                bool async,
+                TInstant deadline,
+                bool shouldCalculateChecksums)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -90,14 +92,14 @@ struct TEvPartitionCommonPrivate
             , GroupId(groupId)
             , Async(async)
             , Deadline(deadline)
+            , ShouldCalculateChecksums(shouldCalculateChecksums)
         {}
     };
 
     struct TReadBlobResponse
     {
+        TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
-
-        TReadBlobResponse() = default;
     };
 
     // TReadBlobCompleted

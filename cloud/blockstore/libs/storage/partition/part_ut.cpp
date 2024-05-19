@@ -831,7 +831,11 @@ public:
                 MakeBlobStorageProxyID(bSGroupId),
                 blobOffsets,
                 TGuardedSgList(std::move(sglist)),
-                bSGroupId);
+                bSGroupId,
+                false,           // async
+                TInstant::Max(), // deadline
+                false            // shouldCalculateChecksums
+            );
         return request;
     }
 
@@ -10652,6 +10656,47 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             true);
     }
 
+    void EnableReadBlobCorruption(
+        TTestActorRuntime& runtime,
+        ui16 checkedOffset = InvalidBlobOffset)
+    {
+        TVector<ui16> blobOffsets;
+
+        runtime.SetEventFilter([=] (
+            TTestActorRuntimeBase& runtime,
+            TAutoPtr<IEventHandle>& event) mutable
+        {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                case TEvPartitionCommonPrivate::EvReadBlobRequest: {
+                    using TEv =
+                        TEvPartitionCommonPrivate::TEvReadBlobRequest;
+                    auto* msg = event->Get<TEv>();
+                    blobOffsets = msg->BlobOffsets;
+
+                    break;
+                }
+                case TEvBlobStorage::EvGetResult: {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    UNIT_ASSERT(!blobOffsets.empty());
+                    if (checkedOffset == InvalidBlobOffset
+                            || blobOffsets[0] == checkedOffset)
+                    {
+                        auto& rope = msg->Responses[0].Buffer;
+                        auto dst = rope.begin();
+                        char* to = const_cast<char*>(dst.ContiguousData());
+                        memset(to, 0, dst.ContiguousSize());
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+    }
+
     Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobs)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -10665,49 +10710,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         const auto range = TBlockRange32::WithLength(0, 1024);
         partition.WriteBlocks(range, 1);
 
-        TGuardedSgList sgList;
-        TVector<ui16> blobOffsets;
-        ui32 corruptedOffset = 0;
-        int corruptValue = 0;
-        auto corruptData = [&] () {
-            auto g = sgList.Acquire();
-            UNIT_ASSERT(g);
-            ui32 i = 0;
-            while (i < blobOffsets.size()) {
-                if (blobOffsets[i] == corruptedOffset) {
-                    break;
-                }
-
-                ++i;
-            }
-
-            if (i == blobOffsets.size()) {
-                return;
-            }
-
-            const char* block = g.Get()[i].Data();
-            memset(const_cast<char*>(block), corruptValue, DefaultBlockSize);
-        };
-
-        runtime->SetObserverFunc([&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
-                switch (event->GetTypeRewrite()) {
-                    case TEvPartitionCommonPrivate::EvReadBlobRequest: {
-                        using TEv =
-                            TEvPartitionCommonPrivate::TEvReadBlobRequest;
-                        auto* msg = event->Get<TEv>();
-                        blobOffsets = msg->BlobOffsets;
-                        sgList = msg->Sglist;
-
-                        break;
-                    }
-                    case TEvPartitionCommonPrivate::EvReadBlobResponse: {
-                        corruptData();
-                        break;
-                    }
-                }
-                return TTestActorRuntime::DefaultObserverFunc(runtime, event);
-            }
-        );
+        EnableReadBlobCorruption(*runtime, 0);
 
         // direct read should fail
         {
@@ -10760,40 +10763,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
-    }
-
-    void EnableReadBlobCorruption(TTestActorRuntime& runtime)
-    {
-        std::shared_ptr<TGuardedSgList> sgList;
-
-        runtime.SetEventFilter([=] (
-            TTestActorRuntimeBase& runtime,
-            TAutoPtr<IEventHandle>& event) mutable
-        {
-            Y_UNUSED(runtime);
-
-            switch (event->GetTypeRewrite()) {
-                case TEvPartitionCommonPrivate::EvReadBlobRequest: {
-                    using TEv =
-                        TEvPartitionCommonPrivate::TEvReadBlobRequest;
-                    auto* msg = event->Get<TEv>();
-                    sgList = std::make_shared<TGuardedSgList>(msg->Sglist);
-
-                    break;
-                }
-                case TEvPartitionCommonPrivate::EvReadBlobResponse: {
-                    auto g = sgList->Acquire();
-                    UNIT_ASSERT(g);
-                    UNIT_ASSERT_VALUES_UNEQUAL(0, g.Get().size());
-
-                    const char* block = g.Get()[0].Data();
-                    memset(const_cast<char*>(block), '0', DefaultBlockSize);
-                    break;
-                }
-            }
-            return false;
-        });
-
     }
 
     Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobsWhenAddingUnconfirmedBlobs)
