@@ -114,9 +114,7 @@ void OutputProgress(
 
         // Calculate the percentage with an accuracy of up to tenths of a
         // percent.
-        if (totalBlocks == 0) {
-            readyPercent = "0";
-        } else {
+        if (totalBlocks) {
             readyPercent =
                 (TStringBuilder()
                  << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);

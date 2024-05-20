@@ -491,14 +491,7 @@ void TVolumeActor::HandleBootExternalResponse(
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
 
-    auto factory = [config = std::move(config),
-                    partitionConfig = std::move(partitionConfig),
-                    diagnosticsConfig = std::move(diagnosticsConfig),
-                    profileLog = std::move(profileLog),
-                    blockDigestGenerator = std::move(blockDigestGenerator),
-                    storageAccessMode = storageAccessMode,
-                    siblingCount = siblingCount,
-                    selfId = selfId](
+    auto factory = [=](
                        const TActorId& owner,
                        TTabletStorageInfo* storage) mutable
     {
