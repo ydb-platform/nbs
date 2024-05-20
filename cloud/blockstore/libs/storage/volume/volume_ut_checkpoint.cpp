@@ -4685,11 +4685,6 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         );
         volume.WaitReady();
 
-        TVector<bool> isLightCases{true};  // light checkpoint
-        if (!IsDiskRegistryMediaKind(mediaKind)) {
-            isLightCases.push_back(false);  // normal checkpoint
-        }
-
         std::vector<std::pair<NProto::ECheckpointType, TString>> testCases{
             {NProto::ECheckpointType::NORMAL, "checkpoint_normal"},
             {NProto::ECheckpointType::LIGHT, "checkpoint_light"},
@@ -4701,7 +4696,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.DeleteCheckpoint(checkpointId);
 
             volume.SendCreateCheckpointRequest(checkpointId, checkpointType);
-            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_PRECONDITION_FAILED,
+                volume.RecvCreateCheckpointResponse()->GetStatus());
         }
     }
 
@@ -4747,7 +4744,9 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.DeleteCheckpointData(checkpointId);
 
         volume.SendCreateCheckpointRequest(checkpointId);
-        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_PRECONDITION_FAILED,
+            volume.RecvCreateCheckpointResponse()->GetStatus());
     }
 }
 

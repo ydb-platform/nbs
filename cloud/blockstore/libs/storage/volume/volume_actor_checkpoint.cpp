@@ -1108,7 +1108,7 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
     ui64 readyToExecuteRequestId = 0;
     while (checkpointStore.HasRequestToExecute(&readyToExecuteRequestId)) {
         if (ProcessCheckpointRequest(ctx, readyToExecuteRequestId)) {
-            // Execution of the request started, should return now.
+            // Execution of the request has started, should return now.
             return;
         }
     }
@@ -1144,8 +1144,7 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
         }
     }
 
-    checkpointStore.SetCheckpointRequestInProgress(
-        requestId);
+    checkpointStore.SetCheckpointRequestInProgress(requestId);
 
     if (request.State == ECheckpointRequestState::Received) {
         AddTransaction(*requestInfo->RequestInfo);
@@ -1162,10 +1161,10 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
 }
 
 void TVolumeActor::ReplyToCheckpointRequestWithoutSaving(
-        const NActors::TActorContext& ctx,
-        ECheckpointRequestType requestType,
-        const TCheckpointRequestInfo* requestInfo,
-        const NProto::TError& error)
+    const NActors::TActorContext& ctx,
+    ECheckpointRequestType requestType,
+    const TCheckpointRequestInfo* requestInfo,
+    const NProto::TError& error)
 {
     NActors::IEventBasePtr response;
 

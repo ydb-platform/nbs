@@ -437,10 +437,14 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         store.RemoveCheckpointRequest(requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
-        UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            false,
+            store.IsCheckpointDeleted("checkpoint"));
     }
 
     Y_UNIT_TEST(RepeatRequests)
@@ -705,12 +709,16 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 checkpointId,
                 TInstant::Now());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                store.HasRequestToExecute(&requestId));
             UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
             store.RemoveCheckpointRequest(request.RequestId);
 
-            UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                store.HasRequestToExecute(&requestId));
         };
 
         {
@@ -727,7 +735,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             addAndRemoveCheckpointRequest("checkpoint-not-executed");
             UNIT_ASSERT_VALUES_EQUAL(3, store.GetCheckpointsWithData().size());
             UNIT_ASSERT_VALUES_EQUAL(3, store.GetActiveCheckpoints().size());
-            UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint-not-executed"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                false,
+                store.IsCheckpointDeleted("checkpoint-not-executed"));
 
             deleteCheckpointData("checkpoint-1");
             UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
@@ -778,7 +788,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             addAndRemoveCheckpointRequest("checkpoint-1");
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetCheckpointsWithData().size());
             UNIT_ASSERT_VALUES_EQUAL(0, store.GetActiveCheckpoints().size());
-            UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointDeleted("checkpoint-1"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                store.IsCheckpointDeleted("checkpoint-1"));
         }
     }
 
