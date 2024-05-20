@@ -114,9 +114,13 @@ void OutputProgress(
 
         // Calculate the percentage with an accuracy of up to tenths of a
         // percent.
-        readyPercent =
-            (TStringBuilder()
-             << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);
+        if (totalBlocks == 0) {
+            readyPercent = "0";
+        } else {
+            readyPercent =
+                (TStringBuilder()
+                 << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);
+        }
     }
 
     out << blocks << " (<font color=green>" << processedSize
