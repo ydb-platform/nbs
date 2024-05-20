@@ -124,6 +124,10 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResultDef(&RdmaClient.MaxBufferSize);
 
+    opts.AddLongOption("rdma-zero-copy", "enable rdma zero copy")
+        .NoArgument()
+        .SetFlag(&RdmaClient.ZeroCopy);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {
