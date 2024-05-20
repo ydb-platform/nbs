@@ -61,43 +61,40 @@ public:
 
     void HandleResult(const TDeviceReadRequestContext& dr, TStringBuf buffer)
     {
-        auto guard = SgList.Acquire();
-        if (!guard) {
-            return;
-        }
+        if (auto guard = SgList.Acquire()) {
+            auto* serializer = TBlockStoreProtocol::Serializer();
+            auto [result, err] = serializer->Parse(buffer);
 
-        auto* serializer = TBlockStoreProtocol::Serializer();
-        auto [result, err] = serializer->Parse(buffer);
+            if (HasError(err)) {
+                Error = std::move(err);
+                return;
+            }
 
-        if (HasError(err)) {
-            Error = std::move(err);
-            return;
-        }
+            const auto& concreteProto =
+                static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
+            if (HasError(concreteProto.GetError())) {
+                Error = concreteProto.GetError();
+                return;
+            }
 
-        const auto& concreteProto =
-            static_cast<NProto::TReadDeviceBlocksResponse&>(*result.Proto);
-        if (HasError(concreteProto.GetError())) {
-            Error = concreteProto.GetError();
-            return;
-        }
+            TSgList data = guard.Get();
 
-        TSgList data = guard.Get();
+            ui64 offset = 0;
+            ui64 b = 0;
+            while (offset < result.Data.Size()) {
+                ui64 targetBlock = dr.StartIndexOffset + b;
+                Y_ABORT_UNLESS(targetBlock < data.size());
+                ui64 bytes =
+                    Min(result.Data.Size() - offset, data[targetBlock].Size());
+                Y_ABORT_UNLESS(bytes);
 
-        ui64 offset = 0;
-        ui64 b = 0;
-        while (offset < result.Data.Size()) {
-            ui64 targetBlock = dr.StartIndexOffset + b;
-            Y_ABORT_UNLESS(targetBlock < data.size());
-            ui64 bytes =
-                Min(result.Data.Size() - offset, data[targetBlock].Size());
-            Y_ABORT_UNLESS(bytes);
-
-            memcpy(
-                const_cast<char*>(data[targetBlock].Data()),
-                result.Data.data() + offset,
-                bytes);
-            offset += bytes;
-            ++b;
+                memcpy(
+                    const_cast<char*>(data[targetBlock].Data()),
+                    result.Data.data() + offset,
+                    bytes);
+                offset += bytes;
+                ++b;
+            }
         }
     }
 
