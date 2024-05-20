@@ -197,13 +197,15 @@ public:
         TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksRequest> request,
-        ui32 requestBlockSize) const;
+        ui32 requestBlockSize,
+        TStringBuf dataBuffer) const;
 
     TFuture<NProto::TWriteBlocksResponse> WriteBlocks(
         TInstant now,
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksRequest> request,
-        ui32 requestBlockSize) const;
+        ui32 requestBlockSize,
+        TStringBuf dataBuffer) const;
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TInstant now,
@@ -225,6 +227,7 @@ private:
 
     ui32 VerifyRequestSize(const NProto::TIOVector& iov) const;
     ui32 VerifyRequestSize(ui32 blocksCount, ui32 blockSize) const;
+    ui32 VerifyRequestSize(ui32 bytesCount) const;
 
     template <typename TResponse>
     void CheckIOTimeouts(TInflightTracker<TResponse>& inflights, TInstant now);
@@ -250,7 +253,8 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     TInstant now,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksRequest> request,
-    ui32 requestBlockSize) const
+    ui32 requestBlockSize,
+    TStringBuf dataBuffer) const
 {
     const auto bytesCount = VerifyRequestSize(
         request->GetBlocksCount(),
@@ -281,28 +285,33 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
 
     auto response = std::make_shared<NProto::TReadBlocksResponse>();
 
-    // We are trying to allocate memory for request using Storage. If the memory
-    // is not allocated, then we will read immediately to the buffers in the
-    // protobuf.
-    auto buffer = Storage->AllocateBuffer(bytesCount);
-
     TSgList sgList;
+    TStorageBuffer buffer;
 
-    if (buffer) {
-        sgList = {{ buffer.get(), bytesCount }};
+    if (dataBuffer.size()) {
+        sgList = {{dataBuffer.data(), dataBuffer.size()}};
     } else {
-        sgList = ResizeIOVector(
-            *response->MutableBlocks(),
-            request->GetBlocksCount(),
-            requestBlockSize);
+        // We are trying to allocate memory for request using Storage. If the memory
+        // is not allocated, then we will read immediately to the buffers in the
+        // protobuf.
+        buffer = Storage->AllocateBuffer(bytesCount);
+
+        if (buffer) {
+            sgList = {{ buffer.get(), bytesCount }};
+        } else {
+            sgList = ResizeIOVector(
+                *response->MutableBlocks(),
+                request->GetBlocksCount(),
+                requestBlockSize);
+        }
+
     }
 
     if (Normalize) {
-        if (buffer || requestBlockSize != StorageBlockSize) {
+        if (dataBuffer.size() || buffer || requestBlockSize != StorageBlockSize) {
             // not normalized yet
-            auto sgListOrError = SgListNormalize(
-                std::move(sgList),
-                StorageBlockSize);
+            auto sgListOrError =
+                SgListNormalize(std::move(sgList), StorageBlockSize);
 
             if (HasError(sgListOrError)) {
                 return MakeFuture<NProto::TReadBlocksResponse>(
@@ -388,11 +397,18 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     TInstant now,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
-    ui32 requestBlockSize) const
+    ui32 requestBlockSize,
+    TStringBuf dataBuffer) const
 {
     VerifyBlockSize(requestBlockSize);
 
-    const auto bytesCount = VerifyRequestSize(request->GetBlocks());
+    ui32 bytesCount = 0;
+    if (dataBuffer.size()) {
+        bytesCount = VerifyRequestSize(dataBuffer.size());
+    } else {
+        bytesCount = VerifyRequestSize(request->GetBlocks());
+    }
+
     const ui32 localBlocksCount = bytesCount / StorageBlockSize;
     const ui64 localStartIndex = requestBlockSize == StorageBlockSize
         ? request->GetStartIndex()
@@ -407,21 +423,28 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     localRequest->BlocksCount = localBlocksCount;
     localRequest->BlockSize = StorageBlockSize;
 
-    auto sgList = GetSgList(*request);
-    auto buffer = Storage->AllocateBuffer(bytesCount);
+    TStorageBuffer buffer;
+    TSgList sgList;
 
-    if (buffer) {
-        TSgList bufferSgList = {{ buffer.get(), bytesCount }};
-        size_t bytesCopied = SgListCopy(sgList, bufferSgList);
-        Y_ABORT_UNLESS(bytesCopied == bytesCount);
-        sgList = std::move(bufferSgList);
+    if (dataBuffer.size()) {
+        sgList = TSgList{{dataBuffer.data(), dataBuffer.size()}};
+    } else {
+        sgList = GetSgList(*request);
+        buffer = Storage->AllocateBuffer(bytesCount);
+
+        if (buffer) {
+            TSgList bufferSgList = {{ buffer.get(), bytesCount }};
+            size_t bytesCopied = SgListCopy(sgList, bufferSgList);
+            Y_ABORT_UNLESS(bytesCopied == bytesCount);
+            sgList = std::move(bufferSgList);
+        }
+
     }
 
     if (Normalize && sgList.size() != localBlocksCount) {
         // not normalized yet
-        auto sgListOrError = SgListNormalize(
-            std::move(sgList),
-            StorageBlockSize);
+        auto sgListOrError =
+            SgListNormalize(std::move(sgList), StorageBlockSize);
 
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksResponse>(
@@ -596,6 +619,23 @@ ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 blocksCount, ui32 blockSize)
     return static_cast<ui32>(bytesCount);
 }
 
+ui32 TStorageAdapter::TImpl::VerifyRequestSize(ui32 bytesCount) const
+{
+    if (bytesCount == 0 || bytesCount % StorageBlockSize != 0) {
+        ythrow TServiceError(E_ARGUMENT)
+            << "buffer size (" << bytesCount << ") is not a multiple of storage block size"
+            << " (storage block size = " << StorageBlockSize << ")";
+    }
+
+    if (MaxRequestSize > 0 && bytesCount > MaxRequestSize) {
+        ythrow TServiceError(E_ARGUMENT)
+            << "invalid request size: " << bytesCount
+            << " (max request size = " << MaxRequestSize << ")";
+    }
+
+    return bytesCount;
+}
+
 ui32 TStorageAdapter::TImpl::VerifyRequestSize(const NProto::TIOVector& iov) const
 {
     ui64 bytesCount = 0;
@@ -645,26 +685,30 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::ReadBlocks(
     TInstant now,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksRequest> request,
-    ui32 requestBlockSize) const
+    ui32 requestBlockSize,
+    TStringBuf dataBuffer) const
 {
     return Impl->ReadBlocks(
         now,
         std::move(callContext),
         std::move(request),
-        requestBlockSize);
+        requestBlockSize,
+        dataBuffer);
 }
 
 TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::WriteBlocks(
     TInstant now,
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksRequest> request,
-    ui32 requestBlockSize) const
+    ui32 requestBlockSize,
+    TStringBuf dataBuffer) const
 {
     return Impl->WriteBlocks(
         now,
         std::move(callContext),
         std::move(request),
-        requestBlockSize);
+        requestBlockSize,
+        dataBuffer);
 }
 
 TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::ZeroBlocks(

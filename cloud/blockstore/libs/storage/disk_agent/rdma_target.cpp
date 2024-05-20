@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_checksum.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -49,6 +50,7 @@ struct TRequestDetails
 {
     void* Context = nullptr;
     TStringBuf Out;
+    TStringBuf DataBuffer; // if non empty, zero copy is possible
     TString DeviceUUID;
     TString ClientId;
 
@@ -143,18 +145,21 @@ private:
         TBlockStoreProtocol::Serializer();
 
     const bool RejectLateRequestsAtDiskAgentEnabled;
+    const bool ZeroCopyEnabled;
 
 public:
     TRequestHandler(
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
-            TRdmaTargetConfig rdmaTargetConfig)
+            TRdmaTargetConfig rdmaTargetConfig,
+            bool zeroCopyEnabled)
         : Devices(MakeDevices(std::move(devices), rdmaTargetConfig))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
         , RejectLateRequestsAtDiskAgentEnabled(
               rdmaTargetConfig.RejectLateRequestsAtDiskAgentEnabled)
+        , ZeroCopyEnabled(zeroCopyEnabled)
     {}
 
     void Init(NRdma::IServerEndpointPtr endpoint, TLog log)
@@ -246,6 +251,11 @@ private:
 
         const auto& request = resultOrError.GetResult();
 
+        bool isZeroCopyDataSupported = request.Flags & NRdma::RDMA_PROTO_FLAG_RDATA;
+        if (Y_UNLIKELY(isZeroCopyDataSupported && !ZeroCopyEnabled)) {
+            return MakeError(E_NOT_IMPLEMENTED, "Zero copy is disabled on disk agent");
+        }
+
         switch (request.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
                 return HandleReadBlocksRequest(
@@ -253,6 +263,7 @@ private:
                     std::move(callContext),
                     static_cast<NProto::TReadDeviceBlocksRequest&>(
                         *request.Proto),
+                    isZeroCopyDataSupported,
                     request.Data,
                     out);
 
@@ -261,6 +272,7 @@ private:
                     context,
                     std::move(callContext),
                     static_cast<NProto::TWriteDeviceBlocksRequest&>(*request.Proto),
+                    isZeroCopyDataSupported,
                     request.Data,
                     out);
 
@@ -504,6 +516,7 @@ private:
         void* context,
         TCallContextPtr callContext,
         NProto::TReadDeviceBlocksRequest& request,
+        bool isZeroCopyDataSupported,
         TStringBuf requestData,
         TStringBuf out) const
     {
@@ -537,17 +550,25 @@ private:
         req->SetStartIndex(request.GetStartIndex());
         req->SetBlocksCount(request.GetBlocksCount());
 
+        TStringBuf dataBuffer;
+        if (isZeroCopyDataSupported) {
+            dataBuffer = out;
+            dataBuffer.RSeek(request.GetBlocksCount() * request.GetBlockSize());
+        }
+
         auto future = device->ReadBlocks(
             Now(),
             std::move(callContext),
             std::move(req),
-            request.GetBlockSize());
+            request.GetBlockSize(),
+            dataBuffer);
 
         SubscribeForResponse(
             std::move(future),
             TRequestDetails{
                 context,
                 out,
+                dataBuffer,
                 request.GetDeviceUUID(),
                 request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleReadBlocksResponse);
@@ -575,18 +596,30 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        TStackVec<IOutputStream::TPart> parts;
-        parts.reserve(blocks.BuffersSize());
+        size_t bytes;
+        if (requestDetails.DataBuffer.size()) {
+            NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                NRdma::RDMA_PROTO_FLAG_RDATA,
+                proto,
+                requestDetails.DataBuffer.size());
+            bytes = requestDetails.Out.size();
+        } else {
+            TStackVec<IOutputStream::TPart> parts;
+            parts.reserve(blocks.BuffersSize());
 
-        for (const auto& buffer: blocks.GetBuffers()) {
-            parts.emplace_back(TStringBuf(buffer));
+            for (const auto& buffer: blocks.GetBuffers()) {
+                parts.emplace_back(TStringBuf(buffer));
+            }
+
+            bytes = NRdma::TProtoMessageSerializer::Serialize(
+                requestDetails.Out,
+                TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                0, // flags
+                proto,
+                TContIOVector(parts.data(), parts.size()));
         }
-
-        size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
-            requestDetails.Out,
-            TBlockStoreProtocol::ReadDeviceBlocksResponse,
-            proto,
-            TContIOVector(parts.data(), parts.size()));
 
         if (auto ep = Endpoint.lock()) {
             ep->SendResponse(requestDetails.Context, bytes);
@@ -597,6 +630,7 @@ private:
         void* context,
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
+        bool isZeroCopyDataSupported,
         TStringBuf requestData,
         TStringBuf out) const
     {
@@ -610,17 +644,23 @@ private:
             NProto::VOLUME_ACCESS_READ_WRITE);
 
         auto req = std::make_shared<NProto::TWriteBlocksRequest>();
+        TStringBuf dataBuffer;
 
         req->SetStartIndex(request.GetStartIndex());
-        req->MutableBlocks()->AddBuffers(
-            requestData.data(),
-            requestData.length());
+        if (isZeroCopyDataSupported) {
+            dataBuffer = requestData;
+        } else {
+            req->MutableBlocks()->AddBuffers(
+                requestData.data(),
+                requestData.length());
+        }
 
         const ui32 blockCount = requestData.length() / request.GetBlockSize();
 
         TWriteRequestContinuationData continuationData{
             {context,
              out,
+             dataBuffer,
              request.GetDeviceUUID(),
              request.GetHeaders().GetClientId(),
              request.GetVolumeRequestId(),
@@ -666,7 +706,8 @@ private:
             Now(),
             std::move(continuationData.ExecutionData.CallContext),
             std::move(continuationData.ExecutionData.Request),
-            continuationData.ExecutionData.BlockSize);
+            continuationData.ExecutionData.BlockSize,
+            continuationData.RequestDetails.DataBuffer);
 
         SubscribeForResponse(
             std::move(future),
@@ -708,6 +749,7 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::WriteDeviceBlocksResponse,
+            0, // flags
             proto,
             TContIOVector(nullptr, 0));
 
@@ -739,6 +781,7 @@ private:
         TZeroRequestContinuationData continuationData{
             {context,
              out,
+             {},   // no data buffer
              request.GetDeviceUUID(),
              request.GetHeaders().GetClientId(),
              request.GetVolumeRequestId(),
@@ -827,6 +870,7 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ZeroDeviceBlocksResponse,
+            0, // flags
             proto,
             TContIOVector(nullptr, 0));
 
@@ -860,13 +904,16 @@ private:
             Now(),
             std::move(callContext),
             std::move(req),
-            request.GetBlockSize());
+            request.GetBlockSize(),
+            {}   // no data buffer
+        );
 
         SubscribeForResponse(
             std::move(future),
             TRequestDetails{
                 context,
                 out,
+                {},   // no data buffer
                 request.GetDeviceUUID(),
                 request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleChecksumBlocksResponse);
@@ -903,6 +950,7 @@ private:
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
             requestDetails.Out,
             TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+            0, // flags
             proto,
             TContIOVector(nullptr, 0));
 
@@ -945,7 +993,8 @@ public:
             std::move(devices),
             std::move(taskQueue),
             std::move(deviceClient),
-            std::move(rdmaTargetConfig));
+            std::move(rdmaTargetConfig),
+            Server->IsZeroCopyEnabled());
     }
 
     void Start() override

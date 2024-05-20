@@ -670,7 +670,9 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                blockSize);
+                blockSize,
+                {}   // no data buffer
+            );
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
@@ -685,7 +687,9 @@ Y_UNIT_TEST_SUITE(TSpdkStorageTest)
                 Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                blockSize);
+                blockSize,
+                {}   // no data buffer
+            );
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));

@@ -45,6 +45,7 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(MaxInflightBytes);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);
     SET(AdaptiveWaitSleepDuration, TDuration::MicroSeconds);
+    SET(ZeroCopyEnabled);
 }
 
 #undef SET
@@ -68,6 +69,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(MaxInflightBytes, MaxInflightBytes);
                 ENTRY(AdaptiveWaitSleepDelay, AdaptiveWaitSleepDelay.ToString());
                 ENTRY(AdaptiveWaitSleepDuration, AdaptiveWaitSleepDuration.ToString());
+                ENTRY(ZeroCopyEnabled, ZeroCopyEnabled);
             }
         }
     }

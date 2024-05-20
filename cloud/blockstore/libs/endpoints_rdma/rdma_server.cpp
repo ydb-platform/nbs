@@ -208,6 +208,7 @@ NProto::TError TRdmaEndpoint::HandleReadBlocksRequest(
             size_t responseBytes = Serializer->Serialize(
                 out,
                 TBlockStoreProtocol::ReadBlocksResponse,
+                0, // flags
                 response,
                 TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
 
@@ -249,6 +250,7 @@ NProto::TError TRdmaEndpoint::HandleWriteBlocksRequest(
             size_t responseBytes = Serializer->Serialize(
                 out,
                 TBlockStoreProtocol::WriteBlocksResponse,
+                0, // flags
                 response,
                 TContIOVector(nullptr, 0));
 
@@ -280,6 +282,7 @@ NProto::TError TRdmaEndpoint::HandleZeroBlocksRequest(
         size_t responseBytes = Serializer->Serialize(
             out,
             TBlockStoreProtocol::ZeroBlocksResponse,
+            0, // flags
             response,
             TContIOVector(nullptr, 0));
 
