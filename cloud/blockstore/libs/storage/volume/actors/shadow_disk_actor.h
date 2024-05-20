@@ -109,8 +109,6 @@ private:
 
     bool ForcedReAcquireInProgress = false;
 
-    TDynBitMap VoidRangesMap;
-
 public:
     TShadowDiskActor(
         TStorageConfigPtr config,
@@ -136,9 +134,7 @@ public:
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
-    void OnMigrationFinished(
-        const NActors::TActorContext& ctx,
-        const TDynBitMap& voidRangesMap) override;
+    void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:
@@ -222,6 +218,10 @@ private:
 
     [[nodiscard]] bool HandleRWClientIdChanged(
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetChangedBlocks(
+        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

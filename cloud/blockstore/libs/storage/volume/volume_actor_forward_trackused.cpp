@@ -128,33 +128,32 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
     Y_UNUSED(partActorId);
     Y_UNUSED(volumeRequestId);
 
-    const auto* msg = ev->Get();
-
-    const auto highCheckpointType =
-        State->GetCheckpointStore().GetCheckpointType(
-            msg->Record.GetHighCheckpointId());
-    const auto lowCheckpointType =
-        State->GetCheckpointStore().GetCheckpointType(
-            msg->Record.GetLowCheckpointId());
-
-    if (highCheckpointType && *highCheckpointType == ECheckpointType::Light ||
-        lowCheckpointType && *lowCheckpointType == ECheckpointType::Light)
-    {
-        GetChangedBlocksForLightCheckpoints(ev, ctx);
-        return true;
-    }
-
-    // TODO: NBS-3228: remove checks for disk registry based disks after normal
-    // checkpoints for disk registry based disks are implemented completely.
     if (!State->IsDiskRegistryMediaKind()) {
         return false;
     }
 
-    if (msg->Record.GetHighCheckpointId() == "" &&
-        msg->Record.GetLowCheckpointId() == "")
+    const auto* msg = ev->Get();
+
+    const auto highCheckpoint = State->GetCheckpointStore().GetCheckpoint(
+        msg->Record.GetHighCheckpointId());
+    const auto lowCheckpoint = State->GetCheckpointStore().GetCheckpoint(
+        msg->Record.GetLowCheckpointId());
+
+    if ((msg->Record.GetHighCheckpointId() == "" &&
+         msg->Record.GetLowCheckpointId() == "") ||
+        highCheckpoint && highCheckpoint->Type == ECheckpointType::Light ||
+        lowCheckpoint && lowCheckpoint->Type == ECheckpointType::Light)
     {
         GetChangedBlocksForLightCheckpoints(ev, ctx);
         return true;
+    }
+
+    // Expect that the name of the checkpoint will be passed through the
+    // HighCheckpointId parameter.
+    if (highCheckpoint && highCheckpoint->IsShadowDiskBased()) {
+        // We need to forward the message to the shadow disk actor. Therefore,
+        // we simply return false.
+        return false;
     }
 
     ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBasedDisk(ev, ctx);

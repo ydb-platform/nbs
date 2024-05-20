@@ -104,7 +104,7 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         false // shouldProcessError
     );
 
-    MarkZeroRange(range, false);
+    MarkVoidRange(range, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

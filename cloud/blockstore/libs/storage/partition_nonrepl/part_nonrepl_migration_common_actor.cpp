@@ -40,7 +40,7 @@ TNonreplicatedPartitionMigrationCommonActor::
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {
-    const auto rangesCount = GetRangeIndex(blockCount);
+    const auto rangesCount = GetMigratingRangeIndex(blockCount);
     VoidRangesMap.Reserve(rangesCount);
     VoidRangesMap.Reset(0, rangesCount);
 }
@@ -151,6 +151,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
+        HFunc(
+            TEvService::TEvGetChangedBlocksRequest,
+            GetChangedBlocksCompanion.HandleGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(

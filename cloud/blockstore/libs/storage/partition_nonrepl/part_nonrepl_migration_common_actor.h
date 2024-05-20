@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -53,9 +54,7 @@ public:
         ui64 migrationIndex) = 0;
 
     // Notifies that the data migration was completed successfully.
-    virtual void OnMigrationFinished(
-        const NActors::TActorContext& ctx,
-        const TDynBitMap& voidRangesMap) = 0;
+    virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
 
     // Notifies that an non-retriable error occurred during the migration.
     // And the migration was stopped.
@@ -118,6 +117,7 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
+    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     // Statistics
     const NActors::TActorId StatActorId;
@@ -174,6 +174,9 @@ public:
         TBase::Die(ctx);
     }
 
+protected:
+    void GetChangedBlocks(TBlockRange64 range, TString* result) const;
+
 private:
     bool IsMigrationAllowed() const;
     bool IsIoDepthLimitReached() const;
@@ -195,8 +198,9 @@ private:
         TBlockRange64 migratedRange);
     void NotifyMigrationFinishedIfNeeded(const NActors::TActorContext& ctx);
 
-    [[nodiscard]] size_t GetRangeIndex(ui64 blockIndex) const;
-    void MarkZeroRange(TBlockRange64 range, bool zero);
+    // Finds which migration range the block index belongs to.
+    [[nodiscard]] size_t GetMigratingRangeIndex(ui64 blockIndex) const;
+    void MarkVoidRange(TBlockRange64 range, bool isVoid);
 
 private:
     STFUNC(StateWork);

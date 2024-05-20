@@ -86,11 +86,8 @@ TDuration TNonreplicatedPartitionMigrationActor::CalculateMigrationTimeout(
 }
 
 void TNonreplicatedPartitionMigrationActor::OnMigrationFinished(
-    const NActors::TActorContext& ctx,
-    const TDynBitMap& voidRangesMap)
+    const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(voidRangesMap);
-
     MigrationFinished = true;
     FinishMigration(ctx, false);
 }

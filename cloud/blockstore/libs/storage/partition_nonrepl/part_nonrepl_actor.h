@@ -12,11 +12,13 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/mon.h>
+
 #include <library/cpp/containers/ring_buffer/ring_buffer.h>
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 
@@ -57,6 +59,7 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         PartConfig->GetName()};
+    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     bool UpdateCountersScheduled = false;
     TPartitionDiskCountersPtr PartCounters;
