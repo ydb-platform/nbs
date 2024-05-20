@@ -132,6 +132,11 @@ TVolumeState::TVolumeState(
     if (!lightCheckpoints.empty()) {
         StartCheckpointLight();
     }
+
+    if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
+        RecordBeyondCache.emplace(History.back().Key);
+        History.pop_back();
+    }
 }
 
 const TRuntimeVolumeParams& TVolumeState::GetVolumeParams() const
@@ -816,6 +821,7 @@ THistoryLogItem TVolumeState::LogRemoveClient(
     *op.MutableError() = error;
     History.emplace_front(res.Key, op);
     if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
+        RecordBeyondCache = History.back().Key;
         History.pop_back();
     }
     return res;
@@ -834,8 +840,13 @@ THistoryLogKey TVolumeState::AllocateHistoryLogKey(TInstant timestamp)
 
 void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
 {
+    bool any = false;
     while (History.size() && (History.back().Key.Timestamp < oldest)) {
         History.pop_back();
+        any = true;
+    }
+    if (any) {
+        RecordBeyondCache.reset();
     }
 }
 

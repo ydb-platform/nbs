@@ -142,6 +142,7 @@ private:
 
     THistoryLogKey LastLogRecord;
     TDeque<THistoryLogItem> History;
+    std::optional<THistoryLogKey> RecordBeyondCache;
 
     TCheckpointStore CheckpointStore;
     std::unique_ptr<TCheckpointLight> CheckpointLight;
@@ -548,6 +549,16 @@ public:
         } else {
             return {};
         }
+    }
+
+    const auto& GetRecordBeyondCache() const
+    {
+        return RecordBeyondCache;
+    }
+
+    auto& AccessRecordBeyondCache()
+    {
+        return RecordBeyondCache;
     }
 
     void CleanupHistoryIfNeeded(TInstant oldest);

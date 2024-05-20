@@ -71,11 +71,19 @@ bool TVolumeActor::PrepareReadHistory(
     Y_UNUSED(tx);
 
     TVolumeDatabase db(tx.DB);
-    return db.ReadHistory(
+    auto ready = db.ReadHistory(
         args.History,
         args.Ts,
         args.OldestTs,
         args.RecordCount);
+
+    if (!ready) {
+        return false;
+    }
+
+    return db.HasHistoryRecordsBeyondTimestamp(
+        args.History.back().Key.Timestamp,
+        &args.HasMoreItems);
 }
 
 void TVolumeActor::ExecuteReadHistory(
@@ -100,6 +108,7 @@ void TVolumeActor::CompleteReadHistory(
         HandleHttpInfo_Default(
             ctx,
             history,
+            args.HasMoreItems,
             State ? State->GetMetaHistory() : TVector<TVolumeMetaHistoryItem>{},
             "History",
             {},

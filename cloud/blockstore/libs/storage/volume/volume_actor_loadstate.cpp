@@ -31,7 +31,7 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadVolumeParams(args.VolumeParams),
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
-        db.ReadHistory(
+        db.ReadHistoryAtLoadState(
             args.History,
             now,
             args.OldestLogEntry,

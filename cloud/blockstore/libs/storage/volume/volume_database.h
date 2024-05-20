@@ -68,6 +68,23 @@ public:
         TInstant oldestTimestamp,
         ui32 itemCount);
 
+    bool GetHistoryRecordBeyondTimestamp(
+        TInstant timestamp,
+        std::optional<THistoryLogKey>* record);
+    bool HasHistoryRecordsBeyondTimestamp(TInstant timestamp, bool* hasRecords);
+
+    bool ReadHistoryAtLoadState(
+        TDeque<THistoryLogItem>& records,
+        TInstant startTs,
+        TInstant endTs,
+        ui64 numRecords);
+
+    bool ReadHistory(
+        TVector<THistoryLogItem>& records,
+        THistoryLogKey startTs,
+        TInstant endTs,
+        ui64 numRecords);
+
     bool ReadHistory(
         TVector<THistoryLogItem>& records,
         TInstant startTs,
@@ -77,6 +94,12 @@ public:
     bool ReadHistory(
         TDeque<THistoryLogItem>& records,
         TInstant startTs,
+        TInstant endTs,
+        ui64 numRecords);
+
+    bool ReadHistory(
+        TDeque<THistoryLogItem>& records,
+        THistoryLogKey startTs,
         TInstant endTs,
         ui64 numRecords);
 

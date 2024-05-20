@@ -254,12 +254,9 @@ void BuildHistoryNextButton(
     THistoryLogKey key,
     ui64 tabletId)
 {
-    auto ts = key.Timestamp.MicroSeconds();
-    if (ts) {
-        --ts;
-    }
     out << "<form method='GET' name='NextHistoryPage' style='display:inline-block'>"
-        << "<input type='hidden' name='timestamp' value='" << ts << "'/>"
+        << "<input type='hidden' name='timestamp' value='" << key.Timestamp.MicroSeconds() << "'/>"
+        << "<input type='hidden' name='seqno' value='" << key.Seqno << "'/>"
         << "<input type='hidden' name='next' value='true'/>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input class='btn btn-primary display:inline-block' type='submit' value='Next>>'/>"
@@ -478,6 +475,7 @@ void TVolumeActor::HandleHttpInfo(
         HandleHttpInfo_Default(
             ctx,
             State->GetHistory(),
+            State->GetRecordBeyondCache().has_value(),
             State->GetMetaHistory(),
             activeTab,
             params,
@@ -495,15 +493,22 @@ void TVolumeActor::HandleHttpInfo(
 void TVolumeActor::HandleHttpInfo_Default(
     const NActors::TActorContext& ctx,
     const TDeque<THistoryLogItem>& history,
+    bool hasMoreHistoryItems,
     const TVector<TVolumeMetaHistoryItem>& metaHistory,
     const TStringBuf tabName,
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
     const auto& timestamp = params.Get("timestamp");
+    const auto& seqNumber = params.Get("seqno");
     ui64 ts = 0;
+    ui64 seqno = 0;
 
-    if (timestamp && TryFromString(timestamp, ts)) {
+    if (timestamp &&
+        TryFromString(timestamp, ts) &&
+        seqNumber &&
+        TryFromString(seqNumber, seqno))
+    {
         auto cancelRoutine =
         [] (const TActorContext& ctx, TRequestInfo& requestInfo)
         {
@@ -573,7 +578,7 @@ void TVolumeActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID(historyTab, historyTabName) {
-                    RenderHistory(history, metaHistory, out);
+                    RenderHistory(history, hasMoreHistoryItems, metaHistory, out);
                 }
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
@@ -602,6 +607,7 @@ void TVolumeActor::HandleHttpInfo_Default(
 
 void TVolumeActor::RenderHistory(
     const TDeque<THistoryLogItem>& history,
+    bool hasMoreHistoryItems,
     const TVector<TVolumeMetaHistoryItem>& metaHistory,
     IOutputStream& out) const
 {
@@ -658,7 +664,7 @@ void TVolumeActor::RenderHistory(
                     }
                 }
             }
-            if (history.size()) {
+            if (history.size() && hasMoreHistoryItems) {
                 TABLE_CLASS("table") {
                     TABLER() {
                         TABLED() {

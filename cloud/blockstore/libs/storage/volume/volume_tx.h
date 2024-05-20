@@ -321,6 +321,7 @@ struct TTxVolume
         const bool MonRequest;
 
         TVector<THistoryLogItem> History;
+        bool HasMoreItems = false;
 
         TReadHistory(
                 TRequestInfoPtr requestInfo,
