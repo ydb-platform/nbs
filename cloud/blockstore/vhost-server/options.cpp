@@ -132,6 +132,10 @@ void TOptions::Parse(int argc, char** argv)
             [this](const auto& timeout)
             { WaitAfterParentExit = TDuration::Seconds(timeout); });
 
+    opts.AddLongOption("rdma-zero-copy", "enable rdma zero copy")
+        .NoArgument()
+        .SetFlag(&RdmaClient.ZeroCopy);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {

@@ -185,6 +185,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     auto rdmaClientConfig = std::make_shared<NRdma::TClientConfig>();
     rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
     rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
+    rdmaClientConfig->ZeroCopyEnabled = options.RdmaClient.ZeroCopy;
 
     RdmaClient = NRdma::CreateClient(
         NRdma::NVerbs::CreateVerbs(),

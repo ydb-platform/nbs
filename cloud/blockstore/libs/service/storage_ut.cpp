@@ -52,7 +52,7 @@ public:
 
 Y_UNIT_TEST_SUITE(TStorageTest)
 {
-    void ShouldHandleNonNormalizedRequests(ui32 requestBlockSize)
+    void ShouldHandleNonNormalizedRequests(ui32 requestBlockSize, bool useDataBuffer)
     {
         auto storage = std::make_shared<TTestStorage>();
         storage->WriteBlocksLocalHandler = [] (auto ctx, auto request) {
@@ -81,17 +81,27 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         auto request = std::make_shared<NProto::TWriteBlocksRequest>();
         request->SetStartIndex(1000);
 
-        auto& iov = *request->MutableBlocks();
-        auto& buffers = *iov.MutableBuffers();
-        auto& buffer = *buffers.Add();
-        buffer.ReserveAndResize(1_MB);
-        memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
+        TString data;
+        TStringBuf dataBuffer;
+
+        if (!useDataBuffer) {
+            auto& iov = *request->MutableBlocks();
+            auto& buffers = *iov.MutableBuffers();
+            auto& buffer = *buffers.Add();
+            buffer.ReserveAndResize(1_MB);
+            memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
+        } else {
+            data = TString(1_MB, 'X');
+            dataBuffer = TStringBuf(data);
+        }
 
         auto future = adapter->WriteBlocks(
             Now(),
             MakeIntrusive<TCallContext>(),
             std::move(request),
-            requestBlockSize);
+            requestBlockSize,
+            dataBuffer
+        );
 
         auto response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
@@ -99,15 +109,17 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
     Y_UNIT_TEST(ShouldHandleNonNormalizedRequests4K)
     {
-        ShouldHandleNonNormalizedRequests(4_KB);
+        ShouldHandleNonNormalizedRequests(4_KB, false);
+        ShouldHandleNonNormalizedRequests(4_KB, true);
     }
 
     Y_UNIT_TEST(ShouldHandleNonNormalizedRequests8K)
     {
-        ShouldHandleNonNormalizedRequests(8_KB);
+        ShouldHandleNonNormalizedRequests(8_KB, false);
+        ShouldHandleNonNormalizedRequests(8_KB, true);
     }
 
-    void ShouldNormalizeRequests(ui32 requestBlockSize)
+    void ShouldNormalizeRequests(ui32 requestBlockSize, bool useDataBuffer)
     {
         auto storage = std::make_shared<TTestStorage>();
         storage->WriteBlocksLocalHandler = [] (auto ctx, auto request) {
@@ -138,17 +150,27 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         auto request = std::make_shared<NProto::TWriteBlocksRequest>();
         request->SetStartIndex(1000);
 
-        auto& iov = *request->MutableBlocks();
-        auto& buffers = *iov.MutableBuffers();
-        auto& buffer = *buffers.Add();
-        buffer.ReserveAndResize(1_MB);
-        memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
+        TString data;
+        TStringBuf dataBuffer;
+
+        if (!useDataBuffer) {
+            auto& iov = *request->MutableBlocks();
+            auto& buffers = *iov.MutableBuffers();
+            auto& buffer = *buffers.Add();
+            buffer.ReserveAndResize(1_MB);
+            memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
+        } else {
+            data = TString(1_MB, 'X');
+            dataBuffer = TStringBuf(data);
+        }
 
         auto future = adapter->WriteBlocks(
             Now(),
             MakeIntrusive<TCallContext>(),
             std::move(request),
-            requestBlockSize);
+            requestBlockSize,
+            dataBuffer
+        );
 
         auto response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(response));
@@ -156,12 +178,14 @@ Y_UNIT_TEST_SUITE(TStorageTest)
 
     Y_UNIT_TEST(ShouldNormalizeRequests4K)
     {
-        ShouldNormalizeRequests(4_KB);
+        ShouldNormalizeRequests(4_KB, false);
+        ShouldNormalizeRequests(4_KB, true);
     }
 
     Y_UNIT_TEST(ShouldNormalizeRequests8K)
     {
-        ShouldNormalizeRequests(8_KB);
+        ShouldNormalizeRequests(8_KB, false);
+        ShouldNormalizeRequests(8_KB, true);
     }
 
     template <typename F>
@@ -233,7 +257,9 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 now,
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                4096);
+                4096,
+                {}   // no data buffer
+            );
         };
         DoShouldHandleTimedOutRequests(runRequest);
     }
@@ -255,7 +281,9 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 now,
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                4096);
+                4096,
+                {}   // no data buffer
+            );
         };
         DoShouldHandleTimedOutRequests(runRequest);
     }
@@ -325,7 +353,9 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 now,
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                4096);
+                4096,
+                {}   // no data buffer
+            );
 
             // Assert request is not handled.
             bool responseReady = response.Wait(waitTimeout);
@@ -344,7 +374,9 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 now,
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                4096);
+                4096,
+                {}   // no data buffer
+            );
 
             // Assert request is not handled.
             bool responseReady = response.Wait(waitTimeout);
@@ -449,7 +481,9 @@ Y_UNIT_TEST_SUITE(TStorageTest)
                 Now(),
                 MakeIntrusive<TCallContext>(),
                 std::move(request),
-                blockSize);
+                blockSize,
+                {}   // no data buffer
+            );
             response.Wait();
             const auto& value = response.GetValue();
             UNIT_ASSERT_EQUAL(S_OK, value.GetError().GetCode());
@@ -477,6 +511,85 @@ Y_UNIT_TEST_SUITE(TStorageTest)
             DoShouldOptimizeVoidBlocks(true, blockSize, true, true);
         }
     }
+
+    void DoShouldReadCorrectData(bool normalize, bool useDataBuffer)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+
+        auto firstBlock = TString(4096, 'A');
+        auto secondBlock = TString(4096, 'B');
+
+        storage->ReadBlocksLocalHandler =
+            [&firstBlock, &secondBlock](
+                auto ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+
+            UNIT_ASSERT_EQUAL(request->GetBlocksCount(), 2);
+
+            TString blocks = firstBlock + secondBlock;
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            SgListCopy(
+                TBlockDataRef{blocks.data(), blocks.Size()},
+                guard.Get());
+
+            NProto::TReadBlocksLocalResponse r;
+            *r.MutableError() = MakeError(S_OK);
+            return MakeFuture<>(std::move(r));
+        };
+
+        auto adapter = std::make_shared<TStorageAdapter>(
+            storage,
+            4096,   // storageBlockSize
+            normalize,
+            32_MB); // maxRequestSize
+
+        {
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            request->SetBlocksCount(2);
+
+            TString data(4096 * 2 , '\0');
+            TStringBuf dataBuf;
+
+            if (useDataBuffer) {
+                dataBuf = TStringBuf(data);
+            }
+
+            auto response = adapter->ReadBlocks(
+                Now(),
+                MakeIntrusive<TCallContext>(),
+                std::move(request),
+                4096, // block size
+                dataBuf
+            );
+
+            response.Wait();
+            const auto& value = response.GetValue();
+            UNIT_ASSERT_EQUAL(S_OK, value.GetError().GetCode());
+
+            if (useDataBuffer) {
+                UNIT_ASSERT_EQUAL(dataBuf.SubString(0, 4096), firstBlock);
+                UNIT_ASSERT_EQUAL(dataBuf.SubString(4096, 4096), secondBlock);
+            } else {
+                const auto& blockBuffers = value.GetBlocks().GetBuffers();
+                UNIT_ASSERT_EQUAL(blockBuffers.size(), 2);
+                UNIT_ASSERT_EQUAL(firstBlock, blockBuffers[0]);
+                UNIT_ASSERT_EQUAL(secondBlock, blockBuffers[1]);
+            }
+
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadCorrectData)
+    {
+        DoShouldReadCorrectData(false, true);
+        DoShouldReadCorrectData(false, false);
+        DoShouldReadCorrectData(true, true);
+        DoShouldReadCorrectData(true, false);
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore

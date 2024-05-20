@@ -35,6 +35,11 @@ public:
         Y_UNUSED(out);
     }
 
+    bool IsZeroCopyEnabled() const override
+    {
+        return false;
+    }
+
     NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> Run(
         TString host,
         ui32 port,

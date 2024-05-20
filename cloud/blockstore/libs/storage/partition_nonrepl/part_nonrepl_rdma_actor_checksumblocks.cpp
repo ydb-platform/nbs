@@ -258,6 +258,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ChecksumDeviceBlocksRequest,
+            0, // flags
             deviceRequest,
             TContIOVector(nullptr, 0));
 

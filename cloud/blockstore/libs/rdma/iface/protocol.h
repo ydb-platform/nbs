@@ -38,6 +38,28 @@ enum {
     RDMA_PROTO_FAIL             = 4,
 };
 
+enum {
+    // encode data at the end of the buffer like this:
+    //
+    //              buffer
+    // |--------------+-------+--------+------|
+    // | TProtoHeader | Proto | unused | Data |
+    // |--------------+-------+--------+------|
+    //
+    // instead of:
+    //              buffer
+    // |--------------+-------+------+--------|
+    // | TProtoHeader | Proto | Data | unused |
+    // |--------------+-------+------+--------|
+    //
+    //
+    // If buffer allocated in chunks of 4k
+    // and data is allocated in multiple of block size (512, 4k)
+    // then data address is also aligned to (512, 4k)
+    RDMA_PROTO_FLAG_RDATA  = 1 << 0,
+};
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct Y_PACKED TMessageHeader
@@ -122,9 +144,9 @@ static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
 
 struct Y_PACKED TBufferDesc
 {
-    ui64 Address;
-    ui32 Length;
-    ui32 Key;
+    ui64 Address = 0;
+    ui32 Length = 0;
+    ui32 Key = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -166,7 +188,8 @@ static_assert(sizeof(TResponseMessage) == RDMA_RESPONSE_SIZE);
 
 struct Y_PACKED TProtoHeader
 {
-    ui32 MsgId : 16;
+    ui32 MsgId : 8;
+    ui32 Flags : 8;
     ui32 ProtoLen : 16;
     ui32 DataLen;
 };
