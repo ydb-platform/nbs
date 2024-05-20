@@ -109,6 +109,8 @@ private:
 
     bool ForcedReAcquireInProgress = false;
 
+    TDynBitMap VoidRangesMap;
+
 public:
     TShadowDiskActor(
         TStorageConfigPtr config,
@@ -134,7 +136,9 @@ public:
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
         ui64 migrationIndex) override;
-    void OnMigrationFinished(const NActors::TActorContext& ctx) override;
+    void OnMigrationFinished(
+        const NActors::TActorContext& ctx,
+        const TDynBitMap& voidRangesMap) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
 private:

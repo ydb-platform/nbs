@@ -53,7 +53,9 @@ public:
         ui64 migrationIndex) = 0;
 
     // Notifies that the data migration was completed successfully.
-    virtual void OnMigrationFinished(const NActors::TActorContext& ctx) = 0;
+    virtual void OnMigrationFinished(
+        const NActors::TActorContext& ctx,
+        const TDynBitMap& voidRangesMap) = 0;
 
     // Notifies that an non-retriable error occurred during the migration.
     // And the migration was stopped.
@@ -87,6 +89,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const ui64 BlockSize;
+    const ui64 BlockCount;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
     TString RWClientId;
@@ -100,6 +103,8 @@ private:
     TInstant LastRangeMigrationStartTs;
     TMap<ui64, TBlockRange64> MigrationsInProgress;
     TMap<ui64, TBlockRange64> DeferredMigrations;
+
+    TDynBitMap VoidRangesMap;
 
     // When we migrated a block whose range contains or exceeds a persistently
     // stored offset of the progress of the entire migration, we remember this
@@ -189,6 +194,9 @@ private:
         const NActors::TActorContext& ctx,
         TBlockRange64 migratedRange);
     void NotifyMigrationFinishedIfNeeded(const NActors::TActorContext& ctx);
+
+    [[nodiscard]] size_t GetRangeIndex(ui64 blockIndex) const;
+    void MarkZeroRange(TBlockRange64 range, bool zero);
 
 private:
     STFUNC(StateWork);

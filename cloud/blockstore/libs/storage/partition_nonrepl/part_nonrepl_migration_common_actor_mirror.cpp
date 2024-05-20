@@ -103,6 +103,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         WriteAndZeroRequestsInProgress.AddWriteRequest(range),
         false // shouldProcessError
     );
+
+    MarkZeroRange(range, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

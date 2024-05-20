@@ -703,11 +703,14 @@ void TShadowDiskActor::OnMigrationProgress(
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
 
-void TShadowDiskActor::OnMigrationFinished(const NActors::TActorContext& ctx)
+void TShadowDiskActor::OnMigrationFinished(
+    const NActors::TActorContext& ctx,
+    const TDynBitMap& voidRangesMap)
 {
     using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
 
     ProcessedBlockCount = SrcConfig->GetBlockCount();
+    VoidRangesMap = voidRangesMap;
 
     auto request =
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(

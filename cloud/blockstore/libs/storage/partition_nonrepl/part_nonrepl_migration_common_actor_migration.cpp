@@ -262,6 +262,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 
+    if (msg->AllZeroes) {
+        MarkZeroRange(msg->Range, true);
+    }
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
     ScheduleRangeMigration(ctx);
@@ -312,7 +315,35 @@ void TNonreplicatedPartitionMigrationCommonActor::
         return;
     }
 
-    MigrationOwner->OnMigrationFinished(ctx);
+    MigrationOwner->OnMigrationFinished(ctx, VoidRangesMap);
+}
+
+size_t TNonreplicatedPartitionMigrationCommonActor::GetRangeIndex(
+    ui64 blockIndex) const
+{
+    return blockIndex * BlockSize / ProcessingRangeSize;
+}
+
+void TNonreplicatedPartitionMigrationCommonActor::MarkZeroRange(
+    TBlockRange64 range,
+    bool zero)
+{
+    const auto begin = GetRangeIndex(range.Start);
+    const auto end = GetRangeIndex(range.End) + 1;
+    if (zero) {
+        const bool alignedWithTheSizeOfTheProcessingBlock =
+            (range.Start * BlockSize % ProcessingRangeSize) == 0;
+        const bool processedLastRange = range.End == BlockCount - 1;
+        const bool processedOneRange =
+            range.Size() * BlockSize == ProcessingRangeSize;
+        STORAGE_CHECK_PRECONDITION(
+            alignedWithTheSizeOfTheProcessingBlock &&
+            (processedLastRange || processedOneRange));
+
+        VoidRangesMap.Set(begin, end);
+    } else {
+        VoidRangesMap.Reset(begin, end);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
