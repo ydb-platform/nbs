@@ -2,8 +2,8 @@
 #include "cloud/blockstore/config/client.pb.h"
 
 #include <cloud/blockstore/libs/client/client.h>
-#include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
@@ -104,6 +104,29 @@ struct TStopRequestContext: TRequestContextBase
     }
 };
 
+struct TListRequestContext: TRequestContextBase
+{
+    NProto::TListProxyEndpointsRequest Request;
+    NProto::TListProxyEndpointsResponse Response;
+    grpc::ServerContext ServerContext;
+    grpc::ServerAsyncResponseWriter<NProto::TListProxyEndpointsResponse> Writer;
+
+    TListRequestContext(
+            NProto::TBlockStoreEndpointProxy::AsyncService& service,
+            grpc::ServerCompletionQueue& cq)
+        : Writer(&ServerContext)
+    {
+        service.RequestListProxyEndpoints(
+            &ServerContext,
+            &Request,
+            &Writer,
+            &cq,
+            &cq,
+            this
+        );
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TStorageProxy final: public IStorage
@@ -187,6 +210,8 @@ struct TServer: IEndpointProxyServer
 
         TString SockPath;
         TString NbdDevicePath;
+
+        NBD::TStorageOptions NbdOptions;
     };
     THashMap<TString, std::shared_ptr<TEndpoint>> Socket2Endpoint;
 
@@ -222,6 +247,9 @@ struct TServer: IEndpointProxyServer
 
     void PreStart()
     {
+        NbdClient = NBD::CreateClient(Logging, 4);
+        NbdClient->Start();
+
         NBD::TServerConfig serverConfig {
             .ThreadsCount = 4,
             .MaxInFlightBytesPerThread = 1_GB,
@@ -230,9 +258,6 @@ struct TServer: IEndpointProxyServer
 
         NbdServer = CreateServer(Logging, serverConfig);
         NbdServer->Start();
-
-        NbdClient = NBD::CreateClient(Logging, 4);
-        NbdClient->Start();
 
         grpc::ServerBuilder sb;
         const auto addr = Sprintf("0.0.0.0:%u", Config.Port);
@@ -269,6 +294,7 @@ struct TServer: IEndpointProxyServer
 
         new TStartRequestContext(Service, *CQ);
         new TStopRequestContext(Service, *CQ);
+        new TListRequestContext(Service, *CQ);
 
         void* tag;
         bool ok;
@@ -293,6 +319,14 @@ struct TServer: IEndpointProxyServer
             if (stopRequestContext) {
                 new TStopRequestContext(Service, *CQ);
                 ProcessRequest(stopRequestContext);
+                continue;
+            }
+
+            auto* listRequestContext =
+                dynamic_cast<TListRequestContext*>(requestContext);
+            if (listRequestContext) {
+                new TListRequestContext(Service, *CQ);
+                ProcessRequest(listRequestContext);
                 continue;
             }
         }
@@ -415,16 +449,15 @@ struct TServer: IEndpointProxyServer
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
-        NBD::TStorageOptions options;
-        options.BlockSize = request.GetBlockSize();
-        options.BlocksCount = request.GetBlocksCount();
+        ep.NbdOptions.BlockSize = request.GetBlockSize();
+        ep.NbdOptions.BlocksCount = request.GetBlocksCount();
 
         auto handlerFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             Logging,
             std::make_shared<TStorageProxy>(ep.Client),
             CreateServerStatsStub(),
-            options);
+            ep.NbdOptions);
 
         ep.SockPath = request.GetUnixSocketPath() + ".proxy";
         ep.ListenAddress = std::make_unique<TNetworkAddress>(
@@ -562,6 +595,40 @@ struct TServer: IEndpointProxyServer
         ResponseSent(request);
     }
 
+    void ProcessRequest(TListRequestContext* requestContext)
+    {
+        const auto& request = requestContext->Request;
+        auto& response = requestContext->Response;
+
+        RequestReceived(request);
+
+        for (const auto& x: Socket2Endpoint) {
+            auto& e = *response.AddEndpoints();
+            e.SetUnixSocketPath(x.first);
+            e.SetInternalUnixSocketPath(x.second->SockPath);
+            e.SetNbdDevice(x.second->NbdDevicePath);
+            e.SetBlockSize(x.second->NbdOptions.BlockSize);
+            e.SetBlocksCount(x.second->NbdOptions.BlocksCount);
+        }
+
+        SortBy(
+            response.MutableEndpoints()->begin(),
+            response.MutableEndpoints()->end(),
+            [] (const auto& e) {
+                return e.GetUnixSocketPath();
+            });
+
+        requestContext->Done = true;
+
+        requestContext->Writer.Finish(
+            response,
+            grpc::Status::OK,
+            requestContext
+        );
+
+        ResponseSent(request);
+    }
+
     void Start() override
     {
         PreStart();
@@ -587,6 +654,11 @@ struct TServer: IEndpointProxyServer
         if (NbdServer) {
             NbdServer->Stop();
             NbdServer.reset();
+        }
+
+        if (NbdClient) {
+            NbdClient->Stop();
+            NbdClient.reset();
         }
     }
 };
