@@ -651,7 +651,9 @@ private:
         const TEvVolumePrivate::TEvRemoveExpiredVolumeParams::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
+    void ProcessCheckpointRequests(const NActors::TActorContext& ctx);
+
+    bool ProcessCheckpointRequest(const NActors::TActorContext& ctx, ui64 requestId);
 
     void ReplyToCheckpointRequestWithoutSaving(
         const NActors::TActorContext& ctx,
@@ -659,7 +661,7 @@ private:
         const TCheckpointRequestInfo* requestInfo,
         const NProto::TError& error);
 
-    void ProcessCheckpointRequest(
+    void ExecuteCheckpointRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId);
 

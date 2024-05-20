@@ -1,5 +1,7 @@
 #include "volume_ut.h"
 
+#include <cloud/storage/core/libs/common/media.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NTestVolume;
@@ -851,7 +853,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             GetBlockContent(100));
 
         // Delete first checkpoint
-        volume.DeleteCheckpoint("c");
+        volume.DeleteCheckpoint("c1");
     }
 
     Y_UNIT_TEST(ShouldCreateCheckpointsForDiskRegistryBasedVolumes)
@@ -2936,7 +2938,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         // Checkpoint deletion should be idempotent.
         UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
+            S_ALREADY,
             volume.DeleteCheckpoint("c1")->GetStatus());
 
         {
@@ -2950,12 +2952,13 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b11111111, ui8(mask[0]));
         }
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.DeleteCheckpoint("c5")->GetStatus());
         // Checkpoint deletion should be idempotent.
-        for (auto checkpointId : TVector<TString>{"c5", "c5"}) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                volume.DeleteCheckpoint(checkpointId)->GetStatus());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            volume.DeleteCheckpoint("c5")->GetStatus());
 
         // Should return error because all light checkpoints were deleted.
         {
@@ -2994,7 +2997,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             UNIT_ASSERT_VALUES_EQUAL(0b00100000, ui8(mask[0]));
         }
 
-        for (auto checkpointId : TVector<TString>{"c6, c7"}) {
+        for (auto checkpointId : TVector<TString>{"c6", "c7"}) {
             UNIT_ASSERT_VALUES_EQUAL(
                 S_OK,
                 volume.DeleteCheckpoint(checkpointId)->GetStatus());
@@ -4655,6 +4658,96 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             runtime->SetEventFilter(oldFilter);
         }
         checkVolumeActorReceivesPoisonTakenMessage();
+    }
+
+    void DoTestShouldNotCreateCheckpointIfItWasDeleted(
+        NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            mediaKind,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        TVector<bool> isLightCases{true};  // light checkpoint
+        if (!IsDiskRegistryMediaKind(mediaKind)) {
+            isLightCases.push_back(false);  // normal checkpoint
+        }
+
+        std::vector<std::pair<NProto::ECheckpointType, TString>> testCases{
+            {NProto::ECheckpointType::NORMAL, "checkpoint_normal"},
+            {NProto::ECheckpointType::LIGHT, "checkpoint_light"},
+            {NProto::ECheckpointType::WITHOUT_DATA, "checkpoint_without_data"}};
+
+        for (auto [checkpointType, checkpointId] : testCases)
+        {
+            volume.CreateCheckpoint(checkpointId, checkpointType);
+            volume.DeleteCheckpoint(checkpointId);
+
+            volume.SendCreateCheckpointRequest(checkpointId, checkpointType);
+            UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfItWasDeletedForBlobStorageBased)
+    {
+        DoTestShouldNotCreateCheckpointIfItWasDeleted(
+            NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfItWasDeletedForDiskRegistryBased)
+    {
+        DoTestShouldNotCreateCheckpointIfItWasDeleted(
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateCheckpointIfCheckpointDataWasDeleted)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NProto::STORAGE_MEDIA_SSD,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        TString checkpointId = "checkpoint";
+
+        volume.CreateCheckpoint(checkpointId);
+        volume.DeleteCheckpointData(checkpointId);
+
+        volume.SendCreateCheckpointRequest(checkpointId);
+        UNIT_ASSERT_VALUES_UNEQUAL(S_OK, volume.RecvCreateCheckpointResponse()->GetStatus());
     }
 }
 
