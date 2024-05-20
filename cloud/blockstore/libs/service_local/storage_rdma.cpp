@@ -85,11 +85,12 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
     {
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
+            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -191,7 +192,7 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
     {
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
@@ -201,6 +202,7 @@ public:
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
+            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
             Proto,
             TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
     }
@@ -278,11 +280,14 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer)
+    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
     {
+        Y_UNUSED(isZeroCopyEnabled);
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ZeroDeviceBlocksRequest,
+            0, // flags
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -324,6 +329,7 @@ private:
 
     ITaskQueuePtr TaskQueue;
     NRdma::IClientEndpointPtr Endpoint;
+    bool IsZeroCopyEnabled = false;
 public:
     static std::shared_ptr<TRdmaStorage> Create(
         TString uuid,
@@ -377,9 +383,10 @@ public:
     void ReportIOError() override
     {}
 
-    void Init(NRdma::IClientEndpointPtr endpoint)
+    void Init(NRdma::IClientEndpointPtr endpoint, bool isZeroCopyEnabled)
     {
         Endpoint = std::move(endpoint);
+        IsZeroCopyEnabled = isZeroCopyEnabled;
     }
 
 private:
@@ -423,7 +430,7 @@ private:
             return MakeFuture<typename T::TResponse>(TErrorResponse(err));
         }
 
-        handler->PrepareRequest(req->RequestBuffer);
+        handler->PrepareRequest(req->RequestBuffer, IsZeroCopyEnabled);
         auto response = handler->GetResponse();
         req->Context = std::move(handler);
         Endpoint->SendRequest(std::move(req), std::move(callContext));
@@ -547,7 +554,7 @@ public:
 
                     auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
                         .Subscribe([=] (const auto& future) {
-                            storage->Init(future.GetValue());
+                            storage->Init(future.GetValue(), Client->IsZeroCopyEnabled());
                         });
 
                     endpoints.emplace_back(std::move(endpoint));

@@ -129,6 +129,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 responseBytes = serializer->Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                    0, // flags
                     response,
                     TContIOVector(
                         (IOutputStream::TPart*)sglist.begin(),
@@ -165,6 +166,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 responseBytes = serializer->Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::WriteDeviceBlocksResponse,
+                    0, // flags
                     response,
                     TContIOVector(nullptr, 0));
 
@@ -194,6 +196,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 responseBytes = serializer->Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ZeroDeviceBlocksResponse,
+                    0, // flags
                     response,
                     TContIOVector(nullptr, 0));
 
@@ -227,6 +230,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                 responseBytes = serializer->Serialize(
                     req->ResponseBuffer,
                     TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+                    0, // flags
                     response,
                     TContIOVector(nullptr, 0));
 

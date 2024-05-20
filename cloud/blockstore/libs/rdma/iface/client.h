@@ -29,6 +29,7 @@ struct TClientConfig
     TDuration MaxResponseDelay = TDuration::Seconds(60);
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
+    bool ZeroCopyEnabled = false;
 
     TClientConfig() = default;
 
@@ -113,6 +114,8 @@ struct IClient
         ui32 port) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
+
+    virtual bool IsZeroCopyEnabled() const = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

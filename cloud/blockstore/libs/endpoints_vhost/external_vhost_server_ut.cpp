@@ -246,16 +246,23 @@ struct TFixture
 
     THistory History;
 
-    IEndpointListenerPtr Listener = CreateExternalVhostEndpointListener(
-        Logging,
-        ServerStats,
-        Executor,
-        LocalAgentId,
-        S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
-        CreateFallbackListener(),
-        CreateExternalEndpointFactory());
+    IEndpointListenerPtr Listener =
+        CreateEndpointListener(false);   // no zero copy
 
 public:
+    IEndpointListenerPtr CreateEndpointListener(bool isZeroCopyEnabled)
+    {
+        return CreateExternalVhostEndpointListener(
+            Logging,
+            ServerStats,
+            Executor,
+            LocalAgentId,
+            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
+            isZeroCopyEnabled,
+            CreateFallbackListener(),
+            CreateExternalEndpointFactory());
+    }
+
     NProto::TStartEndpointRequest CreateDefaultStartEndpointRequest()
     {
         NProto::TStartEndpointRequest request;
@@ -354,6 +361,11 @@ TString GetArg(const TVector<TString>& args, TStringBuf name)
         return {};
     }
     return *std::next(it);
+}
+
+bool HasArg(const TVector<TString>& args, TStringBuf name)
+{
+    return Find(args, name) != args.end();
 }
 
 TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
@@ -534,6 +546,29 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL(1, History.size());
             auto* stop = std::get_if<TStopExternalEndpoint>(&History[0]);
             UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
+
+            History.clear();
+        }
+
+        {
+            auto zeroCopyListener = CreateEndpointListener(true);
+
+            auto request = CreateDefaultStartEndpointRequest();
+
+            auto error = zeroCopyListener->StartEndpoint(request, FastPathVolume, Session)
+                .GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, History.size());
+
+            auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+            UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
+
+            UNIT_ASSERT_C(
+                HasArg(create->CmdArgs, "--rdma-zero-copy"),
+                "missing --rdma-zero-copy arg");
+
+            History.clear();
         }
     }
 

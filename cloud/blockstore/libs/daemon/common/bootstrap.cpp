@@ -417,6 +417,7 @@ void TBootstrapBase::Init()
                     ? TString {}
                     : FQDNHostName(),
                 Configs->ServerConfig->GetSocketAccessMode(),
+                RdmaClient && RdmaClient->IsZeroCopyEnabled(),
                 std::move(vhostEndpointListener));
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");

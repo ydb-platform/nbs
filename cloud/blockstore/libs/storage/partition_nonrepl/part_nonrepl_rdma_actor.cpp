@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -291,6 +292,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
+            RdmaClient->IsZeroCopyEnabled() ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
             deviceRequest,
             TContIOVector(nullptr, 0));
 
