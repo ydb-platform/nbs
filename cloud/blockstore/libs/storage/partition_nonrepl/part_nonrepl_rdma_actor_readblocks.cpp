@@ -1,6 +1,8 @@
 #include "part_nonrepl_rdma_actor.h"
+
 #include "part_nonrepl_common.h"
 
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
@@ -23,24 +25,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TResponse = TEvService::TEvReadBlocksResponse;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TRdmaRequestContext: public NRdma::IClientHandler
+class TRdmaRequestReadBlocksContext: public NRdma::IClientHandler
 {
 private:
     TActorSystem* ActorSystem;
-    TNonreplicatedPartitionConfigPtr PartConfig;
-    TRequestInfoPtr RequestInfo;
+    const TNonreplicatedPartitionConfigPtr PartConfig;
+    const TRequestInfoPtr RequestInfo;
+    const NActors::TActorId ParentActorId;
+    const ui64 RequestId;
+
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
-    NActors::TActorId ParentActorId;
-    ui64 RequestId;
 
 public:
-    TRdmaRequestContext(
+    TRdmaRequestReadBlocksContext(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -51,9 +50,9 @@ public:
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
-        , ResponseCount(requestCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
+        , ResponseCount(requestCount)
     {
         TRequestScope timer(*RequestInfo);
 
@@ -88,9 +87,8 @@ public:
         while (offset < result.Data.Size()) {
             ui64 targetBlock = dr.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
-            ui64 bytes = Min(
-                result.Data.Size() - offset,
-                blocks[targetBlock].Size());
+            ui64 bytes =
+                Min(result.Data.Size() - offset, blocks[targetBlock].Size());
             Y_ABORT_UNLESS(bytes);
 
             memcpy(
@@ -115,12 +113,9 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(*dr, std::move(buffer));
+            HandleResult(*dr, buffer);
         } else {
-            HandleError(
-                PartConfig,
-                std::move(buffer),
-                *Response.MutableError());
+            HandleError(PartConfig, buffer, *Response.MutableError());
         }
 
         if (--ResponseCount != 0) {
@@ -132,9 +127,9 @@ public:
         ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
         auto error = Response.GetError();
 
-        ui32 blocks = Response.GetBlocks().BuffersSize();
+        ui32 blockCount = Response.GetBlocks().BuffersSize();
 
-        auto response = std::make_unique<TResponse>();
+        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
@@ -154,7 +149,7 @@ public:
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
 
-        counters.SetBlocksCount(blocks);
+        counters.SetBlocksCount(blockCount);
         auto completionEvent = std::make_unique<IEventHandle>(
             ParentActorId,
             TActorId(),
@@ -199,8 +194,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         ctx,
         *requestInfo,
         blockRange,
-        &deviceRequests
-    );
+        &deviceRequests);
 
     if (!ok) {
         return;
@@ -208,7 +202,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestContext = std::make_shared<TRdmaRequestContext>(
+    auto requestContext = std::make_shared<TRdmaRequestReadBlocksContext>(
         ctx.ActorSystem(),
         PartConfig,
         requestInfo,
@@ -228,7 +222,8 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<TResponse>(std::move(error)));
+            std::make_unique<TEvService::TEvReadBlocksResponse>(
+                std::move(error)));
 
         return;
     }

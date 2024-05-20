@@ -238,8 +238,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     NRdma::IClientHandlerPtr handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
-    auto* serializer = TBlockStoreProtocol::Serializer();
-
     struct TDeviceRequestInfo
     {
         NRdma::IClientEndpointPtr Endpoint;
@@ -268,7 +266,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto [req, err] = ep->AllocateRequest(
             handler,
             std::move(dr),
-            serializer->MessageByteSize(deviceRequest, 0),
+            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
             4_KB + sz);
 
         if (HasError(err)) {
@@ -280,7 +278,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             return err;
         }
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             deviceRequest,

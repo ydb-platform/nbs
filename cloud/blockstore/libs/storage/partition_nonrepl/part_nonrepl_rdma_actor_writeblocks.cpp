@@ -31,7 +31,7 @@ struct TDeviceRequestInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRdmaRequestResponseHandler: public NRdma::IClientHandler
+class TRdmaWriteBlocksResponseHandler: public NRdma::IClientHandler
 {
 private:
     TActorSystem* ActorSystem;
@@ -46,7 +46,7 @@ private:
     const ui64 RequestId;
 
 public:
-    TRdmaRequestResponseHandler(
+    TRdmaWriteBlocksResponseHandler(
             TActorSystem* actorSystem,
             TNonreplicatedPartitionConfigPtr partConfig,
             TRequestInfoPtr requestInfo,
@@ -104,9 +104,9 @@ public:
         auto buffer = req->ResponseBuffer.Head(responseBytes);
 
         if (status == NRdma::RDMA_PROTO_OK) {
-            HandleResult(std::move(buffer));
+            HandleResult(buffer);
         } else {
-            HandleError(PartConfig, std::move(buffer), Error);
+            HandleError(PartConfig, buffer, Error);
         }
 
         if (--ResponseCount != 0) {
@@ -169,7 +169,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
+    auto replyError = [this] (
         const TActorContext& ctx,
         TRequestInfo& requestInfo,
         ui32 errorCode,
@@ -220,17 +220,16 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestResponseHandler = std::make_shared<TRdmaRequestResponseHandler>(
-        ctx.ActorSystem(),
-        PartConfig,
-        requestInfo,
-        deviceRequests.size(),
-        false,
-        blockRange.Size(),
-        SelfId(),
-        requestId);
-
-    auto* serializer = TBlockStoreProtocol::Serializer();
+    auto requestResponseHandler =
+        std::make_shared<TRdmaWriteBlocksResponseHandler>(
+            ctx.ActorSystem(),
+            PartConfig,
+            requestInfo,
+            deviceRequests.size(),
+            false,
+            blockRange.Size(),
+            SelfId(),
+            requestId);
 
     TDeviceRequestBuilder builder(
         deviceRequests,
@@ -260,7 +259,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             nullptr,
-            serializer->MessageByteSize(
+            NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
             4_KB);
@@ -283,7 +282,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         TVector<IOutputStream::TPart> parts;
         builder.BuildNextRequest(&parts);
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             deviceRequest,
@@ -320,7 +319,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         "WriteBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
+    auto replyError = [this] (
         const TActorContext& ctx,
         TRequestInfo& requestInfo,
         ui32 errorCode,
@@ -368,17 +367,17 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     const auto requestId = RequestsInProgress.GenerateRequestId();
 
-    auto requestResponseHandler = std::make_shared<TRdmaRequestResponseHandler>(
-        ctx.ActorSystem(),
-        PartConfig,
-        requestInfo,
-        deviceRequests.size(),
-        true,
-        blockRange.Size(),
-        SelfId(),
-        requestId);
+    auto requestResponseHandler =
+        std::make_shared<TRdmaWriteBlocksResponseHandler>(
+            ctx.ActorSystem(),
+            PartConfig,
+            requestInfo,
+            deviceRequests.size(),
+            true,
+            blockRange.Size(),
+            SelfId(),
+            requestId);
 
-    auto* serializer = TBlockStoreProtocol::Serializer();
     const auto& sglist = guard.Get();
 
     TVector<TDeviceRequestInfo> requests;
@@ -405,7 +404,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
             nullptr,
-            serializer->MessageByteSize(
+            NRdma::TProtoMessageSerializer::MessageByteSize(
                 deviceRequest,
                 r.DeviceBlockRange.Size() * PartConfig->GetBlockSize()),
             4_KB);
@@ -425,7 +424,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             return;
         }
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
             deviceRequest,
