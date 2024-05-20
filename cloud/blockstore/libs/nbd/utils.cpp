@@ -155,9 +155,9 @@ TString FindFreeNbdDevice(const TString& sysBlockDir)
         if (!entry.is_directory()) {
             continue;
         }
-
         auto nbd = entry.path().filename().string();
-        if (nbd.rfind("nbd", 0)) {
+        // filename should starts with 'nbd/'
+        if (nbd.rfind("nbd", 0) != 0) {
             continue;
         }
 
