@@ -72,7 +72,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: 8,
 			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 			Persistent:       true,
 			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
 				false,
@@ -225,7 +225,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			true,
@@ -349,7 +349,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
 		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
+		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
 		Persistent:       true,
 		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
 			true,
