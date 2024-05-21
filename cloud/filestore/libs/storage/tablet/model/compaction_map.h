@@ -56,7 +56,7 @@ public:
     ~TCompactionMap();
 
     void Update(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
-    void Update(const TVector<TCompactionRangeInfo>& compactionMap);
+    void Update(const TVector<TCompactionRangeInfo>& ranges);
 
     TCompactionStats Get(ui32 rangeId) const;
 

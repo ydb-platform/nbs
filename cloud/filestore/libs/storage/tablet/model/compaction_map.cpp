@@ -265,11 +265,11 @@ struct TCompactionMap::TImpl
     }
 
     void UpdateGroup(
-        const TVector<TCompactionRangeInfo>& compactionMap,
+        const TVector<TCompactionRangeInfo>& ranges,
         ui32 startIndex,
         ui32 endIndex)
     {
-        ui32 groupIndex = GetGroupIndex(compactionMap[startIndex].RangeId);
+        ui32 groupIndex = GetGroupIndex(ranges[startIndex].RangeId);
 
         auto* group = FindGroup(groupIndex);
         if (!group) {
@@ -277,16 +277,16 @@ struct TCompactionMap::TImpl
         }
 
         for (ui32 i = startIndex; i < endIndex; ++i) {
-            TotalBlobsCount -= group->Get(compactionMap[i].RangeId).BlobsCount;
-            TotalDeletionsCount -= group->Get(compactionMap[i].RangeId).DeletionsCount;
+            TotalBlobsCount -= group->Get(ranges[i].RangeId).BlobsCount;
+            TotalDeletionsCount -= group->Get(ranges[i].RangeId).DeletionsCount;
 
-            TotalBlobsCount += compactionMap[i].Stats.BlobsCount;
-            TotalDeletionsCount += compactionMap[i].Stats.DeletionsCount;
+            TotalBlobsCount += ranges[i].Stats.BlobsCount;
+            TotalDeletionsCount += ranges[i].Stats.DeletionsCount;
 
             UsedRangesCount += group->Update(
-                compactionMap[i].RangeId,
-                compactionMap[i].Stats.BlobsCount,
-                compactionMap[i].Stats.DeletionsCount);
+                ranges[i].RangeId,
+                ranges[i].Stats.BlobsCount,
+                ranges[i].Stats.DeletionsCount);
         }
 
         if (group->Empty()) {
@@ -433,25 +433,25 @@ void TCompactionMap::Update(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount)
 }
 
 void TCompactionMap::Update(
-    const TVector<TCompactionRangeInfo>& compactionMap)
+    const TVector<TCompactionRangeInfo>& ranges)
 {
-    if (compactionMap.empty()) {
+    if (ranges.empty()) {
         return;
     }
-    ui32 currentGroupIndex = GetGroupIndex(compactionMap[0].RangeId);
+    ui32 currentGroupIndex = GetGroupIndex(ranges[0].RangeId);
     ui32 startIndex = 0;
     ui32 endIndex = 1;
-    for (ui32 i = 1; i < compactionMap.size(); ++i) {
-        if (currentGroupIndex == GetGroupIndex(compactionMap[i].RangeId)) {
+    for (ui32 i = 1; i < ranges.size(); ++i) {
+        if (currentGroupIndex == GetGroupIndex(ranges[i].RangeId)) {
             ++endIndex;
         } else {
-            Impl->UpdateGroup(compactionMap, startIndex, endIndex);
-            currentGroupIndex = GetGroupIndex(compactionMap[i].RangeId);
+            Impl->UpdateGroup(ranges, startIndex, endIndex);
+            currentGroupIndex = GetGroupIndex(ranges[i].RangeId);
             startIndex = i;
             endIndex = i + 1;
         }
     }
-    Impl->UpdateGroup(compactionMap, startIndex, endIndex);
+    Impl->UpdateGroup(ranges, startIndex, endIndex);
 }
 
 TCompactionStats TCompactionMap::Get(ui32 rangeId) const
