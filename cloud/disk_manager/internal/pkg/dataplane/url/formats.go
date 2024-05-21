@@ -10,7 +10,7 @@ import (
 
 //////////////////////////////////////////////////////////////////////////////
 
-var formatMagics = map[ImageFormat][]byte{
+var formatCookies = map[ImageFormat][]byte{
 	ImageFormatQCOW2: {0x51, 0x46, 0x49, 0xFB},                         // QFI\xfb
 	ImageFormatVMDK:  {0x4b, 0x44, 0x4d, 0x56},                         // KDMV
 	ImageFormatVHDX:  {0x76, 0x68, 0x64, 0x78, 0x66, 0x69, 0x6c, 0x65}, // vhdxfile
@@ -47,8 +47,21 @@ func guessImageFormat(
 	reader common.Reader,
 ) (ImageFormat, error) {
 
-	for imageFormat := range formatMagics {
-		ok, err := isImageFormat(ctx, reader, imageFormat)
+	for imageFormat := range formatCookies {
+		offset := 0
+		switch imageFormat {
+		case ImageFormatVHD:
+			offset = int(reader.Size() - vhd.FooterSize)
+		case ImageFormatVDI:
+			offset = 0x40
+		}
+
+		ok, err := hasAtOffset(
+			ctx,
+			reader,
+			formatCookies[imageFormat],
+			offset,
+		)
 		if err != nil {
 			return "", err
 		}
@@ -61,44 +74,22 @@ func guessImageFormat(
 	return ImageFormatRaw, nil
 }
 
-func isImageFormat(
-	ctx context.Context,
-	reader common.Reader,
-	imageFormat ImageFormat,
-) (bool, error) {
-
-	offset := 0
-	switch imageFormat {
-	case ImageFormatVHD:
-		offset = int(reader.Size() - vhd.FooterSize)
-	case ImageFormatVDI:
-		offset = 0x40
-	}
-
-	return hasAtOffset(
-		ctx,
-		reader,
-		formatMagics[imageFormat],
-		offset,
-	)
-}
-
 func hasAtOffset(
 	ctx context.Context,
 	reader common.Reader,
-	magic []byte,
+	cookie []byte,
 	offset int,
 ) (bool, error) {
 
-	if offset+len(magic) > int(reader.Size()) {
+	if offset+len(cookie) > int(reader.Size()) {
 		return false, nil
 	}
 
-	buffer := make([]byte, len(magic))
+	buffer := make([]byte, len(cookie))
 	_, err := reader.Read(ctx, uint64(offset), buffer)
 	if err != nil {
 		return false, err
 	}
 
-	return bytes.Equal(buffer, magic), nil
+	return bytes.Equal(buffer, cookie), nil
 }
