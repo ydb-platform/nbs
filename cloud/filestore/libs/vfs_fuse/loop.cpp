@@ -134,9 +134,12 @@ public:
             bool noInflight = false;
             with_lock (RequestsLock) {
                 noInflight = Requests.empty();
+                // double-checking needed because inflight count and completing
+                // count should be checked together atomically
+                noCompleting = CompletingCount.Val() == 0;
             }
 
-            if (noInflight) {
+            if (noInflight && noCompleting) {
                 StopPromise.TrySetValue();
             }
         }
