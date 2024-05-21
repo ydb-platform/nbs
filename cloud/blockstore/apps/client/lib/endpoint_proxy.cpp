@@ -183,6 +183,66 @@ private:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TListProxyEndpointsCommand final: public TCommand
+{
+private:
+    TString UnixSocketPath;
+
+public:
+    explicit TListProxyEndpointsCommand(IBlockStorePtr client)
+        : TCommand(std::move(client))
+    {
+    }
+
+protected:
+    bool DoExecute() override
+    {
+        if (!Proto && !CheckOpts()) {
+            return false;
+        }
+
+        auto& input = GetInputStream();
+        auto& output = GetOutputStream();
+
+        STORAGE_DEBUG("Reading ListProxyEndpoints request");
+        auto request = std::make_shared<NProto::TListProxyEndpointsRequest>();
+        if (Proto) {
+            ParseFromTextFormat(input, *request);
+        }
+
+        STORAGE_DEBUG("Sending ListProxyEndpoints request");
+        auto result = WaitFor(EndpointProxyClient->ListProxyEndpoints(
+            std::move(request)));
+
+        STORAGE_DEBUG("Received ListProxyEndpoints response");
+        if (Proto) {
+            SerializeToTextFormat(result, output);
+            return true;
+        }
+
+        if (HasError(result)) {
+            output << FormatError(result.GetError()) << Endl;
+            return false;
+        }
+
+        output << result.DebugString() << Endl;
+        return true;
+    }
+
+private:
+    bool CheckOpts() const
+    {
+        if (!EndpointProxyClient) {
+            STORAGE_ERROR("EndpointProxyClient not initialized");
+            return false;
+        }
+
+        return true;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -195,6 +255,11 @@ TCommandPtr NewStartProxyEndpointCommand(IBlockStorePtr client)
 TCommandPtr NewStopProxyEndpointCommand(IBlockStorePtr client)
 {
     return MakeIntrusive<TStopProxyEndpointCommand>(std::move(client));
+}
+
+TCommandPtr NewListProxyEndpointsCommand(IBlockStorePtr client)
+{
+    return MakeIntrusive<TListProxyEndpointsCommand>(std::move(client));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

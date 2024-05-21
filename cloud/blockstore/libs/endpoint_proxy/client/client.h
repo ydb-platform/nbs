@@ -24,6 +24,9 @@ struct IEndpointProxyClient: IStartable
 
     virtual TFuture<NProto::TStopProxyEndpointResponse> StopProxyEndpoint(
         std::shared_ptr<NProto::TStopProxyEndpointRequest> request) = 0;
+
+    virtual TFuture<NProto::TListProxyEndpointsResponse> ListProxyEndpoints(
+        std::shared_ptr<NProto::TListProxyEndpointsRequest> request) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

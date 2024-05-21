@@ -130,6 +130,33 @@ struct TStopRequestContext: TRequestContextImpl<
     }
 };
 
+struct TListRequestContext: TRequestContextImpl<
+    NProto::TListProxyEndpointsRequest,
+    NProto::TListProxyEndpointsResponse>
+{
+    using TReader = grpc::ClientAsyncResponseReader<TResponse>;
+
+    std::unique_ptr<TReader> Reader;
+
+    TListRequestContext(
+            grpc::CompletionQueue& cq,
+            const TString& host,
+            ui16 port,
+            TRequest request,
+            TInstant now,
+            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+        : TRequestContextImpl(
+            cq,
+            host,
+            port,
+            std::move(request),
+            now,
+            channelCredentials)
+    {
+        Reader = Service.AsyncListProxyEndpoints(&ClientContext, Request, &CQ);
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TEndpointProxyClient
@@ -214,6 +241,16 @@ struct TEndpointProxyClient
             Timer->Now());
     }
 
+    TFuture<NProto::TListProxyEndpointsResponse> ListProxyEndpoints(
+        std::shared_ptr<NProto::TListProxyEndpointsRequest> request) override
+    {
+        STORAGE_INFO("ListRequest: " << request->DebugString().Quote());
+
+        return RequestImpl<TListRequestContext>(
+            std::move(*request),
+            Timer->Now());
+    }
+
     void Loop()
     {
         STORAGE_INFO("Starting loop");
@@ -235,6 +272,13 @@ struct TEndpointProxyClient
                 dynamic_cast<TStopRequestContext*>(&*requestContext);
             if (stopRequestContext) {
                 FinishRequest(*stopRequestContext, ok);
+                continue;
+            }
+
+            auto* listRequestContext =
+                dynamic_cast<TListRequestContext*>(&*requestContext);
+            if (listRequestContext) {
+                FinishRequest(*listRequestContext, ok);
                 continue;
             }
         }

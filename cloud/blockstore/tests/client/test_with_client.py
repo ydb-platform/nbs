@@ -930,6 +930,10 @@ def test_endpoint_proxy():
         "--block-size", "4096",
         "--blocks-count", "1024")
 
+    run("listproxyendpoints",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port))
+
     run("stopproxyendpoint",
         "--endpoint-proxy-host", "localhost",
         "--endpoint-proxy-port", str(port),

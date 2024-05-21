@@ -1,4 +1,11 @@
 InternalUnixSocketPath: "TODO-nbs-socket.proxy"
 
+Endpoints {
+  UnixSocketPath: "TODO-nbs-socket"
+  InternalUnixSocketPath: "TODO-nbs-socket.proxy"
+  BlockSize: 4096
+  BlocksCount: 1024
+}
+
 InternalUnixSocketPath: "TODO-nbs-socket.proxy"
 

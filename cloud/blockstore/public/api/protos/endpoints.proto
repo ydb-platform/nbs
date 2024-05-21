@@ -277,3 +277,34 @@ message TStopProxyEndpointResponse
     // The device associated with this endpoint.
     string NbdDevice = 3;
 }
+
+message TListProxyEndpointsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TListProxyEndpointsResponse
+{
+    message TProxyEndpoint
+    {
+        // BlockStore unix-socket path.
+        string UnixSocketPath = 1;
+
+        // Selected internal socket used for communication with the kernel.
+        string InternalUnixSocketPath = 2;
+
+        // NBD device to proxy requests from.
+        string NbdDevice = 3;
+
+        // NBD StorageOptions.
+        uint32 BlockSize = 4;
+        uint64 BlocksCount = 5;
+    }
+
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of proxy endpoints.
+    repeated TProxyEndpoint Endpoints = 2;
+}
