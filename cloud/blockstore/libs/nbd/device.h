@@ -24,16 +24,21 @@ struct IDeviceConnectionFactory
 {
     virtual ~IDeviceConnectionFactory() = default;
 
+    // blockCount and blockSize can be simply passed to the kernel, can be
+    // dropped or can be used to validate export info upon connection
+    // establishment
     virtual IDeviceConnectionPtr Create(
-        TNetworkAddress connectAddress,
-        TString deviceName) = 0;
+        const TNetworkAddress& connectAddress,
+        TString deviceName,
+        ui64 blockCount,
+        ui32 blockSize) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IDeviceConnectionPtr CreateDeviceConnection(
     ILoggingServicePtr logging,
-    TNetworkAddress connectAddress,
+    const TNetworkAddress& connectAddress,
     TString deviceName,
     TDuration timeout);
 

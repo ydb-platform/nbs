@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     client.cpp
+    device_factory.cpp
 )
 
 PEERDIR(
@@ -16,3 +17,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

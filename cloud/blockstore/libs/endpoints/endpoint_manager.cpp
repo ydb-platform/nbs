@@ -602,7 +602,8 @@ private:
 
     TResultOrError<NBD::IDeviceConnectionPtr> StartNbdDevice(
         std::shared_ptr<NProto::TStartEndpointRequest> request,
-        bool restoring);
+        bool restoring,
+        const NProto::TVolume& volume);
 
     void ReleaseNbdDevice(const TString& device, bool restoring);
 
@@ -791,7 +792,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
         return TErrorResponse(error);
     }
 
-    auto deviceOrError = StartNbdDevice(request, restoring);
+    auto deviceOrError = StartNbdDevice(request, restoring, sessionInfo.Volume);
     error = deviceOrError.GetError();
     if (HasError(error)) {
         CloseAllEndpointSockets(*request);
@@ -1356,7 +1357,8 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
 
 TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
     std::shared_ptr<NProto::TStartEndpointRequest> request,
-    bool restoring)
+    bool restoring,
+    const NProto::TVolume& volume)
 {
     if (request->GetIpcType() != NProto::IPC_NBD) {
         return NBD::CreateDeviceConnectionStub();
@@ -1398,7 +1400,11 @@ TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
         DetachFileDevice(request->GetNbdDeviceFile());
 
         TNetworkAddress address(TUnixSocketPath(request->GetUnixSocketPath()));
-        device = NbdDeviceFactory->Create(address, request->GetNbdDeviceFile());
+        device = NbdDeviceFactory->Create(
+            address,
+            request->GetNbdDeviceFile(),
+            volume.GetBlocksCount(),
+            volume.GetBlockSize());
         device->Start();
     } catch (...) {
         ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
