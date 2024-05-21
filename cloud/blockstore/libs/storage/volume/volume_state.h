@@ -50,14 +50,23 @@ struct THistoryLogKey
 
     THistoryLogKey() = default;
 
-    THistoryLogKey(TInstant timestamp, ui64 seqno = 0)
+    THistoryLogKey(TInstant timestamp, ui64 seqno)
         : Timestamp(timestamp)
         , Seqno(seqno)
+    {}
+
+    explicit THistoryLogKey(TInstant timestamp)
+        : THistoryLogKey(timestamp, Max<ui64>())
     {}
 
     bool operator == (const THistoryLogKey& rhs) const;
     bool operator != (const THistoryLogKey& rhs) const;
     bool operator < (THistoryLogKey rhs) const;
+
+    ui64 GetYdbTimestamp() const;
+    ui64 GetYdbSeqno() const;
+
+    static THistoryLogKey FromYdb(ui64 ts, ui64 seqno);
 };
 
 struct THistoryLogItem

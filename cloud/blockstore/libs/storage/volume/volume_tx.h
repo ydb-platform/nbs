@@ -315,7 +315,7 @@ struct TTxVolume
     struct TReadHistory
     {
         const TRequestInfoPtr RequestInfo;
-        const TInstant Ts;
+        const THistoryLogKey Ts;
         const TInstant OldestTs;
         const size_t RecordCount;
         const bool MonRequest;
@@ -325,7 +325,7 @@ struct TTxVolume
 
         TReadHistory(
                 TRequestInfoPtr requestInfo,
-                TInstant ts,
+                THistoryLogKey ts,
                 TInstant oldestTs,
                 size_t recordCount,
                 bool monRequest)

@@ -51,7 +51,7 @@ TString TPartitionInfo::GetStatus() const
 
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
 {
-    return (Timestamp == rhs.Timestamp) && (Seqno == rhs.Seqno);
+    return std::tie(Timestamp, Seqno) == std::tie(rhs.Timestamp, rhs.Seqno);
 }
 
 bool THistoryLogKey::operator != (const THistoryLogKey& rhs) const
@@ -61,13 +61,24 @@ bool THistoryLogKey::operator != (const THistoryLogKey& rhs) const
 
 bool THistoryLogKey::operator < (THistoryLogKey rhs) const
 {
-    if (Timestamp < rhs.Timestamp) {
-        return true;
-    }
-    if (Timestamp == rhs.Timestamp) {
-        return Seqno < rhs.Seqno;
-    }
-    return false;
+    return std::tie(Timestamp, Seqno) < std::tie(rhs.Timestamp, rhs.Seqno);
+}
+
+ui64 THistoryLogKey::GetYdbTimestamp() const
+{
+    return Max<ui64>() - Timestamp.MicroSeconds();
+}
+
+ui64 THistoryLogKey::GetYdbSeqno() const
+{
+    return Max<ui64>() - Seqno;
+}
+
+THistoryLogKey THistoryLogKey::FromYdb(ui64 ts, ui64 seqno)
+{
+    return THistoryLogKey{
+        TInstant::MicroSeconds(Max<ui64>() - ts),
+        Max<ui64>() - seqno};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -798,6 +809,7 @@ THistoryLogItem TVolumeState::LogAddClient(
 
     History.emplace_front(res.Key, op);
     if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
+        RecordBeyondCache = History.back().Key;
         History.pop_back();
     }
     return res;

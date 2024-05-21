@@ -66,7 +66,7 @@ void TVolumeActor::CompleteCleanupHistory(
     }
 
     if (State->GetRecordBeyondCache().has_value() &&
-        !(args.OutdatedHistory.front() < *State->AccessRecordBeyondCache()))
+        !(args.OutdatedHistory.front() < State->GetRecordBeyondCache()))
     {
         State->AccessRecordBeyondCache().reset();
     }

@@ -1751,6 +1751,42 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(4, volumeState.GetHistory().size());
     }
+
+    Y_UNIT_TEST(ShouldTrackRecordBeyondCache)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeHistoryDuration(TDuration::Seconds(1).MilliSeconds());
+        config.SetVolumeHistoryCacheSize(3);
+        auto volumeState = CreateVolumeState(
+            config,
+            {
+                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 0), {}},
+            }
+        );
+
+        UNIT_ASSERT_C(
+            !volumeState.GetRecordBeyondCache().has_value(),
+            "RecordBeyondCache should not be set");
+
+        volumeState.LogAddClient(TInstant::FromValue(11), {}, {}, {}, {});
+
+        UNIT_ASSERT_C(
+            volumeState.GetRecordBeyondCache().has_value(),
+            "RecordBeyondCache should be set");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            *volumeState.GetRecordBeyondCache(),
+            THistoryLogKey(TInstant::FromValue(8), 0));
+
+        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetHistory().size());
+
+        UNIT_ASSERT_C(
+            !volumeState.GetRecordBeyondCache().has_value(),
+            "RecordBeyondCache should not be set");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

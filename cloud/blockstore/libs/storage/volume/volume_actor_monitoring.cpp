@@ -254,6 +254,12 @@ void BuildHistoryNextButton(
     THistoryLogKey key,
     ui64 tabletId)
 {
+    if (key.Seqno) {
+        --key.Seqno;
+    } else {
+        key.Timestamp -= TDuration::MicroSeconds(1);
+        key.Seqno = Max<ui64>();
+    }
     out << "<form method='GET' name='NextHistoryPage' style='display:inline-block'>"
         << "<input type='hidden' name='timestamp' value='" << key.Timestamp.MicroSeconds() << "'/>"
         << "<input type='hidden' name='seqno' value='" << key.Seqno << "'/>"
@@ -502,12 +508,12 @@ void TVolumeActor::HandleHttpInfo_Default(
     const auto& timestamp = params.Get("timestamp");
     const auto& seqNumber = params.Get("seqno");
     ui64 ts = 0;
-    ui64 seqno = 0;
+    ui64 seqNo = 0;
 
     if (timestamp &&
         TryFromString(timestamp, ts) &&
         seqNumber &&
-        TryFromString(seqNumber, seqno))
+        TryFromString(seqNumber, seqNo))
     {
         auto cancelRoutine =
         [] (const TActorContext& ctx, TRequestInfo& requestInfo)
@@ -527,7 +533,7 @@ void TVolumeActor::HandleHttpInfo_Default(
         ProcessReadHistory(
             ctx,
             std::move(requestInfo),
-            TInstant::MicroSeconds(ts),
+            {TInstant::MicroSeconds(ts), seqNo},
             ctx.Now() - Config->GetVolumeHistoryDuration(),
             Config->GetVolumeHistoryCacheSize(),
             true);
