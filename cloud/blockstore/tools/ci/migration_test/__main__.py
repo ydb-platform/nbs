@@ -21,7 +21,7 @@ def main():
                 make_ssh_channel=common.make_ssh_channel,
             ), args, logger
         ).run()
-        logger.info(f'Migration test successfully finished')
+        logger.info('Migration test successfully finished')
     except Error as e:
         logger.fatal(f'Failed to run migration test: {e}')
         sys.exit(1)
