@@ -27,6 +27,8 @@ const (
 	ImageFormatVHDX  ImageFormat = "vhdx"
 	ImageFormatVHD   ImageFormat = "vhd" // Also known as vpc.
 	ImageFormatVDI   ImageFormat = "vdi"
+
+	ImageFormatVDIHeaderOffset = 0x40
 )
 
 //////////////////////////////////////////////////////////////////////////////
@@ -51,9 +53,10 @@ func guessImageFormat(
 		offset := 0
 		switch imageFormat {
 		case ImageFormatVHD:
+			// We define the vhd format using the footer.
 			offset = int(reader.Size() - vhd.FooterSize)
 		case ImageFormatVDI:
-			offset = 0x40
+			offset = ImageFormatVDIHeaderOffset
 		}
 
 		ok, err := hasAtOffset(
