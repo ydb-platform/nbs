@@ -69,6 +69,7 @@ struct TProxyConnection: NBD::IDeviceConnection
             request->SetBlocksCount(BlockCount);
             request->SetBlockSize(BlockSize);
         }
+        // XXX bad signature - can't return a future, sync wait is bad as well
         Client->StartProxyEndpoint(std::move(request));
     }
 
@@ -76,6 +77,7 @@ struct TProxyConnection: NBD::IDeviceConnection
     {
         auto request = std::make_shared<NProto::TStopProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
+        // XXX bad signature - can't return a future, sync wait is bad as well
         Client->StopProxyEndpoint(std::move(request));
     }
 };
