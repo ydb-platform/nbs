@@ -53,9 +53,9 @@ func guessImageFormat(
 		offset := 0
 		switch imageFormat {
 		case ImageFormatVHD:
-			// Recognize the VHD format by the footer, not by the header, since
-			// the RAW VHD format does not have the header and contains the
-			// footer only at the end of the image.
+			// Recognize VHD file format by the footer, not the header, because
+			// RAW VHD does not have a header and only has a footer at the end
+			// of the file.
 			offset = int(reader.Size() - vhd.FooterSize)
 		case ImageFormatVDI:
 			offset = ImageFormatVDIHeaderOffset
