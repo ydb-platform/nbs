@@ -93,6 +93,7 @@ struct THandlerFactory
         { "zeroblocks", NewZeroBlocksCommand },
         { "startproxyendpoint", NewStartProxyEndpointCommand },
         { "stopproxyendpoint", NewStopProxyEndpointCommand },
+        { "listproxyendpoints", NewListProxyEndpointsCommand },
     };
 };
 

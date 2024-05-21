@@ -26,4 +26,11 @@ service TBlockStoreEndpointProxy
             body: "*"
         };
     }
+
+    rpc ListProxyEndpoints(TListProxyEndpointsRequest) returns (TListProxyEndpointsResponse) {
+        option (google.api.http) = {
+            post: "/list_proxy_endpoints"
+            body: "*"
+        };
+    }
 }
