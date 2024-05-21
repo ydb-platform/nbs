@@ -88,10 +88,11 @@ private:
     enum fuse_cancelation_code CancelCode;
     NAtomic::TBool ShouldStop = false;
     TAtomicCounter CompletingCount = {0};
-    TManualEvent Stopped;
 
     TMutex RequestsLock;
     THashMap<fuse_req_t, TCallContextPtr> Requests;
+
+    TPromise<void> StopPromise = NewPromise<void>();
 
 public:
     TCompletionQueue(
@@ -123,34 +124,45 @@ public:
             if (!Requests.erase(req)) {
                 return 0;
             }
-            CompletingCount.Add(1);
+            CompletingCount.Inc();
         }
 
         int ret = cb(req);
-        if (CompletingCount.Dec() == 0 && ShouldStop) {
-            Stopped.Signal();
+        bool noCompleting = CompletingCount.Dec() == 0;
+
+        if (ShouldStop && noCompleting) {
+            bool noInflight = false;
+            with_lock (RequestsLock) {
+                noInflight = Requests.empty();
+                // double-checking needed because inflight count and completing
+                // count should be checked together atomically
+                noCompleting = CompletingCount.Val() == 0;
+            }
+
+            if (noInflight && noCompleting) {
+                StopPromise.TrySetValue();
+            }
         }
+
         return ret;
     }
 
-    void Stop(enum fuse_cancelation_code code) {
+    TFuture<void> StopAsync(enum fuse_cancelation_code code)
+    {
         CancelCode = code;
         ShouldStop = true;
 
-        TGuard g{RequestsLock};
-        for (auto&& [req, context] : Requests) {
-            CancelRequest(
-                Log,
-                *RequestStats,
-                *context,
-                req,
-                CancelCode);
-        }
-        Requests.clear();
+        bool canStop = false;
 
-        while (CompletingCount.Val() != 0) {
-            Stopped.Wait();
+        with_lock (RequestsLock) {
+            canStop = Requests.empty() && CompletingCount.Val() == 0;
         }
+
+        if (canStop) {
+            StopPromise.TrySetValue();
+        }
+
+        return StopPromise;
     }
 
     void Accept(IIncompleteRequestCollector& collector) override
@@ -535,32 +547,53 @@ public:
             return MakeFuture();
         }
 
-        CompletionQueue->Stop(FUSE_ERROR);
-        SessionThread->Unmount();
-        SessionThread = nullptr;
+        auto w = weak_from_this();
+        auto s = NewPromise<void>();
+        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
+            [w = std::move(w), s] (const auto& f) mutable {
+                f.GetValue();
 
-        auto callContext = MakeIntrusive<TCallContext>(
-            Config->GetFileSystemId(),
-            CreateRequestId());
-        callContext->RequestType = EFileStoreRequest::DestroySession;
-        RequestStats->RequestStarted(Log, *callContext);
-
-        auto weakPtr = weak_from_this();
-        return Session->DestroySession()
-            .Apply([=] (const auto& future) {
-                if (auto p = weakPtr.lock()) {
-                    const auto& response = future.GetValue();
-                    p->RequestStats->RequestCompleted(
-                        p->Log,
-                        *callContext,
-                        response.GetError());
-
-                    p->StatsRegistry->Unregister(
-                        p->Config->GetFileSystemId(),
-                        p->Config->GetClientId());
+                auto p = w.lock();
+                if (!p) {
+                    return;
                 }
-                return;
+
+                p->SessionThread->Unmount();
+                p->SessionThread = nullptr;
+
+                auto callContext = MakeIntrusive<TCallContext>(
+                    p->Config->GetFileSystemId(),
+                    CreateRequestId());
+                callContext->RequestType = EFileStoreRequest::DestroySession;
+                p->RequestStats->RequestStarted(p->Log, *callContext);
+
+                p->Session->DestroySession()
+                    .Subscribe([
+                        w = std::move(w),
+                        s = std::move(s),
+                        callContext = std::move(callContext)
+                    ] (const auto& f) mutable {
+                        auto p = w.lock();
+                        if (!p) {
+                            s.SetValue();
+                            return;
+                        }
+
+                        const auto& response = f.GetValue();
+                        p->RequestStats->RequestCompleted(
+                            p->Log,
+                            *callContext,
+                            response.GetError());
+
+                        p->StatsRegistry->Unregister(
+                            p->Config->GetFileSystemId(),
+                            p->Config->GetClientId());
+
+                        s.SetValue();
+                    });
             });
+
+        return s;
     }
 
     TFuture<void> SuspendAsync() override
@@ -569,17 +602,31 @@ public:
             return MakeFuture();
         }
 
-        CompletionQueue->Stop(FUSE_SUSPEND);
-        // just stop loop, leave connection
-        SessionThread->StopThread();
-        SessionThread->Suspend();
-        SessionThread = nullptr;
+        auto w = weak_from_this();
+        auto s = NewPromise<void>();
+        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
+            [w = std::move(w), s] (const auto& f) mutable {
+                f.GetValue();
 
-        StatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+                auto p = w.lock();
+                if (!p) {
+                    s.SetValue();
+                    return;
+                }
 
-        return MakeFuture();
+                // just stop loop, leave connection
+                p->SessionThread->StopThread();
+                p->SessionThread->Suspend();
+                p->SessionThread = nullptr;
+
+                p->StatsRegistry->Unregister(
+                    p->Config->GetFileSystemId(),
+                    p->Config->GetClientId());
+
+                s.SetValue();
+            });
+
+        return s;
     }
 
     TFuture<NProto::TError> AlterAsync(
