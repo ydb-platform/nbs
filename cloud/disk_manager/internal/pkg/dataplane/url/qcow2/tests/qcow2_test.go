@@ -10,7 +10,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	common_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/qcow2"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,17 +40,9 @@ func getQCOW2Reader(
 	reader common.Reader,
 ) common.ImageMapReader {
 
-	qcow2Reader := qcow2.NewImageMapReader(reader)
-
-	for {
-		err := qcow2Reader.ReadHeader(ctx)
-		if !errors.CanRetry(err) {
-			require.NoError(t, err)
-			break
-		}
-	}
-
-	return qcow2Reader
+	imageMapReader, err := qcow2.NewImageMapReader(ctx, reader)
+	require.NoError(t, err)
+	return imageMapReader
 }
 
 ////////////////////////////////////////////////////////////////////////////////

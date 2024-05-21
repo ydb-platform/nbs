@@ -5,6 +5,10 @@ import "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/ur
 ////////////////////////////////////////////////////////////////////////////////
 
 const (
+	FooterSize = uint64(512)
+)
+
+const (
 	footerCookie        = "conectix"
 	fileFormatVersion   = uint32(0x00010000)
 	dynamicHardDiskType = uint32(3)

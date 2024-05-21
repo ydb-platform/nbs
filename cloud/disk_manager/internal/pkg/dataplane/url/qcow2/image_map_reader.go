@@ -34,18 +34,82 @@ type ImageMapReader struct {
 	compressedSizeMask  uint64
 }
 
-func NewImageMapReader(reader common.Reader) *ImageMapReader {
-	return &ImageMapReader{
+func NewImageMapReader(
+	ctx context.Context,
+	reader common.Reader,
+) (*ImageMapReader, error) {
+
+	imageMapReader := ImageMapReader{
 		reader:  reader,
 		l2Cache: make(map[uint64][]uint64),
 	}
+
+	err := imageMapReader.readHeader(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &imageMapReader, nil
 }
 
 func (r *ImageMapReader) Size() uint64 {
 	return r.header.Size
 }
 
-func (r *ImageMapReader) ReadHeader(ctx context.Context) error {
+func (r *ImageMapReader) Read(
+	ctx context.Context,
+) ([]common.ImageMapItem, error) {
+
+	r.l1Table = make([]uint64, r.l1Size)
+	err := r.reader.ReadBinary(
+		ctx,
+		r.header.L1TableOffset,
+		r.l1Size*8,
+		binary.BigEndian,
+		&r.l1Table,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var items []common.ImageMapItem
+	var item common.ImageMapItem
+	var entry imageMapEntry
+
+	for item.Start+item.Length < r.Size() {
+		offset := item.Start + item.Length
+		bytes := r.Size() - offset
+
+		bytesRead, newEntry, err := r.readImageMapEntry(ctx, offset, bytes)
+		if err != nil {
+			return nil, err
+		}
+
+		if entry.mergeable(newEntry) {
+			item.Length += bytesRead
+		} else {
+			if item.Length != 0 {
+				entry.dumpToItem(&item)
+				items = append(items, item)
+			}
+
+			item = common.ImageMapItem{
+				Start:  offset,
+				Length: bytesRead,
+			}
+
+			entry = newEntry
+		}
+	}
+
+	entry.dumpToItem(&item)
+	items = append(items, item)
+	return items, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	headerSize := uint64(unsafe.Sizeof(r.header))
 	if r.reader.Size() < headerSize {
 		return common.NewSourceInvalidError(
@@ -154,59 +218,6 @@ func (r *ImageMapReader) ReadHeader(ctx context.Context) error {
 
 	return nil
 }
-
-func (r *ImageMapReader) Read(
-	ctx context.Context,
-) ([]common.ImageMapItem, error) {
-
-	r.l1Table = make([]uint64, r.l1Size)
-	err := r.reader.ReadBinary(
-		ctx,
-		r.header.L1TableOffset,
-		r.l1Size*8,
-		binary.BigEndian,
-		&r.l1Table,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var items []common.ImageMapItem
-	var item common.ImageMapItem
-	var entry imageMapEntry
-
-	for item.Start+item.Length < r.Size() {
-		offset := item.Start + item.Length
-		bytes := r.Size() - offset
-
-		bytesRead, newEntry, err := r.readImageMapEntry(ctx, offset, bytes)
-		if err != nil {
-			return nil, err
-		}
-
-		if entry.mergeable(newEntry) {
-			item.Length += bytesRead
-		} else {
-			if item.Length != 0 {
-				entry.dumpToItem(&item)
-				items = append(items, item)
-			}
-
-			item = common.ImageMapItem{
-				Start:  offset,
-				Length: bytesRead,
-			}
-
-			entry = newEntry
-		}
-	}
-
-	entry.dumpToItem(&item)
-	items = append(items, item)
-	return items, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 func (r *ImageMapReader) countContiguousClusters(
 	clusterCount uint64,

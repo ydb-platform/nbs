@@ -235,8 +235,7 @@ func newImageMapReader(
 
 	switch format {
 	case ImageFormatQCOW2:
-		reader := qcow2.NewImageMapReader(urlReader)
-		err := reader.ReadHeader(ctx)
+		reader, err := qcow2.NewImageMapReader(ctx, urlReader)
 		if err != nil {
 			return nil, err
 		}
@@ -245,8 +244,7 @@ func newImageMapReader(
 		return reader, nil
 
 	case ImageFormatVMDK:
-		reader := vmdk.NewImageMapReader(urlReader)
-		err := reader.ReadHeader(ctx)
+		reader, err := vmdk.NewImageMapReader(ctx, urlReader)
 		if err != nil {
 			return nil, err
 		}
@@ -255,8 +253,7 @@ func newImageMapReader(
 		return reader, nil
 
 	case ImageFormatVHD:
-		reader := vhd.NewImageMapReader(urlReader)
-		err := reader.ReadFooter(ctx)
+		reader, err := vhd.NewImageMapReader(ctx, urlReader)
 		if err != nil {
 			return nil, err
 		}

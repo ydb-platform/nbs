@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
 	common_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common/testing"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vhd"
@@ -39,7 +40,9 @@ func getVHDReader(
 	reader common.Reader,
 ) common.ImageMapReader {
 
-	return vhd.NewImageMapReader(reader)
+	imageMapReader, err := vhd.NewImageMapReader(ctx, reader)
+	require.NoError(t, err)
+	return imageMapReader
 }
 
 ////////////////////////////////////////////////////////////////////////////////
