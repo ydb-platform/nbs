@@ -1,9 +1,9 @@
 package metrics
 
-import "github.com/ydb-platform/nbs/library/go/core/metrics/nop"
+import "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewEmptyRegistry() Registry {
-	return new(nop.Registry)
+	return empty.NewRegistry()
 }

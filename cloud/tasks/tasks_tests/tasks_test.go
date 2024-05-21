@@ -13,12 +13,14 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -50,7 +52,7 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 			Database: &database,
 			RootPath: &rootPath,
 		},
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 	)
 }
 
@@ -155,7 +157,7 @@ func createServicesWithConfig(
 		ctx,
 		db,
 		config,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 	)
 
 	scheduler, err := tasks.NewScheduler(
@@ -163,7 +165,7 @@ func createServicesWithConfig(
 		registry,
 		storage,
 		config,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -193,7 +195,7 @@ func (s *services) startRunners(ctx context.Context) error {
 		ctx,
 		s.storage,
 		s.registry,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 		s.config,
 		"localhost",
 	)

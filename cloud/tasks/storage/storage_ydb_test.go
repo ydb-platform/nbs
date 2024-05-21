@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -42,7 +43,7 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 			Database: &database,
 			RootPath: &rootPath,
 		},
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 	)
 }
 
@@ -482,7 +483,7 @@ func TestStorageYDBListTasksReadyToRun(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -722,7 +723,7 @@ func TestStorageYDBListTasksReadyToCancel(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -962,7 +963,7 @@ func TestStorageYDBListTasksRunning(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -1140,7 +1141,7 @@ func TestStorageYDBListTasksCancelling(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -1318,7 +1319,7 @@ func TestStorageYDBListFailedTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(
@@ -1431,7 +1432,7 @@ func TestStorageYDBListSlowTasks(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(
@@ -1525,7 +1526,7 @@ func TestStorageYDBListTasksStallingWhileRunning(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -1766,7 +1767,7 @@ func TestStorageYDBListTasksStallingWhileCancelling(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2007,7 +2008,7 @@ func TestStorageYDBListTasksReadyToRunWithWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2071,7 +2072,7 @@ func TestStorageYDBListTasksReadyToCancelWithWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2135,7 +2136,7 @@ func TestStorageYDBListTasksStallingWhileRunningWithWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2202,7 +2203,7 @@ func TestStorageYDBListTasksStallingWhileCancellingWithWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{
@@ -2269,7 +2270,7 @@ func TestStorageYDBListTasksReadyToRunInCertainZone(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	zoneID := "zone1"
@@ -2333,7 +2334,7 @@ func TestStorageYDBListTasksReadyToCancelInCertainZone(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	zoneID := "zone1"
@@ -2397,7 +2398,7 @@ func TestStorageYDBListTasksStallingWhileRunningInCertainZone(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	zoneID := "zone1"
@@ -2468,7 +2469,7 @@ func TestStorageYDBListTasksStallingWhileCancellingInCertainZone(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	metricsRegistry := metrics.NewEmptyRegistry()
+	metricsRegistry := empty.NewRegistry()
 
 	taskStallingTimeout := "1s"
 	zoneID := "zone1"
@@ -4357,7 +4358,7 @@ func TestHeartbeat(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, metrics.NewEmptyRegistry())
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, empty.NewRegistry())
 	require.NoError(t, err)
 
 	err = storage.HeartbeatNode(ctx, "host-1", time.Now(), 1)
@@ -4379,7 +4380,7 @@ func TestMultipleHeartbeats(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, metrics.NewEmptyRegistry())
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, empty.NewRegistry())
 	require.NoError(t, err)
 
 	err = storage.HeartbeatNode(ctx, "host-1", time.Now(), 1)
@@ -4407,7 +4408,7 @@ func TestGetAliveNodes(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close(ctx)
 
-	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, metrics.NewEmptyRegistry())
+	storage, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, empty.NewRegistry())
 	require.NoError(t, err)
 
 	referenceTime := time.Now().UTC()

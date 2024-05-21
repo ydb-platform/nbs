@@ -3,7 +3,7 @@ package metrics
 import (
 	"net/http"
 
-	"github.com/ydb-platform/nbs/library/go/core/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
