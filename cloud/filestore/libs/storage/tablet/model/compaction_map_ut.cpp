@@ -325,6 +325,60 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(32, stats.TotalBlobsCount);
         UNIT_ASSERT_VALUES_EQUAL(170, stats.TotalDeletionsCount);
     }
+
+    Y_UNIT_TEST(ShouldUpdateCompactionMapByGroups)
+    {
+        TCompactionMap compactionMap(TDefaultAllocator::Instance());
+
+        TVector<TCompactionRangeInfo> rangeInfos;
+        const auto groupSize = TCompactionMap::GroupSize;
+        ui32 rangeId = 0;
+        ui32 totalBlobsCount = 0;
+        ui32 totalDeletionsCount = 0;
+        while (rangeId < 3 * groupSize) {
+            rangeInfos.emplace_back(rangeId, TCompactionStats{rangeId * 2, rangeId + 1});
+            totalBlobsCount += rangeId * 2;
+            totalDeletionsCount += rangeId + 1;
+            rangeId += 2;
+        }
+        compactionMap.Update(rangeInfos);
+
+        for (ui32 i = 0; i < 3 * groupSize; ++i) {
+            auto stats = compactionMap.Get(i);
+            if (i % 2) {
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.BlobsCount);
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.DeletionsCount);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(i * 2, stats.BlobsCount);
+                UNIT_ASSERT_VALUES_EQUAL(i + 1, stats.DeletionsCount);
+            }
+        }
+
+        compactionMap.Update(1, 10000, 20000);
+        auto stats = compactionMap.GetStats(2);
+        UNIT_ASSERT_VALUES_EQUAL(totalBlobsCount + 10000, stats.TotalBlobsCount);
+        UNIT_ASSERT_VALUES_EQUAL(totalDeletionsCount + 20000, stats.TotalDeletionsCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            stats.TopRangesByCompactionScore[0].RangeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10000,
+            stats.TopRangesByCompactionScore[0].Stats.BlobsCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            20000,
+            stats.TopRangesByCompactionScore[0].Stats.DeletionsCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * groupSize - 2,
+            stats.TopRangesByCompactionScore[1].RangeId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (3 * groupSize - 2) * 2,
+            stats.TopRangesByCompactionScore[1].Stats.BlobsCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * groupSize - 1,
+            stats.TopRangesByCompactionScore[1].Stats.DeletionsCount);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
