@@ -91,6 +91,8 @@ message TAgentConfig
 
     // Unallowed devices attached to the agent.
     repeated TDeviceConfig UnknownDevices = 12;
+
+    bool TemporaryAgent = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1577,4 +1579,25 @@ message TSetCheckpointDataStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Get disk agent node id by agent id.
+
+message TGetAgentNodeIdRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target agent.
+    string AgentId = 2;
+}
+
+message TGetAgentNodeIdResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node that agent is running on.
+    uint32 NodeId = 2;
 }

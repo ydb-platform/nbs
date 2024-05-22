@@ -229,6 +229,8 @@ message TDiskAgentConfig
 
     // The path where Disk Agent will store active sessions.
     optional string CachedSessionsPath = 28;
+
+    optional bool TemporaryAgent = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

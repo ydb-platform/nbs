@@ -141,7 +141,7 @@ auto TAgentList::AddNewAgent(
     TInstant timestamp,
     const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
-    Y_DEBUG_ABORT_UNLESS(
+    STORAGE_CHECK_PRECONDITION_WITH_MESSAGE(
         agentConfig.GetState() == NProto::AGENT_STATE_ONLINE,
         "Trying to add a new agent which is not in online state");
 
@@ -338,8 +338,12 @@ auto TAgentList::RegisterAgent(
     PrepareConfig(agentConfig, knownAgent);
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
-
     if (!agent) {
+        //
+        //
+        // What if temp agent? Probably should reject (?) and crit event (?).
+        //
+        //
         STORAGE_INFO("A brand new agent %s #%d has arrived",
             agentConfig.GetAgentId().c_str(),
             agentConfig.GetNodeId());
@@ -351,6 +355,18 @@ auto TAgentList::RegisterAgent(
     }
 
     const TNodeId prevNodeId = agent->GetNodeId();
+    // NProto::TAgentConfig oldAgentConfig;
+    if (agentConfig.GetTemporaryAgent()) {
+        Y_ABORT_UNLESS(!agent->GetTemporaryAgent());
+        // oldAgentConfig = *agent;
+        // agent = &oldAgentConfig;
+        STORAGE_INFO(
+            "Register temporary agent %s with node id #%d",
+            agentConfig.GetAgentId().c_str(),
+            agentConfig.GetNodeId());
+
+        // return { *agent, std::move(newDeviceIds), prevNodeId, std::move(oldConfigs) };
+    }
 
     if (prevNodeId != agentConfig.GetNodeId()) {
         STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
@@ -365,6 +381,7 @@ auto TAgentList::RegisterAgent(
     agent->SetDedicatedDiskAgent(agentConfig.GetDedicatedDiskAgent());
     *agent->MutableUnknownDevices()
         = std::move(*agentConfig.MutableUnknownDevices());
+    agent->SetTemporaryAgent(agentConfig.GetTemporaryAgent());
 
     auto& newList = *agentConfig.MutableDevices();
     Sort(newList, TByUUID());

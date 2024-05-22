@@ -37,6 +37,12 @@ TOptions::TOptions()
         .RequiredArgument("STR")
         .DefaultValue("disk-agent")
         .StoreResult(&NodeType);
+
+    Opts.AddLongOption(
+            "temporary-agent",
+            "run temporary disk agent for blue-green deployment")
+        .NoArgument()
+        .StoreTrue(&TemporaryAgent);
 }
 
 void TOptions::Parse(int argc, char** argv)

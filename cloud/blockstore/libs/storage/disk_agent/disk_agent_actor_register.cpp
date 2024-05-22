@@ -115,6 +115,7 @@ void TDiskAgentActor::HandleRegisterAgent(
     config.SetAgentId(AgentConfig->GetAgentId());
     config.SetSeqNumber(AgentConfig->GetSeqNumber());
     config.SetDedicatedDiskAgent(AgentConfig->GetDedicatedDiskAgent());
+    config.SetTemporaryAgent(AgentConfig->GetTemporaryAgent());
 
     for (auto& device: State->GetDevices()) {
         *config.AddDevices() = std::move(device);
