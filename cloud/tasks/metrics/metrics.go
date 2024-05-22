@@ -120,7 +120,6 @@ type HistogramVec interface {
 	Reset()
 }
 
-// Creates profiling metrics.
 type Registry interface {
 	// Creates new sub-scope, where each metric has tags attached to it.
 	WithTags(tags map[string]string) Registry

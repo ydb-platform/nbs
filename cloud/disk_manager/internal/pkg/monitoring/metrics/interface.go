@@ -12,24 +12,23 @@ type NewRegistryFunc = func(mux *http.ServeMux, path string) Registry
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Registry = metrics.Registry
+type Gauge = metrics.Gauge
+type FuncGauge = metrics.FuncGauge
+type IntGauge = metrics.IntGauge
+type FuncIntGauge = metrics.FuncIntGauge
 
 type Counter = metrics.Counter
-
-type CounterVec = metrics.CounterVec
-
-type Gauge = metrics.Gauge
-
-type GaugeVec = metrics.GaugeVec
+type FuncCounter = metrics.FuncCounter
 
 type Histogram = metrics.Histogram
-
-type HistogramVec = metrics.HistogramVec
-
 type Timer = metrics.Timer
-
-type TimerVec = metrics.TimerVec
-
+type DurationBuckets = metrics.DurationBuckets
 type Buckets = metrics.Buckets
 
-type DurationBuckets = metrics.DurationBuckets
+type GaugeVec = metrics.GaugeVec
+type IntGaugeVec = metrics.IntGaugeVec
+type CounterVec = metrics.CounterVec
+type TimerVec = metrics.TimerVec
+type HistogramVec = metrics.HistogramVec
+
+type Registry = metrics.Registry
