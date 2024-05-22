@@ -9,6 +9,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Registry = metrics.Registry
+
 // RegistryWrapper makes core_metrics.Registry conform with metrics.Registry.
 // It is needed because Golang's duck typing is not recursive.
 //

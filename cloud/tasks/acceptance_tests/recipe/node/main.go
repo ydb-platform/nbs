@@ -12,7 +12,7 @@ import (
 	node_config "github.com/ydb-platform/nbs/cloud/tasks/acceptance_tests/recipe/node/config"
 	recipe_tasks "github.com/ydb-platform/nbs/cloud/tasks/acceptance_tests/recipe/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -54,7 +54,7 @@ func run(config *node_config.Config) error {
 	db, err := persistence.NewYDBClient(
 		ctx,
 		config.GetPersistenceConfig(),
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 	)
 	if err != nil {
 		return err
@@ -63,7 +63,7 @@ func run(config *node_config.Config) error {
 
 	storage, err := tasks_storage.NewStorage(
 		config.GetTasksConfig(),
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 		db,
 	)
 	if err != nil {
@@ -77,7 +77,7 @@ func run(config *node_config.Config) error {
 		registry,
 		storage,
 		config.GetTasksConfig(),
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 	)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func run(config *node_config.Config) error {
 		ctx,
 		storage,
 		registry,
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 		config.GetTasksConfig(),
 		config.GetHostname(),
 	)

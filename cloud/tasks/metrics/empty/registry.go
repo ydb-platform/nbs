@@ -7,6 +7,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 var (
 	_ metrics.Registry = (*Registry)(nil)
 )

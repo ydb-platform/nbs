@@ -17,7 +17,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -64,7 +64,7 @@ func newClient(ctx context.Context) (*client, error) {
 	db, err := persistence.NewYDBClient(
 		ctx,
 		config.PersistenceConfig,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 	)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func newClient(ctx context.Context) (*client, error) {
 
 	storage, err := tasks_storage.NewStorage(
 		config.TasksConfig,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 		db,
 	)
 	if err != nil {
@@ -86,7 +86,7 @@ func newClient(ctx context.Context) (*client, error) {
 		registry,
 		storage,
 		config.TasksConfig,
-		metrics.NewEmptyRegistry(),
+		metrics_empty.NewRegistry(),
 	)
 	if err != nil {
 		return nil, err
