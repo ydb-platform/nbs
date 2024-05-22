@@ -1117,14 +1117,9 @@ TVector<TCompactionRangeInfo> TIndexTabletState::GetTopRangesByCleanupScore(ui32
 }
 
 void TIndexTabletState::LoadCompactionMap(
-    const TVector<TCompactionRangeInfo>& compactionMap)
+    const TVector<TCompactionRangeInfo>& ranges)
 {
-    for (const auto& x: compactionMap) {
-        Impl->CompactionMap.Update(
-            x.RangeId,
-            x.Stats.BlobsCount,
-            x.Stats.DeletionsCount);
-    }
+    Impl->CompactionMap.Update(ranges);
 }
 
 void TIndexTabletState::EnqueueForcedRangeOperation(
