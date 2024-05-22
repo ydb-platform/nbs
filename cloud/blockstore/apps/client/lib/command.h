@@ -36,7 +36,7 @@ protected:
     // When client attempts to read or write too many blocks, several read/write
     // blocks requests are executed instead of a single one (unless Proto option
     // is used)
-    const ui64 BatchBlocksCount = 1024;
+    ui64 BatchBlocksCount;
 
     TString ConfigFile;
     TString IamConfigFile;
@@ -165,6 +165,8 @@ protected:
         }
         return future.GetValue();
     }
+
+    void PrepareHeaders(NProto::THeaders& headers) const;
 
 private:
     bool WaitForI(const NThreading::TFuture<void>& future);

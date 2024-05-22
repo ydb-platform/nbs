@@ -50,6 +50,7 @@ void TPartitionActor::HandleReadBlob(
         VolumeActorId,
         TabletID(),
         State->GetBlockSize(),
+        msg->ShouldCalculateChecksums,
         StorageAccessMode,
         std::unique_ptr<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             msg.Release()),

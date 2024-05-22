@@ -1,5 +1,6 @@
 #include "actor_read_blob.h"
 
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 
@@ -19,6 +20,7 @@ TReadBlobActor::TReadBlobActor(
         const TActorId& volumeActorId,
         ui64 partitionTabletId,
         ui32 blockSize,
+        bool shouldCalculateChecksums,
         const EStorageAccessMode storageAccessMode,
         std::unique_ptr<TRequest> request,
         TDuration longRunningThreshold)
@@ -32,6 +34,7 @@ TReadBlobActor::TReadBlobActor(
     , PartitionActorId(partitionActorId)
     , PartitionTabletId(partitionTabletId)
     , BlockSize(blockSize)
+    , ShouldCalculateChecksums(shouldCalculateChecksums)
     , StorageAccessMode(storageAccessMode)
     , Request(std::move(request))
 {}
@@ -167,6 +170,7 @@ void TReadBlobActor::HandleGetResult(
 
     auto blobId = Request->BlobId;
     size_t blocksCount = Request->BlobOffsets.size();
+    TVector<ui32> blockChecksums;
 
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
@@ -236,7 +240,16 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                iter.ExtractPlainDataAndAdvance(to, BlockSize);
+                if (ShouldCalculateChecksums) {
+                    auto block = TString::Uninitialized(BlockSize);
+                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
+                    blockChecksums.push_back(
+                        ComputeDefaultDigest({block.Data(), BlockSize}));
+
+                    memcpy(to, block.Data(), BlockSize);
+                } else {
+                    iter.ExtractPlainDataAndAdvance(to, BlockSize);
+                }
                 ++sglistIndex;
             }
         }
@@ -254,6 +267,7 @@ void TReadBlobActor::HandleGetResult(
     }
 
     auto response = std::make_unique<TResponse>();
+    response->BlockChecksums = std::move(blockChecksums);
     response->ExecCycles = RequestInfo->GetExecCycles();
     ReplyAndDie(ctx, std::move(response));
 }

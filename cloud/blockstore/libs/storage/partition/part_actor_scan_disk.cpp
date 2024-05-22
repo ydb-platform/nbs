@@ -196,7 +196,11 @@ void TScanDiskActor::SendReadBlobRequest(
         MakeBlobStorageProxyID(blobMark.BSGroupId),
         std::move(blobOffsets),
         std::move(subSgList),
-        blobMark.BSGroupId);
+        blobMark.BSGroupId,
+        false,           // async
+        TInstant::Max(), // deadline
+        false            // shouldCalculateChecksums
+    );
 
     NCloud::Send(
         ctx,

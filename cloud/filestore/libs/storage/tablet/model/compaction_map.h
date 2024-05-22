@@ -27,6 +27,12 @@ struct TCompactionRangeInfo
 {
     ui32 RangeId = 0;
     TCompactionStats Stats;
+
+    TCompactionRangeInfo() = default;
+    TCompactionRangeInfo(ui32 rangeId, TCompactionStats stats)
+        : RangeId(rangeId)
+        , Stats(stats)
+    {}
 };
 
 struct TCompactionMapStats
@@ -56,6 +62,7 @@ public:
     ~TCompactionMap();
 
     void Update(ui32 rangeId, ui32 blobsCount, ui32 deletionsCount);
+    void Update(const TVector<TCompactionRangeInfo>& ranges);
 
     TCompactionStats Get(ui32 rangeId) const;
 
