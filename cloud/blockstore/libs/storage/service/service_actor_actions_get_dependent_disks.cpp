@@ -89,6 +89,8 @@ void TGetDependentDisksActor::Bootstrap(const TActorContext& ctx)
     NProto::TGetDependentDisksRequest request;
     request.SetHost(input["Host"].GetString());
     request.SetPath(input["Path"].GetStringSafe({}));
+    request.SetIgnoreReplicatedDisks(
+        input["IgnoreReplicatedDisks"].GetBooleanSafe(false));
     GetDependentDisks(ctx, std::move(request));
 }
 

@@ -15,11 +15,6 @@ void TDiskRegistryActor::HandleGetDependentDisks(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received GetDependentDisks request: Host=%s, Path=%s",
         TabletID(),

@@ -383,6 +383,14 @@ private:
     TResultOrError<NActors::IActorPtr> CreateFlushProfileLogActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateGetDiskAgentNodeIdActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateWaitDependentDisksToSwitchNodeActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
