@@ -27,6 +27,12 @@ struct TCompactionRangeInfo
 {
     ui32 RangeId = 0;
     TCompactionStats Stats;
+
+    TCompactionRangeInfo() = default;
+    TCompactionRangeInfo(ui32 rangeId, TCompactionStats stats)
+        : RangeId(rangeId)
+        , Stats(stats)
+    {}
 };
 
 struct TCompactionMapStats
