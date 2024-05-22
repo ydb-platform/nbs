@@ -304,7 +304,7 @@ func (g *ConfigGenerator) dumpConfigs(
 	}
 
 	if g.spec.ServiceSpec.Clusters[cluster].Values.Generate {
-		valuesTemplatePath := path.Join(g.spec.OverridesPath, g.spec.ServiceSpec.Clusters[cluster].Values.FileName)
+		valuesTemplatePath := path.Join(g.spec.OverridesPath, "values.yaml")
 		configPath := path.Join(
 			g.spec.ArcadiaPath,
 			g.spec.ServiceSpec.Clusters[cluster].Values.DumpPath,
