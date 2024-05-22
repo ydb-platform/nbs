@@ -1589,10 +1589,14 @@ void TIndexTabletDatabase::WriteCompactionMap(
 {
     using TTable = TIndexTabletSchema::CompactionMap;
 
-    Table<TTable>()
-        .Key(rangeId)
-        .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
-        .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount));
+    if (blobsCount || deletionsCount) {
+        Table<TTable>()
+            .Key(rangeId)
+            .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
+            .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount));
+    } else {
+        Table<TTable>().Key(rangeId).Delete();
+    }
 }
 
 bool TIndexTabletDatabase::ReadCompactionMap(
