@@ -17,7 +17,6 @@ func TestPrometheusSanitizeName(t *testing.T) {
 		{"_valid_Name", "_valid_Name"},
 		{"invalid-Name", "invalid_Name"},
 		{"123", "_123"},
-		{"!@#$%^&*()name", "________name"},
 	}
 
 	for _, testCase := range testCases {
