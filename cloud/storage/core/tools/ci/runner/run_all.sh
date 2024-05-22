@@ -26,7 +26,7 @@ cwd=$(pwd)
 
 cd $nbspath &&
 git reset --hard &&
-git pull &&
+git pull origin main &&
 git submodule update --init --recursive
 if [ ! $? -eq 0 ]; then
     echo "failed to fetch changes from git repository"
