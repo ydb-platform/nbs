@@ -378,10 +378,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             }
         });
 
-        auto toString = [] (const TEntries& v, ui32 i = 0, ui32 c = Max<ui32>()) {
+        auto toString = [] (
+            const TEntries& v,
+            ui32 i = 0,
+            ui32 c = Max<ui32>(),
+            bool skipZeroes = false)
+        {
             TStringBuilder sb;
             ui32 processed = 0;
             while (i < v.size() && processed < c) {
+                if (skipZeroes
+                        && !v[i].Stats.BlobsCount
+                        && !v[i].Stats.DeletionsCount)
+                {
+                    ++i;
+                    continue;
+                }
+
                 if (processed) {
                     sb << " ";
                 }
@@ -410,6 +423,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             chunk.clear();
             UNIT_ASSERT(db.ReadCompactionMap(chunk, 7001, 5));
             UNIT_ASSERT_VALUES_EQUAL("", toString(chunk));
+        });
+
+        TVector<ui32> toDelete({0, 6, 7, 12});
+
+        executor.WriteTx([&] (TIndexTabletDatabase db) {
+            for (const auto i: toDelete) {
+                db.WriteCompactionMap(entries[i].RangeId, 0, 0);
+                entries[i].Stats = {};
+            }
+        });
+
+        executor.ReadTx([&] (TIndexTabletDatabase db) {
+            TVector<TCompactionRangeInfo> chunk;
+            UNIT_ASSERT(db.ReadCompactionMap(chunk, 0, Max<ui32>()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                toString(entries, 0, Max<ui32>(), true),
+                toString(chunk));
         });
     }
 }
