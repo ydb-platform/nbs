@@ -263,7 +263,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         DescribeRange(msg->Range).c_str());
 
     if (msg->AllZeroes) {
-        MarkVoidRange(msg->Range, true);
+        ChangedRangesMap.MarkNotChanged(msg->Range);
     }
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
@@ -318,81 +318,11 @@ void TNonreplicatedPartitionMigrationCommonActor::
     MigrationOwner->OnMigrationFinished(ctx);
 }
 
-size_t TNonreplicatedPartitionMigrationCommonActor::GetMigratingRangeIndex(
-    ui64 blockIndex) const
-{
-    return blockIndex * BlockSize / ProcessingRangeSize;
-}
-
 void TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
     TBlockRange64 range,
     TString* result) const
 {
-    // We know a map of void blocks with a resolution in the size of the
-    // ProcessingRangeSize.
-    // Let's convert this map to a resolution up to a block.
-    TDynBitMap map;
-    map.Reserve(range.Size());
-    // Initially, we assume that all blocks have been changed.
-    map.Set(0, range.Size());
-
-    for (size_t i = range.Start; i <= range.End;) {
-        // We find the block index for the current migration range and mark
-        // many blocks at once.
-        size_t rangeIndex = GetMigratingRangeIndex(i);
-        size_t blockStartIndex = rangeIndex * ProcessingRangeSize / BlockSize;
-        size_t blockEndIndex =
-            (rangeIndex + 1) * ProcessingRangeSize / BlockSize;
-
-        size_t trimmedStart = Max(range.Start, blockStartIndex);
-        size_t trimmedEnd = Min(range.End + 1, blockEndIndex);
-
-        bool isVoid = VoidRangesMap.Get(rangeIndex);
-        if (isVoid) {
-            map.Reset(trimmedStart - range.Start, trimmedEnd - range.Start);
-        }
-        i = trimmedEnd;
-    }
-
-    // Convert the TDynBitMap to a TString.
-    result->resize(map.Size() / 8);
-    for (size_t i = 0; i < result->size(); ++i) {
-        ui8 tmp = 0;
-        map.Export(i * 8, tmp);
-        (*result)[i] = static_cast<char>(tmp);
-    }
-}
-
-void TNonreplicatedPartitionMigrationCommonActor::MarkVoidRange(
-    TBlockRange64 range,
-    bool isVoid)
-{
-    // Converting the indexes of the beginning and end of the range to the
-    // indexes of the migrated ranges of 4 MiB each.
-    const auto begin = GetMigratingRangeIndex(range.Start);
-    const auto end = GetMigratingRangeIndex(range.End) + 1;
-    if (isVoid) {
-        // When we find out that the migration block consists entirely of zeros,
-        // just in case, we check that this block completely covers the
-        // migration range of 4 MiB.
-        const bool alignedWithTheSizeOfTheProcessingBlock =
-            (range.Start * BlockSize % ProcessingRangeSize) == 0;
-        const bool processedLastRange = range.End == BlockCount - 1;
-        const bool processedOneRange =
-            range.Size() * BlockSize == ProcessingRangeSize;
-        const bool completelyCoversTheMigrationRange =
-            alignedWithTheSizeOfTheProcessingBlock &&
-            (processedLastRange || processedOneRange);
-
-        STORAGE_CHECK_PRECONDITION(completelyCoversTheMigrationRange);
-
-        if (completelyCoversTheMigrationRange) {
-            VoidRangesMap.Set(begin, end);
-        }
-    } else {
-        // When writing to a block occurs, we mark the entire migration range.
-        VoidRangesMap.Reset(begin, end);
-    }
+    *result = ChangedRangesMap.GetChangedBlocks(range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

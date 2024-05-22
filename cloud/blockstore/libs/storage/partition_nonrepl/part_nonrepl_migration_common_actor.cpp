@@ -37,13 +37,10 @@ TNonreplicatedPartitionMigrationCommonActor::
     , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
+    , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
-{
-    const auto rangesCount = GetMigratingRangeIndex(blockCount);
-    VoidRangesMap.Reserve(rangesCount);
-    VoidRangesMap.Reset(0, rangesCount);
-}
+{}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;

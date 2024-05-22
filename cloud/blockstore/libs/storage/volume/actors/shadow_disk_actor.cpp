@@ -1242,7 +1242,7 @@ void TShadowDiskActor::HandleGetChangedBlocks(
         auto response =
             std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
         *response->Record.MutableError() = MakeError(
-            E_ARGUMENT,
+            E_REJECTED,
             "Can't GetChangedBlocks when shadow disk is not ready.");
 
         NCloud::Reply(ctx, *ev, std::move(response));

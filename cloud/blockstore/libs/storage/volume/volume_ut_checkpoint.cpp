@@ -1,5 +1,6 @@
 #include "volume_ut.h"
 
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -4747,6 +4748,106 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_PRECONDITION_FAILED,
             volume.RecvCreateCheckpointResponse()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHandleGetChangedBlocksForShadowDiskBasedCheckpoint)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        const ui64 blocksInProcessingRange =
+            ProcessingRangeSize / DefaultBlockSize;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Write to blocks on the border of the migration range.
+        const auto writtenRange =
+            TBlockRange64::WithLength(blocksInProcessingRange - 1, 2);
+        volume.WriteBlocks(
+            writtenRange,
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        {
+            // When checkpoint not ready yet we should get E_REJECTED
+            auto status = volume.GetCheckpointStatus("c1");
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::NOT_READY,
+                status->Record.GetCheckpointStatus());
+            volume.SendGetChangedBlocksRequest(
+                TBlockRange64::WithLength(0, 1024),
+                "",
+                "c1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                volume.RecvGetChangedBlocksResponse()->GetStatus());
+        }
+
+        // Wait for checkpoint get ready.
+        for (;;) {
+            auto status = volume.GetCheckpointStatus("c1");
+            if (status->Record.GetCheckpointStatus() ==
+                NProto::ECheckpointStatus::READY)
+            {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+
+        // Check GetChangedBlocks responses
+        auto checkBlocks = [&](TBlockRange64 range, bool expectation)
+        {
+            auto response = volume.GetChangedBlocks(range, "", "c1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            const auto& mask = response->Record.GetMask();
+            UNIT_ASSERT_VALUES_EQUAL(range.Size() / 8, mask.size());
+            for (auto m: mask) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectation ? 255 : 0,
+                    static_cast<ui8>(m));
+            }
+        };
+
+        ui32 expectChangedCount = 0;
+        for (size_t i = 0; i < expectedBlockCount; i += blocksInProcessingRange)
+        {
+            auto processedRange =
+                TBlockRange64::WithLength(i, blocksInProcessingRange);
+            const bool expectChanged = processedRange.Overlaps(writtenRange);
+            if (expectChanged) {
+                ++expectChangedCount;
+            }
+            checkBlocks(processedRange, expectChanged);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, expectChangedCount);
     }
 }
 
