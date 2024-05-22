@@ -368,7 +368,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         Config->GetMaxDevicesToErasePerDeviceNameForLocalPoolKind(),
         Config->GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind());
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_TRACE(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Filtered dirty devices: %lu -> %lu",
         TabletID(),
         countBeforeFiltration,
@@ -382,11 +382,11 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 
     auto deadline = Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled secure erase, now: %lu, deadline: %lu",
-            TabletID(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+        // LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        //     "[%lu] Scheduled secure erase, now: %lu, deadline: %lu",
+        //     TabletID(),
+        //     ctx.Now().MicroSeconds(),
+        //     deadline.MicroSeconds());
 
         ctx.ExecutorThread.Schedule(
             deadline,
@@ -411,7 +411,7 @@ void TDiskRegistryActor::HandleSecureErase(
 
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_TRACE(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received SecureErase request: DirtyDevices=%lu",
         TabletID(),
         msg->DirtyDevices.size());
@@ -435,7 +435,7 @@ void TDiskRegistryActor::HandleSecureEraseResponse(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_TRACE(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received SecureErase response: CleanDevices=%lu",
         TabletID(),
         msg->CleanDevices);

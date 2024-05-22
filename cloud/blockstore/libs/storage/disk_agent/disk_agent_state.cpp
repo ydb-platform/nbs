@@ -430,6 +430,7 @@ void TDiskAgentState::InitRdmaTarget(TRdmaTargetConfig rdmaTargetConfig)
     if (RdmaServer) {
         THashMap<TString, TStorageAdapterPtr> devices;
 
+        // get rdma endpoint
         auto endpoint = AgentConfig->GetRdmaEndpoint();
 
         if (endpoint.GetHost().empty()) {

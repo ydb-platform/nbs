@@ -35,17 +35,22 @@ void ReportPreconditionFailed(
     TStringBuf file,
     int line,
     TStringBuf func,
-    TStringBuf expr);
+    TStringBuf expr,
+    TStringBuf message);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_CHECK_PRECONDITION(expr)                                             \
+#define STORAGE_CHECK_PRECONDITION_WITH_MESSAGE(expr, message)                 \
     if (!(expr)) {                                                             \
         ReportPreconditionFailed(                                              \
             __SOURCE_FILE_IMPL__,                                              \
             __LINE__,                                                          \
             __FUNCTION__,                                                      \
-            #expr);                                                            \
+            #expr,                                                             \
+            message);                                                          \
     }                                                                          \
+
+#define STORAGE_CHECK_PRECONDITION(expr)                                       \
+    STORAGE_CHECK_PRECONDITION_WITH_MESSAGE(expr, TStringBuf())                \
 
 }   // namespace NCloud

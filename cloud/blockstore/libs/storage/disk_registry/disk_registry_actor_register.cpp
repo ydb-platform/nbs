@@ -18,6 +18,8 @@ void TDiskRegistryActor::HandleRegisterAgent(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(RegisterAgent);
 
+    Cerr << "cerr TDiskRegistryActor::HandleRegisterAgent!!!!" << Endl;
+
     auto* msg = ev->Get();
     const auto& agentConfig = msg->Record.GetAgentConfig();
 
@@ -114,32 +116,39 @@ void TDiskRegistryActor::ExecuteAddAgent(
         &args.NotifiedDisks);
 
     if (!HasError(args.Error)) {
-        for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
-            const auto& agentId = it->second;
 
-            if (agentId == args.Config.GetAgentId()) {
-                const auto& serverId = it->first;
-                NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
+        // Move this to another place? ?? ??
+        // ???
 
-                ServerToAgentId.erase(it++);
-            } else {
-                ++it;
-            }
-        }
+        // for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
+        //     const auto& agentId = it->second;
 
-        ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
+        //     if (agentId == args.Config.GetAgentId()) {
+        //         const auto& serverId = it->first;
+        //         NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
+        //         ServerToAgentId.erase(it++);
+        //     } else {
+        //         ++it;
+        //     }
+        // }
 
-        auto& info = AgentRegInfo[args.Config.GetAgentId()];
+        // ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
+
+
+        TAgentRegInfo& info = AgentRegInfo[args.RegisterActorId];
+        info.AgentId = args.Config.GetAgentId();
         info.Connected = true;
-        info.SeqNo += 1;
+        info.TemporaryAgent = args.Config.GetTemporaryAgent();
+        ScheduledAgentRejects.erase(info.AgentId);
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
-            ", SeqNo=%lu",
+            ", ActorId=%s, TemporaryAgent=%d",
             TabletID(),
             args.Config.GetNodeId(),
             args.Config.GetAgentId().c_str(),
-            info.SeqNo);
+            ToString(args.RegisterActorId).c_str(),
+            *info.TemporaryAgent);
     }
 }
 

@@ -163,7 +163,8 @@ public:
             RangesQueue.Enqueue(i);
         }
 
-        SlowRequestThreshold = TDuration::Parse(config.GetSlowRequestThreshold());
+        // SlowRequestThreshold = TDuration::Parse(config.GetSlowRequestThreshold());
+        SlowRequestThreshold = TDuration::MilliSeconds(250);
     }
 
     bool Run() override;

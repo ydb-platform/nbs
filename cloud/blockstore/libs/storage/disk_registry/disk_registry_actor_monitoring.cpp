@@ -1795,11 +1795,23 @@ void TDiskRegistryActor::RenderAgentList(
                         TABLED() {
                             DumpAgentState(out, config.GetState());
 
-                            auto it = AgentRegInfo.find(config.GetAgentId());
+                            for (const auto& pr: AgentRegInfo) {
+                                Cerr << pr.first
+                                     << ": AgentId = " << pr.second.AgentId
+                                     << "; TemporaryAgent = "
+                                     << pr.second.TemporaryAgent
+                                     << "; Connected = " << pr.second.Connected
+                                    << Endl;
+                            }
+                            Cerr << "-------------------" << Endl;
 
-                            const bool connected = it != AgentRegInfo.end()
-                                && it->second.Connected;
-
+                            const bool connected = AnyOf(
+                                AgentRegInfo,
+                                [agentId =
+                                     config.GetAgentId()](const auto& info) {
+                                    return info.second.AgentId == agentId &&
+                                           info.second.Connected;
+                                });
                             if (config.GetState()
                                     != NProto::AGENT_STATE_UNAVAILABLE)
                             {

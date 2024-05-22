@@ -33,12 +33,24 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
         .cdw10 = NVME_IDENTIFY_CTRLR
     };
 
-    int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    int err;
+    ui64 counter = 0;
+    Cerr << "Trying to get serial..." << Endl;
+    do {
+        err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+        if (!!err && counter % 100000 == 0) {
+            Cerr << "error = " << err << "; errno = " << errno << "; "
+                 << strerror(errno) << Endl;
+        }
+        counter++;
+    } while (errno == EACCES);
 
     if (err) {
         int err = errno;
+        Cerr << "NVMeIdentifyCtrl failed: " << strerror(err) << ": " << err
+             << Endl;
         ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
-            << "NVMeIdentifyCtrl failed: " << strerror(err);
+            << "NVMeIdentifyCtrl failed: " << strerror(err) << ": " << err;
     }
 
     return ctrl;
@@ -57,6 +69,7 @@ nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
     };
 
     int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    FIONREAD;
 
     if (err) {
         int err = errno;
@@ -142,7 +155,18 @@ private:
         const TString& path,
         nvme_secure_erase_setting ses)
     {
+        Y_ABORT();
         TFileHandle device(path, OpenExisting | RdOnly);
+
+        // Cerr << "FormatImpl, DEVICE OPENED = " << device.IsOpen()
+        //          << Endl;
+        // FHANDLE fd = device;
+        // const ui64 flags = fcntl(fd, F_GETFL);
+        // const int r = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        // Y_ENSURE(!r, "fcntl returned error: " << r << "; errno = " << errno);
+        // Cerr << "FormatImpl, DEVICE STILL OPENED = " << device.IsOpen()
+        //         << Endl;
+
 
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
@@ -241,6 +265,17 @@ public:
     {
         return SafeExecute<TResultOrError<TString>>([&] {
             TFileHandle device(path, OpenExisting | RdOnly);
+            Cerr << "GetSerialNumber, DEVICE OPENED = " << device.IsOpen()
+                 << Endl;
+            FHANDLE fd = device;
+
+            const ui64 flags = fcntl(fd, F_GETFL);
+            const int r = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+            Y_ENSURE(!r, "fcntl returned error: " << r << "; errno = " << errno);
+            Y_ABORT_UNLESS(!r);
+
+            Cerr << "GetSerialNumber, DEVICE STILL OPENED = " << device.IsOpen()
+                 << Endl;
 
             auto str = [] (auto& arr) {
                 auto* sn = std::bit_cast<const char*>(&arr[0]);

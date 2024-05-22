@@ -486,13 +486,13 @@ struct TEvDiskRegistryPrivate
     struct TAgentConnectionLost
     {
         TString AgentId;
-        ui64 SeqNo;
+        std::optional<NActors::TActorId> ServerId;
 
         TAgentConnectionLost(
                 TString agentId,
-                ui64 seqNo)
+                std::optional<NActors::TActorId> serverId)
             : AgentId(std::move(agentId))
-            , SeqNo(seqNo)
+            , ServerId(serverId)
         {}
     };
 

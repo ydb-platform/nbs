@@ -104,15 +104,18 @@ private:
     TInstant SecureEraseStartTs;
     TInstant StartMigrationStartTs;
 
-    THashMap<NActors::TActorId, TString> ServerToAgentId;
+    // THashMap<NActors::TActorId, TString> ServerToAgentId;
 
     struct TAgentRegInfo
     {
-        ui64 SeqNo = 0;
+        TString AgentId;
+        TMaybe<bool> TemporaryAgent;
         bool Connected = false;
     };
 
-    THashMap<TString, TAgentRegInfo> AgentRegInfo;
+    THashMap<NActors::TActorId, TAgentRegInfo> AgentRegInfo;
+    THashMap<TString, std::unique_ptr<NActors::TSchedulerCookieHolder>>
+        ScheduledAgentRejects;
 
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
@@ -215,7 +218,7 @@ private:
     void ScheduleRejectAgent(
         const NActors::TActorContext& ctx,
         TString agentId,
-        ui64 seqNo);
+        std::optional<NActors::TActorId> serverId);
 
     void ScheduleSwitchAgentDisksToReadOnly(
         const NActors::TActorContext& ctx,

@@ -96,6 +96,30 @@ bool TDiskRegistryActor::LoadState(
     });
 }
 
+void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
+{
+    State = std::make_unique<TDiskRegistryState>(
+        Logging,
+        Config,
+        ComponentGroup,
+        std::move(snapshot.Config),
+        std::move(snapshot.Agents),
+        std::move(snapshot.Disks),
+        std::move(snapshot.PlacementGroups),
+        std::move(snapshot.BrokenDisks),
+        std::move(snapshot.DisksToReallocate),
+        std::move(snapshot.DiskStateChanges),
+        snapshot.LastDiskStateSeqNo,
+        std::move(snapshot.DirtyDevices),
+        std::move(snapshot.DisksToCleanup),
+        std::move(snapshot.ErrorNotifications),
+        std::move(snapshot.UserNotifications),
+        std::move(snapshot.OutdatedVolumeConfigs),
+        std::move(snapshot.SuspendedDevices),
+        std::move(snapshot.AutomaticallyReplacedDevices),
+        std::move(snapshot.DiskRegistryAgentListParams));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TDiskRegistryActor::PrepareLoadState(
@@ -149,30 +173,6 @@ void TDiskRegistryActor::ExecuteLoadState(
         args.Snapshot.UserNotifications);
 }
 
-void TDiskRegistryActor::InitializeState(TDiskRegistryStateSnapshot snapshot)
-{
-    State = std::make_unique<TDiskRegistryState>(
-        Logging,
-        Config,
-        ComponentGroup,
-        std::move(snapshot.Config),
-        std::move(snapshot.Agents),
-        std::move(snapshot.Disks),
-        std::move(snapshot.PlacementGroups),
-        std::move(snapshot.BrokenDisks),
-        std::move(snapshot.DisksToReallocate),
-        std::move(snapshot.DiskStateChanges),
-        snapshot.LastDiskStateSeqNo,
-        std::move(snapshot.DirtyDevices),
-        std::move(snapshot.DisksToCleanup),
-        std::move(snapshot.ErrorNotifications),
-        std::move(snapshot.UserNotifications),
-        std::move(snapshot.OutdatedVolumeConfigs),
-        std::move(snapshot.SuspendedDevices),
-        std::move(snapshot.AutomaticallyReplacedDevices),
-        std::move(snapshot.DiskRegistryAgentListParams));
-}
-
 void TDiskRegistryActor::CompleteLoadState(
     const TActorContext& ctx,
     TTxDiskRegistry::TLoadState& args)
@@ -196,7 +196,7 @@ void TDiskRegistryActor::CompleteLoadState(
     for (const auto& agent: args.Snapshot.Agents) {
         if (agent.GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
             // this event will be scheduled using NonReplicatedAgentMaxTimeout
-            ScheduleRejectAgent(ctx, agent.GetAgentId(), 0);
+            ScheduleRejectAgent(ctx, agent.GetAgentId(), std::nullopt);
         }
     }
 

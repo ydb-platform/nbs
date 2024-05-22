@@ -20,9 +20,16 @@ void TDiskRegistryActor::HandleSwitchAgentDisksToReadOnly(
 {
     auto* msg = ev->Get();
 
-    if (auto it = AgentRegInfo.find(msg->AgentId);
-        it != AgentRegInfo.end() && it->second.Connected)
-    {
+    // ????
+    const bool connected = AnyOf(
+        AgentRegInfo,
+        [agentId = msg->AgentId](const auto& info)
+        {
+            return info.second.AgentId == agentId && info.second.Connected;
+            //        && info.second.TemporaryAgent.Defined() &&
+            //        !info.second.TemporaryAgent.Get();
+        });
+    if (connected) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
