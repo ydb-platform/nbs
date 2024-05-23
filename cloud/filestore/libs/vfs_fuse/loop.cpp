@@ -148,7 +148,8 @@ public:
                     requestsSize = Requests.size();
                     // double-checking needed because inflight count and completing
                     // count should be checked together atomically
-                    noCompleting = CompletingCount.Val() == 0;
+                    completingCount = CompletingCount.Val();
+                    noCompleting = completingCount == 0;
                 }
 
                 STORAGE_INFO("[f:%s] completing left: %ld, requests left: %u",
