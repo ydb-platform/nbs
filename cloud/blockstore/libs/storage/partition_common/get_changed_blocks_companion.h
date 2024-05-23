@@ -8,6 +8,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Helps to process the TEvGetChangedBlocksRequest message. It can either
+// respond to it with an error, or redirect it to another actor.
 class TGetChangedBlocksCompanion
 {
 public:

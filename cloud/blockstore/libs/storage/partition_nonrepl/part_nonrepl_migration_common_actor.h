@@ -176,7 +176,7 @@ public:
     }
 
 protected:
-    void GetChangedBlocks(TBlockRange64 range, TString* result) const;
+    [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
 
 private:
     bool IsMigrationAllowed() const;

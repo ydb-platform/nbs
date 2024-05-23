@@ -1250,11 +1250,10 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     }
 
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
-    GetChangedBlocks(
-        TBlockRange64::WithLength(
-            msg->Record.GetStartIndex(),
-            msg->Record.GetBlocksCount()),
-        response->Record.MutableMask());
+    auto range = TBlockRange64::WithLength(
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount());
+    response->Record.SetMask(GetChangedBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }

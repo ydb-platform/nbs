@@ -318,11 +318,10 @@ void TNonreplicatedPartitionMigrationCommonActor::
     MigrationOwner->OnMigrationFinished(ctx);
 }
 
-void TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
-    TBlockRange64 range,
-    TString* result) const
+TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
+    TBlockRange64 range) const
 {
-    *result = ChangedRangesMap.GetChangedBlocks(range);
+    return ChangedRangesMap.GetChangedBlocks(range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

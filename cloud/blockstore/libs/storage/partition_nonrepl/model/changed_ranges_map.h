@@ -8,6 +8,9 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stores and manages a map of changed blocks with a reduced resolution.
+// The RangeSize divided by BlockSize determines how many blocks are stored in
+// one bit.
 class TChangedRangesMap
 {
 private:
@@ -21,8 +24,14 @@ private:
 public:
     TChangedRangesMap(ui64 blockCount, ui32 blockSize, ui32 rangeSize);
 
+    // The entire region becomes changed if at least one block has been changed.
     void MarkChanged(TBlockRange64 range);
+
+    // All blocks of the range must be marked as unchanged in order to remove
+    // the mark from the region.
     void MarkNotChanged(TBlockRange64 range);
+
+    // Returns a map of modified blocks, where each bit is one block.
     [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
 
 private:
