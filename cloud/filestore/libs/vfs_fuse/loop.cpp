@@ -81,11 +81,12 @@ class TCompletionQueue final
     , public IIncompleteRequestProvider
 {
 private:
+    const TString FileSystemId;
     const IRequestStatsPtr RequestStats;
     TLog Log;
     const NProto::EStorageMediaKind RequestMediaKind;
 
-    enum fuse_cancelation_code CancelCode;
+    enum fuse_cancelation_code CancelCode{};
     NAtomic::TBool ShouldStop = false;
     TAtomicCounter CompletingCount = {0};
 
@@ -96,17 +97,20 @@ private:
 
 public:
     TCompletionQueue(
+            TString fileSystemId,
             IRequestStatsPtr stats,
             TLog& log,
             NProto::EStorageMediaKind requestMediaKind)
-        : RequestStats(std::move(stats))
+        : FileSystemId(std::move(fileSystemId))
+        , RequestStats(std::move(stats))
         , Log(log)
         , RequestMediaKind(requestMediaKind)
     {
-        Y_UNUSED(Log);
     }
 
-    TMaybe<enum fuse_cancelation_code> Enqueue(fuse_req_t req, TCallContextPtr context)
+    TMaybe<enum fuse_cancelation_code> Enqueue(
+        fuse_req_t req,
+        TCallContextPtr context)
     {
         TGuard g{RequestsLock};
 
@@ -114,7 +118,7 @@ public:
             return CancelCode;
         }
 
-        Requests[req] = context;
+        Requests[req] = std::move(context);
         return Nothing();
     }
 
@@ -128,19 +132,33 @@ public:
         }
 
         int ret = cb(req);
-        bool noCompleting = CompletingCount.Dec() == 0;
+        auto completingCount = CompletingCount.Dec();
+        bool noCompleting = completingCount == 0;
 
-        if (ShouldStop && noCompleting) {
-            bool noInflight = false;
-            with_lock (RequestsLock) {
-                noInflight = Requests.empty();
-                // double-checking needed because inflight count and completing
-                // count should be checked together atomically
-                noCompleting = CompletingCount.Val() == 0;
-            }
+        if (ShouldStop) {
+            STORAGE_INFO("[f:%s] completing left: %ld",
+                FileSystemId.c_str(),
+                completingCount);
 
-            if (noInflight && noCompleting) {
-                StopPromise.TrySetValue();
+            if (noCompleting) {
+                bool noInflight = false;
+                ui32 requestsSize = 0;
+                with_lock (RequestsLock) {
+                    noInflight = Requests.empty();
+                    requestsSize = Requests.size();
+                    // double-checking needed because inflight count and completing
+                    // count should be checked together atomically
+                    noCompleting = CompletingCount.Val() == 0;
+                }
+
+                STORAGE_INFO("[f:%s] completing left: %ld, requests left: %u",
+                    FileSystemId.c_str(),
+                    completingCount,
+                    requestsSize);
+
+                if (noInflight && noCompleting) {
+                    StopPromise.TrySetValue();
+                }
             }
         }
 
@@ -433,6 +451,8 @@ public:
         }
 
         Join();
+
+        STORAGE_INFO("stopped FUSE loop");
     }
 
     void Suspend()
@@ -723,6 +743,7 @@ private:
                 Config->GetClientId());
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
+                Config->GetFileSystemId(),
                 RequestStats,
                 Log,
                 StorageMediaKind);
