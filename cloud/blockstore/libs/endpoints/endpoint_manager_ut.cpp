@@ -135,10 +135,14 @@ struct TTestDeviceFactory
     TVector<TString> Devices;
 
     NBD::IDeviceConnectionPtr Create(
-        TNetworkAddress connectAddress,
-        TString deviceName) override
+        const TNetworkAddress& connectAddress,
+        TString deviceName,
+        ui64 blockCount,
+        ui32 blockSize) override
     {
         Y_UNUSED(connectAddress);
+        Y_UNUSED(blockCount);
+        Y_UNUSED(blockSize);
         Devices.push_back(deviceName);
         return NBD::CreateDeviceConnectionStub();
     }
