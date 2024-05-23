@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	node_config "github.com/ydb-platform/nbs/cloud/tasks/acceptance_tests/recipe/node/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -59,7 +59,7 @@ func run(
 	db, err := persistence.NewYDBClient(
 		ctx,
 		config.GetPersistenceConfig(),
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to DB: %w", err)

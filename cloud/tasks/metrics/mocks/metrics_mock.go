@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/ydb-platform/nbs/library/go/core/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	clientmodel "github.com/prometheus/client_model/go"
 
-	"github.com/ydb-platform/nbs/library/go/core/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/prometheus"
 )
 
@@ -62,6 +62,7 @@ func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
 		).AddTags(map[string]string{"component": path}),
 	)
 	allGatherers.Add(registry)
+
 	newRegistryOnce.Do(
 		func() {
 			mux.Handle(
@@ -77,5 +78,5 @@ func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
 			)
 		},
 	)
-	return registry
+	return &RegistryWrapper{registry: registry}
 }

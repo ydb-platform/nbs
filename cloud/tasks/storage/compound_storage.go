@@ -7,6 +7,7 @@ import (
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -460,7 +461,7 @@ func NewStorage(
 	// Ignore legacy metrics.
 	legacyStorage := newStorage(
 		config.GetLegacyStorageFolder(),
-		newStorageMetrics(metrics.NewEmptyRegistry()),
+		newStorageMetrics(empty.NewRegistry()),
 	)
 
 	return &compoundStorage{

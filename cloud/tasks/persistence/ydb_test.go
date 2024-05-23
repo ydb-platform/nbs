@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
@@ -34,7 +34,7 @@ func newYDB(ctx context.Context) (*YDBClient, error) {
 			Database: &database,
 			RootPath: &rootPath,
 		},
-		metrics.NewEmptyRegistry(),
+		empty.NewRegistry(),
 	)
 }
 

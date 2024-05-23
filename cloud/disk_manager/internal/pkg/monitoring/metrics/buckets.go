@@ -3,17 +3,17 @@ package metrics
 import (
 	"time"
 
-	"github.com/ydb-platform/nbs/library/go/core/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewLinearBuckets(start float64, width float64, n int) Buckets {
-	return metrics.MakeLinearBuckets(start, width, n)
+	return metrics.NewLinearBuckets(start, width, n)
 }
 
 func NewExponentialBuckets(start float64, factor float64, n int) Buckets {
-	return metrics.MakeExponentialBuckets(start, factor, n)
+	return metrics.NewExponentialBuckets(start, factor, n)
 }
 
 func NewDurationBuckets(args ...time.Duration) DurationBuckets {
@@ -26,5 +26,5 @@ func NewExponentialDurationBuckets(
 	n int,
 ) DurationBuckets {
 
-	return metrics.MakeExponentialDurationBuckets(start, factor, n)
+	return metrics.NewExponentialDurationBuckets(start, factor, n)
 }
