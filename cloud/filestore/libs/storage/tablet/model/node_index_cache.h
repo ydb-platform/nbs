@@ -12,49 +12,6 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace {
-
-struct TKey
-{
-    ui64 ParentNodeId;
-    TString Name;
-
-    TKey(ui64 parentNodeId, const TString& name)
-        : ParentNodeId(parentNodeId)
-        , Name(name)
-    {}
-
-    size_t GetHash() const
-    {
-        return MultiHash(ParentNodeId, Name);
-    }
-
-    TKey(const TKey&) = default;
-    TKey& operator=(const TKey&) = default;
-    TKey(TKey&&) = default;
-    TKey& operator=(TKey&&) = default;
-
-    friend bool operator==(const TKey& lhv, const TKey& rhv) = default;
-};
-
-}   // namespace
-
-}   // namespace NCloud::NFileStore::NStorage
-
-template <>
-struct THash<::NCloud::NFileStore::NStorage::TKey>
-{
-    size_t operator()(
-        const ::NCloud::NFileStore::NStorage::TKey& key) const noexcept
-    {
-        return key.GetHash();
-    }
-};
-
-namespace NCloud::NFileStore::NStorage {
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TNodeIndexCacheStats
 {
     ui64 NodeCount = 0;
@@ -64,17 +21,50 @@ struct TNodeIndexCacheStats
 
 class TNodeIndexCache
 {
-    THashMap<ui64, TKey> KeyByNodeId;
-    THashMap<TKey, NProto::TNodeAttr> AttrByParentNodeId;
+private:
+    struct TNodeIndexCacheKey
+    {
+        ui64 ParentNodeId;
+        TString Name;
 
-    size_t MaxNodes;
+        TNodeIndexCacheKey(ui64 parentNodeId, const TString& name)
+            : ParentNodeId(parentNodeId)
+            , Name(name)
+        {}
+
+        size_t GetHash() const
+        {
+            return MultiHash(ParentNodeId, Name);
+        }
+
+        TNodeIndexCacheKey(const TNodeIndexCacheKey&) = default;
+        TNodeIndexCacheKey& operator=(const TNodeIndexCacheKey&) = default;
+        TNodeIndexCacheKey(TNodeIndexCacheKey&&) = default;
+        TNodeIndexCacheKey& operator=(TNodeIndexCacheKey&&) = default;
+
+        bool operator==(const TNodeIndexCacheKey& rhs) const = default;
+    };
+
+    struct TNodeIndexCacheKeyHash
+    {
+        size_t operator()(const TNodeIndexCacheKey& key) const noexcept
+        {
+            return key.GetHash();
+        }
+    };
+
+    THashMap<ui64, TNodeIndexCacheKey> KeyByNodeId;
+    THashMap<TNodeIndexCacheKey, NProto::TNodeAttr, TNodeIndexCacheKeyHash>
+        AttrByParentNodeId;
+
+    ui32 MaxNodes;
 
 public:
     explicit TNodeIndexCache(IAllocator* allocator);
 
     [[nodiscard]] TNodeIndexCacheStats GetStats() const;
 
-    void Reset(size_t maxNodes);
+    void Reset(ui32 maxNodes);
 
     void InvalidateCache(ui64 parentNodeId, const TString& name);
 

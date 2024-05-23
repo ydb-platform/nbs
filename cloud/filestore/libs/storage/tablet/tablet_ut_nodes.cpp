@@ -1199,8 +1199,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             });
             // clang-format on
         }
-
-        // cache invalidation
     }
 
     Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)

@@ -2,6 +2,8 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TNodeIndexCache::TNodeIndexCache(IAllocator* allocator)
 {
     Y_UNUSED(allocator);
@@ -14,7 +16,7 @@ TNodeIndexCacheStats TNodeIndexCache::GetStats() const
     return stats;
 }
 
-void TNodeIndexCache::Reset(size_t maxNodes)
+void TNodeIndexCache::Reset(ui32 maxNodes)
 {
     KeyByNodeId.clear();
     AttrByParentNodeId.clear();
@@ -23,7 +25,7 @@ void TNodeIndexCache::Reset(size_t maxNodes)
 
 void TNodeIndexCache::InvalidateCache(ui64 parentNodeId, const TString& name)
 {
-    auto it = AttrByParentNodeId.find(TKey(parentNodeId, name));
+    auto it = AttrByParentNodeId.find(TNodeIndexCacheKey(parentNodeId, name));
     if (it != AttrByParentNodeId.end()) {
         KeyByNodeId.erase(it->second.GetId());
         AttrByParentNodeId.erase(it);
@@ -49,7 +51,7 @@ void TNodeIndexCache::RegisterGetNodeAttrResult(
         AttrByParentNodeId.clear();
     }
 
-    auto key = TKey(parentNodeId, name);
+    auto key = TNodeIndexCacheKey(parentNodeId, name);
     AttrByParentNodeId[key] = response;
     KeyByNodeId.emplace(response.GetId(), key);
 }
@@ -59,7 +61,7 @@ bool TNodeIndexCache::TryFillGetNodeAttrResult(
     const TString& name,
     NProto::TNodeAttr* response)
 {
-    auto it = AttrByParentNodeId.find(TKey(parentNodeId, name));
+    auto it = AttrByParentNodeId.find(TNodeIndexCacheKey(parentNodeId, name));
     if (it == AttrByParentNodeId.end()) {
         return false;
     }
