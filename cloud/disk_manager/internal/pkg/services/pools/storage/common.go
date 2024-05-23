@@ -350,6 +350,7 @@ func computePoolAction(t baseDiskTransition) poolAction {
 			// Add all free slots to pool when creating new base disk.
 			a.sizeDiff = int64(t.state.freeSlots())
 			a.freeUnitsDiff = int64(t.state.freeUnits())
+			a.acquiredUnitsDiff = int64(t.state.activeUnits)
 		}
 
 		if t.state.isInflight() {
@@ -370,7 +371,7 @@ func computePoolAction(t baseDiskTransition) poolAction {
 		// Remove all free slots from pool when ejecting base disk.
 		a.sizeDiff = -int64(t.oldState.freeSlots())
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
-		// TODO: check that t.oldState.activeUnits is 0
+		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
 
 	case t.oldState.status == t.state.status && !t.state.isDoomed():
 		// Regular transition for healthy base disks.

@@ -654,48 +654,37 @@ func (s *storageYDB) applyBaseDiskInvariants(
 
 	for _, baseDiskTransition := range baseDiskTransitions {
 		baseDisk := baseDiskTransition.state
+		action := computePoolAction(baseDiskTransition)
 
-		imageID := baseDisk.imageID
-		zoneID := baseDisk.zoneID
-		key := imageID + zoneID
+		if action.hasChanges() {
+			imageID := baseDisk.imageID
+			zoneID := baseDisk.zoneID
+			key := imageID + zoneID
 
-		t, ok := poolTransitions[key]
-		if !ok {
-			p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
-			if err != nil {
-				return nil, err
+			t, ok := poolTransitions[key]
+			if !ok {
+				p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
+				if err != nil {
+					return nil, err
+				}
+
+				t = poolTransition{
+					oldState: p,
+					state:    p,
+				}
 			}
 
-			t = poolTransition{
-				oldState: p,
-				state:    p,
+			if t.state.status == poolStatusDeleted {
+				// Remove from deleted pool.
+				baseDisk.fromPool = false
+			} else {
+				action.apply(&t.state)
 			}
-		}
 
-		if t.state.status == poolStatusDeleted {
-			// Remove from deleted pool.
-			baseDisk.fromPool = false
+			poolTransitions[key] = t
 		}
 
 		baseDisk.applyInvariants()
-
-		logging.Debug(
-			ctx,
-			"applying base disk transition from %+v to %+v",
-			baseDiskTransition.oldState,
-			baseDiskTransition.state,
-		)
-
-		action := computePoolAction(baseDiskTransition)
-		logging.Debug(
-			ctx,
-			"computed pool action is %+v",
-			action,
-		)
-
-		action.apply(&t.state)
-
-		poolTransitions[key] = t
 	}
 
 	var res []poolTransition
@@ -711,6 +700,12 @@ func (s *storageYDB) updatePoolsTable(
 	tx *persistence.Transaction,
 	transitions []poolTransition,
 ) error {
+
+	logging.Debug(
+		ctx,
+		"applying pool transitions %+v",
+		transitions,
+	)
 
 	var values []persistence.Value
 
@@ -2560,8 +2555,8 @@ func (s *storageYDB) deletePool(
 		zoneID:            p.zoneID,
 		size:              0,
 		freeUnits:         0,
-		acquiredUnits:     0,
-		baseDisksInflight: 0,
+		acquiredUnits:     p.acquiredUnits,
+		baseDisksInflight: p.baseDisksInflight,
 		status:            poolStatusDeleted,
 		createdAt:         p.createdAt,
 	}

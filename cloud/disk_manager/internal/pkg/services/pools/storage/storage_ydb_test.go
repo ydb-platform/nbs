@@ -19,6 +19,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TODO
+
 func makeDefaultConfig() *pools_config.PoolsConfig {
 	maxActiveSlots := uint32(10)
 	maxBaseDisksInflight := uint32(5)
