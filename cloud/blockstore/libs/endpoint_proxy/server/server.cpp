@@ -449,6 +449,13 @@ struct TServer: IEndpointProxyServer
         STORAGE_INFO(request.ShortDebugString().Quote()
             << " - Started DurableClient");
 
+        // these options can actually be obtained from ClientHandler after the
+        // first request is processed (they will be available after connection
+        // negotiation), but it will make the code here more complex - it's
+        // easier to pass these params from the client of endpoint proxy
+        //
+        // it also gives us some flexibility - we can show the device to the
+        // kernel with different options if we need it for some reason
         ep.NbdOptions.BlockSize = request.GetBlockSize();
         ep.NbdOptions.BlocksCount = request.GetBlocksCount();
 
