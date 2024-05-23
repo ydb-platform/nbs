@@ -857,6 +857,10 @@ message TReadDeviceBlocksResponse
 
     // Requested blocks.
     TIOVector Blocks = 2;
+
+    // If true, it means that all the data read was zeros.
+    // It's a hint, false negatives are allowed.
+    bool AllZeroes = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

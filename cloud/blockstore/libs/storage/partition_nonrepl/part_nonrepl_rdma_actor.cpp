@@ -247,13 +247,14 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     TVector<TDeviceRequestInfo> requests;
 
     ui64 startBlockIndexOffset = 0;
-    for (auto& r: deviceRequests) {
+    for (const auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dr->StartIndexOffset = startBlockIndexOffset;
+        dr->BlockCount = r.DeviceBlockRange.Size();
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         NProto::TReadDeviceBlocksRequest deviceRequest;
@@ -262,6 +263,10 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
+        if (Config->GetOptimizeVoidBuffersTransferForReadsEnabled()) {
+            deviceRequest.MutableHeaders()->SetOptimizeNetworkTransfer(
+                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+        }
 
         auto [req, err] = ep->AllocateRequest(
             handler,
@@ -333,6 +338,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+        static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 

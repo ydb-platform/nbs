@@ -29,6 +29,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TDeviceReadRequestContext: public NRdma::TNullContext
 {
     ui64 StartIndexOffset = 0;
+    ui64 BlockCount = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////

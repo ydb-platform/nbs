@@ -70,20 +70,21 @@ struct TTestEnv
         : TTestEnv(runtime, NProto::VOLUME_IO_OK)
     {}
 
-    explicit TTestEnv(
+    TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode)
         : TTestEnv(
             runtime,
             ioMode,
-            DefaultDevices(runtime.GetNodeId(0))
-        )
+            DefaultDevices(runtime.GetNodeId(0)),
+            false)
     {}
 
-    explicit TTestEnv(
+    TTestEnv(
             TTestActorRuntime& runtime,
             NProto::EVolumeIOMode ioMode,
-            TDevices devices)
+            TDevices devices,
+            bool optimizeVoidBuffersTransfer)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -98,6 +99,8 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetAssignIdToWriteAndZeroRequestsEnabled(true);
+        storageConfig.SetOptimizeVoidBuffersTransferForReadsEnabled(
+            optimizeVoidBuffersTransfer);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -571,6 +574,18 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2048 * 4096, counters.BytesWritten.Value);
         UNIT_ASSERT_VALUES_EQUAL(512 * 4096, counters.BytesRead.Value);
+
+        auto& requestCounters =
+            env.StorageStatsServiceState->Counters.RequestCounters;
+        UNIT_ASSERT_VALUES_EQUAL(
+            512 * 4096,
+            requestCounters.ReadBlocks.GetRequestBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCounters.ReadBlocks.GetRequestVoidBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requestCounters.ReadBlocks.GetRequestNonVoidBytes());
     }
 
     Y_UNIT_TEST(ShouldHandleInvalidSessionError)
@@ -917,6 +932,221 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             response->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldReadVoidBuffers)
+    {
+        TTestBasicRuntime runtime;
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.Rdma().InitAllEndpoints();
+
+        auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
+
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        auto rangeWithDirtyBlocks = TBlockRange64::WithLength(0, 24);
+        auto onlyVoidBlocks = TBlockRange64::WithLength(0, 10);
+        client.WriteBlocks(dirtyBlocks, 'A');
+
+        // ReadLocal with dirty blocks.
+        {
+            TVector<TString> blocks;
+
+            auto responseLocal = client.ReadBlocksLocal(
+                rangeWithDirtyBlocks,
+                TGuardedSgList(ResizeBlocks(
+                    blocks,
+                    rangeWithDirtyBlocks.Size(),
+                    TString(DefaultBlockSize, '\0'))));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, responseLocal->GetError().GetCode());
+            UNIT_ASSERT(!responseLocal->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < blocks.size(); ++i) {
+                TString expectedContent = dirtyBlocks.Contains(i)
+                                              ? TString(4096, 'A')
+                                              : TString(4096, 0);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedContent,
+                    blocks[i],
+                    TStringBuilder() << "block " << i);
+            }
+
+            // Check counters.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestNonVoidBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.ReadBlocks.GetRequestVoidBytes());
+        }
+
+        // Read with dirty blocks
+        {
+            auto response = client.ReadBlocks(rangeWithDirtyBlocks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
+            UNIT_ASSERT(!response->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < rangeWithDirtyBlocks.Size(); ++i) {
+                TString expectedContent = dirtyBlocks.Contains(i)
+                                              ? TString(4096, 'A')
+                                              : TString(4096, 0);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedContent,
+                    response->Record.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << i);
+            }
+
+            // Check counters.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestNonVoidBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.ReadBlocks.GetRequestVoidBytes());
+        }
+
+        // ReadLocal void blocks.
+        {
+            TVector<TString> blocks;
+
+            auto responseLocal = client.ReadBlocksLocal(
+                onlyVoidBlocks,
+                TGuardedSgList(ResizeBlocks(
+                    blocks,
+                    onlyVoidBlocks.Size(),
+                    TString(DefaultBlockSize, '\0'))));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, responseLocal->GetError().GetCode());
+            UNIT_ASSERT(responseLocal->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < blocks.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TString(4096, 0),
+                    blocks[i],
+                    TStringBuilder() << "block " << i);
+            }
+
+            // Check counters.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                onlyVoidBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.ReadBlocks.GetRequestNonVoidBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                onlyVoidBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestVoidBytes());
+        }
+
+        // Read void blocks.
+        {
+            auto response = client.ReadBlocks(onlyVoidBlocks);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
+            UNIT_ASSERT(response->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < onlyVoidBlocks.Size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TString(4096, 0),
+                    response->Record.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << i);
+            }
+
+            // Check counters.
+            client.SendRequest(
+                env.ActorId,
+                std::make_unique<
+                    TEvNonreplPartitionPrivate::TEvUpdateCounters>());
+            runtime.DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                onlyVoidBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.ReadBlocks.GetRequestNonVoidBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                onlyVoidBlocks.Size() * DefaultBlockSize,
+                counters.ReadBlocks.GetRequestVoidBytes());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReadVoidRangesOnMultipleDevices)
+    {
+        const size_t blocksPerDevice = 512;
+        TTestBasicRuntime runtime;
+
+        TDevices devices;
+        TTestEnv::AddDevice(
+            runtime.GetNodeId(0),
+            blocksPerDevice,
+            "device-1",
+            devices);
+        TTestEnv::AddDevice(
+            runtime.GetNodeId(0),
+            blocksPerDevice,
+            "device-2",
+            devices);
+
+        TTestEnv env(
+            runtime,
+            NProto::VOLUME_IO_OK,
+            std::move(devices),
+            true);
+        TPartitionClient client(runtime, env.ActorId);
+
+        env.Rdma().InitAllEndpoints();
+
+        auto allBlocksRange = TBlockRange64::WithLength(0, blocksPerDevice * 2);
+        auto voidRange = TBlockRange64::WithLength(blocksPerDevice - 1, 2);
+        auto [dirtyBlocks1, dirtyBlocks2] =
+            allBlocksRange.Difference(voidRange);
+
+        client.WriteBlocks(*dirtyBlocks1, 'A');
+        client.WriteBlocks(*dirtyBlocks2, 'B');
+
+        // Read void blocks.
+        {
+            auto response = client.ReadBlocks(voidRange);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
+            UNIT_ASSERT(response->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < voidRange.Size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TString(4096, 0),
+                    response->Record.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << i);
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

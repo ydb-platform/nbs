@@ -324,7 +324,6 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
                 response.GetError().GetCode(),
                 response.GetError().GetMessage());
         }
-
     }
 
     Y_UNIT_TEST(ShouldRejectSecureEraseDuringIo)
@@ -356,6 +355,63 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
         UNIT_ASSERT_C(!HasError(error), error);
     }
 
+    Y_UNIT_TEST(ShouldReadVoidBuffers)
+    {
+        TRdmaTestEnvironment env;
+
+        // Write 3 blocks from 10 to 12.
+        auto dirtyBlocks = TBlockRange64::WithLength(10, 3);
+        auto rangeWithDirtyBlocks = TBlockRange64::WithLength(0, 24);
+        auto onlyVoidBlocks = TBlockRange64::WithLength(0, 10);
+        {
+            auto responseFuture =
+                env.Run(env.MakeWriteRequest(dirtyBlocks, 'A'));
+            responseFuture.GetValueSync();
+        }
+
+        // Read with dirty blocks.
+        {
+            auto readRequest = env.MakeReadRequest(rangeWithDirtyBlocks);
+            readRequest.MutableHeaders()->SetOptimizeNetworkTransfer(
+                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+            auto responseFuture = env.Run(readRequest);
+            const auto& response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+            UNIT_ASSERT(!response.GetAllZeroes());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeWithDirtyBlocks.Size(),
+                response.GetBlocks().BuffersSize());
+
+            for (int i = 0; i < response.GetBlocks().GetBuffers().size(); ++i) {
+                const TString expectedContent(
+                    4096,
+                    dirtyBlocks.Contains(i) ? 'A' : 0);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedContent,
+                    response.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << i);
+            }
+        }
+
+        // Read void blocks.
+        {
+            auto readRequest = env.MakeReadRequest(onlyVoidBlocks);
+            readRequest.MutableHeaders()->SetOptimizeNetworkTransfer(
+                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
+            auto responseFuture = env.Run(readRequest);
+            const auto& response = responseFuture.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                response.GetError().GetMessage());
+            UNIT_ASSERT(response.GetAllZeroes());
+            UNIT_ASSERT_VALUES_EQUAL(0, response.GetBlocks().BuffersSize());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -86,12 +86,14 @@ void TRdmaTestEnvironment::CheckResponse(
         blockRange.Size(),
         response.GetBlocks().BuffersSize());
 
-    for (const auto& buffer: response.GetBlocks().GetBuffers()) {
-        for (auto byte: buffer) {
-            if (byte != fill) {
-                UNIT_ASSERT_C(false, "!!!!");
-            }
-        }
+    const TString expectedContent(
+        response.GetBlocks().GetBuffers(0).size(),
+        fill);
+    for (int i = 0; i < response.GetBlocks().GetBuffers().size(); ++i) {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectedContent,
+            response.GetBlocks().GetBuffers(i),
+            TStringBuilder() << "block " << i);
     }
 }
 

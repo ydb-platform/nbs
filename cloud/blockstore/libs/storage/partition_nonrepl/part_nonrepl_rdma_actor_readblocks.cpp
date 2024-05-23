@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -33,10 +34,14 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
+    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
+
+    ui32 VoidBlockCount = 0;
+    ui32 NonVoidBlockCount = 0;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -46,12 +51,15 @@ public:
             size_t requestCount,
             ui32 blockCount,
             NActors::TActorId parentActorId,
-            ui64 requestId)
+            ui64 requestId,
+            bool skipVoidBlocksToOptimizeNetworkTransfer)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , ParentActorId(parentActorId)
         , RequestId(requestId)
+        , SkipVoidBlocksToOptimizeNetworkTransfer(
+              skipVoidBlocksToOptimizeNetworkTransfer)
         , ResponseCount(requestCount)
     {
         TRequestScope timer(*RequestInfo);
@@ -80,6 +88,14 @@ public:
             return;
         }
 
+        if (concreteProto.GetAllZeroes()) {
+            // We have already prepared the data for the answer with zeros.
+            // Will not fill them with zeros again.
+            VoidBlockCount += dr.BlockCount;
+            STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
+            return;
+        }
+
         auto& blocks = *Response.MutableBlocks()->MutableBuffers();
 
         ui64 offset = 0;
@@ -97,6 +113,10 @@ public:
                 bytes);
             offset += bytes;
             ++b;
+        }
+
+        if (SkipVoidBlocksToOptimizeNetworkTransfer) {
+            NonVoidBlockCount += dr.BlockCount;
         }
     }
 
@@ -131,6 +151,7 @@ public:
 
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
+        response->Record.SetAllZeroes(VoidBlockCount == blockCount);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -148,6 +169,8 @@ public:
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
+        completion->NonVoidBlockCount = NonVoidBlockCount;
+        completion->VoidBlockCount = VoidBlockCount;
 
         counters.SetBlocksCount(blockCount);
         auto completionEvent = std::make_unique<IEventHandle>(
@@ -209,7 +232,8 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         deviceRequests.size(),
         blockRange.Size(),
         SelfId(),
-        requestId);
+        requestId,
+        Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
     auto error = SendReadRequests(
         ctx,

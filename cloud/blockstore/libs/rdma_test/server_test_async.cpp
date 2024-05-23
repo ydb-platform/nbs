@@ -58,10 +58,14 @@ public:
         constexpr bool hasOutputBuffers =
             requires { concreteResponse->MutableBlocks(); };
         if constexpr (hasOutputBuffers) {
-            UNIT_ASSERT(4_KB * BlocksCount <= parsedResponse.Data.size());
-            for (ui32 i = 0; i < BlocksCount; ++i) {
-                *concreteResponse->MutableBlocks()->AddBuffers() =
-                    TString(parsedResponse.Data.substr(4_KB * i, 4_KB));
+            if (!concreteResponse->GetAllZeroes()) {
+                UNIT_ASSERT(4_KB * BlocksCount <= parsedResponse.Data.size());
+                for (ui32 i = 0; i < BlocksCount; ++i) {
+                    *concreteResponse->MutableBlocks()->AddBuffers() =
+                        TString(parsedResponse.Data.substr(4_KB * i, 4_KB));
+                }
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(0, parsedResponse.Data.size());
             }
         }
 
@@ -78,7 +82,7 @@ public:
 
     TString Serialized;
     TString OutBuffer;
-    ui32 BlocksCount;
+    ui32 BlocksCount = 0;
     NThreading::TPromise<TRequestResponse> Promise;
 };
 
