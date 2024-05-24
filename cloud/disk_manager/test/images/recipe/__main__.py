@@ -50,8 +50,8 @@ def start(argv):
     vhd_raw_image_file_server.start()
     set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_FILE_SERVER_PORT", str(vhd_raw_image_file_server.port))
     # size and crc32 after converting to raw image
-    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_SIZE", "67125248")
-    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_CRC32", "1563150988")
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_SIZE", "67125760")
+    set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_CRC32", "1296862566")
     image_map_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/vhd_raw_image_map.json")
     set_env("DISK_MANAGER_RECIPE_VHD_RAW_IMAGE_MAP_FILE", image_map_file_path)
 

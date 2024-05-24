@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/url/vhd"
 )
 
 //////////////////////////////////////////////////////////////////////////////
@@ -52,11 +51,6 @@ func guessImageFormat(
 	for imageFormat := range formatCookies {
 		offset := 0
 		switch imageFormat {
-		case ImageFormatVHD:
-			// Recognize VHD file format by the footer, not the header, because
-			// RAW VHD does not have a header and only has a footer at the end
-			// of the file.
-			offset = int(reader.Size() - vhd.FooterSize)
 		case ImageFormatVDI:
 			offset = ImageFormatVDIHeaderOffset
 		}
