@@ -366,6 +366,14 @@ func computePoolAction(t baseDiskTransition) poolAction {
 		a.sizeDiff = -int64(t.oldState.freeSlots())
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
 		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
+		if t.state.activeSlots != 0 {
+			panic(
+				fmt.Sprintf(
+					"baseDiskTransition %+v is invalid",
+					t,
+				),
+			)
+		}
 
 	case t.oldState.status == t.state.status && !t.state.isDoomed():
 		// Regular transition for healthy base disks.

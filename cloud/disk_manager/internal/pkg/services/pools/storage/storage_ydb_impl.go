@@ -679,6 +679,13 @@ func (s *storageYDB) applyBaseDiskInvariants(
 
 		baseDisk.applyInvariants()
 
+		logging.Debug(
+			ctx,
+			"applying base disk transition from %+v to %+v",
+			baseDiskTransition.oldState,
+			baseDiskTransition.state,
+		)
+
 		action := computePoolAction(baseDiskTransition)
 		logging.Debug(
 			ctx,
@@ -1463,7 +1470,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		return err
 	}
 
-	if found == nil || found.isDoomed() {
+	if found == nil || !found.fromPool || found.isDoomed() {
 		slotOldState := slot
 
 		// Abort rebasing.
@@ -2435,7 +2442,7 @@ func (s *storageYDB) markBaseDisksDeleting(
 	var baseDiskTransitions []baseDiskTransition
 	for i := 0; i < len(toDelete); i++ {
 		baseDiskOldState := toDelete[i]
-		toDelete[i].status = baseDiskStatusDeleting
+		toDelete[i].fromPool = false
 
 		baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
 			oldState: &baseDiskOldState,
@@ -2443,32 +2450,7 @@ func (s *storageYDB) markBaseDisksDeleting(
 		})
 	}
 
-	err := s.updateBaseDisksAndSlots(ctx, tx, baseDiskTransitions, nil)
-	if err != nil {
-		return err
-	}
-
-	var values []persistence.Value
-	for _, disk := range toDelete {
-		structValue := persistence.StructValue(persistence.StructFieldValue(
-			"base_disk_id",
-			persistence.UTF8Value(disk.id),
-		))
-		values = append(values, structValue)
-	}
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $values as List<Struct<base_disk_id:Utf8>>;
-
-		upsert into deleting
-		select *
-		from AS_TABLE($values)
-	`, s.tablesPath),
-		persistence.ValueParam("$values", persistence.ListValue(values...)),
-	)
-	return err
+	return s.updateBaseDisks(ctx, tx, baseDiskTransitions)
 }
 
 func (s *storageYDB) deletePool(

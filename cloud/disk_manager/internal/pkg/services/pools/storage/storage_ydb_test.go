@@ -1753,14 +1753,14 @@ func TestStorageYDBAbortOverlayDiskRebasing(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	err = storage.CheckConsistency(ctx)
-	require.NoError(t, err)
-
 	// Another rebase is permitted to go.
 	err = storage.OverlayDiskRebasing(ctx, RebaseInfo{
 		OverlayDisk:      slot.OverlayDisk,
 		TargetBaseDiskID: anotherTarget.ID,
 	})
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }
 
