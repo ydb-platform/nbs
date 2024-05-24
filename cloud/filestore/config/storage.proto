@@ -271,4 +271,8 @@ message TStorageConfig
     // they will return to using the None compaction policy, which does not trigger
     // `SetCompactionPolicy` alter operation.
     optional bool NewLocalDBCompactionPolicyEnabled = 352;
+
+    // If greater than 0, the node index cache will be used. It caches
+    // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.
+    optional uint32 NodeIndexCacheMaxNodes = 353;
 }

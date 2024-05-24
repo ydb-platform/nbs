@@ -11,6 +11,7 @@ SRCS(
     fresh_bytes_ut.cpp
     garbage_queue_ut.cpp
     mixed_blocks_ut.cpp
+    node_index_cache_ut.cpp
     operation_ut.cpp
     range_locks_ut.cpp
     read_ahead_ut.cpp

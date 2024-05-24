@@ -16,6 +16,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
+#include <cloud/filestore/libs/storage/tablet/model/node_index_cache.h>
 #include <cloud/filestore/libs/storage/tablet/model/operation.h>
 #include <cloud/filestore/libs/storage/tablet/model/public.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -1096,6 +1097,21 @@ public:
         const TByteRange& range,
         const NProtoPrivate::TDescribeDataResponse& result);
     TReadAheadCacheStats CalculateReadAheadCacheStats() const;
+
+    //
+    // Node index cache
+    //
+    bool TryFillGetNodeAttrResult(
+        ui64 parentNodeId,
+        const TString& name,
+        NProto::TNodeAttr* response);
+    void InvalidateNodeIndexCache(ui64 parentNodeId, const TString& name);
+    void InvalidateNodeIndexCache(ui64 nodeId);
+    void RegisterGetNodeAttrResult(
+        ui64 parentNodeId,
+        const TString& name,
+        const NProto::TNodeAttr& result);
+    TNodeIndexCacheStats CalculateNodeIndexCacheStats() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
