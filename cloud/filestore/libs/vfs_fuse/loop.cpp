@@ -81,31 +81,36 @@ class TCompletionQueue final
     , public IIncompleteRequestProvider
 {
 private:
+    const TString FileSystemId;
     const IRequestStatsPtr RequestStats;
     TLog Log;
     const NProto::EStorageMediaKind RequestMediaKind;
 
-    enum fuse_cancelation_code CancelCode;
+    enum fuse_cancelation_code CancelCode{};
     NAtomic::TBool ShouldStop = false;
     TAtomicCounter CompletingCount = {0};
-    TManualEvent Stopped;
 
     TMutex RequestsLock;
     THashMap<fuse_req_t, TCallContextPtr> Requests;
 
+    TPromise<void> StopPromise = NewPromise<void>();
+
 public:
     TCompletionQueue(
+            TString fileSystemId,
             IRequestStatsPtr stats,
             TLog& log,
             NProto::EStorageMediaKind requestMediaKind)
-        : RequestStats(std::move(stats))
+        : FileSystemId(std::move(fileSystemId))
+        , RequestStats(std::move(stats))
         , Log(log)
         , RequestMediaKind(requestMediaKind)
     {
-        Y_UNUSED(Log);
     }
 
-    TMaybe<enum fuse_cancelation_code> Enqueue(fuse_req_t req, TCallContextPtr context)
+    TMaybe<enum fuse_cancelation_code> Enqueue(
+        fuse_req_t req,
+        TCallContextPtr context)
     {
         TGuard g{RequestsLock};
 
@@ -113,7 +118,7 @@ public:
             return CancelCode;
         }
 
-        Requests[req] = context;
+        Requests[req] = std::move(context);
         return Nothing();
     }
 
@@ -123,34 +128,60 @@ public:
             if (!Requests.erase(req)) {
                 return 0;
             }
-            CompletingCount.Add(1);
+            CompletingCount.Inc();
         }
 
         int ret = cb(req);
-        if (CompletingCount.Dec() == 0 && ShouldStop) {
-            Stopped.Signal();
+        auto completingCount = CompletingCount.Dec();
+        bool noCompleting = completingCount == 0;
+
+        if (ShouldStop) {
+            STORAGE_INFO("[f:%s] completing left: %ld",
+                FileSystemId.c_str(),
+                completingCount);
+
+            if (noCompleting) {
+                bool noInflight = false;
+                ui32 requestsSize = 0;
+                with_lock (RequestsLock) {
+                    noInflight = Requests.empty();
+                    requestsSize = Requests.size();
+                    // double-checking needed because inflight count and completing
+                    // count should be checked together atomically
+                    completingCount = CompletingCount.Val();
+                    noCompleting = completingCount == 0;
+                }
+
+                STORAGE_INFO("[f:%s] completing left: %ld, requests left: %u",
+                    FileSystemId.c_str(),
+                    completingCount,
+                    requestsSize);
+
+                if (noInflight && noCompleting) {
+                    StopPromise.TrySetValue();
+                }
+            }
         }
+
         return ret;
     }
 
-    void Stop(enum fuse_cancelation_code code) {
+    TFuture<void> StopAsync(enum fuse_cancelation_code code)
+    {
         CancelCode = code;
         ShouldStop = true;
 
-        TGuard g{RequestsLock};
-        for (auto&& [req, context] : Requests) {
-            CancelRequest(
-                Log,
-                *RequestStats,
-                *context,
-                req,
-                CancelCode);
-        }
-        Requests.clear();
+        bool canStop = false;
 
-        while (CompletingCount.Val() != 0) {
-            Stopped.Wait();
+        with_lock (RequestsLock) {
+            canStop = Requests.empty() && CompletingCount.Val() == 0;
         }
+
+        if (canStop) {
+            StopPromise.TrySetValue();
+        }
+
+        return StopPromise;
     }
 
     void Accept(IIncompleteRequestCollector& collector) override
@@ -421,6 +452,8 @@ public:
         }
 
         Join();
+
+        STORAGE_INFO("stopped FUSE loop");
     }
 
     void Suspend()
@@ -535,32 +568,53 @@ public:
             return MakeFuture();
         }
 
-        CompletionQueue->Stop(FUSE_ERROR);
-        SessionThread->Unmount();
-        SessionThread = nullptr;
+        auto w = weak_from_this();
+        auto s = NewPromise<void>();
+        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
+            [w = std::move(w), s] (const auto& f) mutable {
+                f.GetValue();
 
-        auto callContext = MakeIntrusive<TCallContext>(
-            Config->GetFileSystemId(),
-            CreateRequestId());
-        callContext->RequestType = EFileStoreRequest::DestroySession;
-        RequestStats->RequestStarted(Log, *callContext);
-
-        auto weakPtr = weak_from_this();
-        return Session->DestroySession()
-            .Apply([=] (const auto& future) {
-                if (auto p = weakPtr.lock()) {
-                    const auto& response = future.GetValue();
-                    p->RequestStats->RequestCompleted(
-                        p->Log,
-                        *callContext,
-                        response.GetError());
-
-                    p->StatsRegistry->Unregister(
-                        p->Config->GetFileSystemId(),
-                        p->Config->GetClientId());
+                auto p = w.lock();
+                if (!p) {
+                    return;
                 }
-                return;
+
+                p->SessionThread->Unmount();
+                p->SessionThread = nullptr;
+
+                auto callContext = MakeIntrusive<TCallContext>(
+                    p->Config->GetFileSystemId(),
+                    CreateRequestId());
+                callContext->RequestType = EFileStoreRequest::DestroySession;
+                p->RequestStats->RequestStarted(p->Log, *callContext);
+
+                p->Session->DestroySession()
+                    .Subscribe([
+                        w = std::move(w),
+                        s = std::move(s),
+                        callContext = std::move(callContext)
+                    ] (const auto& f) mutable {
+                        auto p = w.lock();
+                        if (!p) {
+                            s.SetValue();
+                            return;
+                        }
+
+                        const auto& response = f.GetValue();
+                        p->RequestStats->RequestCompleted(
+                            p->Log,
+                            *callContext,
+                            response.GetError());
+
+                        p->StatsRegistry->Unregister(
+                            p->Config->GetFileSystemId(),
+                            p->Config->GetClientId());
+
+                        s.SetValue();
+                    });
             });
+
+        return s;
     }
 
     TFuture<void> SuspendAsync() override
@@ -569,17 +623,31 @@ public:
             return MakeFuture();
         }
 
-        CompletionQueue->Stop(FUSE_SUSPEND);
-        // just stop loop, leave connection
-        SessionThread->StopThread();
-        SessionThread->Suspend();
-        SessionThread = nullptr;
+        auto w = weak_from_this();
+        auto s = NewPromise<void>();
+        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
+            [w = std::move(w), s] (const auto& f) mutable {
+                f.GetValue();
 
-        StatsRegistry->Unregister(
-            Config->GetFileSystemId(),
-            Config->GetClientId());
+                auto p = w.lock();
+                if (!p) {
+                    s.SetValue();
+                    return;
+                }
 
-        return MakeFuture();
+                // just stop loop, leave connection
+                p->SessionThread->StopThread();
+                p->SessionThread->Suspend();
+                p->SessionThread = nullptr;
+
+                p->StatsRegistry->Unregister(
+                    p->Config->GetFileSystemId(),
+                    p->Config->GetClientId());
+
+                s.SetValue();
+            });
+
+        return s;
     }
 
     TFuture<NProto::TError> AlterAsync(
@@ -676,6 +744,7 @@ private:
                 Config->GetClientId());
 
             CompletionQueue = std::make_shared<TCompletionQueue>(
+                Config->GetFileSystemId(),
                 RequestStats,
                 Log,
                 StorageMediaKind);
