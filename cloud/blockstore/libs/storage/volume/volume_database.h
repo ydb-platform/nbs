@@ -68,12 +68,6 @@ public:
         TInstant oldestTimestamp,
         ui32 itemCount);
 
-    bool ReadHistoryAtLoadState(
-        TDeque<THistoryLogItem>& records,
-        TInstant startTs,
-        TInstant endTs,
-        ui64 numRecords);
-
     bool ReadHistory(
         TVector<THistoryLogItem>& records,
         THistoryLogKey startTs,

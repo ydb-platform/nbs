@@ -500,14 +500,6 @@ private:
     void ProcessReadHistory(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
-        TInstant startTs,
-        TInstant endTs,
-        size_t recordCount,
-        bool monRequest);
-
-    void ProcessReadHistory(
-        const NActors::TActorContext& ctx,
-        TRequestInfoPtr requestInfo,
         THistoryLogKey startTs,
         TInstant endTs,
         size_t recordCount,

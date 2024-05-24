@@ -505,15 +505,11 @@ void TVolumeActor::HandleHttpInfo_Default(
     const TCgiParameters& params,
     TRequestInfoPtr requestInfo)
 {
-    const auto& timestamp = params.Get("timestamp");
-    const auto& seqNumber = params.Get("seqno");
     ui64 ts = 0;
     ui64 seqNo = 0;
 
-    if (timestamp &&
-        TryFromString(timestamp, ts) &&
-        seqNumber &&
-        TryFromString(seqNumber, seqNo))
+    if (TryFromString(params.Get("timestamp"), ts) &&
+        TryFromString(params.Get("seqno"), seqNo))
     {
         auto cancelRoutine =
         [] (const TActorContext& ctx, TRequestInfo& requestInfo)

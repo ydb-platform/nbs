@@ -25,17 +25,23 @@ bool TVolumeActor::PrepareLoadState(
     TVolumeDatabase db(tx.DB);
     auto now = ctx.Now();
 
+    auto historyRecordsCount = Config->GetVolumeHistoryCacheSize();
+    if (historyRecordsCount != Max<ui32>()) {
+        // read one more record to see if there are any records beyond cached
+        ++historyRecordsCount;
+    }
+
     std::initializer_list<bool> results = {
         db.ReadMeta(args.Meta),
         db.ReadMetaHistory(args.MetaHistory),
         db.ReadVolumeParams(args.VolumeParams),
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
-        db.ReadHistoryAtLoadState(
+        db.ReadHistory(
             args.History,
-            now,
+            THistoryLogKey(now),
             args.OldestLogEntry,
-            Config->GetVolumeHistoryCacheSize()),
+            historyRecordsCount),
         db.ReadPartStats(args.PartStats),
         db.ReadNonReplPartStats(args.PartStats),
         db.CollectCheckpointsToDelete(

@@ -62,11 +62,7 @@ struct THistoryLogKey
     bool operator == (const THistoryLogKey& rhs) const;
     bool operator != (const THistoryLogKey& rhs) const;
     bool operator < (THistoryLogKey rhs) const;
-
-    ui64 GetYdbTimestamp() const;
-    ui64 GetYdbSeqno() const;
-
-    static THistoryLogKey FromYdb(ui64 ts, ui64 seqno);
+    bool operator >= (THistoryLogKey rhs) const;
 };
 
 struct THistoryLogItem
@@ -114,7 +110,42 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TVolumeMountHistory
+{
+private:
+    const ui32 HistoryCacheSize;
+
+    THistoryLogKey LastLogRecord;
+    TDeque<THistoryLogItem> History;
+    std::optional<THistoryLogKey> RecordBeyondCache;
+
+public:
+    TVolumeMountHistory(
+        ui32 historyCacheSize,
+        TDeque<THistoryLogItem> history);
+
+    void AddHistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation op);
+    void OnCleanupHistory(THistoryLogKey newestRemoved);
+
+    const TDeque<THistoryLogItem>& GetHistory() const
+    {
+        return History;
+    }
+
+    const auto& GetRecordBeyondCache() const
+    {
+        return RecordBeyondCache;
+    }
+
+    void CleanupHistoryIfNeeded(TInstant oldest);
+
+    THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
+    : public TVolumeMountHistory
 {
 private:
     TStorageConfigPtr StorageConfig;
@@ -148,10 +179,6 @@ private:
     bool ForceRepair = false;
     bool AcceptInvalidDiskAllocationResponse = false;
     bool RejectWrite = false;
-
-    THistoryLogKey LastLogRecord;
-    TDeque<THistoryLogItem> History;
-    std::optional<THistoryLogKey> RecordBeyondCache;
 
     TCheckpointStore CheckpointStore;
     std::unique_ptr<TCheckpointLight> CheckpointLight;
@@ -546,32 +573,6 @@ public:
         const TString& reason,
         const NProto::TError& error);
 
-    const TDeque<THistoryLogItem>& GetHistory() const
-    {
-        return History;
-    }
-
-    THistoryLogKey GetRecentLogEvent() const
-    {
-        if (History.size()) {
-            return History.front().Key;
-        } else {
-            return {};
-        }
-    }
-
-    const auto& GetRecordBeyondCache() const
-    {
-        return RecordBeyondCache;
-    }
-
-    auto& AccessRecordBeyondCache()
-    {
-        return RecordBeyondCache;
-    }
-
-    void CleanupHistoryIfNeeded(TInstant oldest);
-
     //
     // Checkpoint request history
     //
@@ -674,8 +675,6 @@ private:
         ui64 proposedFillGeneration);
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
-
-    THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 
     THashSet<TString> MakeFilteredDeviceIds() const;
 };

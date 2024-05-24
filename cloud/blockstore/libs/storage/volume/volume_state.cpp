@@ -64,21 +64,9 @@ bool THistoryLogKey::operator < (THistoryLogKey rhs) const
     return std::tie(Timestamp, Seqno) < std::tie(rhs.Timestamp, rhs.Seqno);
 }
 
-ui64 THistoryLogKey::GetYdbTimestamp() const
+bool THistoryLogKey::operator >= (THistoryLogKey rhs) const
 {
-    return Max<ui64>() - Timestamp.MicroSeconds();
-}
-
-ui64 THistoryLogKey::GetYdbSeqno() const
-{
-    return Max<ui64>() - Seqno;
-}
-
-THistoryLogKey THistoryLogKey::FromYdb(ui64 ts, ui64 seqno)
-{
-    return THistoryLogKey{
-        TInstant::MicroSeconds(Max<ui64>() - ts),
-        Max<ui64>() - seqno};
+    return !(*this < rhs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +84,61 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVolumeMountHistory::TVolumeMountHistory(
+        ui32 historyCacheSize,
+        TDeque<THistoryLogItem> history)
+    : HistoryCacheSize(historyCacheSize)
+    , History(std::move(history))
+{
+    while (History.size() > HistoryCacheSize) {
+        RecordBeyondCache = History.back().Key;
+        History.pop_back();
+    }
+}
+
+void TVolumeMountHistory::AddHistoryLogItem(
+    THistoryLogKey key,
+    NProto::TVolumeOperation op)
+{
+    History.emplace_front(key, std::move(op));
+    if (History.size() > HistoryCacheSize) {
+        RecordBeyondCache = History.back().Key;
+        History.pop_back();
+    }
+}
+
+void TVolumeMountHistory::OnCleanupHistory(THistoryLogKey newestRemoved)
+{
+    if (RecordBeyondCache.has_value() && (newestRemoved >= *RecordBeyondCache)) {
+        RecordBeyondCache.reset();
+    }
+}
+
+THistoryLogKey TVolumeMountHistory::AllocateHistoryLogKey(TInstant timestamp)
+{
+    if (LastLogRecord.Timestamp != timestamp) {
+        LastLogRecord.Timestamp = timestamp;
+        LastLogRecord.Seqno = 0;
+    } else {
+        ++LastLogRecord.Seqno;
+    }
+    return LastLogRecord;
+}
+
+void TVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
+{
+    bool haveRemovedItems = false;
+    while (History.size() && (History.back().Key.Timestamp < oldest)) {
+        History.pop_back();
+        haveRemovedItems = true;
+    }
+    if (haveRemovedItems) {
+        RecordBeyondCache.reset();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVolumeState::TVolumeState(
         TStorageConfigPtr storageConfig,
         NProto::TVolumeMeta meta,
@@ -106,7 +149,10 @@ TVolumeState::TVolumeState(
         TDeque<THistoryLogItem> history,
         TVector<TCheckpointRequest> checkpointRequests,
         bool startPartitionsNeeded)
-    : StorageConfig(std::move(storageConfig))
+    : TVolumeMountHistory(
+        storageConfig->GetVolumeHistoryCacheSize(),
+        std::move(history))
+    , StorageConfig(std::move(storageConfig))
     , Meta(std::move(meta))
     , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
@@ -114,7 +160,6 @@ TVolumeState::TVolumeState(
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(std::move(throttlerConfig))
     , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
-    , History(std::move(history))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
 {
@@ -142,11 +187,6 @@ TVolumeState::TVolumeState(
     const auto lightCheckpoints = CheckpointStore.GetLightCheckpoints();
     if (!lightCheckpoints.empty()) {
         StartCheckpointLight();
-    }
-
-    if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
-        RecordBeyondCache.emplace(History.back().Key);
-        History.pop_back();
     }
 }
 
@@ -806,12 +846,7 @@ THistoryLogItem TVolumeState::LogAddClient(
     auto& requesterInfo = *op.MutableRequesterInfo();
     requesterInfo.SetLocalPipeServerId(ToString(pipeServer));
     requesterInfo.SetSenderActorId(ToString(senderId));
-
-    History.emplace_front(res.Key, op);
-    if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
-        RecordBeyondCache = History.back().Key;
-        History.pop_back();
-    }
+    AddHistoryLogItem(res.Key, std::move(op));
     return res;
 }
 
@@ -831,35 +866,8 @@ THistoryLogItem TVolumeState::LogRemoveClient(
     removeInfo.SetReason(reason);
     *op.MutableRemove() = removeInfo;
     *op.MutableError() = error;
-    History.emplace_front(res.Key, op);
-    if (History.size() > StorageConfig->GetVolumeHistoryCacheSize()) {
-        RecordBeyondCache = History.back().Key;
-        History.pop_back();
-    }
+    AddHistoryLogItem(res.Key, std::move(op));
     return res;
-}
-
-THistoryLogKey TVolumeState::AllocateHistoryLogKey(TInstant timestamp)
-{
-    if (LastLogRecord.Timestamp != timestamp) {
-        LastLogRecord.Timestamp = timestamp;
-        LastLogRecord.Seqno = 0;
-    } else {
-        ++LastLogRecord.Seqno;
-    }
-    return LastLogRecord;
-}
-
-void TVolumeState::CleanupHistoryIfNeeded(TInstant oldest)
-{
-    bool any = false;
-    while (History.size() && (History.back().Key.Timestamp < oldest)) {
-        History.pop_back();
-        any = true;
-    }
-    if (any) {
-        RecordBeyondCache.reset();
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

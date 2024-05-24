@@ -65,11 +65,7 @@ void TVolumeActor::CompleteCleanupHistory(
         return;
     }
 
-    if (State->GetRecordBeyondCache().has_value() &&
-        !(args.OutdatedHistory.front() < State->GetRecordBeyondCache()))
-    {
-        State->AccessRecordBeyondCache().reset();
-    }
+    State->OnCleanupHistory(args.OutdatedHistory.front());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

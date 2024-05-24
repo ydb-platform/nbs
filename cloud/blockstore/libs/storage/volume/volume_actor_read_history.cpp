@@ -35,27 +35,10 @@ void TVolumeActor::HandleReadHistory(
     ProcessReadHistory(
         ctx,
         std::move(requestInfo),
-        msg->StartTs,
+        THistoryLogKey(msg->StartTs),
         msg->EndTs.value_or(ctx.Now() - Config->GetVolumeHistoryDuration()),
         msg->RecordCount,
         false);
-}
-
-void TVolumeActor::ProcessReadHistory(
-    const NActors::TActorContext& ctx,
-    TRequestInfoPtr requestInfo,
-    TInstant startTs,
-    TInstant endTs,
-    size_t recordCount,
-    bool monRequest)
-{
-    ProcessReadHistory(
-        ctx,
-        std::move(requestInfo),
-        {startTs, Max<ui64>()},
-        endTs,
-        recordCount,
-        monRequest);
 }
 
 void TVolumeActor::ProcessReadHistory(
@@ -90,16 +73,24 @@ bool TVolumeActor::PrepareReadHistory(
     TVolumeDatabase db(tx.DB);
 
     auto cnt = args.RecordCount;
-    // zero or Max<ui64> treated as "read all"
-    if (cnt && cnt != Max<ui64>()) {
+    // Max<ui64> treated as "read all"
+    // otherwise read one more row to see if there are more records
+    // following requested
+    if (cnt != Max<ui64>()) {
         ++cnt;
     }
 
-    return db.ReadHistory(
+    auto ready = db.ReadHistory(
         args.History,
         args.Ts,
         args.OldestTs,
         cnt);
+
+    if (ready && args.History.size() > args.RecordCount) {
+        args.History.pop_back();
+        args.HasMoreItems = true;
+    }
+    return ready;
 }
 
 void TVolumeActor::ExecuteReadHistory(
@@ -116,11 +107,6 @@ void TVolumeActor::CompleteReadHistory(
     const TActorContext& ctx,
     TTxVolume::TReadHistory& args)
 {
-    if (args.History.size() > args.RecordCount) {
-        args.History.pop_back();
-        args.HasMoreItems = true;
-    }
-
     if (args.MonRequest) {
         TDeque<THistoryLogItem> history;
         for (auto& h : args.History) {

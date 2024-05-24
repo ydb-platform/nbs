@@ -943,7 +943,7 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         });
     }
 
-    Y_UNIT_TEST(ShouldReadMinimumPossibleNumberOfRecords)
+    Y_UNIT_TEST(ShouldReadExactOfRecords)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TVolumeDatabase db) {
@@ -982,50 +982,6 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
 
             CheckAddClientLog(two, records[0].Operation.GetAdd());
             CheckAddClientLog(one, records[1].Operation.GetAdd());
-        });
-    }
-
-    Y_UNIT_TEST(ShouldReadAllRecordsIfLimitIsNotSpecified)
-    {
-        TTestExecutor executor;
-        executor.WriteTx([&] (TVolumeDatabase db) {
-            db.InitSchema();
-        });
-
-        auto one = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0);
-
-        auto two = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE,
-            0);
-
-        executor.WriteTx([&] (TVolumeDatabase db) {
-            // zero
-            db.WriteHistory(CreateAddClient({}, 0, one, {}, {}, {}));
-            db.WriteHistory(CreateAddClient({}, 1, two, {}, {}, {}));
-
-            db.WriteHistory(CreateAddClient(TInstant::Seconds(1), 0, one, {}, {}, {}));
-            db.WriteHistory(CreateAddClient(TInstant::Seconds(1), 1, two, {}, {}, {}));
-         });
-
-        executor.ReadTx([&] (TVolumeDatabase db) {
-            TVector<THistoryLogItem> records;
-
-            UNIT_ASSERT(db.ReadHistory(
-                records,
-                THistoryLogKey(TInstant::Seconds(2)),
-                {},
-                0));
-
-            UNIT_ASSERT_VALUES_EQUAL(4, records.size());
-
-            CheckAddClientLog(two, records[0].Operation.GetAdd());
-            CheckAddClientLog(one, records[1].Operation.GetAdd());
-            CheckAddClientLog(two, records[2].Operation.GetAdd());
-            CheckAddClientLog(one, records[3].Operation.GetAdd());
         });
     }
 
