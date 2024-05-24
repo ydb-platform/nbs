@@ -11,7 +11,7 @@ import (
 
 type Registry = metrics.Registry
 
-// RegistryWrapper makes core_metrics.Registry conform with metrics.Registry.
+// registryWrapper makes core_metrics.Registry conform with metrics.Registry.
 // It is needed because Golang's duck typing is not recursive.
 //
 // Consider following example:
@@ -34,33 +34,39 @@ type Registry = metrics.Registry
 //
 // Instance of A is equivalent to instance of B.
 // But instance of C is not equivalent to instance of D.
-type RegistryWrapper struct {
+type registryWrapper struct {
 	registry core_metrics.Registry
 }
 
-func (r *RegistryWrapper) WithTags(tags map[string]string) metrics.Registry {
-	return &RegistryWrapper{
+func WrapRegistry(registry core_metrics.Registry) metrics.Registry {
+	return &registryWrapper{
+		registry: registry,
+	}
+}
+
+func (r *registryWrapper) WithTags(tags map[string]string) metrics.Registry {
+	return &registryWrapper{
 		registry: r.registry.WithTags(tags),
 	}
 }
 
-func (r *RegistryWrapper) WithPrefix(prefix string) metrics.Registry {
-	return &RegistryWrapper{
+func (r *registryWrapper) WithPrefix(prefix string) metrics.Registry {
+	return &registryWrapper{
 		registry: r.registry.WithPrefix(prefix),
 	}
 }
 
-func (r *RegistryWrapper) ComposeName(parts ...string) string {
+func (r *registryWrapper) ComposeName(parts ...string) string {
 	return r.registry.ComposeName(parts...)
 }
 
-func (r *RegistryWrapper) Counter(name string) metrics.Counter {
+func (r *registryWrapper) Counter(name string) metrics.Counter {
 	return &counter{
 		counter: r.registry.Counter(name),
 	}
 }
 
-func (r *RegistryWrapper) CounterVec(
+func (r *registryWrapper) CounterVec(
 	name string,
 	labels []string,
 ) metrics.CounterVec {
@@ -70,7 +76,7 @@ func (r *RegistryWrapper) CounterVec(
 	}
 }
 
-func (r *RegistryWrapper) FuncCounter(
+func (r *registryWrapper) FuncCounter(
 	name string,
 	function func() int64,
 ) metrics.FuncCounter {
@@ -80,13 +86,13 @@ func (r *RegistryWrapper) FuncCounter(
 	}
 }
 
-func (r *RegistryWrapper) Gauge(name string) metrics.Gauge {
+func (r *registryWrapper) Gauge(name string) metrics.Gauge {
 	return &gauge{
 		gauge: r.registry.Gauge(name),
 	}
 }
 
-func (r *RegistryWrapper) GaugeVec(
+func (r *registryWrapper) GaugeVec(
 	name string,
 	labels []string,
 ) metrics.GaugeVec {
@@ -96,7 +102,7 @@ func (r *RegistryWrapper) GaugeVec(
 	}
 }
 
-func (r *RegistryWrapper) FuncGauge(
+func (r *registryWrapper) FuncGauge(
 	name string,
 	function func() float64,
 ) metrics.FuncGauge {
@@ -106,13 +112,13 @@ func (r *RegistryWrapper) FuncGauge(
 	}
 }
 
-func (r *RegistryWrapper) IntGauge(name string) metrics.IntGauge {
+func (r *registryWrapper) IntGauge(name string) metrics.IntGauge {
 	return &intGauge{
 		intGauge: r.registry.IntGauge(name),
 	}
 }
 
-func (r *RegistryWrapper) IntGaugeVec(
+func (r *registryWrapper) IntGaugeVec(
 	name string,
 	labels []string,
 ) metrics.IntGaugeVec {
@@ -122,7 +128,7 @@ func (r *RegistryWrapper) IntGaugeVec(
 	}
 }
 
-func (r *RegistryWrapper) FuncIntGauge(
+func (r *registryWrapper) FuncIntGauge(
 	name string,
 	function func() int64,
 ) metrics.FuncIntGauge {
@@ -132,13 +138,13 @@ func (r *RegistryWrapper) FuncIntGauge(
 	}
 }
 
-func (r *RegistryWrapper) Timer(name string) metrics.Timer {
+func (r *registryWrapper) Timer(name string) metrics.Timer {
 	return &timer{
 		timer: r.registry.Timer(name),
 	}
 }
 
-func (r *RegistryWrapper) TimerVec(
+func (r *registryWrapper) TimerVec(
 	name string,
 	labels []string,
 ) metrics.TimerVec {
@@ -148,7 +154,7 @@ func (r *RegistryWrapper) TimerVec(
 	}
 }
 
-func (r *RegistryWrapper) Histogram(
+func (r *registryWrapper) Histogram(
 	name string,
 	buckets metrics.Buckets,
 ) metrics.Histogram {
@@ -158,7 +164,7 @@ func (r *RegistryWrapper) Histogram(
 	}
 }
 
-func (r *RegistryWrapper) HistogramVec(
+func (r *registryWrapper) HistogramVec(
 	name string,
 	buckets metrics.Buckets,
 	labels []string,
@@ -169,7 +175,7 @@ func (r *RegistryWrapper) HistogramVec(
 	}
 }
 
-func (r *RegistryWrapper) DurationHistogram(
+func (r *registryWrapper) DurationHistogram(
 	name string,
 	buckets metrics.DurationBuckets,
 ) metrics.Timer {
@@ -179,7 +185,7 @@ func (r *RegistryWrapper) DurationHistogram(
 	}
 }
 
-func (r *RegistryWrapper) DurationHistogramVec(
+func (r *registryWrapper) DurationHistogramVec(
 	name string,
 	buckets metrics.DurationBuckets,
 	labels []string,
@@ -188,15 +194,6 @@ func (r *RegistryWrapper) DurationHistogramVec(
 	return &timerVec{
 		timerVec: r.registry.DurationHistogramVec(name, buckets, labels),
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func assertRegistryWrapperIsMetricsRegistry(
-	registry *RegistryWrapper,
-) metrics.Registry {
-
-	return registry
 }
 
 ////////////////////////////////////////////////////////////////////////////////
