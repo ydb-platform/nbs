@@ -15,12 +15,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func getVHDImageFileURL() string {
-	port := os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_FILE_SERVER_PORT")
+	port := os.Getenv("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_FILE_SERVER_PORT")
 	return fmt.Sprintf("http://localhost:%v", port)
 }
 
 func getVHDImageMapFile() string {
-	return os.Getenv("DISK_MANAGER_RECIPE_VHD_IMAGE_MAP_FILE")
+	return os.Getenv("DISK_MANAGER_RECIPE_VHD_DYNAMIC_IMAGE_MAP_FILE")
 }
 
 func getVHDUbuntu1604ImageFileURL() string {
