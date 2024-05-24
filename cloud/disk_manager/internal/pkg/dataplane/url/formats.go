@@ -63,15 +63,12 @@ func guessImageFormat(
 	}
 
 	for imageFormat := range formatCookies {
-		ok, err := hasAtOffset(
+		ok := hasAtOffset(
 			ctx,
 			buffer,
 			formatCookies[imageFormat],
 			formatCookieOffset[imageFormat],
 		)
-		if err != nil {
-			return "", err
-		}
 
 		if ok {
 			return imageFormat, nil
@@ -86,11 +83,11 @@ func hasAtOffset(
 	buffer []byte,
 	cookie []byte,
 	offset int,
-) (bool, error) {
+) bool {
 
 	if offset+len(cookie) > len(buffer) {
-		return false, nil
+		return false
 	}
 
-	return bytes.HasPrefix(buffer[offset:], cookie), nil
+	return bytes.HasPrefix(buffer[offset:], cookie)
 }
