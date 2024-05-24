@@ -38,7 +38,6 @@ func TestFilesystemServiceCreateEmptyFilesystem(t *testing.T) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteFilesystem(reqCtx, &disk_manager.DeleteFilesystemRequest{
 		FilesystemId: &disk_manager.FilesystemId{
-			ZoneId:       "zone-a",
 			FilesystemId: filesystemID,
 		},
 	})

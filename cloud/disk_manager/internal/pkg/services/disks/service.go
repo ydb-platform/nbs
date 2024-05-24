@@ -377,7 +377,7 @@ func (s *service) DeleteDisk(
 
 	if len(req.DiskId.DiskId) == 0 {
 		return "", errors.NewInvalidArgumentError(
-			"some of parameters are empty, req=%v",
+			"disk id is empty, req=%v",
 			req,
 		)
 	}
