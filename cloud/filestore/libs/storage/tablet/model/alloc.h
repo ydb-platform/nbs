@@ -16,6 +16,7 @@ enum class EAllocatorTag
     FreshBytes,
     GarbageQueue,
     ReadAheadCache,
+    NodeIndexCache,
 
     Max
 };

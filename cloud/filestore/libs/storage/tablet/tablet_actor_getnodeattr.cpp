@@ -46,6 +46,34 @@ void TIndexTabletActor::HandleGetNodeAttr(
         ev->Cookie,
         msg->CallContext);
 
+    if (msg->Record.GetName()) {
+        // access by parentId/name is a more common case. Try to get the result
+        // from cache.
+        NProto::TNodeAttr result;
+
+        if (TryFillGetNodeAttrResult(
+                msg->Record.GetNodeId(),
+                msg->Record.GetName(),
+                &result))
+        {
+            auto response =
+                std::make_unique<TEvService::TEvGetNodeAttrResponse>();
+            response->Record.MutableNode()->Swap(&result);
+
+            CompleteResponse<TEvService::TGetNodeAttrMethod>(
+                response->Record,
+                msg->CallContext,
+                ctx);
+
+            Metrics.NodeIndexCacheHitCount.fetch_add(
+                1,
+                std::memory_order_relaxed);
+
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+            return;
+        }
+    }
+
     AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeAttr>(
@@ -153,6 +181,14 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
         TABLET_VERIFY(args.TargetNode);
         auto* node = response->Record.MutableNode();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
+
+        if (args.Name) {
+            // cache the result for future access
+            RegisterGetNodeAttrResult(
+                args.ParentNode->NodeId,
+                args.Name,
+                *node);
+        }
     }
 
     CompleteResponse<TEvService::TGetNodeAttrMethod>(

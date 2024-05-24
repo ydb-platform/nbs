@@ -108,6 +108,13 @@ void TIndexTabletActor::TMetrics::Register(
         ReadAheadCacheNodeCount,
         EMetricType::MT_ABSOLUTE);
 
+    REGISTER_AGGREGATABLE_SUM(
+        NodeIndexCacheHitCount,
+        EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        NodeIndexCacheNodeCount,
+        EMetricType::MT_DERIVATIVE);
+
     REGISTER_AGGREGATABLE_SUM(FreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(DeletedFreshBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(MixedBytesCount, EMetricType::MT_ABSOLUTE);
@@ -194,7 +201,8 @@ void TIndexTabletActor::TMetrics::Update(
     const TCompactionMapStats& compactionStats,
     const TSessionsStats& sessionsStats,
     const TChannelsStats& channelsStats,
-    const TReadAheadCacheStats& readAheadStats)
+    const TReadAheadCacheStats& readAheadStats,
+    const TNodeIndexCacheStats& nodeIndexCacheStats)
 {
     const ui32 blockSize = fileSystem.GetBlockSize();
 
@@ -250,6 +258,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UnwritableChannelCount, channelsStats.UnwritableChannelCount);
     Store(ChannelsToMoveCount, channelsStats.ChannelsToMoveCount);
     Store(ReadAheadCacheNodeCount, readAheadStats.NodeCount);
+    Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
     BusyIdleCalc.OnUpdateStats();
 }
@@ -297,7 +306,8 @@ void TIndexTabletActor::RegisterStatCounters()
         GetCompactionMapStats(1),
         CalculateSessionsStats(),
         CalculateChannelsStats(),
-        CalculateReadAheadCacheStats());
+        CalculateReadAheadCacheStats(),
+        CalculateNodeIndexCacheStats());
 
     Metrics.Register(fsId, storageMediaKind);
 }
@@ -331,7 +341,8 @@ void TIndexTabletActor::HandleUpdateCounters(
         GetCompactionMapStats(1),
         CalculateSessionsStats(),
         CalculateChannelsStats(),
-        CalculateReadAheadCacheStats());
+        CalculateReadAheadCacheStats(),
+        CalculateNodeIndexCacheStats());
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);

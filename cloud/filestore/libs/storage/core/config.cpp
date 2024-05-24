@@ -146,6 +146,7 @@ namespace {
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
     xxx(ReadAheadMaxGapPercentage,              ui32,       20                )\
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
+    xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
