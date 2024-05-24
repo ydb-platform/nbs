@@ -457,7 +457,7 @@ private:
         const NActors::TActorContext& ctx,
         TVolumeActor::EStatus status);
 
-    static TString GetVolumeStatusString(EStatus status);
+    TString GetVolumeStatusString(EStatus status) const;
     EStatus GetVolumeStatus() const;
 
     NRdma::IClientPtr GetRdmaClient() const;

@@ -154,6 +154,18 @@ void TServiceActor::UpdateActorStats(const TActorContext& ctx)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TServiceActor::HandleVolumeMountStateChanged(
+    const TEvService::TEvVolumeMountStateChanged::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    const auto& msg = ev->Get();
+
+    auto volume = State.GetOrAddVolume(msg->DiskId);
+    volume->SetTabletReportedLocalMount(msg->HasLocalMount);
+}
+
+
 void TServiceActor::HandleRegisterVolume(
     const TEvService::TEvRegisterVolume::TPtr& ev,
     const TActorContext& ctx)
@@ -282,6 +294,7 @@ STFUNC(TServiceActor::StateWork)
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
 
+        HFunc(TEvService::TEvVolumeMountStateChanged, HandleVolumeMountStateChanged);
         HFunc(TEvService::TEvRegisterVolume, HandleRegisterVolume);
         HFunc(TEvService::TEvUnregisterVolume, HandleUnregisterVolume);
         HFunc(TEvService::TEvVolumeConfigUpdated, HandleVolumeConfigUpdated);
