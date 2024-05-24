@@ -19,7 +19,7 @@ var formatCookies = map[ImageFormat][]byte{
 	ImageFormatVDI:   {0x7f, 0x10, 0xda, 0xbe},
 }
 
-var formatCookieOffset = map[ImageFormat]int{
+var formatCookieOffsets = map[ImageFormat]int{
 	ImageFormatVDI: 0x40,
 	// We want to recognize only VHD DYNAMIC format which has a copy of footer
 	// at the beginning of the image.
@@ -67,7 +67,7 @@ func guessImageFormat(
 			ctx,
 			buffer,
 			formatCookies[imageFormat],
-			formatCookieOffset[imageFormat],
+			formatCookieOffsets[imageFormat],
 		)
 
 		if ok {
