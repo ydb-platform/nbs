@@ -360,14 +360,8 @@ func computePoolAction(t baseDiskTransition) poolAction {
 		return a
 	}
 
-	if !t.oldState.fromPool {
-		// Returning base disk to pool is forbidden (otherwise it's nothing to
-		// do here).
-		return a
-	}
-
 	switch {
-	case !t.state.fromPool || (!t.oldState.isDoomed() && t.state.isDoomed()):
+	case !t.oldState.isDoomed() && t.state.isDoomed():
 		// Remove all free slots from pool when ejecting base disk.
 		a.sizeDiff = -int64(t.oldState.freeSlots())
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())

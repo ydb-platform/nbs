@@ -134,6 +134,7 @@ func (s *storageYDB) getSlots(
 }
 
 func (s *storageYDB) checkBaseDiskConsistency(
+	ctx context.Context,
 	baseDisk baseDisk,
 	slots []slot,
 ) error {
@@ -144,6 +145,13 @@ func (s *storageYDB) checkBaseDiskConsistency(
 		if slot.status >= slotStatusReleased {
 			continue
 		}
+
+		logging.Debug(
+			ctx,
+			"processing slot %+v for baseDisk %+v",
+			slot,
+			baseDisk,
+		)
 
 		if baseDisk.id == slot.baseDiskID {
 			slotsBaseDiskCount += 1
@@ -190,7 +198,7 @@ func (s *storageYDB) checkBaseDisksConsistency(
 	}
 
 	for _, baseDisk := range baseDisks {
-		err = s.checkBaseDiskConsistency(baseDisk, slots)
+		err = s.checkBaseDiskConsistency(ctx, baseDisk, slots)
 		if err != nil {
 			return err
 		}
@@ -214,9 +222,7 @@ func (s *storageYDB) checkPoolConsistency(
 			expectedPoolState,
 		)
 
-		if !baseDisk.retiring && !baseDisk.isDoomed() {
-			actualPoolState.acquiredUnits += baseDisk.activeUnits
-		}
+		actualPoolState.acquiredUnits += baseDisk.activeUnits
 
 		if baseDisk.isInflight() {
 			actualPoolState.baseDisksInflight += 1

@@ -654,37 +654,43 @@ func (s *storageYDB) applyBaseDiskInvariants(
 
 	for _, baseDiskTransition := range baseDiskTransitions {
 		baseDisk := baseDiskTransition.state
-		action := computePoolAction(baseDiskTransition)
 
-		if action.hasChanges() {
-			imageID := baseDisk.imageID
-			zoneID := baseDisk.zoneID
-			key := imageID + zoneID
+		imageID := baseDisk.imageID
+		zoneID := baseDisk.zoneID
+		key := imageID + zoneID
 
-			t, ok := poolTransitions[key]
-			if !ok {
-				p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
-				if err != nil {
-					return nil, err
-				}
-
-				t = poolTransition{
-					oldState: p,
-					state:    p,
-				}
+		t, ok := poolTransitions[key]
+		if !ok {
+			p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
+			if err != nil {
+				return nil, err
 			}
 
-			if t.state.status == poolStatusDeleted {
-				// Remove from deleted pool.
-				baseDisk.fromPool = false
-			} else {
-				action.apply(&t.state)
+			t = poolTransition{
+				oldState: p,
+				state:    p,
 			}
+		}
 
-			poolTransitions[key] = t
+		if t.state.status == poolStatusDeleted {
+			// Remove from deleted pool.
+			baseDisk.fromPool = false
 		}
 
 		baseDisk.applyInvariants()
+
+		action := computePoolAction(baseDiskTransition)
+		logging.Debug(
+			ctx,
+			"computed pool action is %+v",
+			action,
+		)
+
+		if action.hasChanges() {
+			action.apply(&t.state)
+		}
+
+		poolTransitions[key] = t
 	}
 
 	var res []poolTransition
@@ -1465,9 +1471,19 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		slot.targetAllottedSlots = 0
 		slot.targetAllottedUnits = 0
 
-		err = s.updateSlot(
+		baseDiskOldState := *found
+		err = releaseTargetUnitsAndSlots(ctx, tx, found, slotOldState)
+		if err != nil {
+			return err
+		}
+
+		err = s.updateBaseDiskAndSlot(
 			ctx,
 			tx,
+			baseDiskTransition{
+				oldState: &baseDiskOldState,
+				state:    found,
+			},
 			slotTransition{
 				oldState: &slotOldState,
 				state:    &slot,
@@ -2416,31 +2432,23 @@ func (s *storageYDB) markBaseDisksDeleting(
 	toDelete []baseDisk,
 ) error {
 
+	var baseDiskTransitions []baseDiskTransition
 	for i := 0; i < len(toDelete); i++ {
+		baseDiskOldState := toDelete[i]
 		toDelete[i].status = baseDiskStatusDeleting
+
+		baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
+			oldState: &baseDiskOldState,
+			state:    &toDelete[i],
+		})
 	}
 
-	var values []persistence.Value
-	for _, disk := range toDelete {
-		values = append(values, disk.structValue())
-	}
-
-	_, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $base_disks as List<%v>;
-
-		upsert into base_disks
-		select *
-		from AS_TABLE($base_disks)
-	`, s.tablesPath, baseDiskStructTypeString()),
-		persistence.ValueParam("$base_disks", persistence.ListValue(values...)),
-	)
+	err := s.updateBaseDisksAndSlots(ctx, tx, baseDiskTransitions, nil)
 	if err != nil {
 		return err
 	}
 
-	values = nil
+	var values []persistence.Value
 	for _, disk := range toDelete {
 		structValue := persistence.StructValue(persistence.StructFieldValue(
 			"base_disk_id",
