@@ -693,9 +693,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			action,
 		)
 
-		if action.hasChanges() {
-			action.apply(&t.state)
-		}
+		action.apply(&t.state)
 
 		poolTransitions[key] = t
 	}

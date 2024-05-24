@@ -367,12 +367,7 @@ func computePoolAction(t baseDiskTransition) poolAction {
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
 		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
 		if t.state.activeSlots != 0 {
-			panic(
-				fmt.Sprintf(
-					"baseDiskTransition %+v is invalid",
-					t,
-				),
-			)
+			panic("baseDiskTransition is invalid")
 		}
 
 	case t.oldState.status == t.state.status && !t.state.isDoomed():
