@@ -1120,8 +1120,13 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
 
     const TCheckpointRequest& request =
         checkpointStore.GetRequestById(requestId);
+
+    TCheckpointRequestInfo emptyRequestInfo(SelfId());
     const TCheckpointRequestInfo* requestInfo =
         CheckpointRequests.FindPtr(requestId);
+    if (!requestInfo) {
+        requestInfo = &emptyRequestInfo;
+    }
 
     if (request.State == ECheckpointRequestState::Received) {
         auto validationResult =
@@ -1135,6 +1140,7 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
             // Instead, reply to this request immediately
             // and proceed with the next request.
             checkpointStore.RemoveCheckpointRequest(request.RequestId);
+            CheckpointRequests.erase(request.RequestId);
             ReplyToCheckpointRequestWithoutSaving(
                 ctx,
                 request.ReqType,
@@ -1198,13 +1204,7 @@ void TVolumeActor::ExecuteCheckpointRequest(const TActorContext& ctx, ui64 reque
     const TCheckpointRequest& request =
         State->GetCheckpointStore().GetRequestById(requestId);
 
-    TCheckpointRequestInfo emptyRequestInfo(
-        CreateRequestInfo(
-            SelfId(),
-            0,   // cookie
-            MakeIntrusive<TCallContext>()),
-        false,
-        GetCycleCount());
+    TCheckpointRequestInfo emptyRequestInfo(SelfId());
     const TCheckpointRequestInfo* requestInfo =
         CheckpointRequests.FindPtr(requestId);
     if (!requestInfo) {

@@ -95,8 +95,9 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
 void TCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
 {
     Y_DEBUG_ABORT_UNLESS(
+        CheckpointRequests.FindPtr(requestId) &&
         CheckpointRequests.FindPtr(requestId)->State ==
-        ECheckpointRequestState::Received);
+            ECheckpointRequestState::Received);
     CheckpointRequests.erase(requestId);
 }
 

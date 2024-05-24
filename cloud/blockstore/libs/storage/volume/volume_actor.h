@@ -317,6 +317,15 @@ private:
             , IsTraced(isTraced)
             , TraceTs(traceTs)
         {}
+
+        explicit TCheckpointRequestInfo(const NActors::TActorId& actorId)
+            : RequestInfo(CreateRequestInfo(
+                  actorId,
+                  0,   // cookie
+                  MakeIntrusive<TCallContext>()))
+            , IsTraced(false)
+            , TraceTs(GetCycleCount())
+        {}
     };
     TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
 
