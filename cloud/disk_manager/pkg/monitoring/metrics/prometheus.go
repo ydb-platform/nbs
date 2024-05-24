@@ -78,5 +78,5 @@ func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
 			)
 		},
 	)
-	return &RegistryWrapper{registry: registry}
+	return WrapRegistry(registry)
 }
