@@ -165,7 +165,7 @@ bool TVolumeInfo::IsLocallyMounted() const
         }
     }
 
-    return TabletReportedLocalMount;
+    return false;
 }
 
 void TVolumeInfo::SetTabletReportedLocalMount(bool value)

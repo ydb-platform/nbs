@@ -123,6 +123,10 @@ struct TVolumeInfo
     void RemoveClientInfo(TClientInfo* info);
     void RemoveClientInfo(const TString& clientId);
     void SetTabletReportedLocalMount(bool value);
+    bool GetTabletReportedLocalMount() const
+    {
+        return TabletReportedLocalMount;
+    }
 
     bool IsMounted() const;
     bool IsReadWriteMounted() const;
