@@ -135,11 +135,9 @@ func (s *service) DeleteFilesystem(
 	req *disk_manager.DeleteFilesystemRequest,
 ) (string, error) {
 
-	if len(req.FilesystemId.ZoneId) == 0 ||
-		len(req.FilesystemId.FilesystemId) == 0 {
-
+	if len(req.FilesystemId.FilesystemId) == 0 {
 		return "", errors.NewInvalidArgumentError(
-			"some of parameters are empty, req=%v",
+			"filesystem id is empty, req=%v",
 			req,
 		)
 	}

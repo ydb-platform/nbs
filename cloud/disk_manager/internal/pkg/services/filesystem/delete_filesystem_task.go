@@ -43,17 +43,12 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := t.factory.NewClient(ctx, t.request.Filesystem.ZoneId)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
 	selfTaskID := execCtx.GetTaskID()
+	filesystemID := t.request.Filesystem.FilesystemId
 
 	filesystemMeta, err := t.storage.DeleteFilesystem(
 		ctx,
-		t.request.Filesystem.FilesystemId,
+		filesystemID,
 		selfTaskID,
 		time.Now(),
 	)
@@ -64,20 +59,30 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 	if filesystemMeta == nil {
 		return errors.NewNonCancellableErrorf(
 			"id %v is not accepted",
-			t.request.Filesystem.FilesystemId,
+			filesystemID,
 		)
 	}
 
-	err = client.Delete(ctx, t.request.Filesystem.FilesystemId)
+	zoneID := filesystemMeta.ZoneID
+	if len(zoneID) == 0 {
+		zoneID = t.request.Filesystem.ZoneId
+	}
+	if len(zoneID) == 0 {
+		return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
+	}
+
+	client, err := t.factory.NewClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	err = client.Delete(ctx, filesystemID)
 	if err != nil {
 		return err
 	}
 
-	return t.storage.FilesystemDeleted(
-		ctx,
-		t.request.Filesystem.FilesystemId,
-		time.Now(),
-	)
+	return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
 }
 
 func (t *deleteFilesystemTask) Run(
