@@ -1468,7 +1468,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		return err
 	}
 
-	if found == nil || !found.fromPool || found.isDoomed() {
+	if found == nil || found.isDoomed() {
 		slotOldState := slot
 
 		// Abort rebasing.
@@ -1869,10 +1869,13 @@ func (s *storageYDB) baseDiskCreationFailed(
 	updated := found
 	updated.status = baseDiskStatusCreationFailed
 
-	err = s.updateBaseDisk(ctx, tx, baseDiskTransition{
+	var baseDiskTransitions []baseDiskTransition
+	baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
 		oldState: &found,
 		state:    &updated,
 	})
+
+	err = s.updateBaseDisksAndSlots(ctx, tx, baseDiskTransitions, slotTransitions)
 	if err != nil {
 		return err
 	}
@@ -2955,6 +2958,44 @@ func (s *storageYDB) getAcquiredSlots(
 		where overlay_disk_id in $overlay_disk_ids
 	`, s.tablesPath),
 		persistence.ValueParam("$overlay_disk_ids", persistence.ListValue(overlayDiskIDs...)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var slots []slot
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			slot, err := scanSlot(res)
+			if err != nil {
+				return nil, err
+			}
+
+			slots = append(slots, slot)
+		}
+	}
+
+	return slots, nil
+}
+
+func (s *storageYDB) getTargetSlots(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	baseDiskID string,
+) ([]slot, error) {
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $overlay_disk_ids as List<Utf8>;
+
+		select *
+		from slots
+		where target_base_disk_id = $base_disk_id
+	`, s.tablesPath),
+		persistence.ValueParam("$base_disk_id", persistence.UTF8Value(baseDiskID)),
 	)
 	if err != nil {
 		return nil, err
