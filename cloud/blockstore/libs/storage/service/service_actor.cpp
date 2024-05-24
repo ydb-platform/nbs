@@ -161,8 +161,10 @@ void TServiceActor::HandleVolumeMountStateChanged(
     Y_UNUSED(ctx);
     const auto& msg = ev->Get();
 
-    auto volume = State.GetOrAddVolume(msg->DiskId);
-    volume->SetTabletReportedLocalMount(msg->HasLocalMount);
+    auto volume = State.GetVolume(msg->DiskId);
+    if (volume) {
+        volume->SetTabletReportedLocalMount(msg->HasLocalMount);
+    }
 }
 
 
