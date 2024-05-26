@@ -34,7 +34,8 @@ void TChangedRangesMap::MarkNotChanged(TBlockRange64 range)
 
 TString TChangedRangesMap::GetChangedBlocks(TBlockRange64 range) const
 {
-    const auto resultSize = AlignUp<size_t>(range.Size(), 8);
+    constexpr size_t BitsInByte = 8;
+    const auto resultSize = AlignUp<size_t>(range.Size(), BitsInByte);
 
     // We know a map of changes blocks with a resolution in the RangeSize.
     // Let's convert this map to a resolution up to a block.
@@ -63,10 +64,10 @@ TString TChangedRangesMap::GetChangedBlocks(TBlockRange64 range) const
 
     // Convert the TDynBitMap to a TString.
     TString result;
-    result.resize(resultSize / 8);
+    result.resize(resultSize / BitsInByte);
     for (size_t i = 0; i < result.size(); ++i) {
         ui8 tmp = 0;
-        map.Export(i * 8, tmp);
+        map.Export(i * BitsInByte, tmp);
         result[i] = static_cast<char>(tmp);
     }
     return result;

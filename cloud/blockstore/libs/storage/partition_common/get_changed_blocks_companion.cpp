@@ -24,7 +24,7 @@ void TGetChangedBlocksCompanion::HandleGetChangedBlocks(
 {
     switch (Behavior) {
         case EBehavior::ReplyError: {
-            DoReplayError(ev, ctx);
+            DoReplyError(ev, ctx);
         } break;
         case EBehavior::DelegateRequest: {
             DoDelegateRequest(ev, ctx);
@@ -32,7 +32,7 @@ void TGetChangedBlocksCompanion::HandleGetChangedBlocks(
     }
 }
 
-void TGetChangedBlocksCompanion::DoReplayError(
+void TGetChangedBlocksCompanion::DoReplyError(
     const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
     const NActors::TActorContext& ctx) const
 {

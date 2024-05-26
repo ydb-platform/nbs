@@ -33,7 +33,7 @@ public:
         const NActors::TActorContext& ctx) const;
 
 private:
-    void DoReplayError(
+    void DoReplyError(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx) const;
     void DoDelegateRequest(
