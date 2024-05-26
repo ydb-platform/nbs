@@ -815,9 +815,19 @@ private:
         case EEndpointType::Local:
             return device.GetDeviceName();
         case EEndpointType::Rdma: {
+            auto host = device.GetRdmaEndpoint().GetHost();
+            auto ipAddr = "";
+            if (host.StartsWith("max0-0435")) {
+                ipAddr = "192.168.1.35";
+            } else if (host.StartsWith("max0-0436")) {
+                ipAddr = "192.168.1.36";
+            } else {
+                Y_ABORT("invalid device host: %s", host.c_str());
+            }
+
             DevicePath path(
                 "rdma",
-                device.GetRdmaEndpoint().GetHost(),
+                ipAddr,
                 device.GetRdmaEndpoint().GetPort(),
                 device.GetDeviceUUID());
             return path.Serialize();

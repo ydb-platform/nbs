@@ -406,14 +406,13 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer);
 
-        if (Configs->ServerConfig->GetVhostServerPath()
-                && !Configs->Options->TemporaryServer)
+        if (true)
         {
             vhostEndpointListener = CreateExternalVhostEndpointListener(
                 Logging,
                 ServerStats,
                 Executor,
-                Configs->ServerConfig->GetVhostServerPath(),
+                "/home/evgenybud/scratch/nbs/blockstore-vhost-server",
                 Configs->Options->SkipDeviceLocalityValidation
                     ? TString {}
                     : FQDNHostName(),

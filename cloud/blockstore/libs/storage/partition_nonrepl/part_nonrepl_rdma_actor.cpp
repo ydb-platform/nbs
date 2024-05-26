@@ -55,8 +55,18 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
             continue;
         }
 
+        auto host = d.GetAgentId();
+        auto ipAddr = "";
+        if (host.StartsWith("max0-0435")) {
+            ipAddr = "192.168.1.35";
+        } else if (host.StartsWith("max0-0436")) {
+            ipAddr = "192.168.1.36";
+        } else {
+            Y_ABORT("invalid disk agent id: %s", host.c_str());
+        }
+
         ep = RdmaClient->StartEndpoint(
-            d.GetAgentId(),
+            ipAddr,
             Config->GetRdmaTargetPort());
     }
 

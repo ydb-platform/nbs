@@ -952,8 +952,17 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
+        auto host = Config.GetHost();
+        auto ipAddr = "";
+        if (host.StartsWith("max0-0435")) {
+            ipAddr = "192.168.1.35";
+        } else if (host.StartsWith("max0-0436")) {
+            ipAddr = "192.168.1.36";
+        } else {
+            Y_ABORT("invalid host: %s", host.c_str());
+        }
         auto endpoint = Server->StartEndpoint(
-            Config.GetHost(),
+            ipAddr,
             Config.GetPort(),
             Handler);
 

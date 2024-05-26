@@ -278,6 +278,7 @@ NCloud::NProto::TError TDeviceClient::AccessDevice(
             << "Device " << uuid.Quote() << " not found");
     }
 
+    return {};
     TReadGuard g(deviceState->Lock);
 
     bool acquired = false;
