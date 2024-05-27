@@ -73,25 +73,29 @@ jobs:
               repo: context.repo.repo,
               body: 'Hi! Thank you for contributing!\nThe tests on this PR will run after a maintainer adds an `ok-to-test` label to this PR manually. Thank you for your patience!'
             });
-      - name: cleanup-test-label
+      - name: cleanup-labels
         uses: actions/github-script@v7
         with:
           script: |
-            const { owner, repo } = context.repo;
+            let labelsToRemove = ['ok-to-test', 'recheck'];
             const prNumber = context.payload.pull_request.number;
-            const labelToRemove = 'ok-to-test';
-            try {
-              const result = await github.rest.issues.removeLabel({
-                owner,
-                repo,
-                issue_number: prNumber,
-                name: labelToRemove
-              });
-            } catch(e) {
-              // ignore the 404 error that arises
-              // when the label did not exist for the
-              // organization member
-              console.log(e);
+            const prLabels = new Set(context.payload.pull_request.labels.map(l => l.name));
+            for await (const label of labelsToRemove.filter(l => prLabels.has(l))) {
+              core.info(`remove label=${label} for pr=${prNumber}`);
+              try {
+                const result = await github.rest.issues.removeLabel({
+                  ...context.repo,
+                  issue_number: prNumber,
+                  name: label
+                });
+              } catch(error) {
+                // ignore the 404 error that arises
+                // when the label did not exist for the
+                // organization member
+                if (error.status && error.status != 404) {
+                  throw error;
+                }
+              }
             }
   build_and_test:
     needs:
