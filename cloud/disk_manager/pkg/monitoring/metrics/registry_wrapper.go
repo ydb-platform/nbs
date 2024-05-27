@@ -16,21 +16,21 @@ type Registry = metrics.Registry
 //
 // Consider following example:
 //
-// type A interface {
-//   Foo() int
-// }
+//	type A interface {
+//	  Foo() int
+//	}
 //
-// type B interface {
-//   Foo() int
-// }
+//	type B interface {
+//	  Foo() int
+//	}
 //
-// type C interface {
-//   Bar() A
-// }
+//	type C interface {
+//	  Bar() A
+//	}
 //
-// type D interface {
-//   Bar() B
-// }
+//	type D interface {
+//	  Bar() B
+//	}
 //
 // Instance of A is equivalent to instance of B.
 // But instance of C is not equivalent to instance of D.
@@ -198,7 +198,7 @@ func (r *registryWrapper) DurationHistogramVec(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type gauge struct{
+type gauge struct {
 	gauge core_metrics.Gauge
 }
 
@@ -212,7 +212,7 @@ func (g *gauge) Add(value float64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type funcGauge struct{
+type funcGauge struct {
 	funcGauge core_metrics.FuncGauge
 }
 
@@ -222,7 +222,7 @@ func (g *funcGauge) Function() func() float64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type intGauge struct{
+type intGauge struct {
 	intGauge core_metrics.IntGauge
 }
 
@@ -236,7 +236,7 @@ func (g *intGauge) Add(value int64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type funcIntGauge struct{
+type funcIntGauge struct {
 	funcIntGauge core_metrics.FuncIntGauge
 }
 
@@ -246,7 +246,7 @@ func (g *funcIntGauge) Function() func() int64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type counter struct{
+type counter struct {
 	counter core_metrics.Counter
 }
 
@@ -260,7 +260,7 @@ func (c *counter) Add(delta int64) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type funcCounter struct{
+type funcCounter struct {
 	funcCounter core_metrics.FuncCounter
 }
 
