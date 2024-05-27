@@ -339,16 +339,12 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1];
     nlattr* device[NBD_DEVICE_ATTR_MAX + 1];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc99-designator"
-    nla_policy deviceItemPolicy[NBD_DEVICE_ITEM_MAX + 1] = {
-        [NBD_DEVICE_ITEM] = {.type = NLA_NESTED},
-    };
-    nla_policy devicePolicy[NBD_DEVICE_ATTR_MAX + 1] = {
-        [NBD_DEVICE_INDEX] = {.type = NLA_U32},
-        [NBD_DEVICE_CONNECTED] = {.type = NLA_U8},
-    };
-#pragma clang diagnostic pop
+    nla_policy deviceItemPolicy[NBD_DEVICE_ITEM_MAX + 1] = {};
+    deviceItemPolicy[NBD_DEVICE_ITEM].type = NLA_NESTED;
+
+    nla_policy devicePolicy[NBD_DEVICE_ATTR_MAX + 1] = {};
+    devicePolicy[NBD_DEVICE_INDEX].type = NLA_U32;
+    devicePolicy[NBD_DEVICE_CONNECTED].type = NLA_U8;
 
     if (nla_parse(
             attr,
