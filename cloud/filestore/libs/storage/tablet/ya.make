@@ -38,6 +38,7 @@ SRCS(
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp
+    tablet_actor_generatecommitid.cpp
     tablet_actor_getnodeattr.cpp
     tablet_actor_getnodexattr.cpp
     tablet_actor_initschema.cpp

@@ -96,6 +96,10 @@ private:
         std::atomic<i64> ReadAheadCacheHitCount{0};
         std::atomic<i64> ReadAheadCacheNodeCount{0};
 
+        // Node index cache
+        std::atomic<i64> NodeIndexCacheHitCount{0};
+        std::atomic<i64> NodeIndexCacheNodeCount{0};
+
         // Data stats
         std::atomic<i64> FreshBytesCount{0};
         std::atomic<i64> DeletedFreshBytesCount{0};
@@ -182,7 +186,8 @@ private:
             const TCompactionMapStats& compactionStats,
             const TSessionsStats& sessionsStats,
             const TChannelsStats& channelsStats,
-            const TReadAheadCacheStats& readAheadStats);
+            const TReadAheadCacheStats& readAheadStats,
+            const TNodeIndexCacheStats& nodeIndexCacheStats);
     } Metrics;
 
     const IProfileLogPtr ProfileLog;

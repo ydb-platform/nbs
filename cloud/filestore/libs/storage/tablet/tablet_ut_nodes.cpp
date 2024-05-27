@@ -1152,6 +1152,113 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
             UNIT_ASSERT_VALUES_EQUAL((ui32)E_REJECTED, response->Record.GetError().GetCode());
         }
     }
+
+    Y_UNIT_TEST(ShouldUseNodeIndexCacheForGetNodeAttr)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNodeIndexCacheMaxNodes(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.WriteData(handle, 0, 1, '1');
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
+
+        tablet.WriteData(handle, 1, 1024, '2');
+        UNIT_ASSERT_VALUES_EQUAL(
+            1025,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1025,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1025,
+            tablet.GetNodeAttr(RootNodeId, "test")->Record.GetNode().GetSize());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            // clang-format off
+            visitor.ValidateExpectedCounters({
+                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheHitCount"}}, 2},
+                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheNodeCount"}}, 1},
+            });
+            // clang-format on
+        }
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateNodeIndexCacheUponIndexOps)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetNodeIndexCacheMaxNodes(32);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        auto file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
+
+        auto handle = CreateHandle(tablet, file);
+        tablet.WriteData(handle, 0, 1024, '1');
+
+        tablet.GetNodeAttr(RootNodeId, "dir");
+        tablet.GetNodeAttr(dir, "file");
+
+        // UpdateNodeAttr
+        TSetNodeAttrArgs arg(file);
+        arg.SetMode(123);
+        tablet.SetNodeAttr(arg);
+        UNIT_ASSERT_VALUES_EQUAL(
+            123,
+            tablet.GetNodeAttr(file)->Record.GetNode().GetMode());
+
+        // UnlinkNode (open handle exists)
+        tablet.UnlinkNode(dir, "file", false);
+        file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
+        tablet.GetNodeAttr(dir, "file");
+
+        // RemoveNode (no open handles)
+        tablet.UnlinkNode(dir, "file", false);
+        file = CreateNode(tablet, TCreateNodeArgs::File(dir, "file"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            file,
+            tablet.GetNodeAttr(dir, "file")->Record.GetNode().GetId());
+
+        {
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            // clang-format off
+            visitor.ValidateExpectedCounters({
+                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheHitCount"}}, 0},
+                {{{"filesystem", "test"}, {"sensor", "NodeIndexCacheNodeCount"}}, 1},
+            });
+            // clang-format on
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
