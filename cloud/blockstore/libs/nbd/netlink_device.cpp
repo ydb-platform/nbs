@@ -24,8 +24,6 @@ private:
 public:
     TNetlinkSocket()
     {
-        Cerr << "allocate netlink socket" << Endl;
-
         Socket = nl_socket_alloc();
 
         if (Socket == nullptr) {
@@ -50,7 +48,6 @@ public:
     ~TNetlinkSocket()
     {
         nl_socket_free(Socket);
-        Cerr << "free netlink socket" << Endl;
     }
 
     operator nl_sock*() const
@@ -137,14 +134,12 @@ public:
 
     void Send(nl_sock* socket)
     {
-        Cerr << "send netlink message" << Endl;
         // send will free message even if it fails
         auto* message = Message;
         Message = nullptr;
         if (nl_send_sync(socket, message) < 0) {
             throw TServiceError(E_FAIL) << "unable to send message";
         }
-        Cerr << "netlink message has been sent" << Endl;
     }
 };
 
@@ -312,8 +307,6 @@ void TNetlinkDevice::DisconnectDevice()
 // or reconfigure (if Reconfigure == true) specified device
 void TNetlinkDevice::ConnectDevice()
 {
-    Cerr << "check device status" << Endl;
-
     try {
         TNetlinkSocket socket;
         nl_socket_modify_cb(
@@ -339,8 +332,6 @@ void TNetlinkDevice::ConnectDevice()
 
 int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
 {
-    Cerr << "got status message reply" << Endl;
-
     auto* header = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(message)));
     auto* conn = static_cast<TNetlinkDevice*>(argument);
     auto Log = conn->Log;
