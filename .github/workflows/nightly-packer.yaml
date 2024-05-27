@@ -16,7 +16,8 @@ jobs:
       build: true
       file: 'ya_web_url_file'
       images_to_keep: ${{ github.repository == 'ydb-platform/nbs' && 7 || 3 }}
-      remove_old_images: true
+      remove_old_images: false
       update_image_id: false
+      download_ya_archive: false
       image_prefix: 'gh-2204-auto'
       workflow_run_id: ${{ github.event.workflow_run.id }}
