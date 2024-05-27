@@ -224,20 +224,20 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
     return false;
 }
 
-bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
+TVector<ui64> TCheckpointStore::GetRequestIdsToProcess() const
 {
-    Y_DEBUG_ABORT_UNLESS(requestId);
+    TVector<ui64> requestIds(Reserve(CheckpointRequests.size()));
 
     for (const auto& [key, checkpointRequest]: CheckpointRequests) {
         if (checkpointRequest.State == ECheckpointRequestState::Received ||
             checkpointRequest.State == ECheckpointRequestState::Saved)
         {
             Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
-            *requestId = checkpointRequest.RequestId;
-            return true;
+            requestIds.push_back(checkpointRequest.RequestId);
         }
     }
-    return false;
+
+    return requestIds;
 }
 
 std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(

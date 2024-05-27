@@ -203,7 +203,7 @@ public:
     [[nodiscard]] TVector<TString> GetCheckpointsWithData() const;
     [[nodiscard]] const TActiveCheckpointsMap& GetActiveCheckpoints() const;
 
-    [[nodiscard]] bool HasRequestToExecute(ui64* requestId) const;
+    [[nodiscard]] TVector<ui64> GetRequestIdsToProcess() const;
 
     [[nodiscard]] const TCheckpointRequest& GetRequestById(
         ui64 requestId) const;

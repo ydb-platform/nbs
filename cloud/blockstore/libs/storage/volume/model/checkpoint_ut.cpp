@@ -18,7 +18,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(0, requestId);
     }
 
@@ -162,9 +162,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
-        UNIT_ASSERT_VALUES_EQUAL(10, requestId);
+
+        auto requestsToProcess = store.GetRequestIdsToProcess();
+        UNIT_ASSERT_VALUES_EQUAL(2, requestsToProcess.size());
+        std::sort(requestsToProcess.begin(), requestsToProcess.end());
+        UNIT_ASSERT_VALUES_EQUAL(10, requestsToProcess[0]);
+        UNIT_ASSERT_VALUES_EQUAL(11, requestsToProcess[1]);
 
         auto checkpoints = store.GetActiveCheckpoints();
         UNIT_ASSERT_VALUES_EQUAL(5, checkpoints.size());
@@ -228,7 +231,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
         ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+        requestId = store.GetRequestIdsToProcess()[0];
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
@@ -236,7 +240,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
@@ -244,7 +248,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
 
@@ -258,7 +262,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointDeleted("checkpoint"));
     }
 
@@ -276,7 +280,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             false);
         store.SetCheckpointRequestSaved(request.RequestId);
         ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+        requestId = store.GetRequestIdsToProcess()[0];
         store.SetCheckpointRequestInProgress(requestId);
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         store.SetCheckpointRequestFinished(
@@ -289,7 +294,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(true, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_EQUAL(
             ECheckpointData::DataPresent,
             checkpoints[request.CheckpointId].Data);
@@ -309,7 +314,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             true);
         store.SetCheckpointRequestSaved(request.RequestId);
         ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+        requestId = store.GetRequestIdsToProcess()[0];
         store.SetCheckpointRequestInProgress(requestId);
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         store.SetCheckpointRequestFinished(
@@ -324,7 +330,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
 
         auto checkpoint = store.GetCheckpoint(checkpointId);
         UNIT_ASSERT(checkpoint.has_value());
@@ -391,7 +397,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
         store.SetCheckpointRequestSaved(request.RequestId);
@@ -400,7 +406,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(true, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
         store.SetCheckpointRequestFinished(
@@ -415,7 +421,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_EQUAL(
             ECheckpointData::DataPresent,
             checkpoints[request.CheckpointId].Data);
@@ -432,11 +438,12 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             ECheckpointType::Normal,
             false);
         ui64 requestId = 0;
-        UNIT_ASSERT_VALUES_EQUAL(true, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+        requestId = store.GetRequestIdsToProcess()[0];
         UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
         store.RemoveCheckpointRequest(requestId);
-        UNIT_ASSERT_VALUES_EQUAL(false, store.HasRequestToExecute(&requestId));
+        UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         UNIT_ASSERT_VALUES_EQUAL(
             false,
             store.DoesCheckpointBlockingWritesExist());
@@ -464,9 +471,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
@@ -501,9 +507,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -539,9 +544,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -580,9 +584,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
@@ -618,9 +621,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(true, store.IsCheckpointBeingCreated());
@@ -652,9 +654,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -685,9 +686,8 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
 
             store.SetCheckpointRequestInProgress(requestId);
             UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
@@ -709,16 +709,13 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
                 checkpointId,
                 TInstant::Now());
             ui64 requestId = 0;
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(1, store.GetRequestIdsToProcess().size());
+            requestId = store.GetRequestIdsToProcess()[0];
             UNIT_ASSERT_VALUES_EQUAL(request.RequestId, requestId);
 
             store.RemoveCheckpointRequest(request.RequestId);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                false,
-                store.HasRequestToExecute(&requestId));
+            UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
         };
 
         {
