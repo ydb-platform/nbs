@@ -17,9 +17,7 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
         UNIT_ASSERT_VALUES_EQUAL(false, store.DoesCheckpointBlockingWritesExist());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsCheckpointBeingCreated());
         UNIT_ASSERT_VALUES_EQUAL(false, store.IsRequestInProgress());
-        ui64 requestId = 0;
         UNIT_ASSERT_VALUES_EQUAL(0, store.GetRequestIdsToProcess().size());
-        UNIT_ASSERT_VALUES_EQUAL(0, requestId);
     }
 
     Y_UNIT_TEST(HasPersistentState)
@@ -165,7 +163,6 @@ Y_UNIT_TEST_SUITE(TCheckpointStore)
 
         auto requestsToProcess = store.GetRequestIdsToProcess();
         UNIT_ASSERT_VALUES_EQUAL(2, requestsToProcess.size());
-        std::sort(requestsToProcess.begin(), requestsToProcess.end());
         UNIT_ASSERT_VALUES_EQUAL(10, requestsToProcess[0]);
         UNIT_ASSERT_VALUES_EQUAL(11, requestsToProcess[1]);
 
