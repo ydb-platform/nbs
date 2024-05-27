@@ -135,6 +135,8 @@ void TBootstrapCommon::Start()
 
 void TBootstrapCommon::Stop()
 {
+    Drain();
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     FILESTORE_LOG_STOP_COMPONENT(BackgroundScheduler);

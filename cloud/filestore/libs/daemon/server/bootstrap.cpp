@@ -61,6 +61,9 @@ void TBootstrapServer::StartComponents()
     FILESTORE_LOG_START_COMPONENT(Server);
 }
 
+void TBootstrapServer::Drain()
+{}
+
 void TBootstrapServer::StopComponents()
 {
     FILESTORE_LOG_STOP_COMPONENT(Server);

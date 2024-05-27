@@ -30,6 +30,8 @@ struct IEndpointManager
     FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD)
 
 #undef FILESTORE_DECLARE_METHOD
+
+    virtual void Drain() = 0;
 };
 
 }   // namespace NCloud::NFileStore

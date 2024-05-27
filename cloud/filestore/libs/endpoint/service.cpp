@@ -127,7 +127,10 @@ public:
     void Stop() override
     {
         Executor->Stop();
+    }
 
+    void Drain() override
+    {
         TVector<TFuture<void>> futures;
         for (auto&& [_, endpoint]: Endpoints) {
             futures.push_back(endpoint.Endpoint->SuspendAsync());
@@ -399,6 +402,9 @@ class TNullEndpointManager final
     {}
 
     void Stop() override
+    {}
+
+    void Drain() override
     {}
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \

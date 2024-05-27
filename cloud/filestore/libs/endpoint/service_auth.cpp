@@ -42,6 +42,11 @@ public:
         Service->Stop();
     }
 
+    void Drain() override
+    {
+        Service->Drain();
+    }
+
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr ctx,                                                   \

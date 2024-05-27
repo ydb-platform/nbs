@@ -849,6 +849,9 @@ class TEndpointManagerClient final
 public:
     using TBase::TBase;
 
+    void Drain() override
+    {}
+
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
         TBase::AppCtx.Service = NProto::TEndpointManagerService::NewStub(std::move(channel));

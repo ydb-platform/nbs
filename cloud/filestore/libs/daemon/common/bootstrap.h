@@ -93,6 +93,7 @@ protected:
 
     virtual void InitComponents() = 0;
     virtual void StartComponents() = 0;
+    virtual void Drain() = 0;
     virtual void StopComponents() = 0;
 
     void RegisterServer(NServer::IServerPtr server);

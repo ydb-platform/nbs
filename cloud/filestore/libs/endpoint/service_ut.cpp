@@ -222,6 +222,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         endpoint->Stop.SetValue();
 
+        UNIT_ASSERT_NO_EXCEPTION(service->Drain());
         UNIT_ASSERT_NO_EXCEPTION(service->Stop());
     }
 
@@ -341,6 +342,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         endpoint->Stop.SetValue();
 
+        UNIT_ASSERT_NO_EXCEPTION(service->Drain());
         UNIT_ASSERT_NO_EXCEPTION(service->Stop());
     }
 
@@ -387,6 +389,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         Y_DEFER {
             endpoint->Stop.SetValue();
+            UNIT_ASSERT_NO_EXCEPTION(service->Drain());
             UNIT_ASSERT_NO_EXCEPTION(service->Stop());
         };
 
