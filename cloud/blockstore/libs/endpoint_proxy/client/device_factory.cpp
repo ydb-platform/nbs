@@ -75,7 +75,8 @@ struct TProxyDevice: NBD::IDevice
 
     void Stop(bool deleteDevice) override
     {
-        Y_UNUSED(deleteDevice); // server will always delete device
+        // server should always delete device when stopping endpoint
+        Y_UNUSED(deleteDevice);
         auto request = std::make_shared<NProto::TStopProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
         // XXX bad signature - can't return a future, sync wait is bad as well
