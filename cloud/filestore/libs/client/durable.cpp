@@ -268,7 +268,9 @@ class TDurableEndpointManagerClient final
     using TDurableClientBase::TDurableClientBase;
 
     void Drain() override
-    {}
+    {
+        Client->Drain();
+    }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
     TFuture<NProto::T##name##Response> name(                                   \
