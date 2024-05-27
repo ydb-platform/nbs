@@ -57,6 +57,16 @@ void TDiskRegistryProxyActor::Bootstrap(const TActorContext& ctx)
 
 void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
 {
+    if (ui64 diskRegistryTabletId = Config->GetDiskRegistryTabletId()) {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "Got Disk Registry tablet id from config: "
+                << diskRegistryTabletId);
+        StartWork(diskRegistryTabletId, ctx);
+        return;
+    }
+
     const auto hiveTabletId = GetHiveTabletId(StorageConfig, ctx);
 
     LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,

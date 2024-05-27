@@ -269,6 +269,10 @@ void THiveProxyActor::HandleConnectionError(
             }
         }
 
+        // SendNextCreateOrLookupRequest() won't send any requests after the
+        // first undelivery. Clear the queue and hope that clients will retry.
+        states->CreateRequests.clear();
+
         for (auto& kv: states->GetInfoRequests) {
             ui64 tabletId = kv.first;
             auto& requests = kv.second;
