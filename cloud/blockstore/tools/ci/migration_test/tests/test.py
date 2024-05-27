@@ -39,11 +39,11 @@ def test_migration_test(cluster):
 
 
 @pytest.mark.parametrize('cluster', ['cluster1'])
-def test_migration_test_locally(cluster):
+def test_migration_test_no_ycp(cluster):
     binary = common.binary_path(
         'cloud/blockstore/tools/ci/migration_test/yc-nbs-ci-migration-test')
 
-    results_path = '%s_results_locally.txt' % common.output_path()
+    results_path = '%s_results_no_ycp.txt' % common.output_path()
 
     with open(results_path, 'w') as out:
         result = subprocess.call(
@@ -54,7 +54,8 @@ def test_migration_test_locally(cluster):
                 '--disk-id', 'fake-disk-id',
                 '--kill-tablet',
                 '--kill-period', '0',
-                '--run-locally',
+                '--no-ycp',
+                '--nbs-host', 'localhost'
             ],
             stdout=out
         )
