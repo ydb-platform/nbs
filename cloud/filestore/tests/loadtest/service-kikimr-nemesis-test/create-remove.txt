@@ -18,7 +18,7 @@ Tests {
                 Rate: 33
             }
         }
-        IODepth: 64
+        IODepth: 32
         TestDuration: 60
     }
 }
