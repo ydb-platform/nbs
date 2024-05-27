@@ -326,6 +326,13 @@ void TBootstrapVhost::StopComponents()
     NVhost::StopServer();
 }
 
+void TBootstrapVhost::Drain()
+{
+    if (EndpointManager) {
+        EndpointManager->Drain();
+    }
+}
+
 void TBootstrapVhost::RestoreKeyringEndpoints()
 {
     auto idsOrError = EndpointStorage->GetEndpointIds();

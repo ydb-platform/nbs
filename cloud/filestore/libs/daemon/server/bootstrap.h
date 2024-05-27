@@ -33,6 +33,7 @@ public:
 protected:
     void InitComponents() override;
     void StartComponents() override;
+    void Drain() override;
     void StopComponents() override;
 
 private:
