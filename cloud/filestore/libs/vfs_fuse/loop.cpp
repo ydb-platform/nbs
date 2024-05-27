@@ -137,7 +137,7 @@ public:
         bool noCompleting = completingCount == 0;
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] completing left: %ld",
+            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
                 FileSystemId.c_str(),
                 completingCount);
 
@@ -153,7 +153,8 @@ public:
                     noCompleting = completingCount == 0;
                 }
 
-                STORAGE_INFO("[f:%s] completing left: %ld, requests left: %u",
+                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
+                    ", requests left: %u",
                     FileSystemId.c_str(),
                     completingCount,
                     requestsSize);
@@ -173,10 +174,25 @@ public:
         ShouldStop = true;
 
         bool canStop = false;
+        ui32 requestsSize = 0;
+        i64 completingCount = 0;
 
         with_lock (RequestsLock) {
-            canStop = Requests.empty() && CompletingCount.Val() == 0;
+            requestsSize = Requests.size();
+            completingCount = CompletingCount.Val();
+            canStop = Requests.empty() && completingCount == 0;
+
+            // cancel signal is needed for the ops that may be indefinitely
+            // retried by our vfs layer - e.g. AcquireLock
+            for (auto& request: Requests) {
+                request.second->Cancelled = true;
+            }
         }
+
+        STORAGE_INFO("[f:%s] StopAsync: completing left: %ld, requests left: %u",
+            FileSystemId.c_str(),
+            completingCount,
+            requestsSize);
 
         if (canStop) {
             StopPromise.TrySetValue();

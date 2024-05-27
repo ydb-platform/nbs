@@ -209,15 +209,27 @@ void TFileSystem::AcquireLock(
             if (SUCCEEDED(error.GetCode())) {
                 self->ReplyError(*callContext, error, req, 0);
             } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
-                // locks should be acquired synchronously if asked so retry attempt
-                self->ScheduleAcquireLock(
-                    std::move(callContext),
-                    error,
-                    req,
-                    ino,
-                    range,
-                    sleep,
-                    origin);
+                if (callContext->Cancelled) {
+                    STORAGE_DEBUG("Acquire lock cancelled");
+                    // error code shouldn't really matter for the guest since
+                    // if we are in FUSE_SUSPEND mode we won't respond to
+                    // the guest anyway
+                    self->ReplyError(
+                        *callContext,
+                        MakeError(E_CANCELLED),
+                        req,
+                        EINTR);
+                } else {
+                    // locks should be acquired synchronously if asked so retry attempt
+                    self->ScheduleAcquireLock(
+                        std::move(callContext),
+                        error,
+                        req,
+                        ino,
+                        range,
+                        sleep,
+                        origin);
+                }
             } else {
                 STORAGE_DEBUG("Failed to acquire lock: " << error.GetMessage());
                 self->ReplyError(
