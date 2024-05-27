@@ -1132,7 +1132,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         client.WriteBlocks(*dirtyBlocks1, 'A');
         client.WriteBlocks(*dirtyBlocks2, 'B');
 
-        // Read void blocks.
+        // Read the data on the border of two devices, so that two
+        // TReadDeviceBlocks requests occur
         {
             auto response = client.ReadBlocks(voidRange);
 
@@ -1143,6 +1144,29 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     TString(4096, 0),
                     response->Record.GetBlocks().GetBuffers(i),
+                    TStringBuilder() << "block " << i);
+            }
+        }
+
+        // ReadLocal the data on the border of two devices, so that two
+        // TReadDeviceBlocks requests occur
+        {
+            TVector<TString> blocks;
+
+            auto response = client.ReadBlocksLocal(
+                voidRange,
+                TGuardedSgList(ResizeBlocks(
+                    blocks,
+                    voidRange.Size(),
+                    TString(DefaultBlockSize, 'A'))));
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetError().GetCode());
+            UNIT_ASSERT(response->Record.GetAllZeroes());
+
+            for (ui32 i = 0; i < blocks.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    TString(4096, 0),
+                    blocks[i],
                     TStringBuilder() << "block " << i);
             }
         }
