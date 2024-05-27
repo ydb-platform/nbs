@@ -222,10 +222,12 @@ func (s *storageYDB) checkPoolConsistency(
 			expectedPoolState,
 		)
 
-		actualPoolState.acquiredUnits += baseDisk.activeUnits
+		if baseDisk.fromPool {
+			actualPoolState.acquiredUnits += baseDisk.activeUnits
 
-		if baseDisk.isInflight() {
-			actualPoolState.baseDisksInflight += 1
+			if baseDisk.isInflight() {
+				actualPoolState.baseDisksInflight += 1
+			}
 		}
 	}
 

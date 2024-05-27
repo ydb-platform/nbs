@@ -686,7 +686,10 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			baseDiskTransition.state,
 		)
 
-		action := computePoolAction(baseDiskTransition)
+		action, err := computePoolAction(baseDiskTransition)
+		if err != nil {
+			return nil, err
+		}
 		logging.Debug(
 			ctx,
 			"computed pool action is %+v",
