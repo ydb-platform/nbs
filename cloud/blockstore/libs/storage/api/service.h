@@ -160,7 +160,9 @@ struct TEvService
         {}
     };
 
+    //
     // VolumeMountStateChanged
+    //
 
     struct TVolumeMountStateChanged
     {

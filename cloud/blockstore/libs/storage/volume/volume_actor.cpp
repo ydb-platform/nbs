@@ -355,13 +355,13 @@ TString TVolumeActor::GetVolumeStatusString(TVolumeActor::EStatus status) const
     {
         case TVolumeActor::STATUS_ONLINE: {
             if (!State->GetLocalMountClientId().Empty()) {
-                return "online(preempted)";
+                return "Online (preempted)";
             }
-            return "online";
+            return "Online";
         }
-        case TVolumeActor::STATUS_INACTIVE: return "inactive";
-        case TVolumeActor::STATUS_MOUNTED: return "mounted";
-        default: return "offline";
+        case TVolumeActor::STATUS_INACTIVE: return "Inactive";
+        case TVolumeActor::STATUS_MOUNTED: return "Mounted";
+        default: return "Offline";
     }
 }
 
