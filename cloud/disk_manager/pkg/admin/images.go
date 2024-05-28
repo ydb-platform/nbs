@@ -131,6 +131,8 @@ type createImage struct {
 	srcURL        string
 	srcImageID    string
 	srcSnapshotID string
+	srcDiskZoneID string
+	srcDiskID     string
 	dstImageID    string
 	folderID      string
 }
@@ -163,8 +165,19 @@ func (c *createImage) run() error {
 		req.Src = &disk_manager.CreateImageRequest_SrcSnapshotId{
 			SrcSnapshotId: c.srcSnapshotID,
 		}
+	} else if c.srcDiskID != "" {
+		if c.srcDiskZoneID == "" {
+			return fmt.Errorf("src-disk-zone-id should be defined")
+		}
+
+		req.Src = &disk_manager.CreateImageRequest_SrcDiskId{
+			SrcDiskId: &disk_manager.DiskId{
+				ZoneId: c.srcDiskZoneID,
+				DiskId: c.srcDiskID,
+			},
+		}
 	} else {
-		return fmt.Errorf("one of src-url or src-image-id should be defined")
+		return fmt.Errorf("one of src-url or src-image-id or src-snapshot-id or src-disk-id should be defined")
 	}
 
 	resp, err := client.CreateImage(getRequestContext(ctx), req)
@@ -192,6 +205,8 @@ func newCreateImageCmd(clientConfig *client_config.ClientConfig) *cobra.Command 
 	cmd.Flags().StringVar(&c.srcURL, "src-url", "", "URL to create image from")
 	cmd.Flags().StringVar(&c.srcImageID, "src-image-id", "", "ID of image to create image from")
 	cmd.Flags().StringVar(&c.srcSnapshotID, "src-snapshot-id", "", "ID of snapshot to create image from")
+	cmd.Flags().StringVar(&c.srcDiskZoneID, "src-disk-zone-id", "", "ID of zone where source disk is located")
+	cmd.Flags().StringVar(&c.srcDiskID, "src-disk-id", "", "ID of disk to create image from")
 
 	cmd.Flags().StringVar(&c.dstImageID, "id", "", "ID of image to create; required")
 	if err := cmd.MarkFlagRequired("id"); err != nil {
