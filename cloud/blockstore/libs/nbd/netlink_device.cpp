@@ -335,9 +335,9 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     auto* header = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(message)));
     auto* conn = static_cast<TNetlinkDevice*>(argument);
     auto Log = conn->Log;
-    nlattr* attr[NBD_ATTR_MAX + 1];
-    nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1];
-    nlattr* device[NBD_DEVICE_ATTR_MAX + 1];
+    nlattr* attr[NBD_ATTR_MAX + 1] = {};
+    nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1] = {};
+    nlattr* device[NBD_DEVICE_ATTR_MAX + 1] = {};
 
     nla_policy deviceItemPolicy[NBD_DEVICE_ITEM_MAX + 1] = {};
     deviceItemPolicy[NBD_DEVICE_ITEM].type = NLA_NESTED;
@@ -346,50 +346,50 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     devicePolicy[NBD_DEVICE_INDEX].type = NLA_U32;
     devicePolicy[NBD_DEVICE_CONNECTED].type = NLA_U8;
 
-    if (nla_parse(
+    if (int err = nla_parse(
             attr,
             NBD_ATTR_MAX,
             genlmsg_attrdata(header, 0),
             genlmsg_attrlen(header, 0),
             NULL))
     {
-        STORAGE_ERROR("unable to parse NBD_CMD_STATUS response");
-        return NL_OK;
+        STORAGE_ERROR("unable to parse NBD_CMD_STATUS response: " << err);
+        return NL_STOP;
     }
 
     if (!attr[NBD_ATTR_DEVICE_LIST]) {
         STORAGE_ERROR("did not receive NBD_ATTR_DEVICE_LIST");
-        return NL_OK;
+        return NL_STOP;
     }
 
-    if (nla_parse_nested(
+    if (int err = nla_parse_nested(
             deviceItem,
             NBD_DEVICE_ITEM_MAX,
             attr[NBD_ATTR_DEVICE_LIST],
             deviceItemPolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_ATTR_DEVICE_LIST");
-        return NL_OK;
+        STORAGE_ERROR("unable to parse NBD_ATTR_DEVICE_LIST: " << err);
+        return NL_STOP;
     }
 
     if (!deviceItem[NBD_DEVICE_ITEM]) {
         STORAGE_ERROR("did not receive NBD_DEVICE_ITEM");
-        return NL_OK;
+        return NL_STOP;
     }
 
-    if (nla_parse_nested(
+    if (int err = nla_parse_nested(
             device,
             NBD_DEVICE_ATTR_MAX,
             deviceItem[NBD_DEVICE_ITEM],
             devicePolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_DEVICE_ITEM");
-        return NL_OK;
+        STORAGE_ERROR("unable to parse NBD_DEVICE_ITEM: " << err);
+        return NL_STOP;
     }
 
     if (!device[NBD_DEVICE_CONNECTED]) {
         STORAGE_ERROR("did not receive NBD_DEVICE_CONNECTED");
-        return NL_OK;
+        return NL_STOP;
     }
 
     conn->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
