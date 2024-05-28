@@ -390,7 +390,7 @@ struct TRequestState
 struct TEndpoint
 {
     std::shared_ptr<NProto::TStartEndpointRequest> Request;
-    NBD::IDeviceConnectionPtr Device;
+    NBD::IDevicePtr Device;
     NProto::TVolume Volume;
 };
 
@@ -408,7 +408,7 @@ private:
     const ISessionManagerPtr SessionManager;
     const IEndpointStoragePtr EndpointStorage;
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
-    const NBD::IDeviceConnectionFactoryPtr NbdDeviceFactory;
+    const NBD::IDeviceFactoryPtr NbdDeviceFactory;
     const TString NbdSocketSuffix;
 
     TDeviceManager NbdDeviceManager;
@@ -448,7 +448,7 @@ public:
             ISessionManagerPtr sessionManager,
             IEndpointStoragePtr endpointStorage,
             THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
-            NBD::IDeviceConnectionFactoryPtr nbdDeviceFactory,
+            NBD::IDeviceFactoryPtr nbdDeviceFactory,
             TEndpointManagerOptions options)
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -495,7 +495,7 @@ public:
         RestoringClient->Stop();
 
         for (auto& [socket, endpoint]: Endpoints) {
-            endpoint.Device->Stop();
+            endpoint.Device->Stop(false);
         }
     }
 
@@ -600,7 +600,7 @@ private:
     std::shared_ptr<NProto::TStartEndpointRequest> CreateNbdStartEndpointRequest(
         const NProto::TStartEndpointRequest& request);
 
-    TResultOrError<NBD::IDeviceConnectionPtr> StartNbdDevice(
+    TResultOrError<NBD::IDevicePtr> StartNbdDevice(
         std::shared_ptr<NProto::TStartEndpointRequest> request,
         bool restoring,
         const NProto::TVolume& volume);
@@ -804,7 +804,7 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     if (!restoring) {
         error = AddEndpointToStorage(*request);
         if (HasError(error)) {
-            device->Stop();
+            device->Stop(true);
             ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             CloseAllEndpointSockets(*request);
             RemoveSession(std::move(ctx), *request);
@@ -992,7 +992,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    endpoint.Device->Stop();
+    endpoint.Device->Stop(true);
     ReleaseNbdDevice(endpoint.Request->GetNbdDeviceFile(), false);
     CloseAllEndpointSockets(*endpoint.Request);
     RemoveSession(std::move(ctx), *request);
@@ -1355,13 +1355,13 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
     return error;
 }
 
-TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
+TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
     std::shared_ptr<NProto::TStartEndpointRequest> request,
     bool restoring,
     const NProto::TVolume& volume)
 {
     if (request->GetIpcType() != NProto::IPC_NBD) {
-        return NBD::CreateDeviceConnectionStub();
+        return NBD::CreateDeviceStub();
     }
 
     if (request->HasUseFreeNbdDeviceFile() &&
@@ -1378,7 +1378,7 @@ TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
     }
 
     if (!request->HasNbdDeviceFile() || !request->GetNbdDeviceFile()) {
-        return NBD::CreateDeviceConnectionStub();
+        return NBD::CreateDeviceStub();
     }
 
     if (!restoring) {
@@ -1394,7 +1394,7 @@ TResultOrError<NBD::IDeviceConnectionPtr> TEndpointManager::StartNbdDevice(
         }
     }
 
-    NBD::IDeviceConnectionPtr device;
+    NBD::IDevicePtr device;
     try {
         // Release file descriptor lock by removing loopback device
         DetachFileDevice(request->GetNbdDeviceFile());
@@ -1578,7 +1578,7 @@ IEndpointManagerPtr CreateEndpointManager(
     ISessionManagerPtr sessionManager,
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
-    NBD::IDeviceConnectionFactoryPtr nbdDeviceFactory,
+    NBD::IDeviceFactoryPtr nbdDeviceFactory,
     TEndpointManagerOptions options)
 {
     auto manager = std::make_shared<TEndpointManager>(

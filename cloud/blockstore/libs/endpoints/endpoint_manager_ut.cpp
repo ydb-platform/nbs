@@ -130,11 +130,11 @@ struct TTestSessionManager final
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestDeviceFactory
-    : public NBD::IDeviceConnectionFactory
+    : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
 
-    NBD::IDeviceConnectionPtr Create(
+    NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
@@ -144,7 +144,7 @@ struct TTestDeviceFactory
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
         Devices.push_back(deviceName);
-        return NBD::CreateDeviceConnectionStub();
+        return NBD::CreateDeviceStub();
     }
 };
 
@@ -272,7 +272,7 @@ struct TBootstrap
     IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
     IMutableEndpointStoragePtr MutableStorage = CreateFileMutableEndpointStorage(DirPath);
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
-    NBD::IDeviceConnectionFactoryPtr NbdDeviceFactory;
+    NBD::IDeviceFactoryPtr NbdDeviceFactory;
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
     IEndpointManagerPtr EndpointManager;

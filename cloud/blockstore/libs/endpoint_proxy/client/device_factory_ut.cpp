@@ -63,7 +63,7 @@ struct TTestEndpointProxyClient: NClient::IEndpointProxyClient
 
 Y_UNIT_TEST_SUITE(TProxyDeviceFactoryTest)
 {
-    Y_UNIT_TEST(ShouldCreateConnection)
+    Y_UNIT_TEST(ShouldCreateDevice)
     {
         const TString socketPath = "/some/socket";
         const TString deviceName = "/dev/nbdX";
@@ -72,9 +72,9 @@ Y_UNIT_TEST_SUITE(TProxyDeviceFactoryTest)
         const ui32 sectorSize = 512;
 
         auto client = std::make_shared<TTestEndpointProxyClient>();
-        auto factory = CreateProxyDeviceConnectionFactory({sectorSize}, client);
+        auto factory = CreateProxyDeviceFactory({sectorSize}, client);
 
-        auto connection = factory->Create(
+        auto device = factory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             deviceName,
             blockCount,
@@ -82,7 +82,7 @@ Y_UNIT_TEST_SUITE(TProxyDeviceFactoryTest)
         UNIT_ASSERT_VALUES_EQUAL("", client->StartRequest.GetUnixSocketPath());
         UNIT_ASSERT_VALUES_EQUAL("", client->StopRequest.GetUnixSocketPath());
 
-        connection->Start();
+        device->Start();
         UNIT_ASSERT_VALUES_EQUAL(
             socketPath,
             client->StartRequest.GetUnixSocketPath());
@@ -97,7 +97,7 @@ Y_UNIT_TEST_SUITE(TProxyDeviceFactoryTest)
             client->StartRequest.GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL("", client->StopRequest.GetUnixSocketPath());
 
-        connection->Stop();
+        device->Stop(true /* delete device */);
         UNIT_ASSERT_VALUES_EQUAL(
             socketPath,
             client->StopRequest.GetUnixSocketPath());

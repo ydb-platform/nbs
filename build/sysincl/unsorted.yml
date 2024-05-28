@@ -716,6 +716,9 @@
   - netlink/msg.h
   - netlink/attr.h
   # end libpcap files
+  # libnl3 files
+  - netlink/netlink.h
+  # end libnl3 files
 
 # These includes are not used in autocheck builds, but might be necessary for
 # some external builds with exotic settings

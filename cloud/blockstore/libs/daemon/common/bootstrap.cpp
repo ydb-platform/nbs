@@ -40,6 +40,7 @@
 #include <cloud/blockstore/libs/endpoints_vhost/external_vhost_server.h>
 #include <cloud/blockstore/libs/endpoints_vhost/vhost_server.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/client.h>
@@ -510,6 +511,22 @@ void TBootstrapBase::Init()
         .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
     };
 
+#ifdef NETLINK
+    auto netlink = Configs->ServerConfig->GetNbdNetlink();
+#else
+    auto netlink = false;
+    STORAGE_ERROR("built without netlink support, falling back to ioctl");
+#endif
+    auto nbdDeviceFactory = netlink
+        ? NBD::CreateNetlinkDeviceFactory(
+            Logging,
+            Configs->ServerConfig->GetNbdRequestTimeout(),
+            Configs->ServerConfig->GetNbdConnectionTimeout(),
+            true)                   // reconfigure
+        : NBD::CreateDeviceFactory(
+            Logging,
+            TDuration::Days(1));    // timeout
+
     EndpointManager = CreateEndpointManager(
         Timer,
         Scheduler,
@@ -522,7 +539,7 @@ void TBootstrapBase::Init()
         std::move(sessionManager),
         std::move(endpointStorage),
         std::move(endpointListeners),
-        NBD::CreateDeviceConnectionFactory(Logging, TDuration::Days(1)),
+        std::move(nbdDeviceFactory),
         std::move(endpointManagerOptions));
 
     STORAGE_INFO("EndpointManager initialized");

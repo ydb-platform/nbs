@@ -24,7 +24,8 @@ void TBootstrap::Init()
         static_cast<ui16>(Options.SecureServerPort),
         Options.RootCertsFile,
         Options.KeyFile,
-        Options.CertFile
+        Options.CertFile,
+        Options.Netlink,
     },
     CreateWallClockTimer(),
     Scheduler,
