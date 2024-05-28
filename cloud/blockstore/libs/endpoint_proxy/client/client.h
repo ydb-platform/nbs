@@ -43,6 +43,7 @@ struct TEndpointProxyClientConfig
     ui16 Port;
     ui16 SecurePort;
     TString RootCertsFile;
+    TString UnixSocketPath;
     TRetryPolicy RetryPolicy;
 };
 

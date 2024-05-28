@@ -16,6 +16,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/grpc
+    cloud/storage/core/libs/uds
 
     library/cpp/getopt/small
     library/cpp/logger

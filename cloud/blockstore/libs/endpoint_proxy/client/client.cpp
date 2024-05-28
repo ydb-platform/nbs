@@ -8,12 +8,14 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/network/sock.h>
 #include <util/stream/file.h>
 #include <util/string/printf.h>
 #include <util/thread/factory.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/async_unary_call.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/client_context.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
@@ -61,16 +63,12 @@ struct TRequestContextImpl: TRequestContextBase
 
     TRequestContextImpl(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : Request(std::move(request))
         , CQ(cq)
-        , Service(grpc::CreateChannel(
-            Sprintf("%s:%u", host.c_str(), port),
-            channelCredentials))
+        , Service(std::move(channel))
         , Promise(NThreading::NewPromise<TResponse>())
         , ProcessingStartTs(now)
     {}
@@ -86,18 +84,14 @@ struct TStartRequestContext: TRequestContextImpl<
 
     TStartRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncStartProxyEndpoint(&ClientContext, Request, &CQ);
     }
@@ -113,18 +107,14 @@ struct TStopRequestContext: TRequestContextImpl<
 
     TStopRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncStopProxyEndpoint(&ClientContext, Request, &CQ);
     }
@@ -140,18 +130,14 @@ struct TListRequestContext: TRequestContextImpl<
 
     TListRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncListProxyEndpoints(&ClientContext, Request, &CQ);
     }
@@ -168,32 +154,53 @@ struct TEndpointProxyClient
     const ITimerPtr Timer;
     TLog Log;
 
+    std::shared_ptr<grpc::Channel> Channel;
+
     grpc::CompletionQueue CQ;
-    std::shared_ptr<grpc::ChannelCredentials> ChannelCredentials;
     THolder<IThreadFactory::IThread> Thread;
 
     TEndpointProxyClient(
             TEndpointProxyClientConfig config,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            ILoggingServicePtr logging)
+            const ILoggingServicePtr& logging)
         : Config(std::move(config))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , Log(logging->CreateLog("ENDPOINT_PROXY_CLIENT"))
     {
-        if (Config.SecurePort) {
-            ChannelCredentials = grpc::SslCredentials({
+        if (Config.UnixSocketPath) {
+            TSockAddrLocal addr(Config.UnixSocketPath.c_str());
+
+            TLocalStreamSocket socket;
+            auto res = socket.Connect(&addr);
+            Y_ENSURE_EX(res >= 0, yexception() << "failed to connect to"
+                " endpoint proxy socket, res: " << res);
+
+            Channel = grpc::CreateInsecureChannelFromFd(
+                "localhost",
+                socket);
+
+            socket.Release();
+        } else if (Config.SecurePort) {
+            auto channelCredentials = grpc::SslCredentials({
                 .pem_root_certs = ReadFile(Config.RootCertsFile)
             });
-        } else {
-            ChannelCredentials = grpc::InsecureChannelCredentials();
-        }
-    }
 
-    ui16 Port() const
-    {
-        return Config.SecurePort ? Config.SecurePort : Config.Port;
+            Channel = grpc::CreateChannel(
+                Sprintf("%s:%u", Config.Host.c_str(), Config.SecurePort),
+                channelCredentials);
+        } else {
+            Y_ENSURE_EX(Config.Port, yexception() << "none of the"
+                " port/secure port/unix socket path specified for endpoint proxy"
+                " client");
+
+            auto channelCredentials = grpc::InsecureChannelCredentials();
+
+            Channel = grpc::CreateChannel(
+                Sprintf("%s:%u", Config.Host.c_str(), Config.Port),
+                channelCredentials);
+        }
     }
 
     template <typename TContext>
@@ -203,11 +210,9 @@ struct TEndpointProxyClient
     {
         auto requestContext = std::make_unique<TContext>(
             CQ,
-            Config.Host,
-            Port(),
+            Channel,
             request,
-            now,
-            ChannelCredentials
+            now
         );
 
         auto promise = requestContext->Promise;
@@ -255,8 +260,8 @@ struct TEndpointProxyClient
     {
         STORAGE_INFO("Starting loop");
 
-        void* tag;
-        bool ok;
+        void* tag = nullptr;
+        bool ok = false;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestContextBase> requestContext(
                 static_cast<TRequestContextBase*>(tag));
