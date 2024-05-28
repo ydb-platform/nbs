@@ -10,7 +10,6 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -34,14 +33,13 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
-    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
 
     ui32 VoidBlockCount = 0;
-    ui32 NonVoidBlockCount = 0;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -52,14 +50,13 @@ public:
             ui32 blockCount,
             NActors::TActorId parentActorId,
             ui64 requestId,
-            bool skipVoidBlocksToOptimizeNetworkTransfer)
+            bool checkVoidBlocks)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , ParentActorId(parentActorId)
         , RequestId(requestId)
-        , SkipVoidBlocksToOptimizeNetworkTransfer(
-              skipVoidBlocksToOptimizeNetworkTransfer)
+        , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
     {
         TRequestScope timer(*RequestInfo);
@@ -88,18 +85,11 @@ public:
             return;
         }
 
-        if (concreteProto.GetAllZeroes()) {
-            // We have already prepared the data for the answer with zeros.
-            // Will not fill them with zeros again.
-            VoidBlockCount += dr.BlockCount;
-            STORAGE_CHECK_PRECONDITION(SkipVoidBlocksToOptimizeNetworkTransfer);
-            return;
-        }
-
         auto& blocks = *Response.MutableBlocks()->MutableBuffers();
 
         ui64 offset = 0;
         ui64 b = 0;
+        bool isAllZeroes = CheckVoidBlocks;
         while (offset < result.Data.Size()) {
             ui64 targetBlock = dr.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
@@ -107,16 +97,20 @@ public:
                 Min(result.Data.Size() - offset, blocks[targetBlock].Size());
             Y_ABORT_UNLESS(bytes);
 
-            memcpy(
-                const_cast<char*>(blocks[targetBlock].Data()),
-                result.Data.data() + offset,
-                bytes);
+            char* dst = const_cast<char*>(blocks[targetBlock].Data());
+            const char* src = result.Data.data() + offset;
+
+            if (isAllZeroes) {
+                isAllZeroes = IsAllZeroes(src, bytes);
+            }
+            memcpy(dst, src, bytes);
+
             offset += bytes;
             ++b;
         }
 
-        if (SkipVoidBlocksToOptimizeNetworkTransfer) {
-            NonVoidBlockCount += dr.BlockCount;
+        if (isAllZeroes) {
+            VoidBlockCount += dr.BlockCount;
         }
     }
 
@@ -169,8 +163,6 @@ public:
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
-        completion->NonVoidBlockCount = NonVoidBlockCount;
-        completion->VoidBlockCount = VoidBlockCount;
 
         counters.SetBlocksCount(blockCount);
         auto completionEvent = std::make_unique<IEventHandle>(

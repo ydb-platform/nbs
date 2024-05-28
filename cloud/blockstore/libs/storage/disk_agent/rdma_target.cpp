@@ -1,7 +1,6 @@
 #include "rdma_target.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
@@ -11,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -51,7 +51,6 @@ struct TRequestDetails
     TStringBuf Out;
     TString DeviceUUID;
     TString ClientId;
-    bool SkipVoidBlocks;
 
     ui64 VolumeRequestId = 0;
     TBlockRange64 Range = {};
@@ -550,9 +549,7 @@ private:
                 context,
                 out,
                 request.GetDeviceUUID(),
-                request.GetHeaders().GetClientId(),
-                request.GetHeaders().GetOptimizeNetworkTransfer() ==
-                    NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS},
+                request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleReadBlocksResponse);
 
         return {};
@@ -578,21 +575,11 @@ private:
                     << error.GetMessage() << " (" << error.GetCode() << ")");
         }
 
-        bool allZeroes = false;
-        if (requestDetails.SkipVoidBlocks) {
-            allZeroes = AllOf(
-                blocks.GetBuffers(),
-                [](const TString& buffer)
-                { return IsAllZeroes(buffer.data(), buffer.size()); });
-        }
-        proto.SetAllZeroes(allZeroes);
-
         TStackVec<IOutputStream::TPart> parts;
-        if (!allZeroes) {
-            parts.reserve(blocks.BuffersSize());
-            for (const auto& buffer: blocks.GetBuffers()) {
-                parts.emplace_back(TStringBuf(buffer));
-            }
+        parts.reserve(blocks.BuffersSize());
+
+        for (const auto& buffer: blocks.GetBuffers()) {
+            parts.emplace_back(TStringBuf(buffer));
         }
 
         size_t bytes = NRdma::TProtoMessageSerializer::Serialize(
@@ -636,7 +623,6 @@ private:
              out,
              request.GetDeviceUUID(),
              request.GetHeaders().GetClientId(),
-             false,
              request.GetVolumeRequestId(),
              TBlockRange64::WithLength(request.GetStartIndex(), blockCount),
              request.GetMultideviceRequest()},
@@ -755,7 +741,6 @@ private:
              out,
              request.GetDeviceUUID(),
              request.GetHeaders().GetClientId(),
-             false,
              request.GetVolumeRequestId(),
              TBlockRange64::WithLength(
                  request.GetStartIndex(),
@@ -883,8 +868,7 @@ private:
                 context,
                 out,
                 request.GetDeviceUUID(),
-                request.GetHeaders().GetClientId(),
-                false},
+                request.GetHeaders().GetClientId()},
             &TRequestHandler::HandleChecksumBlocksResponse);
 
         return {};

@@ -247,7 +247,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     TVector<TDeviceRequestInfo> requests;
 
     ui64 startBlockIndexOffset = 0;
-    for (const auto& r: deviceRequests) {
+    for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
         auto dr = std::make_unique<TDeviceReadRequestContext>();
@@ -263,10 +263,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         deviceRequest.SetStartIndex(r.DeviceBlockRange.Start);
         deviceRequest.SetBlockSize(PartConfig->GetBlockSize());
         deviceRequest.SetBlocksCount(r.DeviceBlockRange.Size());
-        if (Config->GetOptimizeVoidBuffersTransferForReadsEnabled()) {
-            deviceRequest.MutableHeaders()->SetOptimizeNetworkTransfer(
-                NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS);
-        }
 
         auto [req, err] = ep->AllocateRequest(
             handler,

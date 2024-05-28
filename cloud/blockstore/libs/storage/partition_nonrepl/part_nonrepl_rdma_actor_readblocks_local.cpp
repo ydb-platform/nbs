@@ -10,7 +10,6 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/string.h>
 
@@ -33,7 +32,7 @@ private:
     const ui32 RequestBlockCount;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
-    const bool SkipVoidBlocksToOptimizeNetworkTransfer;
+    const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
@@ -41,7 +40,6 @@ private:
     NProto::TError Error;
 
     ui32 VoidBlockCount = 0;
-    ui32 NonVoidBlockCount = 0;
 
 public:
     TRdmaRequestReadBlocksLocalContext(
@@ -53,15 +51,14 @@ public:
             ui32 requestBlockCount,
             NActors::TActorId parentActorId,
             ui64 requestId,
-            bool skipVoidBlocksToOptimizeNetworkTransfer)
+            bool checkVoidBlocks)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , RequestBlockCount(requestBlockCount)
         , ParentActorId(parentActorId)
         , RequestId(requestId)
-        , SkipVoidBlocksToOptimizeNetworkTransfer(
-              skipVoidBlocksToOptimizeNetworkTransfer)
+        , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
         , SgList(std::move(sglist))
     {
@@ -87,23 +84,9 @@ public:
 
             TSgList data = guard.Get();
 
-            if (concreteProto.GetAllZeroes()) {
-                // Fill in with zeros all blocks corresponding to the current
-                // response.
-                for (size_t i = 0; i < dr.BlockCount; ++i) {
-                    size_t targetBlock = dr.StartIndexOffset + i;
-                    char* targetBlockData =
-                        const_cast<char*>(data[targetBlock].Data());
-                    memset(targetBlockData, 0, data[targetBlock].Size());
-                }
-                VoidBlockCount += dr.BlockCount;
-                STORAGE_CHECK_PRECONDITION(
-                    SkipVoidBlocksToOptimizeNetworkTransfer);
-                return;
-            }
-
             ui64 offset = 0;
             ui64 b = 0;
+            bool isAllZeroes = CheckVoidBlocks;
             while (offset < result.Data.Size()) {
                 ui64 targetBlock = dr.StartIndexOffset + b;
                 Y_ABORT_UNLESS(targetBlock < data.size());
@@ -111,15 +94,20 @@ public:
                     Min(result.Data.Size() - offset, data[targetBlock].Size());
                 Y_ABORT_UNLESS(bytes);
 
-                memcpy(
-                    const_cast<char*>(data[targetBlock].Data()),
-                    result.Data.data() + offset,
-                    bytes);
+                char* dst = const_cast<char*>(data[targetBlock].Data());
+                const char* src = result.Data.data() + offset;
+
+                if (isAllZeroes) {
+                    isAllZeroes = IsAllZeroes(src, bytes);
+                }
+                memcpy(dst, src, bytes);
+
                 offset += bytes;
                 ++b;
             }
-            if (SkipVoidBlocksToOptimizeNetworkTransfer) {
-                NonVoidBlockCount += dr.BlockCount;
+
+            if (isAllZeroes) {
+                VoidBlockCount += dr.BlockCount;
             }
         }
     }
@@ -169,8 +157,6 @@ public:
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
-        completion->NonVoidBlockCount = NonVoidBlockCount;
-        completion->VoidBlockCount = VoidBlockCount;
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(

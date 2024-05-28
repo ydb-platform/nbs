@@ -1,7 +1,6 @@
 #include "client_test.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
@@ -126,23 +125,6 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
                         sglist.emplace_back(blocks[i].Data(), blocks[i].Size());
-                    }
-
-                    if (request->GetHeaders().GetOptimizeNetworkTransfer() ==
-                        NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
-                    {
-                        const bool allZeroes = AllOf(
-                            sglist,
-                            [](TBlockDataRef dataRef) {
-                                return IsAllZeroes(
-                                    dataRef.Data(),
-                                    dataRef.Size());
-                            });
-                        response.SetAllZeroes(allZeroes);
-                        if (allZeroes) {
-                            // Return the response without data.
-                            sglist.resize(0);
-                        }
                     }
                 }
 

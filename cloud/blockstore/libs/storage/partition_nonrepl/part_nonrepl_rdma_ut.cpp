@@ -987,7 +987,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -1021,7 +1021,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
+                0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -1062,7 +1062,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                onlyVoidBlocks.Size() * DefaultBlockSize,
+                0,
                 counters.ReadBlocks.GetRequestVoidBytes());
         }
 
@@ -1093,7 +1093,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                onlyVoidBlocks.Size() * DefaultBlockSize,
+                0,
                 counters.ReadBlocks.GetRequestVoidBytes());
         }
     }
@@ -1115,11 +1115,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             "device-2",
             devices);
 
-        TTestEnv env(
-            runtime,
-            NProto::VOLUME_IO_OK,
-            std::move(devices),
-            true);
+        TTestEnv env(runtime, NProto::VOLUME_IO_OK, std::move(devices), true);
         TPartitionClient client(runtime, env.ActorId);
 
         env.Rdma().InitAllEndpoints();
