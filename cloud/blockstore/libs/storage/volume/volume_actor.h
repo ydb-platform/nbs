@@ -408,8 +408,7 @@ private:
     void RenderResyncStatus(IOutputStream& out) const;
     void RenderMountSeqNumber(IOutputStream& out) const;
     void RenderHistory(
-        const TDeque<THistoryLogItem>& history,
-        bool hasMoreHistoryItems,
+        const TVolumeMountHistorySlice& history,
         const TVector<TVolumeMetaHistoryItem>& metaHistory,
         IOutputStream& out) const;
     void RenderCheckpoints(IOutputStream& out) const;
@@ -589,8 +588,7 @@ private:
 
     void HandleHttpInfo_Default(
         const NActors::TActorContext& ctx,
-        const TDeque<THistoryLogItem>& history,
-        bool hasMoreHistoryItems,
+        const TVolumeMountHistorySlice& history,
         const TVector<TVolumeMetaHistoryItem>& metaHistory,
         const TStringBuf tabName,
         const TCgiParameters& params,

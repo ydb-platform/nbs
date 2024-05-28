@@ -28,9 +28,9 @@ bool TVolumeActor::PrepareCleanupHistory(
 
     TVolumeDatabase db(tx.DB);
     return db.ReadOutdatedHistory(
-        args.OutdatedHistory,
         args.Key,
-        args.ItemsToRemove);
+        args.ItemsToRemove,
+        args.OutdatedHistory);
 }
 
 void TVolumeActor::ExecuteCleanupHistory(
@@ -65,7 +65,8 @@ void TVolumeActor::CompleteCleanupHistory(
         return;
     }
 
-    State->OnCleanupHistory(args.OutdatedHistory.front());
+    State->AccessMountHistory().CleanupHistoryIfNeeded(
+        args.OutdatedHistory.front().Timestamp);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

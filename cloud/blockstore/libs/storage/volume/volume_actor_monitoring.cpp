@@ -254,15 +254,15 @@ void BuildHistoryNextButton(
     THistoryLogKey key,
     ui64 tabletId)
 {
-    if (key.Seqno) {
-        --key.Seqno;
+    if (key.SeqNo) {
+        --key.SeqNo;
     } else {
         key.Timestamp -= TDuration::MicroSeconds(1);
-        key.Seqno = Max<ui64>();
+        key.SeqNo = Max<ui64>();
     }
     out << "<form method='GET' name='NextHistoryPage' style='display:inline-block'>"
         << "<input type='hidden' name='timestamp' value='" << key.Timestamp.MicroSeconds() << "'/>"
-        << "<input type='hidden' name='seqno' value='" << key.Seqno << "'/>"
+        << "<input type='hidden' name='seqno' value='" << key.SeqNo << "'/>"
         << "<input type='hidden' name='next' value='true'/>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input class='btn btn-primary display:inline-block' type='submit' value='Next>>'/>"
@@ -480,8 +480,7 @@ void TVolumeActor::HandleHttpInfo(
 
         HandleHttpInfo_Default(
             ctx,
-            State->GetHistory(),
-            State->GetRecordBeyondCache().has_value(),
+            State->GetMountHistory().GetSlice(),
             State->GetMetaHistory(),
             activeTab,
             params,
@@ -498,8 +497,7 @@ void TVolumeActor::HandleHttpInfo(
 
 void TVolumeActor::HandleHttpInfo_Default(
     const NActors::TActorContext& ctx,
-    const TDeque<THistoryLogItem>& history,
-    bool hasMoreHistoryItems,
+    const TVolumeMountHistorySlice& history,
     const TVector<TVolumeMetaHistoryItem>& metaHistory,
     const TStringBuf tabName,
     const TCgiParameters& params,
@@ -580,7 +578,7 @@ void TVolumeActor::HandleHttpInfo_Default(
                 }
 
                 DIV_CLASS_ID(historyTab, historyTabName) {
-                    RenderHistory(history, hasMoreHistoryItems, metaHistory, out);
+                    RenderHistory(history, metaHistory, out);
                 }
 
                 DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
@@ -608,8 +606,7 @@ void TVolumeActor::HandleHttpInfo_Default(
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::RenderHistory(
-    const TDeque<THistoryLogItem>& history,
-    bool hasMoreHistoryItems,
+    const TVolumeMountHistorySlice& history,
     const TVector<TVolumeMetaHistoryItem>& metaHistory,
     IOutputStream& out) const
 {
@@ -628,7 +625,7 @@ void TVolumeActor::RenderHistory(
                         TABLEH() { out << "Operation"; }
                     }
                 }
-                for (const auto& h: history) {
+                for (const auto& h: history.Items) {
                     TABLER() {
                         TABLED() {
                             out << h.Key.Timestamp;
@@ -666,11 +663,14 @@ void TVolumeActor::RenderHistory(
                     }
                 }
             }
-            if (history.size() && hasMoreHistoryItems) {
+            if (history.Items.size() && history.HasMoreItems()) {
                 TABLE_CLASS("table") {
                     TABLER() {
                         TABLED() {
-                            BuildHistoryNextButton(out, history.back().Key, TabletID());
+                            BuildHistoryNextButton(
+                                out,
+                                history.Items.back().Key,
+                                TabletID());
                         }
                     }
                 }

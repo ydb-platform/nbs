@@ -46,13 +46,13 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 struct THistoryLogKey
 {
     TInstant Timestamp;
-    ui64 Seqno = 0;
+    ui64 SeqNo = 0;
 
     THistoryLogKey() = default;
 
-    THistoryLogKey(TInstant timestamp, ui64 seqno)
+    THistoryLogKey(TInstant timestamp, ui64 seqNo)
         : Timestamp(timestamp)
-        , Seqno(seqno)
+        , SeqNo(seqNo)
     {}
 
     explicit THistoryLogKey(TInstant timestamp)
@@ -110,42 +110,75 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeMountHistory
+struct TVolumeMountHistorySlice
 {
-private:
-    const ui32 HistoryCacheSize;
+    TVector<THistoryLogItem> Items;
+    std::optional<THistoryLogKey> NextOlderRecord;
 
-    THistoryLogKey LastLogRecord;
-    TDeque<THistoryLogItem> History;
-    std::optional<THistoryLogKey> RecordBeyondCache;
-
-public:
-    TVolumeMountHistory(
-        ui32 historyCacheSize,
-        TDeque<THistoryLogItem> history);
-
-    void AddHistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation op);
-    void OnCleanupHistory(THistoryLogKey newestRemoved);
-
-    const TDeque<THistoryLogItem>& GetHistory() const
+    void Clear()
     {
-        return History;
+        Items.clear();
+        NextOlderRecord.reset();
     }
 
-    const auto& GetRecordBeyondCache() const
+    bool HasMoreItems() const
     {
-        return RecordBeyondCache;
+        return NextOlderRecord.has_value();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCachedVolumeMountHistory
+{
+private:
+    const ui32 Capacity = 0;
+
+    THistoryLogKey LastLogRecord;
+    TDeque<THistoryLogItem> Items;
+    std::optional<THistoryLogKey> NextOlderRecord;
+
+public:
+    TCachedVolumeMountHistory() = default;
+
+    TCachedVolumeMountHistory(
+        ui32 capacity,
+        TVolumeMountHistorySlice records);
+
+    void AddHistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation op);
+
+    const TDeque<THistoryLogItem>& GetItems() const
+    {
+        return Items;
+    }
+
+    bool HasMoreItems() const
+    {
+        return NextOlderRecord.has_value();
     }
 
     void CleanupHistoryIfNeeded(TInstant oldest);
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
+
+    // for testing purposes
+    const std::optional<THistoryLogKey> GetNextOlderRecord() const
+    {
+        return NextOlderRecord;
+    }
+
+    TVolumeMountHistorySlice GetSlice() const
+    {
+        return {
+            .Items{Items.begin(), Items.end()},
+            .NextOlderRecord = NextOlderRecord
+            };
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TVolumeState
-    : public TVolumeMountHistory
 {
 private:
     TStorageConfigPtr StorageConfig;
@@ -172,6 +205,8 @@ private:
 
     TThrottlerConfig ThrottlerConfig;
     TVolumeThrottlingPolicy ThrottlingPolicy;
+
+    TCachedVolumeMountHistory MountHistory;
 
     ui64 MountSeqNumber = 0;
 
@@ -210,7 +245,7 @@ public:
         TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
-        TDeque<THistoryLogItem> history,
+        TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
         bool startPartitionsNeeded);
 
@@ -572,6 +607,16 @@ public:
         const TString& clientId,
         const TString& reason,
         const NProto::TError& error);
+
+    const TCachedVolumeMountHistory& GetMountHistory() const
+    {
+        return MountHistory;
+    }
+
+    TCachedVolumeMountHistory& AccessMountHistory()
+    {
+        return MountHistory;
+    }
 
     //
     // Checkpoint request history

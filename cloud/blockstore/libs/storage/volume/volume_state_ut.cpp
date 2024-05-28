@@ -76,47 +76,43 @@ TStorageConfigPtr MakeConfig(
 TVolumeState CreateVolumeState(
     TThrottlerConfig throttlerConfig,
     TDuration inactiveClientsTimeout = TDuration::Seconds(10),
-    TDuration historyStorageDuration = TDuration::Seconds(1),
     const NProto::TVolumePerformanceProfile& pp = {},
     THashMap<TString, TVolumeClientState> clientInfos = {},
-    TDeque<THistoryLogItem> history = {},
     TVector<TCheckpointRequest> checkpointRequests = {})
 {
     return TVolumeState(
-        MakeConfig(inactiveClientsTimeout, historyStorageDuration),
+        MakeConfig(inactiveClientsTimeout, {}),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
         throttlerConfig,
         std::move(clientInfos),
-        std::move(history),
+        {},
         std::move(checkpointRequests),
         false);
 }
 
 TVolumeState CreateVolumeState(
     TDuration inactiveClientsTimeout = TDuration::Seconds(10),
-    TDuration historyStorageDuration = TDuration::Seconds(1),
     const NProto::TVolumePerformanceProfile& pp = {},
     THashMap<TString, TVolumeClientState> clientInfos = {},
-    TDeque<THistoryLogItem> history = {},
     TVector<TCheckpointRequest> checkpointRequests = {})
 {
     return TVolumeState(
-        MakeConfig(inactiveClientsTimeout, historyStorageDuration),
+        MakeConfig(inactiveClientsTimeout, {}),
         CreateVolumeMeta(pp),
         {{TInstant::Seconds(100), CreateVolumeMeta(pp)}}, // metaHistory
         {},
         CreateThrottlerConfig(),
         std::move(clientInfos),
-        std::move(history),
+        {},
         std::move(checkpointRequests),
         false);
 }
 
 TVolumeState CreateVolumeState(
     const NProto::TStorageServiceConfig& config,
-    TDeque<THistoryLogItem> history)
+    TVolumeMountHistorySlice history)
 {
     return {
         std::make_shared<TStorageConfig>(
@@ -127,7 +123,9 @@ TVolumeState CreateVolumeState(
         {},
         CreateThrottlerConfig(),
         {},
-        std::move(history),
+        TCachedVolumeMountHistory{
+            config.GetVolumeHistoryCacheSize(),
+            std::move(history)},
         {},
         false};
 }
@@ -694,7 +692,6 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto volumeState = CreateVolumeState(
             CreateThrottlerConfig(),
             {},
-            TDuration::Seconds(1),
             pp);
         pp.SetMaxReadBandwidth(2);
         auto meta = CreateVolumeMeta(pp);
@@ -763,7 +760,6 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 CalculateBoostTime(pp)    // startupBoostBudget
             ),
             {},
-            TDuration::Seconds(1),
             pp);
 
         {
@@ -799,7 +795,6 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto volumeState = CreateVolumeState(
             throttlerConfig,
             {},
-            TDuration::Seconds(1),
             pp);
 
         {
@@ -1064,11 +1059,11 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TInstant::Now(),
                 info1,
                 MakeError(S_OK), {}, {});
-            const auto& history = volumeState.GetHistory();
+            const auto& history = volumeState.GetMountHistory().GetItems();
             if (i) {
                 UNIT_ASSERT(
                     res.Key.Timestamp != history[1].Key.Timestamp ||
-                    res.Key.Seqno != history[1].Key.Seqno);
+                    res.Key.SeqNo != history[1].Key.SeqNo);
             }
             UNIT_ASSERT(history.size() <= VolumeHistoryCacheSize);
         }
@@ -1077,7 +1072,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     Y_UNIT_TEST(ShouldNotCrashWhenCleanupEmptyHistory)
     {
         auto volumeState = CreateVolumeState();
-        volumeState.CleanupHistoryIfNeeded(TInstant::Now());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::Now());
     }
 
     Y_UNIT_TEST(ShouldCheckStaleWhenCalledHasActiveClients)
@@ -1718,30 +1713,43 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetVolumeHistoryDuration(TDuration::Seconds(1).MilliSeconds());
-        auto volumeState = CreateVolumeState(
-            config,
+        config.SetVolumeHistoryCacheSize(100);
+
+        TVolumeMountHistorySlice history{
             {
                 {THistoryLogKey(TInstant::FromValue(10), 0), {}},
                 {THistoryLogKey(TInstant::FromValue(9), 0), {}},
                 {THistoryLogKey(TInstant::FromValue(8), 0), {}}
-            }
+            },
+            {}
+        };
+
+        auto volumeState = CreateVolumeState(
+            config,
+            std::move(history)
         );
 
-        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(8));
-        UNIT_ASSERT_VALUES_EQUAL(3, volumeState.GetHistory().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(8));
+        UNIT_ASSERT_VALUES_EQUAL(3, volumeState.GetMountHistory().GetItems().size());
 
-        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(9));
-        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetHistory().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
 
-        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(30));
-        UNIT_ASSERT_VALUES_EQUAL(0, volumeState.GetHistory().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(30));
+        UNIT_ASSERT_VALUES_EQUAL(0, volumeState.GetMountHistory().GetItems().size());
     }
 
     Y_UNIT_TEST(ShouldNotExceedCacheSizeWhenAddingHistoryRecords)
     {
         NProto::TStorageServiceConfig config;
         config.SetVolumeHistoryCacheSize(4);
-        auto volumeState = CreateVolumeState(config, {});
+
+        TVolumeMountHistorySlice history {
+            {},
+            {}
+        };
+
+        auto volumeState = CreateVolumeState(config, std::move(history));
 
         volumeState.LogAddClient(TInstant::FromValue(0), {}, {}, {}, {});
         volumeState.LogAddClient(TInstant::FromValue(1), {}, {}, {}, {});
@@ -1749,7 +1757,35 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.LogRemoveClient(TInstant::FromValue(3), {}, {}, {});
         volumeState.LogRemoveClient(TInstant::FromValue(4), {}, {}, {});
 
-        UNIT_ASSERT_VALUES_EQUAL(4, volumeState.GetHistory().size());
+        UNIT_ASSERT_VALUES_EQUAL(4, volumeState.GetMountHistory().GetItems().size());
+    }
+
+    Y_UNIT_TEST(ShouldProperlyAllocateLogRecordsWithSameTimestamp)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeHistoryCacheSize(3);
+
+        TVolumeMountHistorySlice history{
+            {
+                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
+            },
+            {}
+        };
+
+        auto volumeState = CreateVolumeState(
+            config,
+            std::move(history)
+        );
+
+        volumeState.LogAddClient(TInstant::FromValue(10), {}, {}, {}, {});
+
+        const auto& h = volumeState.GetMountHistory();
+        UNIT_ASSERT_VALUES_EQUAL(3, h.GetItems().size());
+        auto key = h.GetItems().front().Key;
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::FromValue(10), key.Timestamp);
+        UNIT_ASSERT_VALUES_EQUAL(1, key.SeqNo);
     }
 
     Y_UNIT_TEST(ShouldTrackRecordBeyondCache)
@@ -1757,35 +1793,70 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         NProto::TStorageServiceConfig config;
         config.SetVolumeHistoryDuration(TDuration::Seconds(1).MilliSeconds());
         config.SetVolumeHistoryCacheSize(3);
-        auto volumeState = CreateVolumeState(
-            config,
+
+        TVolumeMountHistorySlice history{
             {
                 {THistoryLogKey(TInstant::FromValue(10), 0), {}},
                 {THistoryLogKey(TInstant::FromValue(8), 1), {}},
-                {THistoryLogKey(TInstant::FromValue(8), 0), {}},
-            }
+                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
+            },
+            {}
+        };
+
+        auto volumeState = CreateVolumeState(
+            config,
+            std::move(history)
         );
 
         UNIT_ASSERT_C(
-            !volumeState.GetRecordBeyondCache().has_value(),
+            !volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
             "RecordBeyondCache should not be set");
 
         volumeState.LogAddClient(TInstant::FromValue(11), {}, {}, {}, {});
 
         UNIT_ASSERT_C(
-            volumeState.GetRecordBeyondCache().has_value(),
+            volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
             "RecordBeyondCache should be set");
 
         UNIT_ASSERT_VALUES_EQUAL(
-            *volumeState.GetRecordBeyondCache(),
+            *volumeState.GetMountHistory().GetNextOlderRecord(),
             THistoryLogKey(TInstant::FromValue(8), 0));
 
-        volumeState.CleanupHistoryIfNeeded(TInstant::FromValue(9));
-        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetHistory().size());
+        volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(9));
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
 
         UNIT_ASSERT_C(
-            !volumeState.GetRecordBeyondCache().has_value(),
+            !volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
             "RecordBeyondCache should not be set");
+    }
+
+    Y_UNIT_TEST(ShouldAdjustCachedHistoryOnStartupBasedOnConfig)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeHistoryCacheSize(3);
+
+        TVolumeMountHistorySlice history{
+            {
+                {THistoryLogKey(TInstant::FromValue(11), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(10), 0), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 1), {}},
+                {THistoryLogKey(TInstant::FromValue(8), 0), {}}
+            },
+            {}
+        };
+
+        auto volumeState = CreateVolumeState(
+            config,
+            std::move(history)
+        );
+
+        UNIT_ASSERT_C(
+            volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
+            "RecordBeyondCache should be set");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            THistoryLogKey(TInstant::FromValue(8), 0),
+            *volumeState.GetMountHistory().GetNextOlderRecord());
     }
 }
 

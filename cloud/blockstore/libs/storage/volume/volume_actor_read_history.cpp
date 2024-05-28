@@ -72,25 +72,11 @@ bool TVolumeActor::PrepareReadHistory(
 
     TVolumeDatabase db(tx.DB);
 
-    auto cnt = args.RecordCount;
-    // Max<ui64> treated as "read all"
-    // otherwise read one more row to see if there are more records
-    // following requested
-    if (cnt != Max<ui64>()) {
-        ++cnt;
-    }
-
-    auto ready = db.ReadHistory(
-        args.History,
+    return db.ReadHistory(
         args.Ts,
         args.OldestTs,
-        cnt);
-
-    if (ready && args.History.size() > args.RecordCount) {
-        args.History.pop_back();
-        args.HasMoreItems = true;
-    }
-    return ready;
+        args.RecordCount,
+        args.History);
 }
 
 void TVolumeActor::ExecuteReadHistory(
@@ -108,21 +94,16 @@ void TVolumeActor::CompleteReadHistory(
     TTxVolume::TReadHistory& args)
 {
     if (args.MonRequest) {
-        TDeque<THistoryLogItem> history;
-        for (auto& h : args.History) {
-            history.push_back(std::move(h));
-        }
         HandleHttpInfo_Default(
             ctx,
-            history,
-            args.HasMoreItems,
+            args.History,
             State ? State->GetMetaHistory() : TVector<TVolumeMetaHistoryItem>{},
             "History",
             {},
             args.RequestInfo);
     } else {
         auto response = std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
-        response->History = std::move(args.History);
+        response->History = std::move(args.History.Items);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }

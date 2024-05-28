@@ -51,7 +51,7 @@ TString TPartitionInfo::GetStatus() const
 
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
 {
-    return std::tie(Timestamp, Seqno) == std::tie(rhs.Timestamp, rhs.Seqno);
+    return std::tie(Timestamp, SeqNo) == std::tie(rhs.Timestamp, rhs.SeqNo);
 }
 
 bool THistoryLogKey::operator != (const THistoryLogKey& rhs) const
@@ -61,7 +61,7 @@ bool THistoryLogKey::operator != (const THistoryLogKey& rhs) const
 
 bool THistoryLogKey::operator < (THistoryLogKey rhs) const
 {
-    return std::tie(Timestamp, Seqno) < std::tie(rhs.Timestamp, rhs.Seqno);
+    return std::tie(Timestamp, SeqNo) < std::tie(rhs.Timestamp, rhs.SeqNo);
 }
 
 bool THistoryLogKey::operator >= (THistoryLogKey rhs) const
@@ -84,56 +84,53 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeMountHistory::TVolumeMountHistory(
-        ui32 historyCacheSize,
-        TDeque<THistoryLogItem> history)
-    : HistoryCacheSize(historyCacheSize)
-    , History(std::move(history))
+TCachedVolumeMountHistory::TCachedVolumeMountHistory(
+        ui32 capacity,
+        TVolumeMountHistorySlice records)
+    : Capacity(capacity)
+    , LastLogRecord(!records.Items.empty() ? records.Items.front().Key : THistoryLogKey())
+    , NextOlderRecord(std::move(records.NextOlderRecord))
 {
-    while (History.size() > HistoryCacheSize) {
-        RecordBeyondCache = History.back().Key;
-        History.pop_back();
+    for (size_t i = 0; i < records.Items.size(); ++i) {
+        if (i == Capacity) {
+           NextOlderRecord.emplace(records.Items[i].Key);
+           break;
+        }
+        Items.emplace_back(std::move(records.Items[i]));
     }
 }
 
-void TVolumeMountHistory::AddHistoryLogItem(
+void TCachedVolumeMountHistory::AddHistoryLogItem(
     THistoryLogKey key,
     NProto::TVolumeOperation op)
 {
-    History.emplace_front(key, std::move(op));
-    if (History.size() > HistoryCacheSize) {
-        RecordBeyondCache = History.back().Key;
-        History.pop_back();
+    Items.emplace_front(key, std::move(op));
+    if (Items.size() > Capacity) {
+        NextOlderRecord = Items.back().Key;
+        Items.pop_back();
     }
 }
 
-void TVolumeMountHistory::OnCleanupHistory(THistoryLogKey newestRemoved)
-{
-    if (RecordBeyondCache.has_value() && (newestRemoved >= *RecordBeyondCache)) {
-        RecordBeyondCache.reset();
-    }
-}
-
-THistoryLogKey TVolumeMountHistory::AllocateHistoryLogKey(TInstant timestamp)
+THistoryLogKey TCachedVolumeMountHistory::AllocateHistoryLogKey(TInstant timestamp)
 {
     if (LastLogRecord.Timestamp != timestamp) {
         LastLogRecord.Timestamp = timestamp;
-        LastLogRecord.Seqno = 0;
+        LastLogRecord.SeqNo = 0;
     } else {
-        ++LastLogRecord.Seqno;
+        ++LastLogRecord.SeqNo;
     }
     return LastLogRecord;
 }
 
-void TVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
+void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 {
     bool haveRemovedItems = false;
-    while (History.size() && (History.back().Key.Timestamp < oldest)) {
-        History.pop_back();
+    while (Items.size() && (Items.back().Key.Timestamp < oldest)) {
+        Items.pop_back();
         haveRemovedItems = true;
     }
     if (haveRemovedItems) {
-        RecordBeyondCache.reset();
+        NextOlderRecord.reset();
     }
 }
 
@@ -146,13 +143,10 @@ TVolumeState::TVolumeState(
         TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
-        TDeque<THistoryLogItem> history,
+        TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
         bool startPartitionsNeeded)
-    : TVolumeMountHistory(
-        storageConfig->GetVolumeHistoryCacheSize(),
-        std::move(history))
-    , StorageConfig(std::move(storageConfig))
+    : StorageConfig(std::move(storageConfig))
     , Meta(std::move(meta))
     , MetaHistory(std::move(metaHistory))
     , Config(&Meta.GetConfig())
@@ -160,6 +154,7 @@ TVolumeState::TVolumeState(
     , ClientInfosByClientId(std::move(infos))
     , ThrottlerConfig(std::move(throttlerConfig))
     , ThrottlingPolicy(Config->GetPerformanceProfile(), ThrottlerConfig)
+    , MountHistory(std::move(mountHistory))
     , CheckpointStore(std::move(checkpointRequests), Config->GetDiskId())
     , StartPartitionsNeeded(startPartitionsNeeded)
 {
@@ -838,7 +833,7 @@ THistoryLogItem TVolumeState::LogAddClient(
 {
     THistoryLogItem res;
     res.Operation.SetTabletHost(FQDNHostName());
-    res.Key = AllocateHistoryLogKey(timestamp);
+    res.Key = MountHistory.AllocateHistoryLogKey(timestamp);
 
     NProto::TVolumeOperation& op = res.Operation;
     *op.MutableAdd() = add;
@@ -846,7 +841,7 @@ THistoryLogItem TVolumeState::LogAddClient(
     auto& requesterInfo = *op.MutableRequesterInfo();
     requesterInfo.SetLocalPipeServerId(ToString(pipeServer));
     requesterInfo.SetSenderActorId(ToString(senderId));
-    AddHistoryLogItem(res.Key, std::move(op));
+    MountHistory.AddHistoryLogItem(res.Key, std::move(op));
     return res;
 }
 
@@ -858,7 +853,7 @@ THistoryLogItem TVolumeState::LogRemoveClient(
 {
     THistoryLogItem res;
     res.Operation.SetTabletHost(FQDNHostName());
-    res.Key = AllocateHistoryLogKey(timestamp);
+    res.Key = MountHistory.AllocateHistoryLogKey(timestamp);
 
     NProto::TVolumeOperation& op = res.Operation;
     NProto::TRemoveClientOperation removeInfo;
@@ -866,7 +861,7 @@ THistoryLogItem TVolumeState::LogRemoveClient(
     removeInfo.SetReason(reason);
     *op.MutableRemove() = removeInfo;
     *op.MutableError() = error;
-    AddHistoryLogItem(res.Key, std::move(op));
+    MountHistory.AddHistoryLogItem(res.Key, std::move(op));
     return res;
 }
 

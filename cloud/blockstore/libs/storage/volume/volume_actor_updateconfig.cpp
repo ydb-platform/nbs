@@ -337,7 +337,7 @@ void TVolumeActor::CompleteUpdateConfig(
             {},   // volume params
             throttlerConfig,
             {},   // clients
-            {},   // history
+            TCachedVolumeMountHistory{},   // history
             {},   // checkpoint requests
             false // StartPartitionsNeeded
         ));

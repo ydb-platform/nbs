@@ -25,12 +25,6 @@ bool TVolumeActor::PrepareLoadState(
     TVolumeDatabase db(tx.DB);
     auto now = ctx.Now();
 
-    auto historyRecordsCount = Config->GetVolumeHistoryCacheSize();
-    if (historyRecordsCount != Max<ui32>()) {
-        // read one more record to see if there are any records beyond cached
-        ++historyRecordsCount;
-    }
-
     std::initializer_list<bool> results = {
         db.ReadMeta(args.Meta),
         db.ReadMetaHistory(args.MetaHistory),
@@ -38,10 +32,10 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
         db.ReadHistory(
-            args.History,
             THistoryLogKey(now),
             args.OldestLogEntry,
-            historyRecordsCount),
+            Config->GetVolumeHistoryCacheSize(),
+            args.MountHistory),
         db.ReadPartStats(args.PartStats),
         db.ReadNonReplPartStats(args.PartStats),
         db.CollectCheckpointsToDelete(
@@ -124,6 +118,10 @@ void TVolumeActor::CompleteLoadState(
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
 
+        TCachedVolumeMountHistory volumeHistory{
+            Config->GetVolumeHistoryCacheSize(),
+            std::move(args.MountHistory)};
+
         State.reset(new TVolumeState(
             Config,
             std::move(*args.Meta),
@@ -131,7 +129,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.VolumeParams),
             throttlerConfig,
             std::move(args.Clients),
-            std::move(args.History),
+            std::move(volumeHistory),
             std::move(args.CheckpointRequests),
             startPartitionsNeeded));
 

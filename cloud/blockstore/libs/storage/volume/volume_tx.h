@@ -75,7 +75,7 @@ struct TTxVolume
         TMaybe<bool> StartPartitionsNeeded;
         THashMap<TString, TVolumeClientState> Clients;
         ui64 MountSeqNumber;
-        TDeque<THistoryLogItem> History;
+        TVolumeMountHistorySlice MountHistory;
         TVector<TVolumeDatabase::TPartStats> PartStats;
         TVector<TCheckpointRequest> CheckpointRequests;
         THashMap<TString, TInstant> DeletedCheckpoints;
@@ -97,7 +97,7 @@ struct TTxVolume
             StartPartitionsNeeded.Clear();
             Clients.clear();
             MountSeqNumber = 0;
-            History.clear();
+            MountHistory.Clear();
             PartStats.clear();
             CheckpointRequests.clear();
             DeletedCheckpoints.clear();
@@ -320,8 +320,7 @@ struct TTxVolume
         const size_t RecordCount;
         const bool MonRequest;
 
-        TVector<THistoryLogItem> History;
-        bool HasMoreItems = false;
+        TVolumeMountHistorySlice History;
 
         TReadHistory(
                 TRequestInfoPtr requestInfo,
@@ -338,7 +337,7 @@ struct TTxVolume
 
         void Clear()
         {
-            History.clear();
+            History.Clear();
         }
     };
 
