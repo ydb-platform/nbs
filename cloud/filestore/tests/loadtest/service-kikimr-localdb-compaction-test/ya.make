@@ -11,7 +11,7 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/filestore/tests/loadtes/service-kikimr-localdb-compaction-test
+    arcadia/cloud/filestore/tests/loadtest/service-kikimr-localdb-compaction-test
 )
 
 PEERDIR(
