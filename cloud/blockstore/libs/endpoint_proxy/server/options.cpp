@@ -19,6 +19,10 @@ TOptions::TOptions()
     Opts.AddLongOption("cert-file")
         .RequiredArgument("FILE")
         .StoreResult(&CertFile);
+
+    Opts.AddLongOption("netlink")
+        .NoArgument()
+        .SetFlag(&Netlink);
 }
 
 void TOptions::Parse(int argc, char** argv)

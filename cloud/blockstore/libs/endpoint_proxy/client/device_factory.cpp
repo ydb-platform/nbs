@@ -32,17 +32,17 @@ TString Addr2String(const TNetworkAddress& addr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TProxyConnection: NBD::IDeviceConnection
+struct TProxyDevice: NBD::IDevice
 {
-    const TProxyDeviceConnectionFactoryConfig Config;
+    const TProxyDeviceFactoryConfig Config;
     const IEndpointProxyClientPtr Client;
     const TString AddressString;
     const TString DeviceName;
     const ui64 BlockCount;
     const ui32 BlockSize;
 
-    TProxyConnection(
-            TProxyDeviceConnectionFactoryConfig config,
+    TProxyDevice(
+            TProxyDeviceFactoryConfig config,
             IEndpointProxyClientPtr client,
             const TNetworkAddress& connectAddress,
             TString deviceName,
@@ -73,8 +73,10 @@ struct TProxyConnection: NBD::IDeviceConnection
         Client->StartProxyEndpoint(std::move(request));
     }
 
-    void Stop() override
+    void Stop(bool deleteDevice) override
     {
+        // server should always delete device when stopping endpoint
+        Y_UNUSED(deleteDevice);
         auto request = std::make_shared<NProto::TStopProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
         // XXX bad signature - can't return a future, sync wait is bad as well
@@ -82,25 +84,25 @@ struct TProxyConnection: NBD::IDeviceConnection
     }
 };
 
-struct TProxyFactory: NBD::IDeviceConnectionFactory
+struct TProxyFactory: NBD::IDeviceFactory
 {
-    const TProxyDeviceConnectionFactoryConfig Config;
+    const TProxyDeviceFactoryConfig Config;
     const IEndpointProxyClientPtr Client;
 
     explicit TProxyFactory(
-            TProxyDeviceConnectionFactoryConfig config,
+            TProxyDeviceFactoryConfig config,
             IEndpointProxyClientPtr client)
         : Config(config)
         , Client(std::move(client))
     {}
 
-    NBD::IDeviceConnectionPtr Create(
+    NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
         TString deviceName,
         ui64 blockCount,
         ui32 blockSize) override
     {
-        return std::make_shared<TProxyConnection>(
+        return std::make_shared<TProxyDevice>(
             Config,
             Client,
             connectAddress,
@@ -114,8 +116,8 @@ struct TProxyFactory: NBD::IDeviceConnectionFactory
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NBD::IDeviceConnectionFactoryPtr CreateProxyDeviceConnectionFactory(
-    TProxyDeviceConnectionFactoryConfig config,
+NBD::IDeviceFactoryPtr CreateProxyDeviceFactory(
+    TProxyDeviceFactoryConfig config,
     IEndpointProxyClientPtr client)
 {
     return std::make_shared<TProxyFactory>(config, std::move(client));

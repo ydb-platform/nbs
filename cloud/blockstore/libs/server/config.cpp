@@ -93,6 +93,9 @@ constexpr TDuration Seconds(int s)
     xxx(VhostServerPath,             TString,               {}                )\
     xxx(NbdDevicePrefix,             TString,               "/dev/nbd"        )\
     xxx(SocketAccessMode,            ui32,                  MODE0660          )\
+    xxx(NbdNetlink,                  bool,                  false             )\
+    xxx(NbdRequestTimeout,           TDuration,             Seconds(60)       )\
+    xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

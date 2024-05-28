@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
 #include <cloud/blockstore/libs/nbd/device.h>
+#include <cloud/blockstore/libs/nbd/netlink_device.h>
 #include <cloud/blockstore/libs/nbd/server.h>
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -205,7 +206,7 @@ struct TServer: IEndpointProxyServer
     struct TEndpoint
     {
         IBlockStorePtr Client;
-        NBD::IDeviceConnectionPtr NbdDevice;
+        NBD::IDevicePtr NbdDevice;
         std::unique_ptr<TNetworkAddress> ListenAddress;
 
         TString SockPath;
@@ -483,11 +484,27 @@ struct TServer: IEndpointProxyServer
 
             ep.NbdDevicePath = request.GetNbdDevice();
             if (ep.NbdDevicePath) {
-                ep.NbdDevice = NBD::CreateDeviceConnection(
-                    Logging,
-                    *ep.ListenAddress,
-                    request.GetNbdDevice(),
-                    TDuration::Days(1));
+#ifdef NETLINK
+                bool netlink = Config.Netlink;
+#else
+                bool netlink = false;
+                STORAGE_ERROR("built without netlink support, falling back to ioctl");
+#endif
+                if (netlink) {
+                    ep.NbdDevice = NBD::CreateNetlinkDevice(
+                        Logging,
+                        *ep.ListenAddress,
+                        request.GetNbdDevice(),
+                        TDuration::Minutes(1),  // request timeout
+                        TDuration::Days(1),     // connection timeout
+                        true);                  // reconfigure device if exists
+                } else {
+                    ep.NbdDevice = NBD::CreateDevice(
+                        Logging,
+                        *ep.ListenAddress,
+                        request.GetNbdDevice(),
+                        TDuration::Days(1));    // request timeout
+                }
                 ep.NbdDevice->Start();
 
                 STORAGE_INFO(request.ShortDebugString().Quote()
@@ -550,7 +567,7 @@ struct TServer: IEndpointProxyServer
         response.SetNbdDevice(ep.NbdDevicePath);
 
         if (ep.NbdDevice) {
-            ep.NbdDevice->Stop();
+            ep.NbdDevice->Stop(true);
             STORAGE_INFO(request.ShortDebugString().Quote()
                 << " - Stopped NBD device connection");
         }

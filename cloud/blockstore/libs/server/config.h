@@ -127,6 +127,9 @@ public:
     TString GetVhostServerPath() const;
     TString GetNbdDevicePrefix() const;
     ui32 GetSocketAccessMode() const;
+    bool GetNbdNetlink() const;
+    TDuration GetNbdRequestTimeout() const;
+    TDuration GetNbdConnectionTimeout() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
