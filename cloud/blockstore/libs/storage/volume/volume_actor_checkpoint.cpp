@@ -1106,7 +1106,7 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
     }
 
     auto readyToProcessRequestIds = checkpointStore.GetRequestIdsToProcess();
-    for (auto requestId : readyToProcessRequestIds) {
+    for (auto requestId: readyToProcessRequestIds) {
         if (ProcessCheckpointRequest(ctx, requestId)) {
             // Execution of the request has started, should return now.
             return;
