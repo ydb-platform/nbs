@@ -60,17 +60,21 @@ jobs:
                     approvalState = true;
                 } else if (context.eventName === 'pull_request_review') {
                     // Fetch PR reviews
-                    const reviews = await github.rest.pulls.listReviews({
-                        owner,
-                        repo,
-                        pull_number: prNumber
-                    });
+                    const reviews = await github.paginate(
+                        github.rest.pulls.listReviews,
+                        {
+                            owner,
+                            repo,
+                            pull_number: prNumber
+                        },
+                        response => response.data  // Collect data from each page
+                    );
 
                     // Track unique approvers
                     let leftApprovals = new Set();
                     let rightApprovals = new Set();
 
-                    for (const review of reviews.data) {
+                    for (const review of reviews) {
                         console.log("Review by " + review.user.login + ": " + review.state);
                         if (review.state === 'APPROVED') {
                             if (isInList(review.user.login, leftUsers)) {
