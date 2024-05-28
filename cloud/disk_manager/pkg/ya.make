@@ -3,5 +3,6 @@ RECURSE(
     app
     auth
     client
+    monitoring
     schema
 )

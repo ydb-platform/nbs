@@ -29,7 +29,7 @@ func newS3Client(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestS3ClientShouldSendErrorCanceledMetric(t *testing.T) {
+func TestS3ShouldSendErrorCanceledMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 
 	metricsRegistry := mocks.NewRegistryMock()
@@ -55,7 +55,7 @@ func TestS3ClientShouldSendErrorCanceledMetric(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 }
 
-func TestS3ClientShouldSendErrorTimeoutMetric(t *testing.T) {
+func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
