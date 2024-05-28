@@ -125,7 +125,7 @@ THistoryLogKey TCachedVolumeMountHistory::AllocateHistoryLogKey(TInstant timesta
 void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 {
     bool haveRemovedItems = false;
-    while (Items.size() && (Items.back().Key.Timestamp < oldest)) {
+    while (Items.size() && (Items.back().Key.Timestamp <= oldest)) {
         Items.pop_back();
         haveRemovedItems = true;
     }

@@ -60,13 +60,6 @@ void TVolumeActor::CompleteCleanupHistory(
 {
     Y_UNUSED(ctx);
     Y_UNUSED(args);
-
-    if (!State || args.OutdatedHistory.empty()) {
-        return;
-    }
-
-    State->AccessMountHistory().CleanupHistoryIfNeeded(
-        args.OutdatedHistory.front().Timestamp);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

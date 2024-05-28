@@ -1730,10 +1730,10 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         );
 
         volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(8));
-        UNIT_ASSERT_VALUES_EQUAL(3, volumeState.GetMountHistory().GetItems().size());
+        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
 
         volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(9));
-        UNIT_ASSERT_VALUES_EQUAL(2, volumeState.GetMountHistory().GetItems().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, volumeState.GetMountHistory().GetItems().size());
 
         volumeState.AccessMountHistory().CleanupHistoryIfNeeded(TInstant::FromValue(30));
         UNIT_ASSERT_VALUES_EQUAL(0, volumeState.GetMountHistory().GetItems().size());
