@@ -55,6 +55,7 @@ private:
     void InitComponents() override;
     void StartComponents() override;
     void StopComponents() override;
+    void Drain() override;
 
 private:
     void InitLWTrace();

@@ -6,6 +6,8 @@
 #include <cloud/storage/core/libs/common/context.h>
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <atomic>
+
 namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,6 +21,8 @@ public:
     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
     ui64 RequestSize = 0;
     bool Unaligned = false;
+
+    std::atomic<bool> Cancelled = false;
 
     explicit TCallContext(ui64 requestId = 0);
     TCallContext(TString fileSystemId, ui64 requestId = 0);

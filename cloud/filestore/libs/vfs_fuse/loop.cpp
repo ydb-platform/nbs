@@ -29,6 +29,7 @@
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
 #include <util/system/thread.h>
+#include <util/thread/factory.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -136,7 +137,7 @@ public:
         bool noCompleting = completingCount == 0;
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] completing left: %ld",
+            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
                 FileSystemId.c_str(),
                 completingCount);
 
@@ -152,7 +153,8 @@ public:
                     noCompleting = completingCount == 0;
                 }
 
-                STORAGE_INFO("[f:%s] completing left: %ld, requests left: %u",
+                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
+                    ", requests left: %u",
                     FileSystemId.c_str(),
                     completingCount,
                     requestsSize);
@@ -172,10 +174,25 @@ public:
         ShouldStop = true;
 
         bool canStop = false;
+        ui32 requestsSize = 0;
+        i64 completingCount = 0;
 
         with_lock (RequestsLock) {
-            canStop = Requests.empty() && CompletingCount.Val() == 0;
+            requestsSize = Requests.size();
+            completingCount = CompletingCount.Val();
+            canStop = Requests.empty() && completingCount == 0;
+
+            // cancel signal is needed for the ops that may be indefinitely
+            // retried by our vfs layer - e.g. AcquireLock
+            for (auto& request: Requests) {
+                request.second->Cancelled = true;
+            }
         }
+
+        STORAGE_INFO("[f:%s] StopAsync: completing left: %ld, requests left: %u",
+            FileSystemId.c_str(),
+            completingCount,
+            requestsSize);
 
         if (canStop) {
             StopPromise.TrySetValue();
@@ -570,47 +587,59 @@ public:
 
         auto w = weak_from_this();
         auto s = NewPromise<void>();
-        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
-            [w = std::move(w), s] (const auto& f) mutable {
-                f.GetValue();
 
-                auto p = w.lock();
-                if (!p) {
-                    return;
-                }
+        auto onStop = [w = std::move(w), s] (const TFuture<void>& f) mutable {
+            f.GetValue();
 
-                p->SessionThread->Unmount();
-                p->SessionThread = nullptr;
+            auto p = w.lock();
+            if (!p) {
+                return;
+            }
 
-                auto callContext = MakeIntrusive<TCallContext>(
-                    p->Config->GetFileSystemId(),
-                    CreateRequestId());
-                callContext->RequestType = EFileStoreRequest::DestroySession;
-                p->RequestStats->RequestStarted(p->Log, *callContext);
+            p->SessionThread->Unmount();
+            p->SessionThread = nullptr;
 
-                p->Session->DestroySession()
-                    .Subscribe([
-                        w = std::move(w),
-                        s = std::move(s),
-                        callContext = std::move(callContext)
-                    ] (const auto& f) mutable {
-                        auto p = w.lock();
-                        if (!p) {
-                            s.SetValue();
-                            return;
-                        }
+            auto callContext = MakeIntrusive<TCallContext>(
+                p->Config->GetFileSystemId(),
+                CreateRequestId());
+            callContext->RequestType = EFileStoreRequest::DestroySession;
+            p->RequestStats->RequestStarted(p->Log, *callContext);
 
-                        const auto& response = f.GetValue();
-                        p->RequestStats->RequestCompleted(
-                            p->Log,
-                            *callContext,
-                            response.GetError());
-
-                        p->StatsRegistry->Unregister(
-                            p->Config->GetFileSystemId(),
-                            p->Config->GetClientId());
-
+            p->Session->DestroySession()
+                .Subscribe([
+                    w = std::move(w),
+                    s = std::move(s),
+                    callContext = std::move(callContext)
+                ] (const auto& f) mutable {
+                    auto p = w.lock();
+                    if (!p) {
                         s.SetValue();
+                        return;
+                    }
+
+                    const auto& response = f.GetValue();
+                    p->RequestStats->RequestCompleted(
+                        p->Log,
+                        *callContext,
+                        response.GetError());
+
+                    p->StatsRegistry->Unregister(
+                        p->Config->GetFileSystemId(),
+                        p->Config->GetClientId());
+
+                    s.SetValue();
+                });
+        };
+
+        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
+            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
+                // this callback may be called from the same thread where the
+                // returned future is set => we shouldn't call onStop inside
+                // this callback directly to avoid a deadlock caused by the
+                // Join call which is done by SessionThread->Unmount()
+                SystemThreadFactory()->Run(
+                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
+                        onStop(f);
                     });
             });
 
@@ -625,26 +654,37 @@ public:
 
         auto w = weak_from_this();
         auto s = NewPromise<void>();
-        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
-            [w = std::move(w), s] (const auto& f) mutable {
-                f.GetValue();
+        auto onStop = [w = std::move(w), s] (const auto& f) mutable {
+            f.GetValue();
 
-                auto p = w.lock();
-                if (!p) {
-                    s.SetValue();
-                    return;
-                }
-
-                // just stop loop, leave connection
-                p->SessionThread->StopThread();
-                p->SessionThread->Suspend();
-                p->SessionThread = nullptr;
-
-                p->StatsRegistry->Unregister(
-                    p->Config->GetFileSystemId(),
-                    p->Config->GetClientId());
-
+            auto p = w.lock();
+            if (!p) {
                 s.SetValue();
+                return;
+            }
+
+            // just stop loop, leave connection
+            p->SessionThread->StopThread();
+            p->SessionThread->Suspend();
+            p->SessionThread = nullptr;
+
+            p->StatsRegistry->Unregister(
+                p->Config->GetFileSystemId(),
+                p->Config->GetClientId());
+
+            s.SetValue();
+        };
+
+        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
+            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
+                // this callback may be called from the same thread where the
+                // returned future is set => we shouldn't call onStop inside
+                // this callback directly to avoid a deadlock caused by the
+                // Join call which is done by SessionThread->StopThread()
+                SystemThreadFactory()->Run(
+                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
+                        onStop(f);
+                    });
             });
 
         return s;

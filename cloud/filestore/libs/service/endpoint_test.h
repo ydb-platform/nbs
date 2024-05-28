@@ -39,6 +39,9 @@ struct TEndpointManagerTest
 
     void Stop() override
     {}
+
+    void Drain() override
+    {}
 };
 
 }   // namespace NCloud::NFileStore
