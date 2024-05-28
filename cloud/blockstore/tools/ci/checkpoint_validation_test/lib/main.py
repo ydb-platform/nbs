@@ -12,6 +12,11 @@ from cloud.blockstore.pylibs.ycp import Ycp, make_ycp_engine
 from library.python import resource
 
 
+DEFAULT_VM_NAME = 'eternal-640gb-verify-checkpoint-test-vm-a'
+DEFAULT_DISK_NAME = 'eternal-640gb-verify-checkpoint-test-disk-a'
+DEFAULT_FILE_NAME = '/tmp/load-config.json'
+
+
 def get_config_template(name: str) -> jinja2.Template:
     return jinja2.Template(resource.find(name).decode('utf8'))
 
@@ -162,6 +167,21 @@ def parse_args():
         action='store_true',
         default=False,
         help='make requests to nbs with authorization')
+    test_arguments_group.add_argument(
+        '--vm-name',
+        type=str,
+        default=DEFAULT_VM_NAME,
+        help='VM name')
+    test_arguments_group.add_argument(
+        '--disk-name',
+        type=str,
+        default=DEFAULT_DISK_NAME,
+        help='disk name')
+    test_arguments_group.add_argument(
+        '--file-name',
+        type=str,
+        default=DEFAULT_FILE_NAME,
+        help='file name')
 
     args = parser.parse_args()
 
