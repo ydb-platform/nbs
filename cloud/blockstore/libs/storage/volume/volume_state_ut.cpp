@@ -1847,8 +1847,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
 
         auto volumeState = CreateVolumeState(
             config,
-            std::move(history)
-        );
+            history);
 
         UNIT_ASSERT_C(
             volumeState.GetMountHistory().GetNextOlderRecord().has_value(),
@@ -1857,6 +1856,18 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             THistoryLogKey(TInstant::FromValue(8), 0),
             *volumeState.GetMountHistory().GetNextOlderRecord());
+
+
+        auto slice = volumeState.GetMountHistory().GetSlice();
+        UNIT_ASSERT_VALUES_EQUAL(
+            slice.Items.size(),
+            volumeState.GetMountHistory().GetItems().size());
+
+        for (ui32 i = 0; i < slice.Items.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                slice.Items[i].Key,
+                volumeState.GetMountHistory().GetItems()[i].Key);
+        }
     }
 }
 

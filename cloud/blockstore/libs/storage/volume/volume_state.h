@@ -56,7 +56,7 @@ struct THistoryLogKey
     {}
 
     explicit THistoryLogKey(TInstant timestamp)
-        : THistoryLogKey(timestamp, Max<ui64>())
+        : THistoryLogKey(timestamp, 0)
     {}
 
     bool operator == (const THistoryLogKey& rhs) const;
@@ -161,18 +161,18 @@ public:
 
     THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 
-    // for testing purposes
-    const std::optional<THistoryLogKey> GetNextOlderRecord() const
-    {
-        return NextOlderRecord;
-    }
-
     TVolumeMountHistorySlice GetSlice() const
     {
         return {
             .Items{Items.begin(), Items.end()},
             .NextOlderRecord = NextOlderRecord
             };
+    }
+
+    // for testing purposes
+    const std::optional<THistoryLogKey> GetNextOlderRecord() const
+    {
+        return NextOlderRecord;
     }
 };
 

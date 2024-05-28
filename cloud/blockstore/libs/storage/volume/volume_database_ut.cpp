@@ -895,6 +895,67 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldReadOutdatedHistory)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            db.InitSchema();
+        });
+
+        auto one = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+
+        auto two = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_REMOTE,
+            0);
+
+        executor.WriteTx([&] (TVolumeDatabase db) {
+            // zero
+            db.WriteHistory(CreateAddClient({}, 0, one, {}, {}, {}));
+            db.WriteHistory(CreateAddClient({}, 1, two, {}, {}, {}));
+
+            // first
+            db.WriteHistory(CreateAddClient(TInstant::Seconds(1), 0, one, {}, {}, {}));
+
+            // second
+            db.WriteHistory(
+                CreateRemoveClient(TInstant::Seconds(2), 0, one.GetClientId(), "reason1", {}));
+            db.WriteHistory(
+                CreateRemoveClient(TInstant::Seconds(2), 1, two.GetClientId(), "reason2", {}));
+         });
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            TVector<THistoryLogKey> records;
+
+            UNIT_ASSERT(db.ReadOutdatedHistory(
+                TInstant::Seconds(1),
+                1,
+                records));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, records.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey(TInstant::Seconds(1)), records[0]);
+        });
+
+        executor.ReadTx([&] (TVolumeDatabase db) {
+            TVector<THistoryLogKey> records;
+
+            UNIT_ASSERT(db.ReadOutdatedHistory(
+                TInstant::Seconds(1),
+                Max<ui32>(),
+                records));
+
+            UNIT_ASSERT_VALUES_EQUAL(3, records.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey(TInstant::Seconds(1)), records[0]);
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 1), records[1]);
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 0), records[2]);
+        });
+    }
+
     Y_UNIT_TEST(ShouldReadRecordsInSpecifiedRange)
     {
         TTestExecutor executor;
