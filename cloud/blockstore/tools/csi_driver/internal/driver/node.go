@@ -100,17 +100,17 @@ func (s *nodeService) NodeStageVolume(
 	log.Printf("csi.NodeStageVolumeRequest: %+v", req)
 
 	if req.VolumeId == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeId missing in NodeStageVolumeRequest")
 	}
 	if req.StagingTargetPath == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"StagingTargetPath missing in NodeStageVolumeRequest")
 	}
 	if req.VolumeCapability == nil {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeCapability missing in NodeStageVolumeRequest")
 	}
@@ -125,12 +125,12 @@ func (s *nodeService) NodeUnstageVolume(
 	log.Printf("csi.NodeUnstageVolumeRequest: %+v", req)
 
 	if req.VolumeId == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeId missing in NodeUnstageVolumeRequest")
 	}
 	if req.StagingTargetPath == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"StagingTargetPath missing in NodeUnstageVolumeRequest")
 	}
@@ -145,33 +145,33 @@ func (s *nodeService) NodePublishVolume(
 	log.Printf("csi.NodePublishVolumeRequest: %+v", req)
 
 	if req.VolumeId == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeId missing in NodePublishVolumeRequest")
 	}
 	if req.StagingTargetPath == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"StagingTargetPath missing in NodePublishVolumeRequest")
 	}
 	if req.TargetPath == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"TargetPath missing in NodePublishVolumeRequest")
 	}
 	if req.VolumeCapability == nil {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeCapability missing in NodePublishVolumeRequest")
 	}
 	if req.VolumeContext == nil {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"VolumeContext missing in NodePublishVolumeRequest")
 	}
 
 	if s.getPodId(req) == "" {
-		return nil, status.Errorf(codes.Internal,
+		return nil, s.statusError(codes.Internal,
 			"podUID missing in NodePublishVolumeRequest.VolumeContext")
 	}
 
@@ -188,7 +188,7 @@ func (s *nodeService) NodePublishVolume(
 			}
 		} else {
 			if nfsBackend {
-				return nil, status.Error(codes.InvalidArgument,
+				return nil, s.statusError(codes.InvalidArgument,
 					"FileStore can't be mounted to container as a filesystem")
 			} else {
 				err = s.nodePublishDiskAsFilesystem(ctx, req)
@@ -196,17 +196,17 @@ func (s *nodeService) NodePublishVolume(
 		}
 	case *csi.VolumeCapability_Block:
 		if nfsBackend {
-			return nil, status.Error(codes.InvalidArgument,
+			return nil, s.statusError(codes.InvalidArgument,
 				"'Block' volume mode is not supported for nfs backend")
 		} else {
 			err = s.nodePublishDiskAsBlockDevice(ctx, req)
 		}
 	default:
-		return nil, status.Error(codes.InvalidArgument, "Unknown access type")
+		return nil, s.statusError(codes.InvalidArgument, "Unknown access type")
 	}
 
 	if err != nil {
-		return nil, status.Errorf(codes.Internal,
+		return nil, s.statusErrorf(codes.Internal,
 			"Failed to publish volume: %w", err)
 	}
 
@@ -221,18 +221,18 @@ func (s *nodeService) NodeUnpublishVolume(
 	log.Printf("csi.NodeUnpublishVolumeRequest: %+v", req)
 
 	if req.VolumeId == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"Volume ID missing in NodeUnpublishVolumeRequest")
 	}
 	if req.TargetPath == "" {
-		return nil, status.Error(
+		return nil, s.statusError(
 			codes.InvalidArgument,
 			"Target Path missing in NodeUnpublishVolumeRequest")
 	}
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
-		return nil, status.Errorf(
+		return nil, s.statusErrorf(
 			codes.InvalidArgument,
 			"Failed to unpublish volume: %w", err)
 	}
@@ -636,7 +636,16 @@ func (s *nodeService) parseBlkTargetPath(targetPath string) (string, string, err
 	return podID, pvcID, nil
 }
 
+func (s *nodeService) statusError(c codes.Code, msg string) error {
+	return status.Error(c, fmt.Sprintf("[n=%s]: %s", s.nodeID, msg))
+}
+
+func (s *nodeService) statusErrorf(c codes.Code, format string, a ...interface{}) error {
+	msg := fmt.Sprintf(format, a...)
+	return s.statusError(c, msg)
+}
+
 func logVolume(volumeId string, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
-	log.Printf("[%s]: %s", volumeId, msg)
+	log.Printf("[v=%s]: %s", volumeId, msg)
 }

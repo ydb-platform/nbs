@@ -18,8 +18,11 @@ func main() {
 	flag.StringVar(&cfg.NodeID, "node-id", "undefined", "Node ID")
 	flag.BoolVar(&cfg.VMMode, "vm-mode", false, "Pass socket files to containers for VMs")
 	flag.UintVar(&cfg.NbsPort, "nbs-port", 9766, "NBS port")
+	flag.StringVar(&cfg.NbsSocket, "nbs-socket", "", "NBS unix socket path")
 	flag.UintVar(&cfg.NfsServerPort, "nfs-server-port", 9021, "NFS server port")
+	flag.StringVar(&cfg.NfsServerSocket, "nfs-server-socket", "", "NFS server unix socket path")
 	flag.UintVar(&cfg.NfsVhostPort, "nfs-vhost-port", 9022, "NFS vhost port")
+	flag.StringVar(&cfg.NfsVhostSocket, "nfs-vhost-socket", "", "NFS vhost unix socket path")
 	flag.StringVar(&cfg.NbsSocketsDir,
 		"nbs-sockets-dir",
 		"/run/nbsd/sockets",
