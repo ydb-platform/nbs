@@ -6,6 +6,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <unordered_set>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -51,16 +53,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         TIndexTabletProxyClient tabletProxy1(env.GetRuntime(), nodeIdx1);
         tabletProxy1.WaitReady("test");
 
-        ui64 disconnections = 0;
+        std::unordered_set<TActorId> connections;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
+
+                    case TEvTabletPipe::EvClientConnected: {
+                        auto* msg =
+                            event->template Get<TEvTabletPipe::TEvClientConnected>();
+                        if (fsTabletId && msg->TabletId == fsTabletId) {
+                            auto r = event->Recipient;
+                            Y_UNUSED(r);
+                            connections.emplace(event->Recipient);
+                        }
+                        break;
+                    }
                     case TEvTabletPipe::EvClientDestroyed: {
                         auto* msg =
                             event->template Get<TEvTabletPipe::TEvClientDestroyed>();
-                        if (msg->TabletId == fsTabletId) {
-                            ++disconnections;
+                        if (fsTabletId && msg->TabletId == fsTabletId) {
+                            connections.erase(event->Recipient);
                         }
+                        break;
                     }
                 }
                 return false;
@@ -74,7 +88,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         tabletProxy2.SendWaitReadyRequest("test");
 
         RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
-        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, connections.size());
     }
 }
 

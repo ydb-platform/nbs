@@ -15,6 +15,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <unordered_set>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -431,6 +433,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         TServiceClient service1(runtime, nodeIdx1);
 
         ui64 volumeTabletId = 0;
+        std::unordered_set<TActorId> connections;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
@@ -441,6 +444,24 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                             const auto& volumeDescription =
                                 msg->PathDescription.GetBlockStoreVolumeDescription();
                             volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        }
+                        break;
+                    }
+                    case TEvTabletPipe::EvClientConnected: {
+                        auto* msg =
+                            event->template Get<TEvTabletPipe::TEvClientConnected>();
+                        if (volumeTabletId && msg->TabletId == volumeTabletId) {
+                            auto r = event->Recipient;
+                            Y_UNUSED(r);
+                            connections.emplace(event->Recipient);
+                        }
+                        break;
+                    }
+                    case TEvTabletPipe::EvClientDestroyed: {
+                        auto* msg =
+                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
+                        if (volumeTabletId && msg->TabletId == volumeTabletId) {
+                            connections.erase(event->Recipient);
                         }
                         break;
                     }
@@ -456,27 +477,9 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service2.StatVolume();
 
-        service2.SendRequest(
-            MakeVolumeProxyServiceId(),
-            service2.CreateStatVolumeRequest());
-
-        ui64 disconnections = 0;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvTabletPipe::EvClientDestroyed: {
-                        auto* msg =
-                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
-                        if (msg->TabletId == volumeTabletId) {
-                            ++disconnections;
-                        }
-                    }
-                }
-                return false;
-            });
-
         RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
-        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, connections.size());
     }
 
     Y_UNIT_TEST(ShouldRunDescribeForCachedTabletsIfDurationOfFailedConnectsExceedsThreshold)
