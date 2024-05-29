@@ -23,6 +23,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/initializer.h>
+#include <cloud/storage/core/libs/uds/client_storage.h>
+#include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
 #include <library/cpp/logger/log.h>
 
@@ -31,6 +33,7 @@
 #include <contrib/libs/grpc/include/grpcpp/security/server_credentials.h>
 #include <contrib/libs/grpc/include/grpcpp/server.h>
 #include <contrib/libs/grpc/include/grpcpp/server_builder.h>
+#include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
@@ -186,6 +189,31 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TClientStorage: NStorage::NServer::IClientStorage
+{
+    grpc::Server& Server;
+
+    explicit TClientStorage(grpc::Server& server)
+        : Server(server)
+    {}
+
+    void AddClient(
+        const TSocketHolder& clientSocket,
+        NCloud::NProto::ERequestSource source) override
+    {
+        Y_UNUSED(source);
+
+        grpc::AddInsecureChannelFromFd(&Server, clientSocket);
+    }
+
+    void RemoveClient(const TSocketHolder& clientSocket) override
+    {
+        Y_UNUSED(clientSocket);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TServer: IEndpointProxyServer
 {
     TGrpcInitializer GrpcInitializer;
@@ -196,6 +224,8 @@ struct TServer: IEndpointProxyServer
     const ILoggingServicePtr Logging;
     NClient::TClientAppConfigPtr ClientConfig;
     TLog Log;
+
+    NStorage::NServer::TEndpointPoller EndpointPoller;
 
     NProto::TBlockStoreEndpointProxy::AsyncService Service;
     std::unique_ptr<grpc::ServerCompletionQueue> CQ;
@@ -261,9 +291,11 @@ struct TServer: IEndpointProxyServer
         NbdServer->Start();
 
         grpc::ServerBuilder sb;
-        const auto addr = Sprintf("0.0.0.0:%u", Config.Port);
-        sb.AddListeningPort(addr, grpc::InsecureServerCredentials());
-        STORAGE_INFO("Added addr " << addr);
+        if (Config.Port) {
+            const auto addr = Sprintf("0.0.0.0:%u", Config.Port);
+            sb.AddListeningPort(addr, grpc::InsecureServerCredentials());
+            STORAGE_INFO("Added addr " << addr);
+        }
 
         if (Config.SecurePort) {
             grpc::SslServerCredentialsOptions options(
@@ -287,6 +319,21 @@ struct TServer: IEndpointProxyServer
         Server = sb.BuildAndStart();
 
         Y_ENSURE(Server, "failed to start server");
+
+        if (Config.UnixSocketPath) {
+            EndpointPoller.Start();
+
+            const int socketBacklog = 128;
+            auto error = EndpointPoller.StartListenEndpoint(
+                Config.UnixSocketPath,
+                socketBacklog,
+                S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
+                true, // multiClient
+                NProto::SOURCE_FD_CONTROL_CHANNEL,
+                std::make_shared<TClientStorage>(*Server));
+
+            Y_ENSURE_EX(!HasError(error), yexception() << FormatError(error));
+        }
     }
 
     void Loop()
@@ -664,6 +711,10 @@ struct TServer: IEndpointProxyServer
 
     void Stop() override
     {
+        if (Config.UnixSocketPath) {
+            EndpointPoller.Stop();
+        }
+
         if (Server) {
             Server->Shutdown();
             CQ->Shutdown();

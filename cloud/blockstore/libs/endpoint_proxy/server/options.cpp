@@ -20,6 +20,10 @@ TOptions::TOptions()
         .RequiredArgument("FILE")
         .StoreResult(&CertFile);
 
+    Opts.AddLongOption("unix-socket-path")
+        .RequiredArgument("FILE")
+        .StoreResult(&UnixSocketPath);
+
     Opts.AddLongOption("netlink")
         .NoArgument()
         .SetFlag(&Netlink);

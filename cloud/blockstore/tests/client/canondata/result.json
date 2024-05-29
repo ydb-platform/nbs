@@ -11,6 +11,9 @@
     "test_with_client.test_endpoint_proxy": {
         "uri": "file://test_with_client.test_endpoint_proxy/results.txt"
     },
+    "test_with_client.test_endpoint_proxy_uds": {
+        "uri": "file://test_with_client.test_endpoint_proxy_uds/results.txt"
+    },
     "test_with_client.test_successive_remounts_and_writes": {
         "uri": "file://test_with_client.test_successive_remounts_and_writes/results.txt"
     }

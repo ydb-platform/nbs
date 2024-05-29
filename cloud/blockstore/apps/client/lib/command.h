@@ -50,6 +50,7 @@ protected:
     TString EndpointProxyHost;
     ui32 EndpointProxyInsecurePort = 0;
     ui32 EndpointProxySecurePort = 0;
+    TString EndpointProxyUnixSocketPath;
 
     TString MonitoringConfig;
     TString MonitoringAddress;

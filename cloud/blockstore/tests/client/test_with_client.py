@@ -989,3 +989,38 @@ def test_endpoint_proxy():
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)
     return ret
+
+
+# it's a smoke test right now - it doesn't test nbd proxying logic
+def test_endpoint_proxy_uds():
+    env, run = setup()
+
+    endpoint_proxy_path = common.binary_path(
+        "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
+
+    run_async(
+        [
+            endpoint_proxy_path, "--unix-socket-path", "ep.sock",
+        ],
+        "endpoint-proxy.out",
+        "endpoint-proxy.err",
+    )
+
+    run("startproxyendpoint",
+        "--endpoint-proxy-unix-socket-path", "ep.sock",
+        "--socket", "TODO-nbs-socket",
+        # can't use modprobe nbd in tests
+        # "--nbd-device", "TODO-nbd-device",
+        "--block-size", "4096",
+        "--blocks-count", "1024")
+
+    run("listproxyendpoints",
+        "--endpoint-proxy-unix-socket-path", "ep.sock")
+
+    run("stopproxyendpoint",
+        "--endpoint-proxy-unix-socket-path", "ep.sock",
+        "--socket", "TODO-nbs-socket")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
