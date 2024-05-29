@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 SRCS(
     block_checksum.cpp
     block_range.cpp
@@ -30,5 +32,6 @@ ENDIF()
 END()
 
 RECURSE_FOR_TESTS(
+    benchmark
     ut
 )
