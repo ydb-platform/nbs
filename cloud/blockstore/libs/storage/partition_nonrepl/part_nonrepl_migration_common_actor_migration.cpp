@@ -262,6 +262,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleRangeMigrated(
         DiskId.c_str(),
         DescribeRange(msg->Range).c_str());
 
+    if (msg->AllZeroes) {
+        ChangedRangesMap.MarkNotChanged(msg->Range);
+    }
     NotifyMigrationProgressIfNeeded(ctx, msg->Range);
     NotifyMigrationFinishedIfNeeded(ctx);
     ScheduleRangeMigration(ctx);
@@ -313,6 +316,12 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     MigrationOwner->OnMigrationFinished(ctx);
+}
+
+TString TNonreplicatedPartitionMigrationCommonActor::GetChangedBlocks(
+    TBlockRange64 range) const
+{
+    return ChangedRangesMap.GetChangedBlocks(range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

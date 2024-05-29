@@ -32,10 +32,12 @@ TNonreplicatedPartitionMigrationCommonActor::
     , ProfileLog(std::move(profileLog))
     , DiskId(std::move(diskId))
     , BlockSize(blockSize)
+    , BlockCount(blockCount)
     , BlockDigestGenerator(std::move(digestGenerator))
     , MaxIoDepth(maxIoDepth)
     , RWClientId(std::move(rwClientId))
     , ProcessingBlocks(blockCount, blockSize, initialMigrationIndex)
+    , ChangedRangesMap(blockCount, blockSize, ProcessingRangeSize)
     , StatActorId(statActorId)
     , PoisonPillHelper(this)
 {}
@@ -146,6 +148,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
             DrainActorCompanion.HandleDrain);
+        HFunc(
+            TEvService::TEvGetChangedBlocksRequest,
+            GetChangedBlocksCompanion.HandleGetChangedBlocks);
 
         HFunc(TEvVolume::TEvDescribeBlocksRequest, HandleDescribeBlocks);
         HFunc(

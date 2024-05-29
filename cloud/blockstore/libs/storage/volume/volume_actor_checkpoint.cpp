@@ -898,24 +898,24 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
-    auto requestInfo =
-            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
-
-    TString errorMsg = TStringBuilder()
-        << "[%lu] %s: " << "Disk registry based disks can not handle"
-        << " GetChangedBlocks requests for normal checkpoints,"
-        << " Checkpoints requested:"
-        << " LowCheckpointId: " << msg->Record.GetLowCheckpointId() << ","
-        << " HighCheckpointId: " << msg->Record.GetHighCheckpointId();
+    TString errorMsg =
+        TStringBuilder()
+        << "Disk registry based disks can not handle GetChangedBlocks requests "
+           "for normal checkpoints, DiskId: "
+        << State->GetDiskId().Quote()
+        << ", LowCheckpointId: " << msg->Record.GetLowCheckpointId().Quote()
+        << ", HighCheckpointId: " << msg->Record.GetHighCheckpointId().Quote();
 
     LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-        errorMsg.c_str(),
+        "[%lu] %s %s",
         TabletID(),
-        TGetChangedBlocksMethod::Name);
+        TGetChangedBlocksMethod::Name,
+        errorMsg.c_str());
 
+    auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
     *response->Record.MutableError() = MakeError(E_ARGUMENT, errorMsg);
-    NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 template <>

@@ -13,6 +13,8 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
+#include <cloud/blockstore/libs/storage/partition_nonrepl/model/changed_ranges_map.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/storage/core/libs/actors/poison_pill_helper.h>
@@ -87,6 +89,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const ui64 BlockSize;
+    const ui64 BlockCount;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 MaxIoDepth;
     TString RWClientId;
@@ -101,6 +104,8 @@ private:
     TMap<ui64, TBlockRange64> MigrationsInProgress;
     TMap<ui64, TBlockRange64> DeferredMigrations;
 
+    TChangedRangesMap ChangedRangesMap;
+
     // When we migrated a block whose range contains or exceeds a persistently
     // stored offset of the progress of the entire migration, we remember this
     // offset and wait for all blocks with addresses less than this offset to
@@ -113,6 +118,7 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         WriteAndZeroRequestsInProgress,
         DiskId};
+    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     // Statistics
     const NActors::TActorId StatActorId;
@@ -168,6 +174,9 @@ public:
     {
         TBase::Die(ctx);
     }
+
+protected:
+    [[nodiscard]] TString GetChangedBlocks(TBlockRange64 range) const;
 
 private:
     bool IsMigrationAllowed() const;

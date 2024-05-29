@@ -32,6 +32,7 @@ private:
     TInstant WriteStartTs;
     TDuration WriteDuration;
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
+    bool AllZeroes = false;
 
 public:
     TCopyRangeActor(

@@ -3,6 +3,7 @@ LIBRARY()
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
+    changed_ranges_map.cpp
     processing_blocks.cpp
 )
 
