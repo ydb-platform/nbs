@@ -338,7 +338,6 @@ auto TAgentList::RegisterAgent(
     PrepareConfig(agentConfig, knownAgent);
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
-
     if (!agent) {
         STORAGE_INFO("A brand new agent %s #%d has arrived",
             agentConfig.GetAgentId().c_str(),
@@ -365,6 +364,7 @@ auto TAgentList::RegisterAgent(
     agent->SetDedicatedDiskAgent(agentConfig.GetDedicatedDiskAgent());
     *agent->MutableUnknownDevices()
         = std::move(*agentConfig.MutableUnknownDevices());
+    agent->SetTemporaryAgent(agentConfig.GetTemporaryAgent());
 
     auto& newList = *agentConfig.MutableDevices();
     Sort(newList, TByUUID());
