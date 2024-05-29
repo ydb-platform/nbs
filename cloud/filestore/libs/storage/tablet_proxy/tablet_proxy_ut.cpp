@@ -57,11 +57,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
-
                     case TEvTabletPipe::EvClientConnected: {
                         auto* msg =
                             event->template Get<TEvTabletPipe::TEvClientConnected>();
-                        if (fsTabletId && msg->TabletId == fsTabletId) {
+                        if (msg->TabletId == fsTabletId) {
                             connections.emplace(event->Recipient);
                         }
                         break;
@@ -69,7 +68,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
                     case TEvTabletPipe::EvClientDestroyed: {
                         auto* msg =
                             event->template Get<TEvTabletPipe::TEvClientDestroyed>();
-                        if (fsTabletId && msg->TabletId == fsTabletId) {
+                        if (msg->TabletId == fsTabletId) {
                             connections.erase(event->Recipient);
                         }
                         break;
@@ -86,8 +85,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         tabletProxy2.SendWaitReadyRequest("test");
 
         RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
-        UNIT_ASSERT_VALUES_EQUAL(0, connections.size());
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return connections.empty();
+            }});
     }
 }
 
