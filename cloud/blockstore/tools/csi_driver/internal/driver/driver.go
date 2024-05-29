@@ -19,17 +19,30 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func getEndpoint(unixSocket string, port uint) string {
+	if unixSocket != "" {
+		return fmt.Sprintf("unix://%s", unixSocket)
+	} else {
+		return fmt.Sprintf("localhost:%d", port)
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Config struct {
-	DriverName    string
-	Endpoint      string
-	NodeID        string
-	VendorVersion string
-	VMMode        bool
-	NbsPort       uint
-	NfsServerPort uint
-	NfsVhostPort  uint
-	NbsSocketsDir string
-	PodSocketsDir string
+	DriverName      string
+	Endpoint        string
+	NodeID          string
+	VendorVersion   string
+	VMMode          bool
+	NbsPort         uint
+	NbsSocket       string
+	NfsServerPort   uint
+	NfsServerSocket string
+	NfsVhostPort    uint
+	NfsVhostSocket  string
+	NbsSocketsDir   string
+	PodSocketsDir   string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +55,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	nbsClientID := fmt.Sprintf("%s-%s", cfg.DriverName, cfg.NodeID)
 	nbsClient, err := nbsclient.NewGrpcClient(
 		&nbsclient.GrpcClientOpts{
-			Endpoint: fmt.Sprintf("localhost:%d", cfg.NbsPort),
+			Endpoint: getEndpoint(cfg.NbsSocket, cfg.NbsPort),
 			ClientId: nbsClientID,
 		}, nbsclient.NewStderrLog(nbsclient.LOG_DEBUG),
 	)
@@ -54,7 +67,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	if cfg.NfsServerPort != 0 {
 		nfsClient, err = nfsclient.NewGrpcClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: fmt.Sprintf("localhost:%d", cfg.NfsServerPort),
+				Endpoint: getEndpoint(cfg.NfsServerSocket, cfg.NfsServerPort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
@@ -66,7 +79,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 	if cfg.NfsVhostPort != 0 {
 		nfsEndpointClient, err = nfsclient.NewGrpcEndpointClient(
 			&nfsclient.GrpcClientOpts{
-				Endpoint: fmt.Sprintf("localhost:%d", cfg.NfsVhostPort),
+				Endpoint: getEndpoint(cfg.NfsVhostSocket, cfg.NfsVhostPort),
 			}, nfsclient.NewStderrLog(nfsclient.LOG_DEBUG),
 		)
 		if err != nil {
