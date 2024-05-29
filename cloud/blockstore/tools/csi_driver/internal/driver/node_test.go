@@ -33,20 +33,18 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
-	podSocketsDir := filepath.Join(tempDir, "sockets")
-	nbsSocketsDir := "/test/sockets/folder"
-	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
+	socketsDir := filepath.Join(tempDir, "sockets")
+	sourcePath := filepath.Join(socketsDir, podID, diskID)
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
-	nbsSocketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nbs.sock")
-	nfsSocketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nfs.sock")
+	nbsSocketPath := filepath.Join(sourcePath, "nbs.sock")
+	nfsSocketPath := filepath.Join(sourcePath, "nfs.sock")
 
 	nodeService := newNodeService(
 		"testNodeId",
 		clientID,
 		true, // vmMode
-		nbsSocketsDir,
-		podSocketsDir,
+		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
 		nbsClient,
@@ -144,7 +142,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(podSocketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podID))
 	assert.True(t, os.IsNotExist(err))
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
@@ -191,17 +189,15 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	diskID := "test-disk-id-42"
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
-	podSocketsDir := filepath.Join(tempDir, "sockets")
-	nbsSocketsDir := "/test/sockets/folder"
-	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
-	socketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nbs.sock")
+	socketsDir := filepath.Join(tempDir, "sockets")
+	sourcePath := filepath.Join(socketsDir, podID, diskID)
+	socketPath := filepath.Join(socketsDir, podID, diskID, "nbs.sock")
 
 	nodeService := newNodeService(
 		"testNodeId",
 		clientID,
 		false, // vmMode
-		nbsSocketsDir,
-		podSocketsDir,
+		socketsDir,
 		targetFsPathPattern,
 		"", // targetBlkPathPattern
 		nbsClient,
@@ -288,7 +284,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(podSocketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podID))
 	assert.True(t, os.IsNotExist(err))
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
@@ -315,17 +311,15 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	diskID := "test-disk-id-42"
 	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
 	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
-	podSocketsDir := filepath.Join(tempDir, "sockets")
-	nbsSocketsDir := "/test/sockets/folder"
-	sourcePath := filepath.Join(podSocketsDir, podID, diskID)
-	socketPath := filepath.Join(nbsSocketsDir, podID, diskID, "nbs.sock")
+	socketsDir := filepath.Join(tempDir, "sockets")
+	sourcePath := filepath.Join(socketsDir, podID, diskID)
+	socketPath := filepath.Join(sourcePath, "nbs.sock")
 
 	nodeService := newNodeService(
 		"testNodeId",
 		clientID,
 		false, // vmMode
-		nbsSocketsDir,
-		podSocketsDir,
+		socketsDir,
 		"", // targetFsPathPattern
 		targetBlkPathPattern,
 		nbsClient,
@@ -405,7 +399,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = os.Stat(filepath.Join(podSocketsDir, podID))
+	_, err = os.Stat(filepath.Join(socketsDir, podID))
 	assert.True(t, os.IsNotExist(err))
 
 	_, err = nodeService.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{

@@ -41,8 +41,7 @@ type Config struct {
 	NfsServerSocket string
 	NfsVhostPort    uint
 	NfsVhostSocket  string
-	NbsSocketsDir   string
-	PodSocketsDir   string
+	SocketsDir      string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,8 +115,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.NodeID,
 			nbsClientID,
 			cfg.VMMode,
-			cfg.NbsSocketsDir,
-			cfg.PodSocketsDir,
+			cfg.SocketsDir,
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
 			nbsClient,
