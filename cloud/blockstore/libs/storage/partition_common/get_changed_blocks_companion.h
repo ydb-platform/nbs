@@ -12,21 +12,13 @@ namespace NCloud::NBlockStore::NStorage {
 // respond to it with an error, or redirect it to another actor.
 class TGetChangedBlocksCompanion
 {
-public:
-    enum class EBehavior
-    {
-        ReplyError,
-        DelegateRequest,
-    };
-
 private:
-    EBehavior Behavior = EBehavior::ReplyError;
     NActors::TActorId Delegate;
 
 public:
     TGetChangedBlocksCompanion() = default;
 
-    void SetBehavior(EBehavior behavior, NActors::TActorId delegate);
+    void SetDelegate(NActors::TActorId delegate);
 
     void HandleGetChangedBlocks(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,

@@ -129,6 +129,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
     Y_UNUSED(volumeRequestId);
 
     if (!State->IsDiskRegistryMediaKind()) {
+        // For BlobStorage-based disks, we return false to process the request
+        // in the partition actor.
         return false;
     }
 
@@ -139,8 +141,8 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
     const auto lowCheckpoint = State->GetCheckpointStore().GetCheckpoint(
         msg->Record.GetLowCheckpointId());
 
-    if ((msg->Record.GetHighCheckpointId() == "" &&
-         msg->Record.GetLowCheckpointId() == "") ||
+    if ((msg->Record.GetHighCheckpointId().empty() &&
+         msg->Record.GetLowCheckpointId().empty()) ||
         highCheckpoint && highCheckpoint->Type == ECheckpointType::Light ||
         lowCheckpoint && lowCheckpoint->Type == ECheckpointType::Light)
     {

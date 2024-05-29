@@ -110,9 +110,7 @@ void TMirrorPartitionResyncActor::SetupPartitions(const TActorContext& ctx)
             SelfId(),
             SelfId()));
 
-    GetChangedBlocksCompanion.SetBehavior(
-        TGetChangedBlocksCompanion::EBehavior::DelegateRequest,
-        MirrorActorId);
+    GetChangedBlocksCompanion.SetDelegate(MirrorActorId);
 
     const auto& replicaInfos = State.GetReplicaInfos();
     for (ui32 i = 0; i < replicaInfos.size(); i++) {

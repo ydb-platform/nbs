@@ -10,11 +10,9 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TGetChangedBlocksCompanion::SetBehavior(
-    EBehavior behavior,
+void TGetChangedBlocksCompanion::SetDelegate(
     NActors::TActorId delegate)
 {
-    Behavior = behavior;
     Delegate = delegate;
 }
 
@@ -22,13 +20,10 @@ void TGetChangedBlocksCompanion::HandleGetChangedBlocks(
     const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
     const NActors::TActorContext& ctx) const
 {
-    switch (Behavior) {
-        case EBehavior::ReplyError: {
-            DoReplyError(ev, ctx);
-        } break;
-        case EBehavior::DelegateRequest: {
-            DoDelegateRequest(ev, ctx);
-        } break;
+    if (Delegate) {
+        DoDelegateRequest(ev, ctx);
+    } else {
+        DoReplyError(ev, ctx);
     }
 }
 

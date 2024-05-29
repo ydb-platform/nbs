@@ -37,8 +37,8 @@ TString TChangedRangesMap::GetChangedBlocks(TBlockRange64 range) const
     constexpr size_t BitsInByte = 8;
     const auto resultSize = AlignUp<size_t>(range.Size(), BitsInByte);
 
-    // We know a map of changes blocks with a resolution in the RangeSize.
-    // Let's convert this map to a resolution up to a block.
+    // We know a map of changed blocks with resolution = RangeSize.
+    // Let's convert this map to resolution = BlockSize.
     TDynBitMap map;
     map.Reserve(resultSize);
     // Initially, we assume that all blocks have been changed.
@@ -85,7 +85,7 @@ void TChangedRangesMap::Mark(TBlockRange64 range, bool changed)
         ChangedRangesMap.Set(begin, end);
     } else {
         // When the part of the range is marked as clean, we mark only the
-        // ranges that completely overlaps with input range
+        // ranges that completely overlap with input range
         auto alignedStart = AlignUp<ui64>(range.Start, BlocksPerRange);
         auto alignedEnd = AlignDown<ui64>(range.End + 1, BlocksPerRange);
         if (alignedEnd > alignedStart) {
