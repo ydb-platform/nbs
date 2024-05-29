@@ -62,8 +62,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
                         auto* msg =
                             event->template Get<TEvTabletPipe::TEvClientConnected>();
                         if (fsTabletId && msg->TabletId == fsTabletId) {
-                            auto r = event->Recipient;
-                            Y_UNUSED(r);
                             connections.emplace(event->Recipient);
                         }
                         break;

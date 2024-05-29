@@ -451,8 +451,6 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         auto* msg =
                             event->template Get<TEvTabletPipe::TEvClientConnected>();
                         if (volumeTabletId && msg->TabletId == volumeTabletId) {
-                            auto r = event->Recipient;
-                            Y_UNUSED(r);
                             connections.emplace(event->Recipient);
                         }
                         break;
