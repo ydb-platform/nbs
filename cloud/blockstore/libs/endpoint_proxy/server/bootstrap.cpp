@@ -25,6 +25,7 @@ void TBootstrap::Init()
         Options.RootCertsFile,
         Options.KeyFile,
         Options.CertFile,
+        Options.UnixSocketPath,
         Options.Netlink,
     },
     CreateWallClockTimer(),

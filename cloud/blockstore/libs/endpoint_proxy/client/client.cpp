@@ -8,17 +8,21 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/network/sock.h>
 #include <util/stream/file.h>
 #include <util/string/printf.h>
 #include <util/thread/factory.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/create_channel.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/async_unary_call.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/client_context.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
+
+#include <cerrno>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -61,16 +65,12 @@ struct TRequestContextImpl: TRequestContextBase
 
     TRequestContextImpl(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : Request(std::move(request))
         , CQ(cq)
-        , Service(grpc::CreateChannel(
-            Sprintf("%s:%u", host.c_str(), port),
-            channelCredentials))
+        , Service(std::move(channel))
         , Promise(NThreading::NewPromise<TResponse>())
         , ProcessingStartTs(now)
     {}
@@ -86,18 +86,14 @@ struct TStartRequestContext: TRequestContextImpl<
 
     TStartRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncStartProxyEndpoint(&ClientContext, Request, &CQ);
     }
@@ -113,18 +109,14 @@ struct TStopRequestContext: TRequestContextImpl<
 
     TStopRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncStopProxyEndpoint(&ClientContext, Request, &CQ);
     }
@@ -140,18 +132,14 @@ struct TListRequestContext: TRequestContextImpl<
 
     TListRequestContext(
             grpc::CompletionQueue& cq,
-            const TString& host,
-            ui16 port,
+            std::shared_ptr<grpc::Channel> channel,
             TRequest request,
-            TInstant now,
-            const std::shared_ptr<grpc::ChannelCredentials>& channelCredentials)
+            TInstant now)
         : TRequestContextImpl(
             cq,
-            host,
-            port,
+            std::move(channel),
             std::move(request),
-            now,
-            channelCredentials)
+            now)
     {
         Reader = Service.AsyncListProxyEndpoints(&ClientContext, Request, &CQ);
     }
@@ -168,32 +156,80 @@ struct TEndpointProxyClient
     const ITimerPtr Timer;
     TLog Log;
 
+    bool NeedConnect = true;
+    std::shared_ptr<grpc::Channel> Channel;
+
     grpc::CompletionQueue CQ;
-    std::shared_ptr<grpc::ChannelCredentials> ChannelCredentials;
     THolder<IThreadFactory::IThread> Thread;
 
     TEndpointProxyClient(
             TEndpointProxyClientConfig config,
             ISchedulerPtr scheduler,
             ITimerPtr timer,
-            ILoggingServicePtr logging)
+            const ILoggingServicePtr& logging)
         : Config(std::move(config))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , Log(logging->CreateLog("ENDPOINT_PROXY_CLIENT"))
     {
-        if (Config.SecurePort) {
-            ChannelCredentials = grpc::SslCredentials({
-                .pem_root_certs = ReadFile(Config.RootCertsFile)
-            });
-        } else {
-            ChannelCredentials = grpc::InsecureChannelCredentials();
-        }
+        ReconnectIfNeeded();
     }
 
-    ui16 Port() const
+    void ReconnectIfNeeded()
     {
-        return Config.SecurePort ? Config.SecurePort : Config.Port;
+        if (!NeedConnect) {
+            return;
+        }
+
+        if (Config.UnixSocketPath) {
+            TSockAddrLocal addr(Config.UnixSocketPath.c_str());
+
+            TLocalStreamSocket socket;
+
+            const auto deadline =
+                Timer->Now() + Config.RetryPolicy.UnixSocketConnectTimeout;
+            while (true) {
+                auto res = socket.Connect(&addr);
+                if (res == -ENOENT || res == -ECONNREFUSED) {
+                    STORAGE_WARN("Retrying uds connection, res: " << res);
+
+                    if (Timer->Now() < deadline) {
+                        Sleep(TDuration::Seconds(1));
+                        continue;
+                    }
+                }
+
+                Y_ENSURE_EX(res >= 0, yexception() << "failed to connect to"
+                    " endpoint proxy socket, res: " << res);
+                break;
+            }
+
+            Channel = grpc::CreateInsecureChannelFromFd(
+                "localhost",
+                socket);
+
+            socket.Release();
+        } else if (Config.SecurePort) {
+            auto channelCredentials = grpc::SslCredentials({
+                .pem_root_certs = ReadFile(Config.RootCertsFile)
+            });
+
+            Channel = grpc::CreateChannel(
+                Sprintf("%s:%u", Config.Host.c_str(), Config.SecurePort),
+                channelCredentials);
+        } else {
+            Y_ENSURE_EX(Config.Port, yexception() << "none of the"
+                " port/secure port/unix socket path specified for endpoint proxy"
+                " client");
+
+            auto channelCredentials = grpc::InsecureChannelCredentials();
+
+            Channel = grpc::CreateChannel(
+                Sprintf("%s:%u", Config.Host.c_str(), Config.Port),
+                channelCredentials);
+        }
+
+        NeedConnect = false;
     }
 
     template <typename TContext>
@@ -203,11 +239,9 @@ struct TEndpointProxyClient
     {
         auto requestContext = std::make_unique<TContext>(
             CQ,
-            Config.Host,
-            Port(),
+            Channel,
             request,
-            now,
-            ChannelCredentials
+            now
         );
 
         auto promise = requestContext->Promise;
@@ -255,8 +289,8 @@ struct TEndpointProxyClient
     {
         STORAGE_INFO("Starting loop");
 
-        void* tag;
-        bool ok;
+        void* tag = nullptr;
+        bool ok = false;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestContextBase> requestContext(
                 static_cast<TRequestContextBase*>(tag));
@@ -304,8 +338,20 @@ struct TEndpointProxyClient
             + Config.RetryPolicy.TotalTimeout;
 
         if (errorKind == EErrorKind::ErrorRetriable && Timer->Now() < deadline) {
+            STORAGE_WARN("Will retry error: "
+                << FormatError(requestContext.Response.GetError()));
+
+            if (Config.UnixSocketPath) {
+                NeedConnect = true;
+            }
+
             Retry(requestContext);
         } else {
+            if (HasError(requestContext.Response.GetError())) {
+                STORAGE_WARN("Won't retry error: "
+                    << FormatError(requestContext.Response.GetError()));
+            }
+
             requestContext.Promise.SetValue(std::move(requestContext.Response));
         }
     }
@@ -313,6 +359,13 @@ struct TEndpointProxyClient
     template <typename TRequestContext>
     void Retry(TRequestContext& requestContext)
     {
+        try {
+            ReconnectIfNeeded();
+        } catch (...) {
+            STORAGE_ERROR("Unexpected reconnect error: "
+                << CurrentExceptionMessage());
+        }
+
         auto request = std::move(requestContext.Request);
         auto p = std::move(requestContext.Promise);
         auto weakPtr = this->weak_from_this();

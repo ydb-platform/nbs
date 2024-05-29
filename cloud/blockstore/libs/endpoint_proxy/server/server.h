@@ -24,6 +24,7 @@ struct TEndpointProxyServerConfig
     TString RootCertsFile;
     TString KeyFile;
     TString CertFile;
+    TString UnixSocketPath;
     bool Netlink;
 
     TEndpointProxyServerConfig(
@@ -32,12 +33,14 @@ struct TEndpointProxyServerConfig
             TString rootCertsFile,
             TString keyFile,
             TString certFile,
+            TString unixSocketPath,
             bool netlink)
         : Port(port)
         , SecurePort(securePort)
         , RootCertsFile(std::move(rootCertsFile))
         , KeyFile(std::move(keyFile))
         , CertFile(std::move(certFile))
+        , UnixSocketPath(std::move(unixSocketPath))
         , Netlink(netlink)
     {
     }

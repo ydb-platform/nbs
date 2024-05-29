@@ -164,6 +164,10 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("NUM")
         .StoreResult(&EndpointProxySecurePort);
 
+    Opts.AddLongOption("endpoint-proxy-unix-socket-path", "endpoint proxy unix socket path")
+        .RequiredArgument("FILE")
+        .StoreResult(&EndpointProxyUnixSocketPath);
+
     Opts.AddLongOption("mon-file")
         .RequiredArgument("STR")
         .StoreResult(&MonitoringConfig);
@@ -586,15 +590,17 @@ void TCommand::Init()
 
     }
 
-    if (EndpointProxyHost) {
+    if (EndpointProxyHost || EndpointProxyUnixSocketPath) {
         EndpointProxyClient = CreateClient(TEndpointProxyClientConfig{
             EndpointProxyHost,
             static_cast<ui16>(EndpointProxyInsecurePort),
             static_cast<ui16>(EndpointProxySecurePort),
             {}, // rootCertsFile
+            EndpointProxyUnixSocketPath,
             {
                 TDuration::Seconds(1),
                 TDuration::Minutes(5),
+                TDuration::Seconds(5),
             },
         }, Scheduler, Timer, Logging);
     }
