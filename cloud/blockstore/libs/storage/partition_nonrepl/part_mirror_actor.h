@@ -4,8 +4,8 @@
 
 #include "checksum_range.h"
 #include "config.h"
-#include "part_nonrepl_events_private.h"
 #include "part_mirror_state.h"
+#include "part_nonrepl_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/get_changed_blocks_companion.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 #include <library/cpp/actors/core/events.h>
@@ -53,6 +54,7 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId};
+    TGetChangedBlocksCompanion GetChangedBlocksCompanion;
 
     TRequestInfoPtr Poisoner;
     size_t AliveReplicas = 0;

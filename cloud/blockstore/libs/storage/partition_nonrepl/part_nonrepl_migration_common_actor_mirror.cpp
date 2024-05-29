@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
+#include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/mirror_request_actor.h>
@@ -103,6 +104,10 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         WriteAndZeroRequestsInProgress.AddWriteRequest(range),
         false // shouldProcessError
     );
+
+    if constexpr (IsExactlyWriteMethod<TMethod>) {
+        ChangedRangesMap.MarkChanged(range);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

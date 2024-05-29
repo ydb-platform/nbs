@@ -631,6 +631,7 @@ bool TShadowDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateShadowDiskStateResponse,
             HandleUpdateShadowDiskStateResponse);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocks);
 
         // Read request.
         HFunc(
@@ -1212,6 +1213,49 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
     ev->Get()->RWClientId =
         MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
     return false;
+}
+
+void TShadowDiskActor::HandleGetChangedBlocks(
+    const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (msg->Record.GetHighCheckpointId() != CheckpointId) {
+        ForwardMessageToActor(ev, ctx, SrcActorId);
+        return;
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "GetChangedBlocks for shadow disk " << ShadowDiskId.Quote());
+
+    if (State != EActorState::CheckpointReady) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Shadow disk: "
+                << ShadowDiskId.Quote()
+                << " Can't GetChangedBlocks when shadow disk is not ready.");
+
+        auto response =
+            std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
+        *response->Record.MutableError() = MakeError(
+            E_REJECTED,
+            "Can't GetChangedBlocks when shadow disk is not ready.");
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
+    auto range = TBlockRange64::WithLength(
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount());
+    response->Record.SetMask(GetChangedBlocks(range));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
