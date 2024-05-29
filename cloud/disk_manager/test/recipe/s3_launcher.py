@@ -1,11 +1,10 @@
 import logging
 
-import yatest
-
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from cloud.tasks.test.common.processes import register_process, kill_processes
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 _logger = logging.getLogger(__file__)
 
@@ -15,7 +14,7 @@ SERVICE_NAME = "s3"
 class S3Service(Daemon):
     def __init__(self, port, working_dir):
         command = [
-            yatest.common.binary_path('contrib/python/moto/bin/moto_server'),
+            yatest_common.binary_path('contrib/python/moto/bin/moto_server'),
             "s3",
             "--port", str(port)
         ]
@@ -27,9 +26,11 @@ class S3Service(Daemon):
 
 class S3Launcher:
     def __init__(self):
-        self.__port = yatest.common.network.PortManager().get_port()
+        self.__port_manager = yatest_common.PortManager()
+        self.__port = self.__port_manager.get_port()
+
         working_dir = get_unique_path_for_current_test(
-            output_path=yatest.common.output_path(),
+            output_path=yatest_common.output_path(),
             sub_folder=""
         )
         ensure_path_exists(working_dir)
