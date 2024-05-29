@@ -317,6 +317,15 @@ private:
             , IsTraced(isTraced)
             , TraceTs(traceTs)
         {}
+
+        explicit TCheckpointRequestInfo(const NActors::TActorId& actorId)
+            : RequestInfo(CreateRequestInfo(
+                  actorId,
+                  0,   // cookie
+                  MakeIntrusive<TCallContext>()))
+            , IsTraced(false)
+            , TraceTs(GetCycleCount())
+        {}
     };
     TMap<ui64, TCheckpointRequestInfo> CheckpointRequests;
 
@@ -651,9 +660,17 @@ private:
         const TEvVolumePrivate::TEvRemoveExpiredVolumeParams::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void ProcessNextCheckpointRequest(const NActors::TActorContext& ctx);
+    void ProcessCheckpointRequests(const NActors::TActorContext& ctx);
 
-    void ProcessCheckpointRequest(
+    bool ProcessCheckpointRequest(const NActors::TActorContext& ctx, ui64 requestId);
+
+    void ReplyToCheckpointRequestWithoutSaving(
+        const NActors::TActorContext& ctx,
+        ECheckpointRequestType requestType,
+        const TCheckpointRequestInfo* requestInfo,
+        const NProto::TError& error);
+
+    void ExecuteCheckpointRequest(
         const NActors::TActorContext& ctx,
         ui64 requestId);
 

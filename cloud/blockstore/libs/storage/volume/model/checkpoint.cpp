@@ -92,12 +92,13 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
         checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
-void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+void TCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
 {
-    auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
-        checkpointRequest.State == ECheckpointRequestState::Received);
-    checkpointRequest.State = ECheckpointRequestState::Saved;
+        CheckpointRequests.FindPtr(requestId) &&
+        CheckpointRequests.FindPtr(requestId)->State ==
+            ECheckpointRequestState::Received);
+    CheckpointRequests.erase(requestId);
 }
 
 void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
@@ -115,6 +116,14 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
     CheckpointBlockingWritesBeingCreated =
         CheckpointBeingCreated &&
         checkpointRequest.ShadowDiskState == EShadowDiskState::None;
+}
+
+void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+{
+    auto& checkpointRequest = GetRequest(requestId);
+    Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Received);
+    checkpointRequest.State = ECheckpointRequestState::Saved;
 }
 
 void TCheckpointStore::SetCheckpointRequestFinished(
@@ -215,20 +224,20 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
     return false;
 }
 
-bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
+TVector<ui64> TCheckpointStore::GetRequestIdsToProcess() const
 {
-    Y_DEBUG_ABORT_UNLESS(requestId);
+    TVector<ui64> requestIds(Reserve(CheckpointRequests.size()));
 
     for (const auto& [key, checkpointRequest]: CheckpointRequests) {
         if (checkpointRequest.State == ECheckpointRequestState::Received ||
             checkpointRequest.State == ECheckpointRequestState::Saved)
         {
             Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
-            *requestId = checkpointRequest.RequestId;
-            return true;
+            requestIds.push_back(checkpointRequest.RequestId);
         }
     }
-    return false;
+
+    return requestIds;
 }
 
 std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
