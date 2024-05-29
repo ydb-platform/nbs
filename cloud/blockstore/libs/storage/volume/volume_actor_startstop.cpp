@@ -107,7 +107,7 @@ void TVolumeActor::OnStarted(const TActorContext& ctx)
         PendingRequests.pop_front();
     }
 
-    ProcessNextCheckpointRequest(ctx);
+    ProcessCheckpointRequests(ctx);
 }
 
 void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)

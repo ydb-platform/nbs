@@ -423,7 +423,7 @@ void TVolumeActor::HandleMultipartitionWriteOrZeroCompleted(
 
     Y_DEBUG_ABORT_UNLESS(MultipartitionWriteAndZeroRequestsInProgress > 0);
     --MultipartitionWriteAndZeroRequestsInProgress;
-    ProcessNextCheckpointRequest(ctx);
+    ProcessCheckpointRequests(ctx);
 }
 
 void TVolumeActor::HandleWriteOrZeroCompleted(

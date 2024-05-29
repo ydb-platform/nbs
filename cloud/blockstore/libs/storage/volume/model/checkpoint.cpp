@@ -1,6 +1,9 @@
 #include "checkpoint.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/verify.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/algorithm.h>
 
@@ -89,18 +92,20 @@ const TCheckpointRequest& TCheckpointStore::MakeDeleteCheckpointDataRequest(
         checkpointInfo ? checkpointInfo->IsShadowDiskBased() : false));
 }
 
-void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+void TCheckpointStore::RemoveCheckpointRequest(ui64 requestId)
 {
-    auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
-        checkpointRequest.State == ECheckpointRequestState::Received);
-    checkpointRequest.State = ECheckpointRequestState::Saved;
+        CheckpointRequests.FindPtr(requestId) &&
+        CheckpointRequests.FindPtr(requestId)->State ==
+            ECheckpointRequestState::Received);
+    CheckpointRequests.erase(requestId);
 }
 
 void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
 {
     auto& checkpointRequest = GetRequest(requestId);
     Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Received ||
         checkpointRequest.State == ECheckpointRequestState::Saved);
 
     CheckpointRequestInProgress = requestId;
@@ -111,6 +116,14 @@ void TCheckpointStore::SetCheckpointRequestInProgress(ui64 requestId)
     CheckpointBlockingWritesBeingCreated =
         CheckpointBeingCreated &&
         checkpointRequest.ShadowDiskState == EShadowDiskState::None;
+}
+
+void TCheckpointStore::SetCheckpointRequestSaved(ui64 requestId)
+{
+    auto& checkpointRequest = GetRequest(requestId);
+    Y_DEBUG_ABORT_UNLESS(
+        checkpointRequest.State == ECheckpointRequestState::Received);
+    checkpointRequest.State = ECheckpointRequestState::Saved;
 }
 
 void TCheckpointStore::SetCheckpointRequestFinished(
@@ -198,6 +211,11 @@ bool TCheckpointStore::DoesCheckpointBlockingWritesExist() const
            CheckpointBlockingWritesExists;
 }
 
+bool TCheckpointStore::IsCheckpointDeleted(const TString& checkpointId) const
+{
+    return DeletedCheckpoints.contains(checkpointId);
+}
+
 bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
 {
     if (const auto* data = ActiveCheckpoints.FindPtr(checkpointId)) {
@@ -206,21 +224,20 @@ bool TCheckpointStore::DoesCheckpointHaveData(const TString& checkpointId) const
     return false;
 }
 
-bool TCheckpointStore::HasRequestToExecute(ui64* requestId) const
+TVector<ui64> TCheckpointStore::GetRequestIdsToProcess() const
 {
-    Y_DEBUG_ABORT_UNLESS(requestId);
+    TVector<ui64> requestIds(Reserve(CheckpointRequests.size()));
 
     for (const auto& [key, checkpointRequest]: CheckpointRequests) {
-        if (checkpointRequest.State != ECheckpointRequestState::Saved) {
-            continue;
+        if (checkpointRequest.State == ECheckpointRequestState::Received ||
+            checkpointRequest.State == ECheckpointRequestState::Saved)
+        {
+            Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
+            requestIds.push_back(checkpointRequest.RequestId);
         }
-        Y_DEBUG_ABORT_UNLESS(key == checkpointRequest.RequestId);
-        if (requestId) {
-            *requestId = checkpointRequest.RequestId;
-        }
-        return true;
     }
-    return false;
+
+    return requestIds;
 }
 
 std::optional<ECheckpointType> TCheckpointStore::GetCheckpointType(
@@ -343,6 +360,7 @@ void TCheckpointStore::DeleteCheckpointData(const TString& checkpointId)
 void TCheckpointStore::DeleteCheckpoint(const TString& checkpointId)
 {
     ActiveCheckpoints.erase(checkpointId);
+    DeletedCheckpoints.insert(checkpointId);
     CalcCheckpointsState();
 }
 
@@ -386,6 +404,119 @@ TInstant TCheckpointStore::GetCorrectedTimestamp(TInstant timestamp) const
             Max(timestamp, lastReq.Timestamp + TDuration::MicroSeconds(1));
     }
     return timestamp;
+}
+
+std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
+    const TString& checkpointId,
+    ECheckpointRequestType requestType,
+    ECheckpointType checkpointType) const
+{
+    auto makeErrorInvalid = [](TString message)
+    {
+        ui32 flags = 0;
+        SetProtoFlag(flags, NProto::EF_SILENT);
+        return MakeError(E_PRECONDITION_FAILED, std::move(message), flags);
+    };
+
+    auto makeErrorAlready = [](TString message)
+    {
+        return MakeError(S_ALREADY, std::move(message));
+    };
+
+    if (checkpointId.empty()) {
+        return MakeError(E_ARGUMENT, "Checkpoint id should not be empty");
+    }
+
+    if (checkpointType != ECheckpointType::Normal &&
+        (requestType == ECheckpointRequestType::DeleteData ||
+         requestType == ECheckpointRequestType::CreateWithoutData))
+    {
+        TString message = TStringBuilder()
+                          << requestType
+                          << " request makes sense for normal checkpoints only";
+        return MakeError(E_ARGUMENT, std::move(message));
+    }
+
+    const auto actualCheckpointType = GetCheckpointType(checkpointId);
+
+    if (actualCheckpointType && actualCheckpointType != checkpointType) {
+        TString message = TStringBuilder()
+                          << "Checkpoint exists and has another type "
+                          << *actualCheckpointType;
+        return makeErrorInvalid(std::move(message));
+    }
+
+    const bool checkpointExists = actualCheckpointType.has_value();
+    const bool checkpointDataPresent =
+        checkpointExists && DoesCheckpointHaveData(checkpointId);
+    const bool checkpointDeleted = IsCheckpointDeleted(checkpointId);
+
+    if (!checkpointExists && !checkpointDeleted) {
+        // Checkpoint never existed.
+        switch (requestType) {
+            case ECheckpointRequestType::Create:
+            case ECheckpointRequestType::CreateWithoutData: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::DeleteData:
+            case ECheckpointRequestType::Delete: {
+                return makeErrorInvalid("Checkpoint does not exist");
+            }
+        }
+    }
+    if (checkpointExists && checkpointDataPresent) {
+        // Checkpoint exists and has data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                return makeErrorAlready("Checkpoint exists");
+            }
+            case ECheckpointRequestType::DeleteData:
+            case ECheckpointRequestType::Delete: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                return makeErrorInvalid("Checkpoint exists and has data");
+            }
+        }
+    }
+    if (checkpointExists && !checkpointDataPresent) {
+        // Checkpoint exists and has no data.
+        switch (requestType) {
+            case ECheckpointRequestType::Create: {
+                if (checkpointType == ECheckpointType::Normal) {
+                    return makeErrorInvalid(
+                        "Checkpoint exists and has no data");
+                }
+                return makeErrorAlready("Checkpoint exists");
+            }
+            case ECheckpointRequestType::DeleteData: {
+                return makeErrorAlready("Data is already deleted");
+            }
+            case ECheckpointRequestType::Delete: {
+                return std::nullopt;
+            }
+            case ECheckpointRequestType::CreateWithoutData: {
+                return makeErrorAlready("Checkpoint exists");
+            }
+        }
+    }
+    if (!checkpointExists && checkpointDeleted) {
+        // Checkpoint was deleted.
+        switch (requestType) {
+            case ECheckpointRequestType::Create:
+            case ECheckpointRequestType::CreateWithoutData:
+            case ECheckpointRequestType::DeleteData: {
+                return makeErrorInvalid("Checkpoint is already deleted");
+            }
+            case ECheckpointRequestType::Delete: {
+                return makeErrorAlready("Checkpoint is already deleted");
+            }
+        }
+    }
+    STORAGE_CHECK_PRECONDITION(false);
+    return MakeError(
+        E_INVALID_STATE,
+        "Checkpoint validation should never reach this line");
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
