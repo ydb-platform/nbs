@@ -435,37 +435,37 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         ui64 volumeTabletId = 0;
         std::unordered_set<TActorId> connections;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeVolumeResponse: {
-                        if (!volumeTabletId) {
-                            using TEvent = TEvSSProxy::TEvDescribeVolumeResponse;
-                            auto* msg = event->template Get<TEvent>();
-                            const auto& volumeDescription =
-                                msg->PathDescription.GetBlockStoreVolumeDescription();
-                            volumeTabletId = volumeDescription.GetVolumeTabletId();
-                        }
-                        break;
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvSSProxy::EvDescribeVolumeResponse: {
+                    if (!volumeTabletId) {
+                        using TEvent = TEvSSProxy::TEvDescribeVolumeResponse;
+                        auto* msg = event->template Get<TEvent>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
                     }
-                    case TEvTabletPipe::EvClientConnected: {
-                        auto* msg =
-                            event->template Get<TEvTabletPipe::TEvClientConnected>();
-                        if (volumeTabletId && msg->TabletId == volumeTabletId) {
-                            connections.emplace(event->Recipient);
-                        }
-                        break;
-                    }
-                    case TEvTabletPipe::EvClientDestroyed: {
-                        auto* msg =
-                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
-                        if (volumeTabletId && msg->TabletId == volumeTabletId) {
-                            connections.erase(event->Recipient);
-                        }
-                        break;
-                    }
+                    break;
                 }
-                return false;
-            });
+                case TEvTabletPipe::EvClientConnected: {
+                    auto* msg =
+                        event->template Get<TEvTabletPipe::TEvClientConnected>();
+                    if (volumeTabletId && msg->TabletId == volumeTabletId) {
+                        connections.emplace(event->Recipient);
+                    }
+                    break;
+                }
+                case TEvTabletPipe::EvClientDestroyed: {
+                    auto* msg =
+                        event->template Get<TEvTabletPipe::TEvClientDestroyed>();
+                    if (volumeTabletId && msg->TabletId == volumeTabletId) {
+                        connections.erase(event->Recipient);
+                    }
+                    break;
+                }
+            }
+            return false;
+        });
 
         service1.CreateVolume();
         service1.WaitForVolume();
@@ -474,6 +474,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         TServiceClient service2(runtime, nodeIdx2);
 
         service2.StatVolume();
+
+        UNIT_ASSERT_LE(2, connections.size());
 
         RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
         runtime.DispatchEvents(TDispatchOptions{
