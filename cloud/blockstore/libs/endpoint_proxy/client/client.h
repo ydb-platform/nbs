@@ -37,6 +37,7 @@ struct TEndpointProxyClientConfig
     {
         TDuration Backoff;
         TDuration TotalTimeout;
+        TDuration UnixSocketConnectTimeout;
     };
 
     TString Host;

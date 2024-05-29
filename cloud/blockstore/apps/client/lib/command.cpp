@@ -600,6 +600,7 @@ void TCommand::Init()
             {
                 TDuration::Seconds(1),
                 TDuration::Minutes(5),
+                TDuration::Seconds(5),
             },
         }, Scheduler, Timer, Logging);
     }

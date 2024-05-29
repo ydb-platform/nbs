@@ -188,12 +188,15 @@ private:
 class TListProxyEndpointsCommand final: public TCommand
 {
 private:
-    TString UnixSocketPath;
+    bool Loop = false;
 
 public:
     explicit TListProxyEndpointsCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
+        Opts.AddLongOption("loop", "retry list commands in a loop")
+            .NoArgument()
+            .SetFlag(&Loop);
     }
 
 protected:
@@ -212,23 +215,34 @@ protected:
             ParseFromTextFormat(input, *request);
         }
 
-        STORAGE_DEBUG("Sending ListProxyEndpoints request");
-        auto result = WaitFor(EndpointProxyClient->ListProxyEndpoints(
-            std::move(request)));
+        bool ret = false;
+        while (true) {
+            STORAGE_DEBUG("Sending ListProxyEndpoints request");
+            auto result = WaitFor(EndpointProxyClient->ListProxyEndpoints(request));
 
-        STORAGE_DEBUG("Received ListProxyEndpoints response");
-        if (Proto) {
-            SerializeToTextFormat(result, output);
-            return true;
+            STORAGE_DEBUG("Received ListProxyEndpoints response");
+            if (Proto) {
+                SerializeToTextFormat(result, output);
+                ret = true;
+                continue;
+            }
+
+            if (HasError(result)) {
+                output << FormatError(result.GetError()) << Endl;
+                continue;
+            }
+
+            output << result.DebugString() << Endl;
+            ret = true;
+
+            if (Loop) {
+                Sleep(TDuration::Seconds(1));
+            } else {
+                break;
+            }
         }
 
-        if (HasError(result)) {
-            output << FormatError(result.GetError()) << Endl;
-            return false;
-        }
-
-        output << result.DebugString() << Endl;
-        return true;
+        return ret;
     }
 
 private:

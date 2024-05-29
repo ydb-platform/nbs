@@ -22,6 +22,8 @@
 #include <contrib/libs/grpc/include/grpcpp/impl/codegen/status.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 
+#include <cerrno>
+
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
@@ -154,6 +156,7 @@ struct TEndpointProxyClient
     const ITimerPtr Timer;
     TLog Log;
 
+    bool NeedConnect = true;
     std::shared_ptr<grpc::Channel> Channel;
 
     grpc::CompletionQueue CQ;
@@ -169,13 +172,37 @@ struct TEndpointProxyClient
         , Timer(std::move(timer))
         , Log(logging->CreateLog("ENDPOINT_PROXY_CLIENT"))
     {
+        ReconnectIfNeeded();
+    }
+
+    void ReconnectIfNeeded()
+    {
+        if (!NeedConnect) {
+            return;
+        }
+
         if (Config.UnixSocketPath) {
             TSockAddrLocal addr(Config.UnixSocketPath.c_str());
 
             TLocalStreamSocket socket;
-            auto res = socket.Connect(&addr);
-            Y_ENSURE_EX(res >= 0, yexception() << "failed to connect to"
-                " endpoint proxy socket, res: " << res);
+
+            const auto deadline =
+                Timer->Now() + Config.RetryPolicy.UnixSocketConnectTimeout;
+            while (true) {
+                auto res = socket.Connect(&addr);
+                if (res == -ENOENT || res == -ECONNREFUSED) {
+                    STORAGE_WARN("Retrying uds connection, res: " << res);
+
+                    if (Timer->Now() < deadline) {
+                        Sleep(TDuration::Seconds(1));
+                        continue;
+                    }
+                }
+
+                Y_ENSURE_EX(res >= 0, yexception() << "failed to connect to"
+                    " endpoint proxy socket, res: " << res);
+                break;
+            }
 
             Channel = grpc::CreateInsecureChannelFromFd(
                 "localhost",
@@ -201,6 +228,8 @@ struct TEndpointProxyClient
                 Sprintf("%s:%u", Config.Host.c_str(), Config.Port),
                 channelCredentials);
         }
+
+        NeedConnect = false;
     }
 
     template <typename TContext>
@@ -309,8 +338,20 @@ struct TEndpointProxyClient
             + Config.RetryPolicy.TotalTimeout;
 
         if (errorKind == EErrorKind::ErrorRetriable && Timer->Now() < deadline) {
+            STORAGE_WARN("Will retry error: "
+                << FormatError(requestContext.Response.GetError()));
+
+            if (Config.UnixSocketPath) {
+                NeedConnect = true;
+            }
+
             Retry(requestContext);
         } else {
+            if (HasError(requestContext.Response.GetError())) {
+                STORAGE_WARN("Won't retry error: "
+                    << FormatError(requestContext.Response.GetError()));
+            }
+
             requestContext.Promise.SetValue(std::move(requestContext.Response));
         }
     }
@@ -318,6 +359,13 @@ struct TEndpointProxyClient
     template <typename TRequestContext>
     void Retry(TRequestContext& requestContext)
     {
+        try {
+            ReconnectIfNeeded();
+        } catch (...) {
+            STORAGE_ERROR("Unexpected reconnect error: "
+                << CurrentExceptionMessage());
+        }
+
         auto request = std::move(requestContext.Request);
         auto p = std::move(requestContext.Promise);
         auto weakPtr = this->weak_from_this();
