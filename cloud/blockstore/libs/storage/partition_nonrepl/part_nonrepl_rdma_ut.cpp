@@ -584,7 +584,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
             0,
             requestCounters.ReadBlocks.GetRequestVoidBytes());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            512 * 4096,
             requestCounters.ReadBlocks.GetRequestNonVoidBytes());
     }
 
@@ -987,7 +987,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -1021,7 +1021,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                rangeWithDirtyBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -1062,7 +1062,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                onlyVoidBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestVoidBytes());
         }
 
@@ -1093,7 +1093,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 0,
                 counters.ReadBlocks.GetRequestNonVoidBytes());
             UNIT_ASSERT_VALUES_EQUAL(
-                0,
+                onlyVoidBlocks.Size() * DefaultBlockSize,
                 counters.ReadBlocks.GetRequestVoidBytes());
         }
     }

@@ -141,11 +141,12 @@ public:
         ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
         auto error = Response.GetError();
 
-        ui32 blockCount = Response.GetBlocks().BuffersSize();
+        const ui32 blockCount = Response.GetBlocks().BuffersSize();
+        const bool allZeroes = VoidBlockCount == blockCount;
 
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
-        response->Record.SetAllZeroes(VoidBlockCount == blockCount);
+        response->Record.SetAllZeroes(allZeroes);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -160,6 +161,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
+        completion->VoidBlockCount = allZeroes ? blockCount : 0;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();

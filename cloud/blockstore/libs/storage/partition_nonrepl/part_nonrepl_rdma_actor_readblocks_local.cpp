@@ -138,9 +138,10 @@ public:
 
         ProcessError(*ActorSystem, *PartConfig, Error);
 
+        const bool allZeroes = VoidBlockCount == RequestBlockCount;
         auto response =
             std::make_unique<TEvService::TEvReadBlocksLocalResponse>(Error);
-        response->Record.SetAllZeroes(VoidBlockCount == RequestBlockCount);
+        response->Record.SetAllZeroes(allZeroes);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -157,6 +158,8 @@ public:
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
+        completion->NonVoidBlockCount = allZeroes ? 0 : RequestBlockCount;
+        completion->VoidBlockCount = allZeroes ? RequestBlockCount : 0;
 
         counters.SetBlocksCount(RequestBlockCount);
         auto completionEvent = std::make_unique<IEventHandle>(
