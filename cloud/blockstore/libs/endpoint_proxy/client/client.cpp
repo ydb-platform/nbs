@@ -171,9 +171,7 @@ struct TEndpointProxyClient
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
         , Log(logging->CreateLog("ENDPOINT_PROXY_CLIENT"))
-    {
-        ReconnectIfNeeded();
-    }
+    {}
 
     void ReconnectIfNeeded()
     {
@@ -237,6 +235,20 @@ struct TEndpointProxyClient
         typename TContext::TRequest request,
         TInstant now)
     {
+        try {
+            ReconnectIfNeeded();
+        } catch (...) {
+            STORAGE_ERROR("Unexpected reconnect error: "
+                << CurrentExceptionMessage());
+
+            // Channel can't be null
+            if (!Channel) {
+                Channel = grpc::CreateChannel(
+                    "lame://channel",
+                    grpc::InsecureChannelCredentials());
+            }
+        }
+
         auto requestContext = std::make_unique<TContext>(
             CQ,
             Channel,
@@ -359,13 +371,6 @@ struct TEndpointProxyClient
     template <typename TRequestContext>
     void Retry(TRequestContext& requestContext)
     {
-        try {
-            ReconnectIfNeeded();
-        } catch (...) {
-            STORAGE_ERROR("Unexpected reconnect error: "
-                << CurrentExceptionMessage());
-        }
-
         auto request = std::move(requestContext.Request);
         auto p = std::move(requestContext.Promise);
         auto weakPtr = this->weak_from_this();
