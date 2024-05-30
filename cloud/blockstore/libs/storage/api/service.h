@@ -161,6 +161,23 @@ struct TEvService
     };
 
     //
+    // VolumeMountStateChanged
+    //
+
+    struct TVolumeMountStateChanged
+    {
+        const TString DiskId;
+        const bool HasLocalMount = false;
+
+        explicit TVolumeMountStateChanged(
+                TString diskId,
+                bool value)
+            : DiskId(std::move(diskId))
+            , HasLocalMount(value)
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -295,6 +312,8 @@ struct TEvService
         EvGetCheckpointStatusRequest = EvBegin + 86,
         EvGetCheckpointStatusResponse = EvBegin + 87,
 
+        EvVolumeMountStateChanged = EvBegin + 88,
+
         EvEnd
     };
 
@@ -317,6 +336,11 @@ struct TEvService
     using TEvVolumeConfigUpdated = TRequestEvent<
         TVolumeConfigUpdated,
         EvVolumeConfigUpdated
+    >;
+
+    using TEvVolumeMountStateChanged = TRequestEvent<
+        TVolumeMountStateChanged,
+        EvVolumeMountStateChanged
     >;
 };
 

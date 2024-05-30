@@ -310,6 +310,8 @@ void TServiceActor::RenderVolumeList(IOutputStream& out) const
                             cssClass = "label-success";
                         } else if (volume.IsMounted()) {
                             statusText = "Mounted (remote)";
+                        } else if (volume.GetTabletReportedLocalMount()) {
+                            statusText = "Mounted (preempted)";
                         }
 
                         SPAN_CLASS("label " + cssClass) {

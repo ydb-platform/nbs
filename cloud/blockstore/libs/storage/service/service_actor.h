@@ -173,6 +173,10 @@ private:
         TRequestInfo& requestInfo,
         TString message);
 
+    void HandleVolumeMountStateChanged(
+        const TEvService::TEvVolumeMountStateChanged::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleRegisterVolume(
         const TEvService::TEvRegisterVolume::TPtr& ev,
         const NActors::TActorContext& ctx);

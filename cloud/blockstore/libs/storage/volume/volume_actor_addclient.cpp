@@ -527,6 +527,13 @@ void TVolumeActor::OnClientListUpdate(const NActors::TActorContext& ctx)
             std::make_unique<TEvVolume::TEvRWClientIdChanged>(
                 State->GetReadWriteAccessClientId()));
     }
+
+    if (StartMode != EVolumeStartMode::MOUNTED) {
+        auto request = std::make_unique<TEvService::TEvVolumeMountStateChanged>(
+            State->GetDiskId(),
+            !State->GetLocalMountClientId().Empty());
+        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
