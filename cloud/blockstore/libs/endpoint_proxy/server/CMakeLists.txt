@@ -1,5 +1,3 @@
-add_subdirectory(ut)
-
 add_library(libs-endpoint_proxy-server)
 target_link_libraries(libs-endpoint_proxy-server PUBLIC
   contrib-libs-linux-headers
