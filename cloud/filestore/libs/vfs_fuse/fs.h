@@ -131,6 +131,11 @@ int ReplyLock(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const struct flock *lock);
+void CancelRequest(
+    TLog& log,
+    IRequestStats& requestStats,
+    TCallContext& callContext,
+    fuse_req_t req);
 
 ////////////////////////////////////////////////////////////////////////////////
 
