@@ -528,7 +528,7 @@ void TBootstrapBase::Init()
             Logging);
     }
 
-    NBD::IDeviceFactory nbdDeviceFactory;
+    NBD::IDeviceFactoryPtr nbdDeviceFactory;
 
     if (Configs->ServerConfig->GetNbdNetlink()) {
 #ifdef NETLINK
