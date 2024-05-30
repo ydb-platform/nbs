@@ -108,6 +108,8 @@ struct TVolumeInfo
 
     bool SyncManuallyPreemptedVolumesRequired = false;
 
+    bool TabletReportedLocalMount = false;
+
     TVolumeInfo(TString diskId);
 
     //
@@ -120,6 +122,11 @@ struct TVolumeInfo
     TClientInfo* AddClientInfo(const TString& clientId);
     void RemoveClientInfo(TClientInfo* info);
     void RemoveClientInfo(const TString& clientId);
+    void SetTabletReportedLocalMount(bool value);
+    bool GetTabletReportedLocalMount() const
+    {
+        return TabletReportedLocalMount;
+    }
 
     bool IsMounted() const;
     bool IsReadWriteMounted() const;

@@ -168,6 +168,11 @@ bool TVolumeInfo::IsLocallyMounted() const
     return false;
 }
 
+void TVolumeInfo::SetTabletReportedLocalMount(bool value)
+{
+    TabletReportedLocalMount = value;
+}
+
 bool TVolumeInfo::IsDiskRegistryVolume() const
 {
     if (VolumeInfo) {
