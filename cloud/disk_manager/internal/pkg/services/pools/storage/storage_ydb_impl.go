@@ -187,8 +187,11 @@ func (s *storageYDB) updateFreeTable(
 	for _, t := range transitions {
 		key := keyFromBaseDisk(t.state)
 
-		oldFree := t.oldState != nil && t.oldState.hasFreeSlots()
-		free := t.state.hasFreeSlots()
+		oldFree := t.oldState != nil &&
+			t.oldState.hasFreeSlots() &&
+			t.oldState.fromPool
+
+		free := t.state.hasFreeSlots() && t.state.fromPool
 
 		switch {
 		case oldFree && !free:
@@ -1353,69 +1356,13 @@ func (s *storageYDB) relocateOverlayDiskTx(
 		return RebaseInfo{}, err
 	}
 
+	if !isPoolConfigured {
+		return RebaseInfo{}, nil
+	}
+
 	freeBaseDisks, err := s.getFreeBaseDisks(ctx, tx, imageID, targetZoneID)
 	if err != nil {
 		return RebaseInfo{}, err
-	}
-
-	// If pool is configured (alive) suitable base disk will be eventually
-	// created.
-	// Else we should create it manually.
-	if len(freeBaseDisks) == 0 && !isPoolConfigured {
-		acquiredBaseDisk, err := s.getBaseDisk(
-			ctx,
-			tx,
-			acquiredSlot.baseDiskID,
-		)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		targetBaseDisk := s.generateBaseDisk(
-			imageID,
-			targetZoneID,
-			acquiredBaseDisk.imageSize,
-			&types.Disk{
-				ZoneId: acquiredBaseDisk.zoneID,
-				DiskId: acquiredBaseDisk.id,
-			},
-		)
-		logging.Info(ctx, "generated base disk: %+v", targetBaseDisk)
-
-		err = acquireTargetUnitsAndSlots(ctx, tx, &targetBaseDisk, acquiredSlot)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		acquiredSlotOldState := *acquiredSlot
-
-		acquiredSlot.generation += 1
-		acquiredSlot.targetZoneID = targetBaseDisk.zoneID
-		acquiredSlot.targetBaseDiskID = targetBaseDisk.id
-
-		err = s.updateBaseDiskAndSlot(
-			ctx,
-			tx,
-			baseDiskTransition{
-				oldState: nil,
-				state:    &targetBaseDisk,
-			},
-			slotTransition{
-				oldState: &acquiredSlotOldState,
-				state:    acquiredSlot,
-			},
-		)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		err = tx.Commit(ctx)
-		if err != nil {
-			return RebaseInfo{}, err
-		}
-
-		// Should wait until base disk is ready.
-		return RebaseInfo{}, errors.NewInterruptExecutionError()
 	}
 
 	for _, baseDisk := range freeBaseDisks {
