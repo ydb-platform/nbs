@@ -146,4 +146,28 @@ int RemoveLoopbackDevice(const TString& loopDevice)
     return std::system(cmd.c_str());
 }
 
+TString FindFreeNbdDevice(const TString& sysBlockDir)
+{
+    auto sysBlockItems = std::filesystem::directory_iterator{
+        sysBlockDir.c_str()};
+
+    for (const auto& entry: sysBlockItems) {
+        if (!entry.is_directory()) {
+            continue;
+        }
+        TString nbd = entry.path().filename().string();
+        if (!nbd.StartsWith("nbd")) {
+            continue;
+        }
+
+        if (std::filesystem::exists(entry.path() / "pid")) {
+            continue;
+        }
+
+        return "/dev/" + nbd;
+    }
+
+    return "";
+}
+
 }   // namespace NCloud::NBlockStore::NBD

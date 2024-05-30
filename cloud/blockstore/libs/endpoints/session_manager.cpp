@@ -65,7 +65,7 @@ public:
 
         headers.SetClientId(ClientId);
         auto future = Session->MountVolume(std::move(callContext), headers);
-        auto response = Executor.WaitFor(future);
+        const auto& response = Executor.WaitFor(future);
 
         if (HasError(response)) {
             DataClient->Stop();
@@ -78,7 +78,7 @@ public:
     {
         headers.SetClientId(ClientId);
         auto future = Session->UnmountVolume(std::move(callContext), headers);
-        auto response = Executor.WaitFor(future);
+        const auto& response = Executor.WaitFor(future);
 
         DataClient->Stop();
         return response.GetError();
@@ -98,7 +98,7 @@ public:
             mountSeqNumber,
             std::move(callContext),
             headers);
-        auto response = Executor.WaitFor(future);
+        const auto& response = Executor.WaitFor(future);
         return response.GetError();
     }
 
@@ -620,7 +620,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             return TResultOrError(std::move(storage));
         });
 
-    auto storageResult = Executor->WaitFor(future);
+    const auto& storageResult = Executor->WaitFor(future);
     auto storage = storageResult.GetResult();
 
     auto clientConfig = CreateClientConfig(request);
@@ -662,7 +662,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         request.GetEncryptionSpec(),
         request.GetDiskId());
 
-    auto clientOrError = Executor->WaitFor(encryptionFuture);
+    const auto& clientOrError = Executor->WaitFor(encryptionFuture);
     if (HasError(clientOrError)) {
         return clientOrError.GetError();
     }

@@ -1062,7 +1062,7 @@ TVector<TBlobUpdate> TPartitionState::FinishDirtyBlobCleanup(
 
     auto deletionsInfo = Blobs.CleanupDirtyRanges();
 
-    for (const auto blobUpdate: deletionsInfo.BlobUpdates) {
+    for (const auto& blobUpdate: deletionsInfo.BlobUpdates) {
         auto it = BlobUpdatesByFresh.find(blobUpdate);
         if (it != BlobUpdatesByFresh.end()) {
             BlobUpdatesByFresh.erase(it);

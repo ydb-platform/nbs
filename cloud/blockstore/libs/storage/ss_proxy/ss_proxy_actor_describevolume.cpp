@@ -143,7 +143,7 @@ void TDescribeVolumeActor::HandleDescribeSchemeResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto error = msg->GetError();
+    const auto& error = msg->GetError();
 
     if (HasError(error)) {
         if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
