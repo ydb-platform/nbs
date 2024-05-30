@@ -10,7 +10,6 @@ target_link_libraries(blockstore-endpoint-proxy PUBLIC
   libs-endpoint_proxy-server
   core-libs-daemon
   run
-  ydb-core-security
   library-cpp-getopt
 )
 target_link_options(blockstore-endpoint-proxy PRIVATE
