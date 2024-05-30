@@ -8,7 +8,7 @@ target_link_libraries(cloud-blockstore-libs-endpoint_proxy-client-ut PUBLIC
   yutil
   library-cpp-cpuid_check
   cpp-testing-unittest_main
-  blockstore-libs-endpoint_proxy-client
+  libs-endpoint_proxy-client
 )
 target_link_options(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
   -ldl
