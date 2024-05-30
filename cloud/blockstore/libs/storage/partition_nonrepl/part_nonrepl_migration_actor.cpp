@@ -72,6 +72,11 @@ bool TNonreplicatedPartitionMigrationActor::OnMessage(
         HFunc(
             TEvDiskRegistry::TEvFinishMigrationResponse,
             HandleFinishMigrationResponse);
+        HFunc(
+            TEvStatsServicePrivate::
+                TEvRegisterBackgroundBandwidthSourceResponse,
+            TimeoutCalculator.HandleUpdateBandwidthLimit);
+        HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         default:
             return false;
             break;
@@ -224,6 +229,16 @@ NActors::TActorId TNonreplicatedPartitionMigrationActor::CreateDstActor(
             RdmaClient));
 }
 
+void TNonreplicatedPartitionMigrationActor::DoRegisterBandwidthSource(
+    const NActors::TActorContext& ctx)
+{
+    if (MigrationFinished) {
+        return;
+    }
+    TimeoutCalculator.RegisterBandwidthSource(ctx);
+    ctx.Schedule(RegisterBandwidthSourceTimeout, new TEvents::TEvWakeup());
+}
+
 void TNonreplicatedPartitionMigrationActor::HandleMigrationStateUpdated(
     const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
     const TActorContext& ctx)
@@ -296,6 +311,16 @@ void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationRespo
     }
 
     StartWork(ctx);
+    DoRegisterBandwidthSource(ctx);
+}
+
+void TNonreplicatedPartitionMigrationActor::HandleWakeup(
+    const NActors::TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    DoRegisterBandwidthSource(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

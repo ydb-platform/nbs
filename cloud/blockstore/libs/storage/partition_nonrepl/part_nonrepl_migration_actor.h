@@ -51,6 +51,7 @@ private:
     void FinishMigration(const NActors::TActorContext& ctx, bool isRetry);
     NActors::TActorId CreateSrcActor(const NActors::TActorContext& ctx);
     NActors::TActorId CreateDstActor(const NActors::TActorContext& ctx);
+    void DoRegisterBandwidthSource(const NActors::TActorContext& ctx);
 
     void HandleMigrationStateUpdated(
         const TEvVolume::TEvMigrationStateUpdated::TPtr& ev,
@@ -66,6 +67,10 @@ private:
 
     void HandlePreparePartitionMigrationResponse(
         const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleWakeup(
+        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

@@ -558,6 +558,7 @@ public:
 
     ui32 GetMaxShadowDiskFillBandwidth() const;
     ui32 GetMaxShadowDiskFillIoDepth() const;
+    ui32 GetBackgroundOperationsTotalBandwidth() const;
 
     TDuration GetMinAcquireShadowDiskRetryDelayWhenBlocked() const;
     TDuration GetMaxAcquireShadowDiskRetryDelayWhenBlocked() const;

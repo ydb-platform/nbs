@@ -30,9 +30,6 @@ TStatsServiceActor::TStatsServiceActor(
     , UserCounters(CreateUserCounterSupplier())
 {}
 
-TStatsServiceActor::~TStatsServiceActor()
-{}
-
 void TStatsServiceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
@@ -41,6 +38,7 @@ void TStatsServiceActor::Bootstrap(const TActorContext& ctx)
         "Stats service running");
 
     RegisterCounters(ctx);
+    ScheduleCleanupBackgroundSources(ctx);
 }
 
 void TStatsServiceActor::RegisterCounters(const TActorContext& ctx)
@@ -128,6 +126,13 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(TEvStatsServicePrivate::TEvUploadDisksStatsCompleted, HandleUploadDisksStatsCompleted);
 
         HFunc(TEvStatsServicePrivate::TEvStatsUploadRetryTimeout, HandleStatsUploadRetryTimeout);
+
+        HFunc(
+            TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceRequest,
+            HandleRegisterBackgroundBandwidthSource);
+        HFunc(
+            TEvStatsServicePrivate::TEvCleanupBackgroundSources,
+            HandleCleanupBackgroundSources);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::STATS_SERVICE);
