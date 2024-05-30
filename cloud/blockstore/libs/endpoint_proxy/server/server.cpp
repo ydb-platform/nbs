@@ -532,12 +532,7 @@ struct TServer: IEndpointProxyServer
             ep.NbdDevicePath = request.GetNbdDevice();
             if (ep.NbdDevicePath) {
 #ifdef NETLINK
-                bool netlink = Config.Netlink;
-#else
-                bool netlink = false;
-                STORAGE_ERROR("built without netlink support, falling back to ioctl");
-#endif
-                if (netlink) {
+                if (Config.netlink) {
                     ep.NbdDevice = NBD::CreateNetlinkDevice(
                         Logging,
                         *ep.ListenAddress,
@@ -545,7 +540,10 @@ struct TServer: IEndpointProxyServer
                         TDuration::Minutes(1),  // request timeout
                         TDuration::Days(1),     // connection timeout
                         true);                  // reconfigure device if exists
-                } else {
+#else
+                STORAGE_ERROR("built without netlink support, falling back to ioctl");
+#endif
+                if (ep.NbdDevice == nullptr) {
                     ep.NbdDevice = NBD::CreateDevice(
                         Logging,
                         *ep.ListenAddress,

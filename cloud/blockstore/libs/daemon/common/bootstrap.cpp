@@ -528,27 +528,33 @@ void TBootstrapBase::Init()
             Logging);
     }
 
-#ifdef NETLINK
-    bool netlink = Configs->ServerConfig->GetNbdNetlink();
-#else
-    bool netlink = false;
-    STORAGE_ERROR("built without netlink support, falling back to ioctl");
-#endif
-    const ui32 defaultSectorSize = 4_KB;
+    NBD::IDeviceFactory nbdDeviceFactory;
 
-    auto nbdDeviceFactory = netlink
-        ? NBD::CreateNetlinkDeviceFactory(
+    if (Configs->ServerConfig->GetNbdNetlink()) {
+#ifdef NETLINK
+        nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
-            true)                   // reconfigure
-        : EndpointProxyClient
-        ? NClient::CreateProxyDeviceFactory(
+            true);  // reconfigure
+#else
+        STORAGE_ERROR("built without netlink support, falling back to ioctl");
+#endif
+    }
+
+    if (!nbdDeviceFactory && EndpointProxyClient) {
+        const ui32 defaultSectorSize = 4_KB;
+
+        nbdDeviceFactory = NClient::CreateProxyDeviceFactory(
             {defaultSectorSize},
-            EndpointProxyClient)
-        : NBD::CreateDeviceFactory(
+            EndpointProxyClient);
+    }
+
+    if (!nbdDeviceFactory) {
+        nbdDeviceFactory = NBD::CreateDeviceFactory(
             Logging,
             TDuration::Days(1));    // timeout
+    }
 
     EndpointManager = CreateEndpointManager(
         Timer,
