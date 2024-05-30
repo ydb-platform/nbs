@@ -31,6 +31,7 @@ target_link_libraries(libs-daemon-common PUBLIC
   blockstore-libs-encryption
   blockstore-libs-nbd
   blockstore-libs-nvme
+  libs-endpoint_proxy-client
   libs-rdma-iface
   blockstore-libs-server
   blockstore-libs-service

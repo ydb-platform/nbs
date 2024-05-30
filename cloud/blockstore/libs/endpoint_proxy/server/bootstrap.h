@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
-#include <contrib/ydb/library/actors/util/should_continue.h>
+#include <library/cpp/actors/util/should_continue.h>
 
 namespace NCloud::NBlockStore::NServer {
 

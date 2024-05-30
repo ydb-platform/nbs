@@ -8,5 +8,6 @@
 
 add_subdirectory(client)
 add_subdirectory(disk_agent)
+add_subdirectory(endpoint_proxy)
 add_subdirectory(server)
 add_subdirectory(server_lightweight)

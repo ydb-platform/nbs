@@ -18,11 +18,11 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/uds
 
+    library/cpp/actors/util
     library/cpp/getopt/small
     library/cpp/logger
 
     contrib/libs/grpc
-    contrib/ydb/library/actors/util
 )
 
 IF(NETLINK)
