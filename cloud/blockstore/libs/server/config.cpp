@@ -97,6 +97,7 @@ constexpr TDuration Seconds(int s)
     xxx(NbdRequestTimeout,           TDuration,             Seconds(60)       )\
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
+    xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

@@ -188,6 +188,9 @@ message TServerConfig
     // instead of ioctl-based nbd device factory usage (but NbdNetlink flag has
     // higher priority).
     optional string EndpointProxySocketPath = 114;
+
+    // Allow all control requests via unix socket (e.g., for CSI-driver)
+    optional bool AllowAllRequestsViaUDS = 115;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
