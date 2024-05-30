@@ -596,16 +596,19 @@ void TBootstrapBase::Init()
         STORAGE_INFO("ThrottlingService initialized");
     }
 
-    auto udsService = CreateFilteredService(Service, {
-        EBlockStoreRequest::Ping,
-        EBlockStoreRequest::QueryAvailableStorage,
-        EBlockStoreRequest::DescribeVolume,
-        EBlockStoreRequest::KickEndpoint,
-        EBlockStoreRequest::StopEndpoint,
-        EBlockStoreRequest::RefreshEndpoint,
-        EBlockStoreRequest::CreateVolumeFromDevice,
-        EBlockStoreRequest::ResumeDevice
-    });
+    auto udsService = Service;
+    if (!Configs->ServerConfig->GetAllowAllRequestsViaUDS()) {
+        udsService = CreateFilteredService(Service, {
+            EBlockStoreRequest::Ping,
+            EBlockStoreRequest::QueryAvailableStorage,
+            EBlockStoreRequest::DescribeVolume,
+            EBlockStoreRequest::KickEndpoint,
+            EBlockStoreRequest::StopEndpoint,
+            EBlockStoreRequest::RefreshEndpoint,
+            EBlockStoreRequest::CreateVolumeFromDevice,
+            EBlockStoreRequest::ResumeDevice
+        });
+    }
 
     InitAuthService();
 
