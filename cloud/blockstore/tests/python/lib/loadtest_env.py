@@ -188,6 +188,10 @@ class LocalLoadTest:
         return self.nbs.access_service
 
     @property
+    def nbs_cwd(self):
+        return self.nbs.cwd
+
+    @property
     def devices(self):
         return self.__devices
 

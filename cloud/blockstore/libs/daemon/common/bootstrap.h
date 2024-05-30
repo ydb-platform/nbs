@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
+#include <cloud/blockstore/libs/endpoint_proxy/client/public.h>
 #include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/endpoints_grpc/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
@@ -68,6 +69,7 @@ protected:
     NSpdk::ISpdkEnvPtr Spdk;
     ICachingAllocatorPtr Allocator;
     IStorageProviderPtr AioStorageProvider;
+    NClient::IEndpointProxyClientPtr EndpointProxyClient;
     IEndpointManagerPtr EndpointManager;
     IEndpointEventProxyPtr EndpointEventHandler;
     NRdma::IServerPtr RdmaServer;
