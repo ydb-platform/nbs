@@ -1111,6 +1111,8 @@ void TVolumeActor::ProcessCheckpointRequests(const NActors::TActorContext& ctx)
             // Execution of the request has started, should return now.
             return;
         }
+        checkpointStore.RemoveCheckpointRequest(requestId);
+        CheckpointRequests.erase(requestId);
     }
 }
 
@@ -1139,8 +1141,6 @@ bool TVolumeActor::ProcessCheckpointRequest(const TActorContext& ctx, ui64 reque
             // Will not save this request to database and execute it.
             // Instead, reply to this request immediately
             // and proceed with the next request.
-            checkpointStore.RemoveCheckpointRequest(request.RequestId);
-            CheckpointRequests.erase(request.RequestId);
             ReplyToCheckpointRequestWithoutSaving(
                 ctx,
                 request.ReqType,
