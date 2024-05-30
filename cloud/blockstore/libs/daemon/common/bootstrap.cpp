@@ -28,6 +28,8 @@
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryption_service.h>
+#include <cloud/blockstore/libs/endpoint_proxy/client/client.h>
+#include <cloud/blockstore/libs/endpoint_proxy/client/device_factory.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_manager.h>
@@ -508,18 +510,39 @@ void TBootstrapBase::Init()
         .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
     };
 
+    if (Configs->ServerConfig->GetEndpointProxySocketPath()) {
+        EndpointProxyClient = NClient::CreateClient(
+            {
+                "", // Host
+                0,  // Port
+                0,  // SecurePort
+                "", // RootCertsFile
+                Configs->ServerConfig->GetEndpointProxySocketPath(),
+                {}, // RetryPolicy
+            },
+            Scheduler,
+            Timer,
+            Logging);
+    }
+
 #ifdef NETLINK
-    auto netlink = Configs->ServerConfig->GetNbdNetlink();
+    bool netlink = Configs->ServerConfig->GetNbdNetlink();
 #else
-    auto netlink = false;
+    bool netlink = false;
     STORAGE_ERROR("built without netlink support, falling back to ioctl");
 #endif
+    const ui32 defaultSectorSize = 4_KB;
+
     auto nbdDeviceFactory = netlink
         ? NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
             true)                   // reconfigure
+        : EndpointProxyClient
+        ? NClient::CreateProxyDeviceFactory(
+            {defaultSectorSize},
+            EndpointProxyClient)
         : NBD::CreateDeviceFactory(
             Logging,
             TDuration::Days(1));    // timeout
@@ -828,6 +851,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(Spdk);
     START_KIKIMR_COMPONENT(ActorSystem);
     START_COMMON_COMPONENT(FileIOService);
+    START_COMMON_COMPONENT(EndpointProxyClient);
     START_COMMON_COMPONENT(EndpointManager);
     START_COMMON_COMPONENT(Service);
     START_COMMON_COMPONENT(VhostServer);
@@ -895,6 +919,7 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(VhostServer);
     STOP_COMMON_COMPONENT(Service);
     STOP_COMMON_COMPONENT(EndpointManager);
+    STOP_COMMON_COMPONENT(EndpointProxyClient);
     STOP_COMMON_COMPONENT(FileIOService);
     STOP_KIKIMR_COMPONENT(ActorSystem);
     STOP_COMMON_COMPONENT(Spdk);

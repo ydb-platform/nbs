@@ -35,9 +35,9 @@ struct TEndpointProxyClientConfig
 {
     struct TRetryPolicy
     {
-        TDuration Backoff;
-        TDuration TotalTimeout;
-        TDuration UnixSocketConnectTimeout;
+        TDuration Backoff = TDuration::Seconds(1);
+        TDuration TotalTimeout = TDuration::Days(1);
+        TDuration UnixSocketConnectTimeout = TDuration::Seconds(5);
     };
 
     TString Host;

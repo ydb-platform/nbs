@@ -130,6 +130,7 @@ public:
     bool GetNbdNetlink() const;
     TDuration GetNbdRequestTimeout() const;
     TDuration GetNbdConnectionTimeout() const;
+    TString GetEndpointProxySocketPath() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;
