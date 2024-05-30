@@ -6,6 +6,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <unordered_set>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -48,33 +50,46 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
             GetFileStoreDescription().
             GetIndexTabletId();
 
+        std::unordered_set<TActorId> connections;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvTabletPipe::EvClientConnected: {
+                    auto* msg =
+                        event->template Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->TabletId == fsTabletId) {
+                        connections.emplace(event->Recipient);
+                    }
+                    break;
+                }
+                case TEvTabletPipe::EvClientDestroyed: {
+                    auto* msg =
+                        event->template Get<TEvTabletPipe::TEvClientDestroyed>();
+                    if (msg->TabletId == fsTabletId) {
+                        connections.erase(event->Recipient);
+                    }
+                    break;
+                }
+            }
+            return false;
+        });
+
         TIndexTabletProxyClient tabletProxy1(env.GetRuntime(), nodeIdx1);
         tabletProxy1.WaitReady("test");
-
-        ui64 disconnections = 0;
-        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvTabletPipe::EvClientDestroyed: {
-                        auto* msg =
-                            event->template Get<TEvTabletPipe::TEvClientDestroyed>();
-                        if (msg->TabletId == fsTabletId) {
-                            ++disconnections;
-                        }
-                    }
-                }
-                return false;
-            });
 
         ui32 nodeIdx2 = env.CreateNode("nfs");
 
         TIndexTabletProxyClient tabletProxy2(env.GetRuntime(), nodeIdx2);
         tabletProxy2.WaitReady("test");
 
-        tabletProxy2.SendWaitReadyRequest("test");
+        UNIT_ASSERT_LE(2, connections.size());
 
         RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
-        UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return connections.empty();
+            }});
     }
 }
 
