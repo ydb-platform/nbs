@@ -22,6 +22,7 @@ public:
     ui64 RequestSize = 0;
     bool Unaligned = false;
 
+    int CancellationCode = 0;
     std::atomic<bool> Cancelled = false;
 
     explicit TCallContext(ui64 requestId = 0);

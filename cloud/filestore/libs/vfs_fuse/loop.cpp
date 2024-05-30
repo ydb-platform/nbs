@@ -31,7 +31,7 @@
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
-#include <errno.h>
+#include <cerrno>
 #include <pthread.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -43,37 +43,6 @@ using namespace NCloud::NFileStore::NClient;
 using namespace NCloud::NFileStore::NVFS;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-void CancelRequest(
-    TLog& log,
-    IRequestStats& requestStats,
-    TCallContext& callContext,
-    fuse_req_t req,
-    enum fuse_cancelation_code code)
-{
-    FILESTORE_TRACK(ResponseSent, (&callContext), "Cancel");
-    requestStats.ResponseSent(callContext);
-
-    int res = fuse_cancel_request(req, code);
-
-    requestStats.RequestCompleted(
-        log,
-        callContext,
-        MakeError(E_CANCELLED, "Driver is stopping"));
-
-    const ui64 now = GetCycleCount();
-    const auto ts = callContext.CalcRequestTime(now);
-    FILESTORE_TRACK(
-        RequestCompletedError,
-        (&callContext),
-        "Cancel",
-        ts.TotalTime.MicroSeconds(),
-        ts.ExecutionTime.MicroSeconds(),
-        code,
-        res);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -185,6 +154,7 @@ public:
             // cancel signal is needed for the ops that may be indefinitely
             // retried by our vfs layer - e.g. AcquireLock
             for (auto& request: Requests) {
+                request.second->CancellationCode = CancelCode;
                 request.second->Cancelled = true;
             }
         }
@@ -947,12 +917,12 @@ private:
 
         if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
             STORAGE_DEBUG("driver is stopping, cancel request");
+            callContext->CancellationCode = *cancelCode;
             CancelRequest(
                 pThis->Log,
                 *pThis->RequestStats,
                 *callContext,
-                req,
-                *cancelCode);
+                req);
             return;
         }
 
