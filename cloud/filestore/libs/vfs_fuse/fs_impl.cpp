@@ -219,4 +219,13 @@ void TFileSystem::ReplyAttr(
         Config->GetAttrTimeout().Seconds());
 }
 
+void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)
+{
+    NFuse::CancelRequest(
+        Log,
+        *RequestStats,
+        *callContext,
+        req);
+}
+
 }   // namespace NCloud::NFileStore::NFuse

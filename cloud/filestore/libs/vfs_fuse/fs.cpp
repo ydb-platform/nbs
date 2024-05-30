@@ -347,6 +347,36 @@ int ReplyLock(
     return res;
 }
 
+void CancelRequest(
+    TLog& log,
+    IRequestStats& requestStats,
+    TCallContext& callContext,
+    fuse_req_t req)
+{
+    FILESTORE_TRACK(ResponseSent, (&callContext), "Cancel");
+    requestStats.ResponseSent(callContext);
+
+    int res = fuse_cancel_request(
+        req,
+        static_cast<fuse_cancelation_code>(callContext.CancellationCode));
+
+    requestStats.RequestCompleted(
+        log,
+        callContext,
+        MakeError(E_CANCELLED, "Driver is stopping"));
+
+    const ui64 now = GetCycleCount();
+    const auto ts = callContext.CalcRequestTime(now);
+    FILESTORE_TRACK(
+        RequestCompletedError,
+        (&callContext),
+        "Cancel",
+        ts.TotalTime.MicroSeconds(),
+        ts.ExecutionTime.MicroSeconds(),
+        callContext.CancellationCode,
+        res);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemPtr CreateFileSystem(

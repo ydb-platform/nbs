@@ -419,6 +419,8 @@ private:
 
 #undef FILESYSTEM_REPLY_IMPL
 
+    void CancelRequest(TCallContextPtr callContext, fuse_req_t req);
+
     void HandleLock(
         TCallContextPtr callContext,
         fuse_req_t req,
