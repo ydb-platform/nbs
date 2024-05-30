@@ -23,6 +23,13 @@ target_link_options(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
 target_sources(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/client/device_factory_ut.cpp
 )
+set_property(
+  TARGET
+  cloud-blockstore-libs-endpoint_proxy-client-ut
+  PROPERTY
+  SPLIT_FACTOR
+  15
+)
 add_yunittest(
   NAME
   cloud-blockstore-libs-endpoint_proxy-client-ut
