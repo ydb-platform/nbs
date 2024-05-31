@@ -33,10 +33,13 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NActors::TActorId ParentActorId;
     const ui64 RequestId;
+    const bool CheckVoidBlocks;
 
     TAdaptiveLock Lock;
     size_t ResponseCount;
     NProto::TReadBlocksResponse Response;
+
+    ui32 VoidBlockCount = 0;
 
 public:
     TRdmaRequestReadBlocksContext(
@@ -46,12 +49,14 @@ public:
             size_t requestCount,
             ui32 blockCount,
             NActors::TActorId parentActorId,
-            ui64 requestId)
+            ui64 requestId,
+            bool checkVoidBlocks)
         : ActorSystem(actorSystem)
         , PartConfig(std::move(partConfig))
         , RequestInfo(std::move(requestInfo))
         , ParentActorId(parentActorId)
         , RequestId(requestId)
+        , CheckVoidBlocks(checkVoidBlocks)
         , ResponseCount(requestCount)
     {
         TRequestScope timer(*RequestInfo);
@@ -84,6 +89,7 @@ public:
 
         ui64 offset = 0;
         ui64 b = 0;
+        bool isAllZeroes = CheckVoidBlocks;
         while (offset < result.Data.Size()) {
             ui64 targetBlock = dr.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
@@ -91,12 +97,20 @@ public:
                 Min(result.Data.Size() - offset, blocks[targetBlock].Size());
             Y_ABORT_UNLESS(bytes);
 
-            memcpy(
-                const_cast<char*>(blocks[targetBlock].Data()),
-                result.Data.data() + offset,
-                bytes);
+            char* dst = const_cast<char*>(blocks[targetBlock].Data());
+            const char* src = result.Data.data() + offset;
+
+            if (isAllZeroes) {
+                isAllZeroes = IsAllZeroes(src, bytes);
+            }
+            memcpy(dst, src, bytes);
+
             offset += bytes;
             ++b;
+        }
+
+        if (isAllZeroes) {
+            VoidBlockCount += dr.BlockCount;
         }
     }
 
@@ -127,10 +141,12 @@ public:
         ProcessError(*ActorSystem, *PartConfig, *Response.MutableError());
         auto error = Response.GetError();
 
-        ui32 blockCount = Response.GetBlocks().BuffersSize();
+        const ui32 blockCount = Response.GetBlocks().BuffersSize();
+        const bool allZeroes = VoidBlockCount == blockCount;
 
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         response->Record = std::move(Response);
+        response->Record.SetAllZeroes(allZeroes);
         auto event = std::make_unique<IEventHandle>(
             RequestInfo->Sender,
             TActorId(),
@@ -145,6 +161,8 @@ public:
         auto completion = std::make_unique<TCompletionEvent>(std::move(error));
         auto& counters = *completion->Stats.MutableUserReadCounters();
         completion->TotalCycles = RequestInfo->GetTotalCycles();
+        completion->NonVoidBlockCount = allZeroes ? 0 : blockCount;
+        completion->VoidBlockCount = allZeroes ? blockCount : 0;
 
         timer.Finish();
         completion->ExecCycles = RequestInfo->GetExecCycles();
@@ -209,7 +227,8 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocks(
         deviceRequests.size(),
         blockRange.Size(),
         SelfId(),
-        requestId);
+        requestId,
+        Config->GetOptimizeVoidBuffersTransferForReadsEnabled());
 
     auto error = SendReadRequests(
         ctx,
