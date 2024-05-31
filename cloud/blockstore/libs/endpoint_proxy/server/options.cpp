@@ -27,6 +27,10 @@ TOptions::TOptions()
     Opts.AddLongOption("netlink")
         .NoArgument()
         .SetFlag(&Netlink);
+
+    Opts.AddLongOption("stored-endpoints-path")
+        .RequiredArgument("FILE")
+        .StoreResult(&StoredEndpointsPath);
 }
 
 void TOptions::Parse(int argc, char** argv)

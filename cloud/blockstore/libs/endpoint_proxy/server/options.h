@@ -15,6 +15,7 @@ struct TOptions final: TOptionsBase
     TString CertFile;
     TString UnixSocketPath;
     bool Netlink = false;
+    TString StoredEndpointsPath;
 
     TOptions();
 

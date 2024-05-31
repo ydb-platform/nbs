@@ -1,5 +1,6 @@
 #include "server.h"
-#include "cloud/blockstore/config/client.pb.h"
+
+#include <cloud/blockstore/config/client.pb.h>
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -19,6 +20,7 @@
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -40,6 +42,7 @@
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
 #include <util/string/printf.h>
+#include <util/string/subst.h>
 #include <util/thread/factory.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -239,7 +242,8 @@ struct TServer: IEndpointProxyServer
         NBD::IDevicePtr NbdDevice;
         std::unique_ptr<TNetworkAddress> ListenAddress;
 
-        TString SockPath;
+        TString UnixSocketPath;
+        TString InternalUnixSocketPath;
         TString NbdDevicePath;
 
         NBD::TStorageOptions NbdOptions;
@@ -269,6 +273,45 @@ struct TServer: IEndpointProxyServer
     ~TServer() override
     {
         Stop();
+    }
+
+    TFsPath StoredEndpointPath(const TEndpoint& ep)
+    {
+        return TFsPath(Config.StoredEndpointsPath)
+            / SubstGlobalCopy(ep.UnixSocketPath, "/", "_");
+    }
+
+    static NProto::TListProxyEndpointsResponse::TProxyEndpoint
+        MakeProxyEndpoint(const TEndpoint& ep)
+    {
+        NProto::TListProxyEndpointsResponse::TProxyEndpoint e;
+        e.SetUnixSocketPath(ep.UnixSocketPath);
+        e.SetInternalUnixSocketPath(ep.InternalUnixSocketPath);
+        e.SetNbdDevice(ep.NbdDevicePath);
+        e.SetBlockSize(ep.NbdOptions.BlockSize);
+        e.SetBlocksCount(ep.NbdOptions.BlocksCount);
+        return e;
+    }
+
+    void StoreEndpointIfNeeded(const TEndpoint& ep)
+    {
+        if (!Config.StoredEndpointsPath) {
+            return;
+        }
+
+        const auto p = StoredEndpointPath(ep);
+        TOFStream os(p);
+        const auto proxyEndpoint = MakeProxyEndpoint(ep);
+        os.Write(ProtoToText(proxyEndpoint));
+    }
+
+    void RemoveStoredEndpointIfNeeded(const TEndpoint& ep)
+    {
+        if (!Config.StoredEndpointsPath) {
+            return;
+        }
+
+        StoredEndpointPath(ep).ForceDelete();
     }
 
     void Wait()
@@ -333,6 +376,48 @@ struct TServer: IEndpointProxyServer
                 std::make_shared<TClientStorage>(*Server));
 
             Y_ENSURE_EX(!HasError(error), yexception() << FormatError(error));
+        }
+
+        if (Config.StoredEndpointsPath) {
+            TVector<TFsPath> files;
+            TFsPath(Config.StoredEndpointsPath).List(files);
+
+            for (const auto& f: files) {
+                STORAGE_INFO("Restoring endpoint from " << f.GetPath());
+
+                NProto::TListProxyEndpointsResponse::TProxyEndpoint e;
+                try {
+                    ParseProtoTextFromFile(f.GetPath(), e);
+                } catch (...) {
+                    STORAGE_ERROR("Couldn't load endpoint from " << f.GetPath()
+                        << ", error: " << CurrentExceptionMessage());
+
+                    continue;
+                }
+
+                auto ep = std::make_shared<TEndpoint>();
+                ep->UnixSocketPath = e.GetUnixSocketPath();
+
+                NProto::TStartProxyEndpointRequest request;
+                request.SetUnixSocketPath(e.GetUnixSocketPath());
+                request.SetNbdDevice(e.GetNbdDevice());
+                request.SetBlockSize(e.GetBlockSize());
+                request.SetBlocksCount(e.GetBlocksCount());
+                NProto::TStartProxyEndpointResponse response;
+
+                try {
+                    DoProcessRequest(request, *ep, response);
+                } catch (...) {
+                    STORAGE_ERROR("Couldn't restore endpoint "
+                        << e.GetUnixSocketPath()
+                        << ", error: " << CurrentExceptionMessage());
+                    continue;
+                }
+
+                Socket2Endpoint[ep->UnixSocketPath] = std::move(ep);
+
+                STORAGE_INFO("Restored endpoint from " << f.GetPath());
+            }
         }
     }
 
@@ -514,9 +599,9 @@ struct TServer: IEndpointProxyServer
             CreateServerStatsStub(),
             ep.NbdOptions);
 
-        ep.SockPath = request.GetUnixSocketPath() + ".proxy";
+        ep.InternalUnixSocketPath = request.GetUnixSocketPath() + ".proxy";
         ep.ListenAddress = std::make_unique<TNetworkAddress>(
-            TUnixSocketPath{ep.SockPath});
+            TUnixSocketPath{ep.InternalUnixSocketPath});
 
         // TODO fix StartEndpoint signature - it's actually synchronous
         auto startResult = NbdServer->StartEndpoint(
@@ -561,7 +646,7 @@ struct TServer: IEndpointProxyServer
                     << " kernel will be established");
             }
 
-            response.SetInternalUnixSocketPath(ep.SockPath);
+            response.SetInternalUnixSocketPath(ep.InternalUnixSocketPath);
         }
     }
 
@@ -584,8 +669,10 @@ struct TServer: IEndpointProxyServer
             }
         } else {
             ep = std::make_shared<TEndpoint>();
+            ep->UnixSocketPath = request.GetUnixSocketPath();
             try {
                 DoProcessRequest(request, *ep, response);
+                StoreEndpointIfNeeded(*ep);
             } catch (...) {
                 ShitHappened(response);
             }
@@ -609,7 +696,7 @@ struct TServer: IEndpointProxyServer
         TEndpoint& ep,
         NProto::TStopProxyEndpointResponse& response) const
     {
-        response.SetInternalUnixSocketPath(ep.SockPath);
+        response.SetInternalUnixSocketPath(ep.InternalUnixSocketPath);
         response.SetNbdDevice(ep.NbdDevicePath);
 
         if (ep.NbdDevice) {
@@ -642,6 +729,7 @@ struct TServer: IEndpointProxyServer
         if (ep) {
             try {
                 DoProcessRequest(request, *ep, response);
+                RemoveStoredEndpointIfNeeded(*ep);
             } catch (...) {
                 ShitHappened(response);
             }
@@ -673,12 +761,7 @@ struct TServer: IEndpointProxyServer
         RequestReceived(request);
 
         for (const auto& x: Socket2Endpoint) {
-            auto& e = *response.AddEndpoints();
-            e.SetUnixSocketPath(x.first);
-            e.SetInternalUnixSocketPath(x.second->SockPath);
-            e.SetNbdDevice(x.second->NbdDevicePath);
-            e.SetBlockSize(x.second->NbdOptions.BlockSize);
-            e.SetBlocksCount(x.second->NbdOptions.BlocksCount);
+            *response.AddEndpoints() = MakeProxyEndpoint(*x.second);
         }
 
         SortBy(

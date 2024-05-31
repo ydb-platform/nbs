@@ -38,4 +38,6 @@ void ParseProtoTextFromFileRobust(
     const TString& fileName,
     google::protobuf::Message& dst);
 
+TString ProtoToText(const google::protobuf::Message& proto);
+
 }   // namespace NCloud

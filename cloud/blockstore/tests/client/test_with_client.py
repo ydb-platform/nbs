@@ -64,13 +64,11 @@ NRD_BLOCKS_COUNT = 1024**3 // BLOCK_SIZE
 # proc utils
 
 def run_async(job, stderr, stdout, cwd=None):
-    def run():
-        with open(os.path.join(common.output_path(), stderr), "w") as err:
-            with open(os.path.join(common.output_path(), stdout), "w") as out:
-                subprocess.call(job, stderr=err, stdout=out, cwd=cwd)
-    t = threading.Thread(target=run)
-    t.setDaemon(True)
-    t.start()
+    return subprocess.Popen(
+        job,
+        stdout=open(os.path.join(common.output_path(), stdout), "w"),
+        stderr=open(os.path.join(common.output_path(), stderr), "w"),
+        cwd=cwd)
 
 
 ################################################################################
@@ -1008,14 +1006,16 @@ def test_endpoint_proxy_uds():
         "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
 
     ep_sock = "ep-%s.sock" % hash(common.context.test_name)
+    stored_endpoints = "sep-%s" % hash(common.context.test_name)
+    os.makedirs(stored_endpoints, exist_ok=True)
 
-    run_async(
-        [
-            endpoint_proxy_path, "--unix-socket-path", ep_sock,
-        ],
-        "endpoint-proxy.out",
-        "endpoint-proxy.err",
-    )
+    cmdline = [
+        endpoint_proxy_path,
+        "--unix-socket-path", ep_sock,
+        "--stored-endpoints-path", stored_endpoints,
+    ]
+
+    proxy = run_async(cmdline, "endpoint-proxy-1.out", "endpoint-proxy-1.err")
 
     run("startproxyendpoint",
         "--endpoint-proxy-unix-socket-path", ep_sock,
@@ -1024,6 +1024,12 @@ def test_endpoint_proxy_uds():
         # "--nbd-device", "TODO-nbd-device",
         "--block-size", "4096",
         "--blocks-count", "1024")
+
+    run("listproxyendpoints",
+        "--endpoint-proxy-unix-socket-path", ep_sock)
+
+    proxy.kill()
+    proxy = run_async(cmdline, "endpoint-proxy-2.out", "endpoint-proxy-2.err")
 
     run("listproxyendpoints",
         "--endpoint-proxy-unix-socket-path", ep_sock)
