@@ -220,7 +220,7 @@ func setupMigrateEmptyOverlayDiskTest(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	// expectedStorageSize is 0 because we should not copy base disk data.
+	// Is 0 because we should not copy base disk data.
 	expectedStorageSize := uint64(0)
 	if !withAliveSrcImage {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
