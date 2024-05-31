@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 
 #include <util/system/hostname.h>
 
@@ -1926,6 +1927,74 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 UNIT_ASSERT_VALUES_EQUAL(ETransferMethod::Zero, method);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldRegisterBackgroundBandwidthSource)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMaxMigrationBandwidth(500);
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, state);
+
+        TVolumeClient volume(*runtime);
+
+        const auto blocksPerDevice =
+            DefaultDeviceBlockCount * DefaultDeviceBlockSize / DefaultBlockSize;
+
+        // creating a nonreplicated disk
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            2.5 * blocksPerDevice);
+
+        volume.WaitReady();
+
+        // Start the migration and check which blocks were copied and which ones
+        // were simply zeroed.
+        state->MigrationMode = EMigrationMode::InProgress;
+
+        ui32 registerSourceCounter = 0;
+        auto countRegisterBackgroundBandwidthSourceRequests =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvStatsServicePrivate::
+                    EvRegisterBackgroundBandwidthSourceRequest)
+            {
+                auto* msg = event->Get<
+                    TEvStatsServicePrivate::
+                        TEvRegisterBackgroundBandwidthSourceRequest>();
+                ++registerSourceCounter;
+                UNIT_ASSERT_VALUES_EQUAL("vol0", msg->SourceId);
+                UNIT_ASSERT_VALUES_EQUAL(500, msg->BandwidthMiBs);
+            }
+            return false;
+        };
+        runtime->SetEventFilter(countRegisterBackgroundBandwidthSourceRequests);
+
+        // reallocating disk
+        volume.ReallocateDisk();
+        volume.ReconnectPipe();
+        volume.WaitReady();
+
+        // Expect that the registration of the background bandwidth source has
+        // occurred.
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(1, registerSourceCounter);
+
+        // The background bandwidth source should be re-registered at intervals
+        // of once per second.
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
 
     Y_UNIT_TEST(ShouldRegularlyReacquireNonreplicatedDisks)

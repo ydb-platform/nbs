@@ -1107,8 +1107,10 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
                     << ShadowDiskId.Quote() << " changed to "
                     << ToString(msg->NewState)
                     << ", processed block count: " << msg->ProcessedBlockCount);
-            State = EActorState::Preparing;
-            DoRegisterBandwidthSource(ctx);
+            if (State != EActorState::Preparing) {
+                State = EActorState::Preparing;
+                DoRegisterBandwidthSource(ctx);
+            }
             STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Ready: {
