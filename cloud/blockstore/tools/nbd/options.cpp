@@ -208,13 +208,23 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("NUM")
         .StoreResult(&MaxInFlightBytes);
 
-    opts.AddLongOption("timeout", "timeout")
+    opts.AddLongOption("timeout", "request timeout")
         .OptionalArgument("NUM")
         .Handler1T<TString>([this] (const auto& s) {
             Timeout = TDuration::Parse(s);
             Y_ENSURE(
                 Timeout.MicroSeconds() % 1000000 == 0,
                 "timeout should be a multiple of a second"
+            );
+        });
+
+    opts.AddLongOption("dead-connection-timeout", "dead connection timeout")
+        .OptionalArgument("NUM")
+        .Handler1T<TString>([this] (const auto& s) {
+            DeadConnectionTimeout = TDuration::Parse(s);
+            Y_ENSURE(
+                DeadConnectionTimeout.MicroSeconds() % 1000000 == 0,
+                "dead connection timeout should be a multiple of a second"
             );
         });
 
@@ -225,6 +235,18 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("grpc-trace", "turn on grpc tracing")
         .NoArgument()
         .StoreTrue(&EnableGrpcTracing);
+
+    opts.AddLongOption("netlink", "use netlink interface to set up device")
+        .NoArgument()
+        .SetFlag(&Netlink);
+
+    opts.AddLongOption("disconnect", "disconnect device before exiting")
+        .NoArgument()
+        .SetFlag(&Disconnect);
+
+    opts.AddLongOption("reconfigure", "reconfigure connected device")
+        .NoArgument()
+        .SetFlag(&Reconfigure);
 
     TOptsParseResultException res(&opts, argc, argv);
 

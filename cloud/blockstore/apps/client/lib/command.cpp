@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_client.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
+#include <cloud/blockstore/libs/endpoint_proxy/client/client.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
@@ -149,6 +150,24 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("NUM")
         .StoreResult(&SecurePort);
 
+    Opts.AddLongOption("endpoint-proxy-host", "endpoint proxy host")
+        .RequiredArgument("STR")
+        .StoreResult(&EndpointProxyHost);
+
+    Opts.AddLongOption("endpoint-proxy-port", "endpoint proxy port")
+        .RequiredArgument("NUM")
+        .StoreResult(&EndpointProxyInsecurePort);
+
+    Opts.AddLongOption(
+            "endpoint-proxy-secure-port",
+            "endpoint proxy secure port (overrides --endpoint-proxy-port)")
+        .RequiredArgument("NUM")
+        .StoreResult(&EndpointProxySecurePort);
+
+    Opts.AddLongOption("endpoint-proxy-unix-socket-path", "endpoint proxy unix socket path")
+        .RequiredArgument("FILE")
+        .StoreResult(&EndpointProxyUnixSocketPath);
+
     Opts.AddLongOption("mon-file")
         .RequiredArgument("STR")
         .StoreResult(&MonitoringConfig);
@@ -205,7 +224,9 @@ TCommand::TCommand(IBlockStorePtr client)
         .RequiredArgument("STR")
         .StoreResult(&ClientPerformanceProfile);
 
-    Opts.AddLongOption("skip-cert-verification", "skip server certificate verification")
+    Opts.AddLongOption(
+            "skip-cert-verification",
+            "skip server certificate verification")
         .StoreTrue(&SkipCertVerification);
 }
 
@@ -569,6 +590,21 @@ void TCommand::Init()
 
     }
 
+    if (EndpointProxyHost || EndpointProxyUnixSocketPath) {
+        EndpointProxyClient = CreateClient(TEndpointProxyClientConfig{
+            EndpointProxyHost,
+            static_cast<ui16>(EndpointProxyInsecurePort),
+            static_cast<ui16>(EndpointProxySecurePort),
+            {}, // rootCertsFile
+            EndpointProxyUnixSocketPath,
+            {
+                TDuration::Seconds(1),
+                TDuration::Minutes(5),
+                TDuration::Seconds(5),
+            },
+        }, Scheduler, Timer, Logging);
+    }
+
     Start();
 }
 
@@ -731,6 +767,10 @@ void TCommand::Start()
         ClientEndpoint->Start();
     }
 
+    if (EndpointProxyClient) {
+        EndpointProxyClient->Start();
+    }
+
     if (Scheduler) {
         Scheduler->Start();
     }
@@ -744,6 +784,10 @@ void TCommand::Stop()
 
     if (Scheduler) {
         Scheduler->Stop();
+    }
+
+    if (EndpointProxyClient) {
+        EndpointProxyClient->Stop();
     }
 
     if (ClientEndpoint) {

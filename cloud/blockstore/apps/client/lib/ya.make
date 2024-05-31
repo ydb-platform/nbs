@@ -23,6 +23,7 @@ SRCS(
     destroy_placement_group.cpp
     destroy_volume.cpp
     discover_instances.cpp
+    endpoint_proxy.cpp
     execute_action.cpp
     factory.cpp
     get_changed_blocks.cpp
@@ -55,6 +56,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/encryption
+    cloud/blockstore/libs/endpoint_proxy/client
     cloud/blockstore/libs/service
 
     cloud/storage/core/libs/common

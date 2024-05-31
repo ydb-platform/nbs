@@ -2,10 +2,13 @@ import json
 import logging
 import os
 import random
+import subprocess
 import tempfile
+import threading
 import time
 
 import yatest.common as common
+import yatest.common.network as network
 import ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
@@ -20,6 +23,9 @@ from cloud.blockstore.public.api.protos.volume_pb2 import (
     TDescribeVolumeRequest,
     TDescribeVolumeResponse,
     TListVolumesResponse,
+)
+from cloud.storage.core.protos.endpoints_pb2 import (
+    EEndpointStorageType,
 )
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
@@ -36,8 +42,6 @@ from contrib.ydb.library.actors.protos.interconnect_pb2 import TNodeLocation
 
 from google.protobuf import text_format
 
-import subprocess
-
 
 BINARY_PATH = common.binary_path("cloud/blockstore/apps/client/blockstore-client")
 WRITEREQ_FILE = "writereq.bin"
@@ -49,6 +53,22 @@ CHANGED_BLOCKS_COUNT = 1234
 
 NRD_BLOCKS_COUNT = 1024**3 // BLOCK_SIZE
 
+
+################################################################################
+# proc utils
+
+def run_async(job, stderr, stdout, cwd=None):
+    def run():
+        with open(os.path.join(common.output_path(), stderr), "w") as err:
+            with open(os.path.join(common.output_path(), stdout), "w") as out:
+                subprocess.call(job, stderr=err, stdout=out, cwd=cwd)
+    t = threading.Thread(target=run)
+    t.setDaemon(True)
+    t.start()
+
+
+################################################################################
+# result comparison utils
 
 def files_equal(path_0, path_1, cb=None):
     file_0 = open(path_0, "rb")
@@ -112,6 +132,9 @@ def file_parse_as_json(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
 
+
+################################################################################
+# client cmd helpers
 
 def list_placement_groups(env, run):
     clear_file(env.results_file)
@@ -210,9 +233,17 @@ def send_two_node_nameservice_config(env):
     update_cms_config(env.kikimr_cluster.client, nameservice_config)
 
 
-def setup(with_nrd=False, nrd_device_count=1, rack='', storage_config_patches=None):
+################################################################################
+# env setup/tear_down
+
+def setup(
+        with_nrd=False,
+        nrd_device_count=1,
+        rack='',
+        storage_config_patches=None,
+        server_config_patch=TServerConfig()):
     server = TServerAppConfig()
-    server.ServerConfig.CopyFrom(TServerConfig())
+    server.ServerConfig.CopyFrom(server_config_patch)
     server.ServerConfig.ThreadsCount = thread_count()
     server.ServerConfig.StrictContractValidation = True
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
@@ -240,7 +271,8 @@ def setup(with_nrd=False, nrd_device_count=1, rack='', storage_config_patches=No
         process = subprocess.Popen(
             args,
             stdout=env.results_file,
-            stdin=subprocess.PIPE
+            stdin=subprocess.PIPE,
+            cwd=kwargs.get("cwd")
         )
         process.communicate(input=input)
 
@@ -290,6 +322,9 @@ def random_writes(run, block_count=BLOCKS_COUNT):
             "--input", WRITEREQ_FILE,
             "--start-index", str(start_index))
 
+
+################################################################################
+# test cases
 
 def test_successive_remounts_and_writes():
     env, run = setup()
@@ -871,6 +906,154 @@ def test_enabled_configs_dispatcher():
     with open(env.results_path, "w") as results:
         results.write(json.dumps(static_nodes) + "\n")
         results.write(json.dumps(updated_static_nodes) + "\n")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
+
+
+# it's a smoke test right now - it doesn't test nbd proxying logic
+def test_endpoint_proxy():
+    env, run = setup()
+
+    endpoint_proxy_path = common.binary_path(
+        "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
+
+    port_manager = network.PortManager()
+    port = port_manager.get_port()
+
+    run_async(
+        [
+            endpoint_proxy_path, "--server-port", str(port),
+        ],
+        "endpoint-proxy-%s.out" % port,
+        "endpoint-proxy-%s.err" % port
+    )
+
+    run("startproxyendpoint",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port),
+        "--socket", "TODO-nbs-socket",
+        # can't use modprobe nbd in tests
+        # "--nbd-device", "TODO-nbd-device",
+        "--block-size", "4096",
+        "--blocks-count", "1024")
+
+    run("listproxyendpoints",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port))
+
+    run("stopproxyendpoint",
+        "--endpoint-proxy-host", "localhost",
+        "--endpoint-proxy-port", str(port),
+        "--socket", "TODO-nbs-socket")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
+
+
+# it's a smoke test right now - it doesn't test nbd proxying logic
+def test_endpoint_proxy_uds():
+    env, run = setup()
+
+    endpoint_proxy_path = common.binary_path(
+        "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
+
+    ep_sock = "ep-%s.sock" % hash(common.context.test_name)
+
+    run_async(
+        [
+            endpoint_proxy_path, "--unix-socket-path", ep_sock,
+        ],
+        "endpoint-proxy.out",
+        "endpoint-proxy.err",
+    )
+
+    run("startproxyendpoint",
+        "--endpoint-proxy-unix-socket-path", ep_sock,
+        "--socket", "TODO-nbs-socket",
+        # can't use modprobe nbd in tests
+        # "--nbd-device", "TODO-nbd-device",
+        "--block-size", "4096",
+        "--blocks-count", "1024")
+
+    run("listproxyendpoints",
+        "--endpoint-proxy-unix-socket-path", ep_sock)
+
+    run("stopproxyendpoint",
+        "--endpoint-proxy-unix-socket-path", ep_sock,
+        "--socket", "TODO-nbs-socket")
+
+    ret = common.canonical_file(env.results_path, local=True)
+    tear_down(env)
+    return ret
+
+
+def test_nbs_with_endpoint_proxy_uds():
+    ep_sock = "ep-%s.sock" % hash(common.context.test_name)
+    vol_sock = "vol-%s.sock" % hash(common.context.test_name)
+
+    endpoints_dir = os.path.join(
+        common.output_path(),
+        "endpoints-%s" % hash(common.context.test_name))
+
+    server_config = TServerConfig()
+    server_config.EndpointProxySocketPath = ep_sock
+    server_config.NbdEnabled = True
+    server_config.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+    server_config.EndpointStorageDir = endpoints_dir
+    env, run = setup(server_config_patch=server_config)
+
+    endpoint_proxy_path = common.binary_path(
+        "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
+
+    run_async(
+        [
+            endpoint_proxy_path, "--unix-socket-path", ep_sock,
+        ],
+        "endpoint-proxy.out",
+        "endpoint-proxy.err",
+        # we need to use the same cwd as nbs to be able to use relative unix
+        # socket paths because abs paths are longer than the maximum unix
+        # socket path length which is 107
+        cwd=env.nbs_cwd,
+    )
+
+    run("createvolume",
+        "--disk-id", "vol0",
+        "--blocks-count", str(BLOCKS_COUNT))
+
+    # TODO: uncomment after we find a way to use nbd in github ci
+    # TODO: write a proper test scenario including multiple reads and writes,
+    # data validation, nbs restarts, etc
+    """
+    nbd_device = "/dev/nbd10"
+
+    run("startendpoint",
+        "--socket", vol_sock,
+        "--disk-id", "vol0",
+        "--ipc-type", "nbd",
+        "--nbd-device", nbd_device,
+        "--persistent",
+        "--mount-mode", "local")
+
+    ifpath = os.path.join(common.output_path(), "iblock.txt")
+    ofpath = os.path.join(common.output_path(), "oblock.txt")
+    f = open(ifpath, "w")
+    f.write("a" * 4096)
+    f.close()
+
+    time.sleep(5)
+
+    subprocess.call(("dd oflag=direct of=%s if=%s bs=4k count=1" % (nbd_device, ifpath)).split(" "))
+    subprocess.call(("dd iflag=direct if=%s of=%s bs=4k count=1" % (nbd_device, ofpath)).split(" "))
+    """
+
+    run("listproxyendpoints",
+        "--endpoint-proxy-unix-socket-path", ep_sock, cwd=env.nbs_cwd)
+
+    run("stopendpoint", "--socket", vol_sock)
 
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)

@@ -1,0 +1,58 @@
+add_executable(cloud-blockstore-libs-endpoint_proxy-client-ut)
+target_include_directories(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/client
+)
+target_link_libraries(cloud-blockstore-libs-endpoint_proxy-client-ut PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-testing-unittest_main
+  libs-endpoint_proxy-client
+)
+target_link_options(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
+  -ldl
+  -lrt
+  -Wl,--no-as-needed
+  -fPIC
+  -fPIC
+  -lpthread
+  -lrt
+  -ldl
+)
+target_sources(cloud-blockstore-libs-endpoint_proxy-client-ut PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/client/device_factory_ut.cpp
+)
+set_property(
+  TARGET
+  cloud-blockstore-libs-endpoint_proxy-client-ut
+  PROPERTY
+  SPLIT_FACTOR
+  15
+)
+add_yunittest(
+  NAME
+  cloud-blockstore-libs-endpoint_proxy-client-ut
+  TEST_TARGET
+  cloud-blockstore-libs-endpoint_proxy-client-ut
+  TEST_ARG
+  --print-before-suite
+  --print-before-test
+  --fork-tests
+  --print-times
+  --show-fails
+)
+target_allocator(cloud-blockstore-libs-endpoint_proxy-client-ut
+  cpp-malloc-tcmalloc
+  libs-tcmalloc-no_percpu_cache
+)
+vcs_info(cloud-blockstore-libs-endpoint_proxy-client-ut)
+set_yunittest_property(
+    TEST
+    cloud-blockstore-libs-endpoint_proxy-client-ut
+    PROPERTY
+    ENVIRONMENT
+    ARCADIA_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
+    ARCADIA_BUILD_ROOT=${CMAKE_BINARY_DIR}
+)
+

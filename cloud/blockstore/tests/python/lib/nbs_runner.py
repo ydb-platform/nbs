@@ -259,6 +259,10 @@ ModifyScheme {
     def profile_log_path(self):
         return os.path.join(self.__cwd, self.__profile_log_name)
 
+    @property
+    def cwd(self):
+        return self.__cwd
+
     def __generate_server_log_txt(self):
         services_info = [
             b"TABLET_EXECUTOR",

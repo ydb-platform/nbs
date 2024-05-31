@@ -24,4 +24,10 @@ PEERDIR(
     library/cpp/deprecated/atomic
 )
 
+IF(NETLINK)
+    CFLAGS(
+        -DNETLINK
+    )
+ENDIF()
+
 END()

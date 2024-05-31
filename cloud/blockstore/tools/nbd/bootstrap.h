@@ -39,7 +39,7 @@ private:
     NClient::ISessionPtr Session;
 
     IServerPtr NbdServer;
-    IDeviceConnectionPtr NbdDevice;
+    IDevicePtr NbdDevice;
 
 public:
     TBootstrap(TOptionsPtr options);

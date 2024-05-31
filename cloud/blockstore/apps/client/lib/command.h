@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
+#include <cloud/blockstore/libs/endpoint_proxy/client/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -46,6 +47,11 @@ protected:
     ui32 SecurePort = 0;
     bool SkipCertVerification = false;
 
+    TString EndpointProxyHost;
+    ui32 EndpointProxyInsecurePort = 0;
+    ui32 EndpointProxySecurePort = 0;
+    TString EndpointProxyUnixSocketPath;
+
     TString MonitoringConfig;
     TString MonitoringAddress;
     ui32 MonitoringPort = 0;
@@ -70,6 +76,7 @@ protected:
     TClientAppConfigPtr ClientConfig;
     IClientPtr Client;
     IBlockStorePtr ClientEndpoint;
+    IEndpointProxyClientPtr EndpointProxyClient;
 
     IThrottlerPtr Throttler;
 

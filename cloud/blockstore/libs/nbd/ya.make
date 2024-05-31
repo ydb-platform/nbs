@@ -16,6 +16,19 @@ IF (OS_LINUX)
     SRCS(
         device.cpp
     )
+
+IF (NETLINK)
+    SRCS(
+        netlink_device.cpp
+    )
+    CFLAGS(
+        -I/usr/include/libnl3
+    )
+    LDFLAGS(
+        -L/usr/lib/x86_64-linux-gnu
+        -lnl-3
+        -lnl-genl-3
+    )
 ENDIF()
 
 PEERDIR(
@@ -24,6 +37,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
     cloud/storage/core/libs/coroutine
+    contrib/libs/linux-headers
     library/cpp/coroutine/engine
     library/cpp/coroutine/listener
     library/cpp/deprecated/atomic

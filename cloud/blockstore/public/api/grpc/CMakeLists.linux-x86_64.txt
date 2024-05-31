@@ -39,6 +39,7 @@ target_link_libraries(public-api-grpc PUBLIC
   contrib-libs-protobuf
 )
 target_proto_messages(public-api-grpc PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/public/api/grpc/endpoint_proxy.proto
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/public/api/grpc/service.proto
 )
 target_proto_addincls(public-api-grpc

@@ -13,6 +13,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
+    cloud/blockstore/libs/endpoint_proxy/client
     cloud/blockstore/libs/endpoints
     cloud/blockstore/libs/endpoints_grpc
     cloud/blockstore/libs/endpoints_nbd
@@ -55,5 +56,11 @@ PEERDIR(
     library/cpp/protobuf/util
     library/cpp/sighandler
 )
+
+IF(NETLINK)
+    CFLAGS(
+        -DNETLINK
+    )
+ENDIF()
 
 END()

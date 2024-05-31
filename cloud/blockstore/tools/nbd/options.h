@@ -53,6 +53,10 @@ struct TOptions
 
     TString ConnectDevice;
 
+    bool Netlink = false;
+    bool Disconnect = false;
+    bool Reconfigure = false;
+
     ui32 NullBlockSize = 4*1024;
     ui64 NullBlocksCount = 1024*1024;
 
@@ -67,6 +71,7 @@ struct TOptions
     bool UnalignedRequestsDisabled = false;
 
     TDuration Timeout = TDuration::Days(1);
+    TDuration DeadConnectionTimeout = TDuration::Hours(1);
 
     void Parse(int argc, char** argv);
 };

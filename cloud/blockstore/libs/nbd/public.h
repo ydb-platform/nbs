@@ -26,11 +26,11 @@ using IClientPtr = std::shared_ptr<IClient>;
 struct IClientHandler;
 using IClientHandlerPtr = std::shared_ptr<IClientHandler>;
 
-struct IDeviceConnection;
-using IDeviceConnectionPtr = std::shared_ptr<IDeviceConnection>;
+struct IDevice;
+using IDevicePtr = std::shared_ptr<IDevice>;
 
-struct IDeviceConnectionFactory;
-using IDeviceConnectionFactoryPtr = std::shared_ptr<IDeviceConnectionFactory>;
+struct IDeviceFactory;
+using IDeviceFactoryPtr = std::shared_ptr<IDeviceFactory>;
 
 struct ILimiter;
 using ILimiterPtr = std::shared_ptr<ILimiter>;

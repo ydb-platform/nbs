@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
-#include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -13,33 +12,45 @@ namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IDeviceConnection
-    : public IStartable
+struct IDevice
 {
+    virtual ~IDevice() = default;
+
+    virtual void Start() = 0;
+
+    // some devices can be reconfigured, so we want to differentiate between
+    // cases when user explicitly asked us to stop the device and it being
+    // stopped for technical reasons like service restart
+    virtual void Stop(bool deleteDevice) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IDeviceConnectionFactory
+struct IDeviceFactory
 {
-    virtual ~IDeviceConnectionFactory() = default;
+    virtual ~IDeviceFactory() = default;
 
-    virtual IDeviceConnectionPtr Create(
-        TNetworkAddress connectAddress,
-        TString deviceName) = 0;
+    // blockCount and blockSize can be simply passed to the kernel, can be
+    // dropped or can be used to validate export info upon connection
+    // establishment
+    virtual IDevicePtr Create(
+        const TNetworkAddress& connectAddress,
+        TString deviceName,
+        ui64 blockCount,
+        ui32 blockSize) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDeviceConnectionPtr CreateDeviceConnection(
+IDevicePtr CreateDevice(
     ILoggingServicePtr logging,
-    TNetworkAddress connectAddress,
+    const TNetworkAddress& connectAddress,
     TString deviceName,
     TDuration timeout);
 
-IDeviceConnectionPtr CreateDeviceConnectionStub();
+IDevicePtr CreateDeviceStub();
 
-IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+IDeviceFactoryPtr CreateDeviceFactory(
     ILoggingServicePtr logging,
     TDuration timeout);
 

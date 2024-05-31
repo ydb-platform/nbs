@@ -32,14 +32,16 @@ enum {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnection final
+class TDevice final
     : public ISimpleThread
-    , public IDeviceConnection
+    , public IDevice
 {
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
     const TString DeviceName;
+    const ui64 BlockCount;
+    const ui32 BlockSize;
     const TDuration Timeout;
 
     TLog Log;
@@ -50,22 +52,26 @@ private:
     TAtomic ShouldStop = 0;
 
 public:
-    TDeviceConnection(
+    TDevice(
             ILoggingServicePtr logging,
-            TNetworkAddress connectAddress,
+            const TNetworkAddress& connectAddress,
             TString deviceName,
+            ui64 blockCount,
+            ui32 blockSize,
             TDuration timeout)
         : Logging(std::move(logging))
-        , ConnectAddress(std::move(connectAddress))
+        , ConnectAddress(connectAddress)
         , DeviceName(std::move(deviceName))
+        , BlockCount(blockCount)
+        , BlockSize(blockSize)
         , Timeout(timeout)
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
     }
 
-    ~TDeviceConnection()
+    ~TDevice() override
     {
-        Stop();
+        Stop(true);
     }
 
     void Start() override
@@ -76,8 +82,12 @@ public:
         ISimpleThread::Start();
     }
 
-    void Stop() override
+    void Stop(bool deleteDevice) override
     {
+        // device configured via ioctl interface is bound to the process, there
+        // is no point keeping it
+        Y_UNUSED(deleteDevice);
+
         if (AtomicSwap(&ShouldStop, 1) == 1) {
             return;
         }
@@ -107,7 +117,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDeviceConnection::ConnectSocket()
+void TDevice::ConnectSocket()
 {
     STORAGE_DEBUG("Connect socket");
 
@@ -125,7 +135,7 @@ void TDeviceConnection::ConnectSocket()
     Socket = socket;
 }
 
-void TDeviceConnection::DisconnectSocket()
+void TDevice::DisconnectSocket()
 {
     STORAGE_DEBUG("Disconnect socket");
 
@@ -134,7 +144,7 @@ void TDeviceConnection::DisconnectSocket()
     Socket.Close();
 }
 
-void TDeviceConnection::ConnectDevice()
+void TDevice::ConnectDevice()
 {
     STORAGE_DEBUG("Connect device");
 
@@ -144,6 +154,13 @@ void TDeviceConnection::ConnectDevice()
     const auto& exportInfo = Handler->GetExportInfo();
     ui32 sectorSize = exportInfo.MinBlockSize;
     ui64 sectors = exportInfo.Size / sectorSize;
+
+    const auto expectedSize = BlockCount * BlockSize;
+    if (expectedSize && expectedSize != exportInfo.Size) {
+        ythrow TFileError() << "unexpected export info, size mismatch: "
+            << expectedSize << " != " << exportInfo.Size << ", sectorSize: "
+            << exportInfo.MinBlockSize;
+    }
 
     STORAGE_DEBUG("NBD_SET_BLKSIZE " << sectorSize);
     int ret = ioctl(device, NBD_SET_BLKSIZE, sectorSize);
@@ -180,7 +197,7 @@ void TDeviceConnection::ConnectDevice()
     Device.Swap(device);
 }
 
-void TDeviceConnection::HandleIO()
+void TDevice::HandleIO()
 {
     STORAGE_DEBUG("Start IO for device");
 
@@ -195,7 +212,7 @@ void TDeviceConnection::HandleIO()
     ioctl(Device, NBD_CLEAR_SOCK);
 }
 
-void TDeviceConnection::DisconnectDevice()
+void TDevice::DisconnectDevice()
 {
     STORAGE_DEBUG("Disconnect device");
 
@@ -208,40 +225,46 @@ void TDeviceConnection::DisconnectDevice()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnectionStub final
-    : public IDeviceConnection
+class TDeviceStub final
+    : public IDevice
 {
 public:
-    void Start()
+    void Start() override
     {}
 
-    void Stop()
-    {}
+    void Stop(bool deleteDevice) override
+    {
+        Y_UNUSED(deleteDevice);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceConnectionFactory final
-    : public IDeviceConnectionFactory
+class TDeviceFactory final
+    : public IDeviceFactory
 {
 private:
     const ILoggingServicePtr Logging;
     const TDuration Timeout;
 
 public:
-    TDeviceConnectionFactory(ILoggingServicePtr logging, TDuration timeout)
+    TDeviceFactory(ILoggingServicePtr logging, TDuration timeout)
         : Logging(std::move(logging))
-        , Timeout(std::move(timeout))
+        , Timeout(timeout)
     {}
 
-    IDeviceConnectionPtr Create(
-        TNetworkAddress connectAddress,
-        TString deviceName) override
+    IDevicePtr Create(
+        const TNetworkAddress& connectAddress,
+        TString deviceName,
+        ui64 blockCount,
+        ui32 blockSize) override
     {
-        return CreateDeviceConnection(
+        return std::make_shared<TDevice>(
             Logging,
-            std::move(connectAddress),
+            connectAddress,
             std::move(deviceName),
+            blockCount,
+            blockSize,
             Timeout);
     }
 };
@@ -250,31 +273,33 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDeviceConnectionPtr CreateDeviceConnection(
+IDevicePtr CreateDevice(
     ILoggingServicePtr logging,
-    TNetworkAddress connectAddress,
+    const TNetworkAddress& connectAddress,
     TString deviceName,
     TDuration timeout)
 {
-    return std::make_shared<TDeviceConnection>(
+    return std::make_shared<TDevice>(
         std::move(logging),
-        std::move(connectAddress),
+        connectAddress,
         std::move(deviceName),
+        0, // blockCount
+        0, // blockSize
         timeout);
 }
 
-IDeviceConnectionPtr CreateDeviceConnectionStub()
+IDevicePtr CreateDeviceStub()
 {
-    return std::make_shared<TDeviceConnectionStub>();
+    return std::make_shared<TDeviceStub>();
 }
 
-IDeviceConnectionFactoryPtr CreateDeviceConnectionFactory(
+IDeviceFactoryPtr CreateDeviceFactory(
     ILoggingServicePtr logging,
     TDuration timeout)
 {
-    return std::make_shared<TDeviceConnectionFactory>(
+    return std::make_shared<TDeviceFactory>(
         std::move(logging),
-        std::move(timeout));
+        timeout);
 }
 
 }   // namespace NCloud::NBlockStore::NBD
