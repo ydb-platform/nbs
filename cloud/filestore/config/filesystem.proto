@@ -32,4 +32,8 @@ message TFileSystemConfig
     // Inode entry timeout for negative responses (responses with errors).
     // The most notable one is ENOENT for getattr.
     optional uint32 NegativeEntryTimeout = 9;
+
+    // The blocksize reported to the client via stat request. Note: this value
+    // can differe from the BlockSize in terms of the actual filestore
+    optional uint32 PreferredBlockSize = 10;
 }

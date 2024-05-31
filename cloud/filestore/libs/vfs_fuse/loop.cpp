@@ -816,6 +816,7 @@ private:
         }
 
         const auto& features = filestore.GetFeatures();
+        config.SetPreferredBlockSize(features.GetPreferredBlockSize());
         if (features.GetEntryTimeout()) {
             config.SetEntryTimeout(features.GetEntryTimeout());
         }

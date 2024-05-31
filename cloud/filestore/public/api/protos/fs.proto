@@ -19,6 +19,7 @@ message TFileStoreFeatures
     uint32 AttrTimeout = 4;
     bool ThreeStageWriteEnabled = 5;
     uint32 ThreeStageWriteThreshold = 6;
+    uint32 PreferredBlockSize = 7;
 }
 
 message TFileStore
