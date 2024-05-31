@@ -78,7 +78,7 @@ public:
 
     TString Serialized;
     TString OutBuffer;
-    ui32 BlocksCount;
+    ui32 BlocksCount = 0;
     NThreading::TPromise<TRequestResponse> Promise;
 };
 

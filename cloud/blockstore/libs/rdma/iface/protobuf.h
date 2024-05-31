@@ -12,6 +12,20 @@ namespace NCloud::NBlockStore::NRdma {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//  ==========================================
+//  |            Serialized message          |
+//  ------------------------------------------
+//  |  TProtoHeader {           |            |
+//  |     ui32 MsgId : 16;      |  2 byte    |
+//  |     ui32 ProtoLen : 16;   |  2 byte    |
+//  |     ui32 DataLen;         |  4 byte    |
+//  |  }                        |            |
+//  ------------------------------------------
+//  |  Proto (SerializeToArray) |  protoLen  |
+//  ------------------------------------------
+//  |  Data                     |  dataLen   |
+//  ------------------------------------------
+
 // Thread-safe. Public methods can be called from any thread.
 class TProtoMessageSerializer
 {

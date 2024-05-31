@@ -5,10 +5,10 @@
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
-
 #include <cloud/storage/core/libs/common/sglist.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/map.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -47,7 +47,8 @@ TString MakeKey(const TString& host, ui32 port)
 struct TRdmaClientTest::TRdmaEndpointImpl
     : NRdma::IClientEndpoint
 {
-    TDeque<TString> Blocks;
+    using TDeviceBlocks = TDeque<TString>;
+    TMap<TString, TDeviceBlocks> Devices;
     NProto::TError AllocationError;
     NProto::TError RdmaResponseError;
     NProto::TError ResponseError;
@@ -118,11 +119,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     auto* request = static_cast<TProto*>(result.Proto.get());
                     const size_t minSize =
                         request->GetStartIndex() + request->GetBlocksCount();
-                    if (Blocks.size() < minSize) {
-                        Blocks.resize(minSize, TString(4_KB, 0));
-                    }
+
+                    auto& blocks =
+                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
+
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        sglist.emplace_back(Blocks[i].Data(), Blocks[i].Size());
+                        sglist.emplace_back(blocks[i].Data(), blocks[i].Size());
                     }
                 }
 
@@ -151,12 +153,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     const auto blockCount =
                         result.Data.Size() / request->GetBlockSize();
                     const size_t minSize = request->GetStartIndex() + blockCount;
-                    if (Blocks.size() < minSize) {
-                        Blocks.resize(minSize, TString(4_KB, 0));
-                    }
+
+                    auto& blocks =
+                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
+
                     ui64 offset = 0;
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        Blocks[i] =
+                        blocks[i] =
                             result.Data.substr(offset, request->GetBlockSize());
                         offset += request->GetBlockSize();
                     }
@@ -183,11 +186,12 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     auto* request = static_cast<TProto*>(result.Proto.get());
                     const auto blockCount = request->GetBlocksCount();
                     const size_t minSize = request->GetStartIndex() + blockCount;
-                    if (Blocks.size() < minSize) {
-                        Blocks.resize(minSize, TString(4_KB, 0));
-                    }
+
+                    auto& blocks =
+                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
+
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        Blocks[i] = TString(4_KB, 0);
+                        blocks[i] = TString(4_KB, 0);
                     }
                 }
 
@@ -213,13 +217,13 @@ struct TRdmaClientTest::TRdmaEndpointImpl
                     auto* request = static_cast<TProto*>(result.Proto.get());
                     const size_t minSize =
                         request->GetStartIndex() + request->GetBlocksCount();
-                    if (Blocks.size() < minSize) {
-                        Blocks.resize(minSize, TString(4_KB, 0));
-                    }
+
+                    auto& blocks =
+                        GetDeviceBlocks(request->GetDeviceUUID(), minSize);
 
                     TBlockChecksum checksum;
                     for (ui32 i = request->GetStartIndex(); i < minSize; ++i) {
-                        checksum.Extend(Blocks[i].Data(), Blocks[i].Size());
+                        checksum.Extend(blocks[i].Data(), blocks[i].Size());
                     }
                     response.SetChecksum(checksum.GetValue());
                 }
@@ -243,6 +247,17 @@ struct TRdmaClientTest::TRdmaEndpointImpl
             std::move(req),
             NRdma::RDMA_PROTO_OK,
             responseBytes);
+    }
+
+    TDeque<TString>& GetDeviceBlocks(
+        const TString& deviceUUID,
+        size_t minBlockCount)
+    {
+        auto& blocks = Devices[deviceUUID];
+        if (blocks.size() < minBlockCount) {
+            blocks.resize(minBlockCount, TString(4_KB, 0));
+        }
+        return blocks;
     }
 };
 
