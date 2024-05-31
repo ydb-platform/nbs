@@ -35,11 +35,13 @@ type plainTokenFetcher struct {
 func (fetcher plainTokenFetcher) Fetch(ctx context.Context) (Token, error) {
 	request, err := http.NewRequestWithContext(
 		ctx,
-		http.MethodPost, fetcher.tokenUrl, tokenRequest(fetcher.jwtGenerator.generateAndSignToken())
-		)
+		http.MethodPost,
+		fetcher.tokenUrl,
+		tokenRequest(fetcher.jwtGenerator.generateAndSignToken()),
+	)
 
-	if err != nil{
-
+	if err != nil {
+		return nil, err
 	}
 	response, err := http.DefaultClient.Do(request)
 
