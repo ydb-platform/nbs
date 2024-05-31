@@ -220,8 +220,7 @@ func setupMigrateEmptyOverlayDiskTest(
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	// Is 0 because we should not copy base disk data.
-	expectedStorageSize := uint64(0)
+	var expectedStorageSize uint64
 	if !withAliveSrcImage {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteImage(reqCtx, &disk_manager.DeleteImageRequest{
@@ -234,6 +233,9 @@ func setupMigrateEmptyOverlayDiskTest(
 		require.NoError(t, err)
 
 		expectedStorageSize = diskContentInfo.StorageSize
+	} else {
+		// Is 0 because we should not copy base disk data.
+		expectedStorageSize = 0
 	}
 
 	srcZoneNBSClient := testcommon.NewNbsClient(t, ctx, params.SrcZoneID)

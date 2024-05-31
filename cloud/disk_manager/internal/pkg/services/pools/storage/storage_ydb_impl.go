@@ -1363,8 +1363,8 @@ func (s *storageYDB) relocateOverlayDiskTx(
 	}
 
 	for _, baseDisk := range freeBaseDisks {
-		if (baseDisk.status != baseDiskStatusCreating &&
-			baseDisk.status != baseDiskStatusReady) || !baseDisk.fromPool {
+		if baseDisk.status != baseDiskStatusCreating &&
+			baseDisk.status != baseDiskStatusReady {
 			// Disk is not suitable for acquiring.
 			continue
 		}
@@ -3190,7 +3190,7 @@ func (s *storageYDB) retireBaseDisk(
 	}
 
 	baseDiskOldState := *baseDisk
-	// Remove base disk from pool.
+	// Remove base disk from pool. It also removes base disk from 'free' table.
 	baseDisk.fromPool = false
 	baseDisk.retiring = true
 
