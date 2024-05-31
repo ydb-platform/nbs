@@ -187,11 +187,8 @@ func (s *storageYDB) updateFreeTable(
 	for _, t := range transitions {
 		key := keyFromBaseDisk(t.state)
 
-		oldFree := t.oldState != nil &&
-			t.oldState.hasFreeSlots() &&
-			t.oldState.fromPool
-
-		free := t.state.hasFreeSlots() && t.state.fromPool
+		oldFree := t.oldState != nil && t.oldState.hasFreeSlots()
+		free := t.state.hasFreeSlots()
 
 		switch {
 		case oldFree && !free:
@@ -1040,8 +1037,8 @@ func (s *storageYDB) acquireBaseDiskSlot(
 	}
 
 	for _, baseDisk := range freeBaseDisks {
-		if baseDisk.status != baseDiskStatusCreating &&
-			baseDisk.status != baseDiskStatusReady {
+		if (baseDisk.status != baseDiskStatusCreating &&
+			baseDisk.status != baseDiskStatusReady) || !baseDisk.fromPool {
 			// Disk is not suitable for acquiring.
 			continue
 		}
@@ -1366,8 +1363,8 @@ func (s *storageYDB) relocateOverlayDiskTx(
 	}
 
 	for _, baseDisk := range freeBaseDisks {
-		if baseDisk.status != baseDiskStatusCreating &&
-			baseDisk.status != baseDiskStatusReady {
+		if (baseDisk.status != baseDiskStatusCreating &&
+			baseDisk.status != baseDiskStatusReady) || !baseDisk.fromPool {
 			// Disk is not suitable for acquiring.
 			continue
 		}
@@ -3193,7 +3190,7 @@ func (s *storageYDB) retireBaseDisk(
 	}
 
 	baseDiskOldState := *baseDisk
-	// Remove base disk from pool. It also removes base disk from 'free' table.
+	// Remove base disk from pool.
 	baseDisk.fromPool = false
 	baseDisk.retiring = true
 
