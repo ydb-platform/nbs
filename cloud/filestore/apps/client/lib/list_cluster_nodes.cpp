@@ -26,8 +26,12 @@ public:
             ythrow TServiceError(response.GetError());
         }
 
-        for (const auto& node: response.GetNodes()) {
-            Cout << DumpMessage(node) << Endl;
+        if (JsonOutput) {
+            response.PrintJSON(Cout);
+        } else {
+            for (const auto& node: response.GetNodes()) {
+                Cout << DumpMessage(node) << Endl;
+            }
         }
 
         return true;

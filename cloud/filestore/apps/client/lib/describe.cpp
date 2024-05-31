@@ -28,7 +28,12 @@ public:
             ythrow TServiceError(response.GetError());
         }
 
-        Cout << "Filestore: " << DumpMessage(response.GetFileStore()) << Endl;
+        if (JsonOutput) {
+            response.PrintJSON(Cout);
+        } else {
+            Cout << "Filestore: " << DumpMessage(response.GetFileStore())
+                 << Endl;
+        }
 
         return true;
     }
