@@ -9,7 +9,6 @@ target_link_libraries(blockstore-endpoint-proxy PUBLIC
   library-cpp-cpuid_check
   libs-endpoint_proxy-server
   core-libs-daemon
-  run
   library-cpp-getopt
 )
 target_link_options(blockstore-endpoint-proxy PRIVATE

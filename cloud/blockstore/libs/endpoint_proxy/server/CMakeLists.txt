@@ -17,7 +17,6 @@ target_link_libraries(libs-endpoint_proxy-server PUBLIC
   cpp-getopt-small
   library-cpp-logger
 
-  storage-core-protos
   contrib-libs-grpc
 )
 target_sources(libs-endpoint_proxy-server PRIVATE
