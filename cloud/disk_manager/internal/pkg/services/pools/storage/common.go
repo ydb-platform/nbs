@@ -132,7 +132,11 @@ func (d *baseDisk) toBaseDisk() BaseDisk {
 }
 
 func (d *baseDisk) isInflight() bool {
-	return d.status == baseDiskStatusScheduling || d.status == baseDiskStatusCreating
+	if d.fromPool {
+		return d.status == baseDiskStatusScheduling || d.status == baseDiskStatusCreating
+	}
+
+	return false
 }
 
 func (d *baseDisk) isDoomed() bool {
@@ -372,7 +376,9 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
 		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
 
-		if t.state.activeUnits != 0 {
+		if t.state.status != baseDiskStatusCreationFailed &&
+			t.state.activeUnits != 0 {
+
 			return poolAction{}, errors.NewNonRetriableErrorf(
 				"internal inconsistency: invalid base disk state %+v",
 				t.state,
@@ -384,14 +390,6 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 		a.sizeDiff = -int64(t.oldState.freeSlots())
 		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
 		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
-
-		if t.oldState.activeUnits != t.state.activeUnits {
-			return poolAction{}, errors.NewNonRetriableErrorf(
-				"internal inconsistency: invalid base disk transition from %+v to %+v",
-				t.oldState,
-				t.state,
-			)
-		}
 
 	case !t.state.isDoomed():
 		// Regular transition for base disks.

@@ -690,6 +690,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 		if err != nil {
 			return nil, err
 		}
+
 		logging.Debug(
 			ctx,
 			"computed pool action is %+v",
@@ -1872,13 +1873,10 @@ func (s *storageYDB) baseDiskCreationFailed(
 	updated := found
 	updated.status = baseDiskStatusCreationFailed
 
-	var baseDiskTransitions []baseDiskTransition
-	baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
+	err = s.updateBaseDisk(ctx, tx, baseDiskTransition{
 		oldState: &found,
 		state:    &updated,
 	})
-
-	err = s.updateBaseDisksAndSlots(ctx, tx, baseDiskTransitions, slotTransitions)
 	if err != nil {
 		return err
 	}
@@ -2544,16 +2542,11 @@ func (s *storageYDB) deletePool(
 		return err
 	}
 
-	p = pool{
-		imageID:           p.imageID,
-		zoneID:            p.zoneID,
-		size:              0,
-		freeUnits:         0,
-		acquiredUnits:     p.acquiredUnits,
-		baseDisksInflight: p.baseDisksInflight,
-		status:            poolStatusDeleted,
-		createdAt:         p.createdAt,
-	}
+	updated := p
+	updated.status = poolStatusDeleted
+
+	logging.Debug(ctx, "applying pool transition from %+v to %+v", p, updated)
+
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -2563,7 +2556,7 @@ func (s *storageYDB) deletePool(
 		select *
 		from AS_TABLE($pool)
 	`, s.tablesPath, poolStructTypeString()),
-		persistence.ValueParam("$pool", persistence.ListValue(p.structValue())),
+		persistence.ValueParam("$pool", persistence.ListValue(updated.structValue())),
 	)
 	if err != nil {
 		return err
@@ -2961,44 +2954,6 @@ func (s *storageYDB) getAcquiredSlots(
 		where overlay_disk_id in $overlay_disk_ids
 	`, s.tablesPath),
 		persistence.ValueParam("$overlay_disk_ids", persistence.ListValue(overlayDiskIDs...)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	var slots []slot
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			slot, err := scanSlot(res)
-			if err != nil {
-				return nil, err
-			}
-
-			slots = append(slots, slot)
-		}
-	}
-
-	return slots, nil
-}
-
-func (s *storageYDB) getTargetSlots(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	baseDiskID string,
-) ([]slot, error) {
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $overlay_disk_ids as List<Utf8>;
-
-		select *
-		from slots
-		where target_base_disk_id = $base_disk_id
-	`, s.tablesPath),
-		persistence.ValueParam("$base_disk_id", persistence.UTF8Value(baseDiskID)),
 	)
 	if err != nil {
 		return nil, err
