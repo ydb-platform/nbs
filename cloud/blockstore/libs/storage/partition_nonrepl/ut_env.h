@@ -60,9 +60,8 @@ private:
             HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
 
             HFunc(
-                TEvStatsServicePrivate::
-                    TEvRegisterBackgroundBandwidthSourceRequest,
-                HandleRegisterBackgroundBandwidthSource);
+                TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest,
+                HandleRegisterTrafficSource);
 
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
@@ -87,17 +86,15 @@ private:
         State->Counters = *ev->Get()->DiskCounters;
     }
 
-    void HandleRegisterBackgroundBandwidthSource(
-        const TEvStatsServicePrivate::
-            TEvRegisterBackgroundBandwidthSourceRequest::TPtr& ev,
+    void HandleRegisterTrafficSource(
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
         auto* msg = ev->Get();
 
-        auto response =
-            std::make_unique<TEvStatsServicePrivate::
-                                 TEvRegisterBackgroundBandwidthSourceResponse>(
-                msg->BandwidthMiBs);
+        auto response = std::make_unique<
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>(
+            msg->BandwidthMiBs);
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }

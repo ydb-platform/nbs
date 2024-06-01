@@ -16,10 +16,9 @@ using namespace NActors;
 
 namespace NCloud::NBlockStore::NStorage {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
 class TMyTestEnv final
 {
 private:
@@ -40,13 +39,12 @@ public:
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
         {
             switch (event->GetTypeRewrite()) {
-                case TEvStatsServicePrivate::
-                    EvRegisterBackgroundBandwidthSourceRequest: {
+                case TEvStatsServicePrivate::EvRegisterTrafficSourceRequest: {
                     ++RegistrationCount;
-                    auto response = std::make_unique<
-                        TEvStatsServicePrivate::
-                            TEvRegisterBackgroundBandwidthSourceResponse>(
-                        BandwidthLimit);
+                    auto response =
+                        std::make_unique<TEvStatsServicePrivate::
+                                             TEvRegisterTrafficSourceResponse>(
+                            BandwidthLimit);
 
                     auto* handle = new IEventHandle(
                         event->Sender,
@@ -110,8 +108,7 @@ public:
             HFunc(TEvents::TEvBootstrap, HandleBootstrap);
             HFunc(TEvents::TEvPing, HandlePing);
             HFunc(
-                TEvStatsServicePrivate::
-                    TEvRegisterBackgroundBandwidthSourceResponse,
+                TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
                 MigrationTimeoutCalculator.HandleUpdateBandwidthLimit);
         }
     }
@@ -122,14 +119,14 @@ public:
     {
         Y_UNUSED(ev);
 
-        MigrationTimeoutCalculator.RegisterBandwidthSource(ctx);
+        MigrationTimeoutCalculator.RegisterTrafficSource(ctx);
     }
 
     void HandlePing(const TEvents::TEvPing::TPtr& ev, const TActorContext& ctx)
     {
         Y_UNUSED(ev);
 
-        MigrationTimeoutCalculator.RegisterBandwidthSource(ctx);
+        MigrationTimeoutCalculator.RegisterTrafficSource(ctx);
     }
 
     TMigrationTimeoutCalculator MigrationTimeoutCalculator;
@@ -200,7 +197,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
             4,
             MakePartitionConfig(MakeDevices(), false));
 
-        // Devices #1, #2, #4 belong to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
 
@@ -258,7 +255,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
                 TBlockRange64::WithLength(1024 * 3, 1024)));
     }
 
-    Y_UNIT_TEST(ShouldRegisterBandwidthSourceWithSimpleLimiter)
+    Y_UNIT_TEST(ShouldRegisterTrafficSourceWithSimpleLimiter)
     {
         TMyTestEnv testEnv;
 
@@ -290,7 +287,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
             timeoutCalculator.CalculateTimeout(TBlockRange64::MakeOneBlock(0)));
     }
 
-    Y_UNIT_TEST(ShouldRegisterBandwidthSourceAndUseLimit)
+    Y_UNIT_TEST(ShouldRegisterTrafficSourceAndUseLimit)
     {
         TMyTestEnv testEnv;
 
@@ -304,7 +301,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
         testEnv.Send(actorId, std::make_unique<TEvents::TEvBootstrap>());
         UNIT_ASSERT_VALUES_EQUAL(1, testEnv.GetRegistrationCount());
 
-        // Devices #1, #2, #4 belong to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -332,7 +329,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
         testEnv.Send(actorId, std::make_unique<TEvents::TEvPing>());
         UNIT_ASSERT_VALUES_EQUAL(2, testEnv.GetRegistrationCount());
 
-        // Devices #1, #2, #4 belong to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
         UNIT_ASSERT_VALUES_EQUAL(

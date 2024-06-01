@@ -1929,7 +1929,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRegisterBackgroundBandwidthSource)
+    Y_UNIT_TEST(ShouldRegisterTrafficSource)
     {
         NProto::TStorageServiceConfig config;
         config.SetMaxMigrationBandwidth(500);
@@ -1959,26 +1959,24 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         state->MigrationMode = EMigrationMode::InProgress;
 
         ui32 registerSourceCounter = 0;
-        auto countRegisterBackgroundBandwidthSourceRequests =
+        auto countRegisterTrafficSourceRequests =
             [&](TTestActorRuntimeBase& runtime,
                 TAutoPtr<IEventHandle>& event) -> bool
         {
             Y_UNUSED(runtime);
 
             if (event->GetTypeRewrite() ==
-                TEvStatsServicePrivate::
-                    EvRegisterBackgroundBandwidthSourceRequest)
+                TEvStatsServicePrivate::EvRegisterTrafficSourceRequest)
             {
                 auto* msg = event->Get<
-                    TEvStatsServicePrivate::
-                        TEvRegisterBackgroundBandwidthSourceRequest>();
+                    TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
                 ++registerSourceCounter;
                 UNIT_ASSERT_VALUES_EQUAL("vol0", msg->SourceId);
                 UNIT_ASSERT_VALUES_EQUAL(500, msg->BandwidthMiBs);
             }
             return false;
         };
-        runtime->SetEventFilter(countRegisterBackgroundBandwidthSourceRequests);
+        runtime->SetEventFilter(countRegisterTrafficSourceRequests);
 
         // reallocating disk
         volume.ReallocateDisk();

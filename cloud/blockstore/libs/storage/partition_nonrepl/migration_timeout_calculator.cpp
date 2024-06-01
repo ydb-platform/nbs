@@ -55,19 +55,18 @@ TDuration TMigrationTimeoutCalculator::CalculateTimeout(
     return TDuration::Seconds(1) / factor;
 }
 
-void TMigrationTimeoutCalculator::RegisterBandwidthSource(
+void TMigrationTimeoutCalculator::RegisterTrafficSource(
     const NActors::TActorContext& ctx)
 {
     auto request = std::make_unique<
-        TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceRequest>();
+        TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
     request->SourceId = PartitionConfig->GetName();
     request->BandwidthMiBs = MaxMigrationBandwidthMiBs;
     NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
 }
 
 void TMigrationTimeoutCalculator::HandleUpdateBandwidthLimit(
-    const TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceResponse::
-        TPtr& ev,
+    const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ctx);

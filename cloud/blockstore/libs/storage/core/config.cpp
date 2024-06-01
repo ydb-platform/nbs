@@ -474,9 +474,9 @@ TDuration MSeconds(ui32 value)
                                                                                \
     xxx(VolumeProxyCacheRetryDuration,             TDuration, Seconds(15)     )\
                                                                                \
-    xxx(MaxShadowDiskFillBandwidth,                     ui32,      500           )\
+    xxx(MaxShadowDiskFillBandwidth,                     ui32,      512           )\
     xxx(MaxShadowDiskFillIoDepth,                       ui32,      1             )\
-    xxx(BackgroundOperationsTotalBandwidth,             ui32,      1000          )\
+    xxx(BackgroundOperationsTotalBandwidth,             ui32,      1024          )\
     xxx(MinAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, MSeconds(250) )\
     xxx(MaxAcquireShadowDiskRetryDelayWhenBlocked,      TDuration, Seconds(1)    )\
     xxx(MinAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(1)    )\

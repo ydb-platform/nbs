@@ -29,11 +29,11 @@ public:
     [[nodiscard]] TDuration CalculateTimeout(
         TBlockRange64 nextProcessingRange) const;
 
-    void RegisterBandwidthSource(const NActors::TActorContext& ctx);
+    void RegisterTrafficSource(const NActors::TActorContext& ctx);
 
     void HandleUpdateBandwidthLimit(
         const TEvStatsServicePrivate::
-            TEvRegisterBackgroundBandwidthSourceResponse::TPtr& ev,
+            TEvRegisterTrafficSourceResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

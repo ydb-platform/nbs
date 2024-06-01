@@ -152,7 +152,7 @@ private:
     void SetErrorState(const NActors::TActorContext& ctx);
     void SchedulePeriodicalReAcquire(const NActors::TActorContext& ctx);
 
-    void DoRegisterBandwidthSource(const NActors::TActorContext& ctx);
+    void DoRegisterTrafficSource(const NActors::TActorContext& ctx);
 
     // If we haven't started migrating to the shadow disk yet, we can send
     // write and zero requests directly to the source disk.
@@ -227,8 +227,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdateBandwidthLimit(
-        const TEvStatsServicePrivate::
-            TEvRegisterBackgroundBandwidthSourceResponse::TPtr& ev,
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 };
 

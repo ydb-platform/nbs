@@ -12,14 +12,14 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_STATS_SERVICE_REQUESTS_PRIVATE(xxx, ...) \
-    xxx(RegisterBackgroundBandwidthSource, __VA_ARGS__)           \
+    xxx(RegisterTrafficSource, __VA_ARGS__)                 \
 // BLOCKSTORE_STATS_SERVICE_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // The delay with which the sources of background operations are periodically
 // registered (migrations and fillings of shadow disks).
-constexpr auto RegisterBandwidthSourceTimeout = TDuration::Seconds(1);
+constexpr auto RegisterBackgroundTrafficDuration = TDuration::Seconds(1);
 
 struct TEvStatsServicePrivate
 {
@@ -56,10 +56,10 @@ struct TEvStatsServicePrivate
     };
 
     //
-    // RegisterBackgroundBandwidthSource
+    // RegisterTrafficSource
     //
 
-    struct TRegisterBackgroundBandwidthSourceRequest
+    struct TRegisterTrafficSourceRequest
     {
         TString SourceId;
 
@@ -67,7 +67,7 @@ struct TEvStatsServicePrivate
         ui32 BandwidthMiBs = 0;
     };
 
-    struct TRegisterBackgroundBandwidthSourceResponse
+    struct TRegisterTrafficSourceResponse
     {
         // The maximum bandwidth for the source, limited taking into account all
         // sources of background operations and the limit on the entire server.

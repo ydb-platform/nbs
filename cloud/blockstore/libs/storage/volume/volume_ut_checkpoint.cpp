@@ -4880,26 +4880,24 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.AddClient(clientInfo);
 
         ui32 registerSourceCounter = 0;
-        auto countRegisterBackgroundBandwidthSourceRequests =
+        auto countRegisterTrafficSourceRequests =
             [&](TTestActorRuntimeBase& runtime,
                 TAutoPtr<IEventHandle>& event) -> bool
         {
             Y_UNUSED(runtime);
 
             if (event->GetTypeRewrite() ==
-                TEvStatsServicePrivate::
-                    EvRegisterBackgroundBandwidthSourceRequest)
+                TEvStatsServicePrivate::EvRegisterTrafficSourceRequest)
             {
                 auto* msg = event->Get<
-                    TEvStatsServicePrivate::
-                        TEvRegisterBackgroundBandwidthSourceRequest>();
+                    TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
                 ++registerSourceCounter;
                 UNIT_ASSERT_VALUES_EQUAL("vol0-c1", msg->SourceId);
                 UNIT_ASSERT_VALUES_EQUAL(300, msg->BandwidthMiBs);
             }
             return false;
         };
-        runtime->SetEventFilter(countRegisterBackgroundBandwidthSourceRequests);
+        runtime->SetEventFilter(countRegisterTrafficSourceRequests);
 
         // Create checkpoint when no client connected.
         volume.CreateCheckpoint("c1");

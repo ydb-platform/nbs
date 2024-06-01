@@ -46,10 +46,8 @@ class TStatsServiceActor final
     {
         ui32 DesiredBandwidthMiBs = 0;
 
-        // The counter decreases every second, if the source has not been
-        // re-registered for three seconds, then we assume that it has already
-        // finished.
-        ui32 LifeCounter = 0;
+        // The time of the last registration
+        TInstant LastRegistrationAt;
     };
     using TBackgroundBandwidth = TMap<TString, TBackgroundBandwidthInfo>;
 
@@ -168,9 +166,8 @@ private:
         const TEvStatsServicePrivate::TEvStatsUploadRetryTimeout::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleRegisterBackgroundBandwidthSource(
-        const TEvStatsServicePrivate::
-            TEvRegisterBackgroundBandwidthSourceRequest::TPtr& ev,
+    void HandleRegisterTrafficSource(
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleCleanupBackgroundSources(

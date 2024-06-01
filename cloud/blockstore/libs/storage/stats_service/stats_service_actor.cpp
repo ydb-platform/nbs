@@ -128,8 +128,8 @@ STFUNC(TStatsServiceActor::StateWork)
         HFunc(TEvStatsServicePrivate::TEvStatsUploadRetryTimeout, HandleStatsUploadRetryTimeout);
 
         HFunc(
-            TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceRequest,
-            HandleRegisterBackgroundBandwidthSource);
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest,
+            HandleRegisterTrafficSource);
         HFunc(
             TEvStatsServicePrivate::TEvCleanupBackgroundSources,
             HandleCleanupBackgroundSources);

@@ -1,4 +1,3 @@
-
 #include "stats_service_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -9,19 +8,18 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TStatsServiceActor::HandleRegisterBackgroundBandwidthSource(
-    const TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceRequest::
-        TPtr& ev,
+void TStatsServiceActor::HandleRegisterTrafficSource(
+    const TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
-    BackgroundBandwidth[msg->SourceId].LifeCounter = 3;
+    BackgroundBandwidth[msg->SourceId].LastRegistrationAt = ctx.Now();
     BackgroundBandwidth[msg->SourceId].DesiredBandwidthMiBs =
         msg->BandwidthMiBs;
 
     auto response = std::make_unique<
-        TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceResponse>(
+        TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>(
         CalcBandwidthLimit(msg->SourceId));
 
     NCloud::Reply(ctx, *ev, std::move(response));
@@ -30,8 +28,7 @@ void TStatsServiceActor::HandleRegisterBackgroundBandwidthSource(
 ui32 TStatsServiceActor::CalcBandwidthLimit(const TString& sourceId) const
 {
     ui32 totalDesiredBandwidth = 0;
-    for (const auto& [sourceId, info]: BackgroundBandwidth) {
-        Y_UNUSED(sourceId);
+    for (const auto& [_, info]: BackgroundBandwidth) {
         totalDesiredBandwidth += info.DesiredBandwidthMiBs;
     };
 
@@ -55,7 +52,7 @@ void TStatsServiceActor::ScheduleCleanupBackgroundSources(
     const NActors::TActorContext& ctx) const
 {
     ctx.Schedule(
-        RegisterBandwidthSourceTimeout,
+        RegisterBackgroundTrafficDuration,
         new TEvStatsServicePrivate::TEvCleanupBackgroundSources());
 }
 
@@ -66,10 +63,11 @@ void TStatsServiceActor::HandleCleanupBackgroundSources(
     Y_UNUSED(ev);
     ScheduleCleanupBackgroundSources(ctx);
 
+    auto deadline = ctx.Now() - RegisterBackgroundTrafficDuration * 3;
     for (auto ii = BackgroundBandwidth.begin();
          ii != BackgroundBandwidth.end();)
     {
-        if (--ii->second.LifeCounter == 0) {
+        if (ii->second.LastRegistrationAt < deadline) {
             ii = BackgroundBandwidth.erase(ii);
         } else {
             ++ii;

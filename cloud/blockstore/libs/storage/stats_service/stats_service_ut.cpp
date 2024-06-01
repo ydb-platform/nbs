@@ -400,15 +400,11 @@ public:
         return std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>();
     }
 
-    std::unique_ptr<
-        TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceRequest>
-    CreateRegisterBackgroundBandwidthSourceRequest(
-        TString sourceId,
-        ui32 bandwidth)
+    std::unique_ptr<TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>
+    CreateRegisterTrafficSourceRequest(TString sourceId, ui32 bandwidth)
     {
         return std::make_unique<
-            TEvStatsServicePrivate::
-                TEvRegisterBackgroundBandwidthSourceRequest>(
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>(
             std::move(sourceId),
             bandwidth);
     }
@@ -442,9 +438,7 @@ public:
 
     BLOCKSTORE_DECLARE_METHOD(UploadClientMetrics, TEvService)
     BLOCKSTORE_DECLARE_METHOD(GetVolumeStats, TEvStatsService)
-    BLOCKSTORE_DECLARE_METHOD(
-        RegisterBackgroundBandwidthSource,
-        TEvStatsServicePrivate)
+    BLOCKSTORE_DECLARE_METHOD(RegisterTrafficSource, TEvStatsServicePrivate)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
@@ -1138,7 +1132,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             EPublishingPolicy::DiskRegistryBased);
     }
 
-    Y_UNIT_TEST(ShouldRegisterBackgroundBandwidthSources)
+    Y_UNIT_TEST(ShouldRegisterTrafficSources)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetBackgroundOperationsTotalBandwidth(100);
@@ -1152,27 +1146,27 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TStatsServiceClient client(runtime);
 
         // Register the first source - the entire bandwidth is given to it.
-        auto response = client.RegisterBackgroundBandwidthSource("src1", 200);
+        auto response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(100, response->LimitedBandwidthMiBs);
 
         // Register the second source - a part of the bandwidth is given to it, with
         // an honest division of the bandwidth into all.
-        response = client.RegisterBackgroundBandwidthSource("src2", 600);
+        response = client.RegisterTrafficSource("src2", 600);
         UNIT_ASSERT_VALUES_EQUAL(75, response->LimitedBandwidthMiBs);
 
         // Re-register the first source - a part of the bandwidth is given to it
-        response = client.RegisterBackgroundBandwidthSource("src1", 200);
+        response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(25, response->LimitedBandwidthMiBs);
 
         // Re-register only first source
         for (int i = 0; i < 4; i++) {
             runtime.AdvanceCurrentTime(TDuration::Seconds(1));
             runtime.DispatchEvents({}, TDuration());
-            response = client.RegisterBackgroundBandwidthSource("src1", 200);
+            response = client.RegisterTrafficSource("src1", 200);
         }
 
         // Now the first source gets all the bandwidth.
-        response = client.RegisterBackgroundBandwidthSource("src1", 200);
+        response = client.RegisterTrafficSource("src1", 200);
         UNIT_ASSERT_VALUES_EQUAL(100, response->LimitedBandwidthMiBs);
     }
 }

@@ -16,16 +16,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 enum class EWakeupReason
 {
     Reacquire,
     RegisterBandwidth,
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TString
-MakeShadowDiskClientId(const TString& sourceDiskClientId, bool readOnlyMount)
+TString MakeShadowDiskClientId(
+    const TString& sourceDiskClientId,
+    bool readOnlyMount)
 {
     if (readOnlyMount || sourceDiskClientId.Empty()) {
         return TString(ShadowDiskClientId);
@@ -640,8 +641,7 @@ bool TShadowDiskActor::OnMessage(
             HandleUpdateShadowDiskStateResponse);
         HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocks);
         HFunc(
-            TEvStatsServicePrivate::
-                TEvRegisterBackgroundBandwidthSourceResponse,
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
             HandleUpdateBandwidthLimit);
 
         // Read request.
@@ -884,7 +884,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 
         // Ready to fill shadow disk with data.
         State = EActorState::Preparing;
-        DoRegisterBandwidthSource(ctx);
+        DoRegisterTrafficSource(ctx);
 
         TNonreplicatedPartitionMigrationCommonActor::InitWork(
             ctx,
@@ -913,7 +913,7 @@ void TShadowDiskActor::SchedulePeriodicalReAcquire(const TActorContext& ctx)
         new TEvents::TEvWakeup(static_cast<ui64>(EWakeupReason::Reacquire)));
 }
 
-void TShadowDiskActor::DoRegisterBandwidthSource(
+void TShadowDiskActor::DoRegisterTrafficSource(
     const NActors::TActorContext& ctx)
 {
     if (State != EActorState::Preparing) {
@@ -921,11 +921,11 @@ void TShadowDiskActor::DoRegisterBandwidthSource(
     }
 
     if (TimeoutCalculator) {
-        TimeoutCalculator->RegisterBandwidthSource(ctx);
+        TimeoutCalculator->RegisterTrafficSource(ctx);
     }
 
     ctx.Schedule(
-        RegisterBandwidthSourceTimeout,
+        RegisterBackgroundTrafficDuration,
         new TEvents::TEvWakeup(
             static_cast<ui64>(EWakeupReason::RegisterBandwidth)));
 }
@@ -1109,7 +1109,7 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
                     << ", processed block count: " << msg->ProcessedBlockCount);
             if (State != EActorState::Preparing) {
                 State = EActorState::Preparing;
-                DoRegisterBandwidthSource(ctx);
+                DoRegisterTrafficSource(ctx);
             }
             STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
@@ -1173,7 +1173,7 @@ void TShadowDiskActor::HandleWakeup(
             SchedulePeriodicalReAcquire(ctx);
         } break;
         case EWakeupReason::RegisterBandwidth: {
-            DoRegisterBandwidthSource(ctx);
+            DoRegisterTrafficSource(ctx);
         } break;
     }
 }
@@ -1300,7 +1300,7 @@ void TShadowDiskActor::HandleGetChangedBlocks(
 }
 
 void TShadowDiskActor::HandleUpdateBandwidthLimit(
-    const TEvStatsServicePrivate::TEvRegisterBackgroundBandwidthSourceResponse::
+    const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::
         TPtr& ev,
     const NActors::TActorContext& ctx)
 {
