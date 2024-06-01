@@ -4,7 +4,6 @@ import os
 import random
 import subprocess
 import tempfile
-import threading
 import time
 
 import yatest.common as common
