@@ -106,4 +106,11 @@ void ParseProtoTextFromFileRobust(
     ParseFromTextFormat(in, dst, EParseFromTextFormatOption::AllowUnknownField);
 }
 
+TString ProtoToText(const google::protobuf::Message& proto)
+{
+    TString s;
+    Y_ENSURE(NProtoBuf::TextFormat::PrintToString(proto, &s));
+    return s;
+}
+
 }   // namespace NCloud

@@ -27,6 +27,7 @@ void TBootstrap::Init()
         Options.CertFile,
         Options.UnixSocketPath,
         Options.Netlink,
+        Options.StoredEndpointsPath,
     },
     CreateWallClockTimer(),
     Scheduler,
