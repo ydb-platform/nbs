@@ -8,4 +8,5 @@ END()
 
 RECURSE(
     config
+    oauth2_jwt
 )

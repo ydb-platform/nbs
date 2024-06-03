@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/oauth2_jwt"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -26,9 +27,16 @@ func NewCredentials(
 	if len(config.GetMetadataUrl()) == 0 {
 		return nil
 	}
-
-	return &credentialsWrapper{
-		impl: metadata.NewInstanceServiceAccount(
+	var impl Credentials
+	if config.GetServiceAccount() != nil {
+		_impl, err := oauth2_jwt.NewOauth2JWTTokenProvider(config)
+		if err != nil {
+			logging.Error(ctx, "failed to create token credential, error: %s", err)
+			return nil
+		}
+		impl = _impl
+	} else {
+		impl = metadata.NewInstanceServiceAccount(
 			metadata.WithURL(config.GetMetadataUrl()),
 			metadata.WithTrace(trace.Trace{
 				OnRefreshToken: func(info trace.RefreshTokenStartInfo) func(trace.RefreshTokenDoneInfo) {
@@ -46,7 +54,10 @@ func NewCredentials(
 					}
 				},
 			}),
-		),
+		)
+	}
+	return &credentialsWrapper{
+		impl: impl,
 	}
 }
 
