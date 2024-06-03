@@ -19,6 +19,7 @@ namespace NCloud::NBlockStore::NStorage {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
 class TMyTestEnv final
 {
 private:
@@ -197,7 +198,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
             4,
             MakePartitionConfig(MakeDevices(), false));
 
-        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belong to Agent#1, device #3 belongs to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
 
@@ -301,7 +302,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
         testEnv.Send(actorId, std::make_unique<TEvents::TEvBootstrap>());
         UNIT_ASSERT_VALUES_EQUAL(1, testEnv.GetRegistrationCount());
 
-        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belong to Agent#1, device #3 belongs to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -329,7 +330,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
         testEnv.Send(actorId, std::make_unique<TEvents::TEvPing>());
         UNIT_ASSERT_VALUES_EQUAL(2, testEnv.GetRegistrationCount());
 
-        // Devices #1, #2, #4 belongs to Agent#1, device #3 belong to Agent#2.
+        // Devices #1, #2, #4 belong to Agent#1, device #3 belongs to Agent#2.
         // Therefore, we expect a timeout of 3 times less for 1,2,4 devices than
         // for the 3rd device.
         UNIT_ASSERT_VALUES_EQUAL(
