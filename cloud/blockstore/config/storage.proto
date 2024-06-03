@@ -976,4 +976,8 @@ message TStorageServiceConfig
 
     // Number of volume history entries to cleanup per run.
     optional uint32 VolumeHistoryCleanupItemCount = 367;
+
+    // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
+    // Set in ms.
+    optional uint32 WaitDependentDisksRetryRequestDelay = 368;
 }

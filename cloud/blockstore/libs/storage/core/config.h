@@ -566,6 +566,8 @@ public:
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenBlocked() const;
     TDuration GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked() const;
 
+    TDuration GetWaitDependentDisksRetryRequestDelay() const;
+
     TDuration GetVolumeProxyCacheRetryDuration() const;
 
     TDuration GetServiceSelfPingInterval() const;

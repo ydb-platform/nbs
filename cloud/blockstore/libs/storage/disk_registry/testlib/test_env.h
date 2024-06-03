@@ -641,6 +641,17 @@ public:
         return request;
     }
 
+    auto CreateGetAgentNodeIdRequest(
+        const TString& agentId)
+    {
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdRequest>();
+
+        request->Record.SetAgentId(agentId);
+
+        return request;
+    }
+
     auto CreateAcquireDiskRequest(
         const TString& diskId,
         const TString& clientId,

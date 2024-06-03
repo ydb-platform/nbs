@@ -1582,3 +1582,72 @@ message TSetCheckpointDataStateResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Get disk agent node id by agent id.
+
+message TGetAgentNodeIdRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // Target agent.
+    string AgentId = 2;
+}
+
+message TGetAgentNodeIdResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Node that agent is running on.
+    uint32 NodeId = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Get dependent disks
+
+message TWaitDependentDisksToSwitchNodeRequest
+{
+    // Agent hostname to search for dependent disks.
+    string AgentId = 1;
+
+    // Wait for this Disk Agent node id to disappear from dependent volume
+    // configs.
+    uint32 OldNodeId = 2;
+}
+
+message TWaitDependentDisksToSwitchNodeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Possible disk states during switching.
+    enum EDiskState
+    {
+        // Initial state.
+        DISK_STATE_INITIAL = 0;
+
+        // Disk has switched its node id.
+        DISK_STATE_SWITCHED = 1;
+
+        // The volume is ready.
+        DISK_STATE_READY = 2;
+
+        // An error is occured during waiting.
+        DISK_STATE_ERROR = 3;
+    }
+
+    message TDependentDiskState
+    {
+        // Disk id.
+        string DiskId = 1;
+
+        // Disk state.
+        EDiskState DiskState = 2;
+    }
+
+    // List of disks with their corresponding states at the time of the actor's
+    // shutdown.
+    repeated TDependentDiskState DependentDiskStates = 2;
+}
