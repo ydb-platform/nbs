@@ -57,11 +57,12 @@ func (s *baseDiskStatus) UnmarshalYDB(res persistence.RawValue) error {
 
 // NOTE: These values are stored in DB, do not shuffle them around.
 const (
-	baseDiskStatusScheduling baseDiskStatus = iota
-	baseDiskStatusCreating   baseDiskStatus = iota
-	baseDiskStatusReady      baseDiskStatus = iota
-	baseDiskStatusDeleting   baseDiskStatus = iota
-	baseDiskStatusDeleted    baseDiskStatus = iota
+	baseDiskStatusScheduling     baseDiskStatus = iota
+	baseDiskStatusCreating       baseDiskStatus = iota
+	baseDiskStatusReady          baseDiskStatus = iota
+	baseDiskStatusDeleting       baseDiskStatus = iota
+	baseDiskStatusDeleted        baseDiskStatus = iota
+	baseDiskStatusCreationFailed baseDiskStatus = iota
 )
 
 func baseDiskStatusToString(status baseDiskStatus) string {
@@ -76,6 +77,8 @@ func baseDiskStatusToString(status baseDiskStatus) string {
 		return "deleting"
 	case baseDiskStatusDeleted:
 		return "deleted"
+	case baseDiskStatusCreationFailed:
+		return "creation_failed"
 	}
 
 	return fmt.Sprintf("unknown_%v", status)
@@ -137,7 +140,9 @@ func (d *baseDisk) isDoomed() bool {
 }
 
 func (d *baseDisk) applyInvariants() {
-	if !d.isDoomed() && !d.fromPool && d.activeSlots == 0 {
+	if (!d.isDoomed() || d.status == baseDiskStatusCreationFailed) &&
+		!d.fromPool && d.activeSlots == 0 {
+
 		d.status = baseDiskStatusDeleting
 	}
 }
