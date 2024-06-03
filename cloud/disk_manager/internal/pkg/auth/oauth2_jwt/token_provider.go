@@ -144,6 +144,6 @@ func newOauth2JWTTokenProvider(config *auth_config.AuthConfig, now nowFunc) (aut
 		currentToken:        nil,
 		err:                 nil,
 	}
-
+	go provider.fetchTokenLoop()
 	return provider, nil
 }
