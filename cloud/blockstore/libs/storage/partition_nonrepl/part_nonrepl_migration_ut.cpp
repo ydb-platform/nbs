@@ -96,6 +96,7 @@ struct TTestEnv
         storageConfig.SetMaxTimedOutDeviceStateDuration(20'000);
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
+        storageConfig.SetMaxMigrationBandwidth(500);
 
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -338,6 +339,57 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         migrationState->IsMigrationAllowed = true;
         WaitForMigrations(runtime, 3);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterTrafficSource)
+    {
+        TTestBasicRuntime runtime;
+
+        auto migrationState = std::make_shared<TMigrationState>();
+        migrationState->IsMigrationAllowed = false;
+
+        TTestEnv env(
+            runtime,
+            TTestEnv::DefaultDevices(runtime.GetNodeId(0)),
+            TTestEnv::DefaultMigrations(runtime.GetNodeId(0)),
+            NProto::VOLUME_IO_OK,
+            false,
+            migrationState);
+
+        WaitForNoMigrations(runtime, TDuration::Seconds(5));
+
+        ui32 registerSourceCounter = 0;
+        auto countRegisterTrafficSourceRequests =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvStatsServicePrivate::EvRegisterTrafficSourceRequest)
+            {
+                auto* msg = event->Get<
+                    TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
+                ++registerSourceCounter;
+                UNIT_ASSERT_VALUES_EQUAL("test", msg->SourceId);
+                UNIT_ASSERT_VALUES_EQUAL(500, msg->BandwidthMiBs);
+            }
+            return false;
+        };
+        runtime.SetEventFilter(countRegisterTrafficSourceRequests);
+
+        migrationState->IsMigrationAllowed = true;
+        WaitForMigrations(runtime, 1);
+
+        // Expect that the registration of the background bandwidth source has
+        // occurred.
+        UNIT_ASSERT_VALUES_EQUAL(1, registerSourceCounter);
+
+        // The background bandwidth source should be re-registered at intervals
+        // of once per second.
+        runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
 }
 
