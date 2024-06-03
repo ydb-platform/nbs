@@ -6,6 +6,7 @@ import (
 	"fmt"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"io"
 	"net/http"
 )
 
@@ -49,9 +50,7 @@ func (fetcher plainTokenFetcher) Fetch(ctx context.Context) (Token, error) {
 		return nil, err
 	}
 
-	body := make([]byte, response.ContentLength)
-	_, err = response.Body.Read(body)
-
+	body, err := io.ReadAll(response.Body)
 	if response.StatusCode != 200 {
 		return nil, InvalidTokenResponseError{
 			StatusCode: response.StatusCode,
