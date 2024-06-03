@@ -20,11 +20,11 @@ type BearerToken struct {
 }
 
 func (a BearerToken) NeedToUpdate() bool {
-	return time.Now().Sub(a.obtainedAt) > a.expiresIn/2
+	return a.now().Sub(a.obtainedAt) > a.expiresIn/2
 }
 
 func (a BearerToken) Expired() bool {
-	return time.Now().Sub(a.obtainedAt) > a.expiresIn
+	return a.now().Sub(a.obtainedAt) > a.expiresIn
 }
 
 func (a BearerToken) Token() string {
