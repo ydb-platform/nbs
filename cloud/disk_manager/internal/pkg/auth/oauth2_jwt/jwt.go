@@ -81,7 +81,7 @@ func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, err
 		issuer:     serviceAccountId,
 		privateKey: privateKey,
 		subject:    serviceAccountId,
-		audience:   []string{parsedUrl.Host},
+		audience:   []string{parsedUrl.Hostname()},
 		ttl:        jwtTokenTTL,
 		id:         serviceAccount.GetKeyId(),
 		now:        now,
