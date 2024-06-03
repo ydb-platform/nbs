@@ -31,7 +31,10 @@ func (t *tokenProvider) getToken() (bool, string, error) {
 		return true, t.currentToken.Token(), nil
 	}
 
-	return t.err != nil, "", t.err
+	if t.err != nil {
+		return true, "", errors.NewRetriableError(t.err)
+	}
+	return false, "", nil
 }
 
 func (t *tokenProvider) Token(ctx context.Context) (string, error) {
