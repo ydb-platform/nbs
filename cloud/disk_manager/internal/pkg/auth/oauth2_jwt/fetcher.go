@@ -44,6 +44,7 @@ func (fetcher plainTokenFetcher) Fetch(ctx context.Context) (Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	response, err := http.DefaultClient.Do(request)
 
 	if err != nil {
