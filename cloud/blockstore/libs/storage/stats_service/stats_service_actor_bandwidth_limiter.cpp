@@ -64,15 +64,10 @@ void TStatsServiceActor::HandleCleanupBackgroundSources(
     ScheduleCleanupBackgroundSources(ctx);
 
     auto deadline = ctx.Now() - RegisterBackgroundTrafficDuration * 3;
-    for (auto ii = BackgroundBandwidth.begin();
-         ii != BackgroundBandwidth.end();)
-    {
-        if (ii->second.LastRegistrationAt < deadline) {
-            ii = BackgroundBandwidth.erase(ii);
-        } else {
-            ++ii;
-        }
-    }
+    EraseNodesIf(
+        BackgroundBandwidth,
+        [deadline](const auto& item)
+        { return item.second.LastRegistrationAt < deadline; });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
