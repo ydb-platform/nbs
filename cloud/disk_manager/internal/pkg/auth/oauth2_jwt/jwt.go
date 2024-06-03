@@ -23,7 +23,7 @@ type jwtGenerator struct {
 }
 
 func (j *jwtGenerator) generateAndSignToken() string {
-	now := time.Now()
+	now := j.now()
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodRS256,
 		jwt.RegisteredClaims{
