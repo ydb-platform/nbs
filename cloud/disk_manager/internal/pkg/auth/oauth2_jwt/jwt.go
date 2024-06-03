@@ -74,7 +74,7 @@ func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, err
 
 	parsedUrl, err := url.Parse(config.GetMetadataUrl())
 	if err != nil {
-		return nil, errors.NewAbortedError(err)
+		return nil, errors.NewNonRetriableError(err)
 	}
 
 	return &jwtGenerator{
