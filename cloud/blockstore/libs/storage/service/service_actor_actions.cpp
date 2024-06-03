@@ -82,6 +82,8 @@ void TServiceActor::HandleExecuteAction(
         {"getnameservernodes",                &TServiceActor::CreateGetNameserverNodesActionActor          },
         {"cms",                               &TServiceActor::CreateCmsActionActor                         },
         {"flushprofilelog",                   &TServiceActor::CreateFlushProfileLogActor                   },
+        {"getdiskagentnodeid",                &TServiceActor::CreateGetDiskAgentNodeIdActor                },
+        {"waitdependentdiskstoswitchnode",    &TServiceActor::CreateWaitDependentDisksToSwitchNodeActor    },
     };
 
     NProto::TError error;

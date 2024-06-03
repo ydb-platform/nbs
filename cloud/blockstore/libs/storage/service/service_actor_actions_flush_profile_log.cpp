@@ -20,7 +20,6 @@ class TFlushProfileLogActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TString Input;
     IProfileLogPtr ProfileLog;
 
 public:
