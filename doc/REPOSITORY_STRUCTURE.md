@@ -72,6 +72,7 @@
 [blockstore/public](/cloud/blockstore/public) - gRPC public API specs
 [blockstore/private](/cloud/blockstore/private) - gRPC private API specs - private API actions can be called via the ExecuteAction public API call or via blockstore-client executeaction
 [blockstore/tests](/cloud/blockstore/tests) - integration tests - most of them launch single-node BlobStorage cluster + NBS and then issue some requests and check the responses/metrics/etc
+[vhost-server](/cloud/blockstore/vhost-server) - a helper dataplane-only daemon which can be used by nbsd to offload IO to to get higher performance due to a drastically simpler datapath
 
 ### Blockstore apps
 [apps/client](/cloud/blockstore/apps/client) - cmdline client which uses mostly gRPC API - can perform almost any operation which is present in the API of nbsd
@@ -83,7 +84,7 @@
 
 ### Blockstore libs
 [libs/client](/cloud/blockstore/libs/client) - client interface, gRPC client implementation, durable client (retrying client) implementation, session (remounting client) implementation, throttling client implementation
-[libs/client_rdma](/cloud/blockstore/libs/client_rdma) - client implementation over our RoCEv2-based transport lib
+[libs/client_rdma](/cloud/blockstore/libs/client_rdma) - client implementation over our RDMA-based transport lib
 [libs/client_spdk](/cloud/blockstore/libs/client_spdk) - client implementation over SPDK
 [libs/common](/cloud/blockstore/libs/common) - NBS-specific common data structures and algorithms
 [libs/daemon](/cloud/blockstore/libs/daemon) - bootstrap code for nbsd and lightweight nbsd
@@ -95,7 +96,7 @@
 [libs/endpoints](/cloud/blockstore/libs/endpoints) - endpoint management (StartEndpoint/StopEndpoint/KickEndpoint/etc request processing, concrete IPC listeners implemented in endpoints_$IPC libs)
 [libs/endpoints_grpc](/cloud/blockstore/libs/endpoints_grpc) - gRPC endpoint listener
 [libs/endpoints_nbd](/cloud/blockstore/libs/endpoints_nbd) - NBD endpoint listener
-[libs/endpoints_rdma](/cloud/blockstore/libs/endpoints_rdma) - endpoint listener for our RoCEv2 transport lib
+[libs/endpoints_rdma](/cloud/blockstore/libs/endpoints_rdma) - endpoint listener for our RDMA transport lib
 [libs/endpoints_spdk](/cloud/blockstore/libs/endpoints_spdk) - endpoint listener for SPDK-based endpoints (iSCSI, NVMe-oF)
 [libs/endpoints_vhost](/cloud/blockstore/libs/endpoints_vhost) - vhost-blk endpoint listener
 [libs/kikimr](/cloud/blockstore/libs/kikimr) - YDB BlobStorage integration helpers
@@ -104,9 +105,9 @@
 [libs/nbd](/cloud/blockstore/libs/nbd) - NBD protocol, client and server
 [libs/notify](/cloud/blockstore/libs/notify) - user notification service integration
 [libs/nvme](/cloud/blockstore/libs/nvme) - NVMe specifics - getting device serial numbers, formatting devices, etc
-[libs/rdma](/cloud/blockstore/libs/rdma) - libibverbs and librdmacm-based transport lib, used for transport over RoCEv2
+[libs/rdma](/cloud/blockstore/libs/rdma) - libibverbs and librdmacm-based transport lib, used for transport over RDMA
 [libs/rdma_test](/cloud/blockstore/libs/rdma_test) - mocks for testing the code that uses libs/rdma
-[libs/server](/cloud/blockstore/libs/server) - NBS gRPC server 
+[libs/server](/cloud/blockstore/libs/server) - NBS gRPC server
 [libs/service](/cloud/blockstore/libs/service) - main NBS internal (in-process) APIs like IStorage and IBlockStore + some simple wrappers for them (like FilteredService and ErrorTransformService)
 [libs/service_kikimr](/cloud/blockstore/libs/service) - implementation of the aforementioned APIs over YDB BlobStorage (an ActorSystem adapter actually)
 [libs/service_local](/cloud/blockstore/libs/service_local) - implementation of the aforementioned APIs over local FS - used mostly for debugging and testing purposes
@@ -126,12 +127,11 @@ TODO
 [tools/analytics](/cloud/blockstore/tools/analytics) - various visualization, dumping and statistics calculation
 [tools/ci](/cloud/blockstore/tools/ci) - tools for e2e testing on real clusters
 [tools/cms](/cloud/blockstore/tools/cms) - tools for configuring NBS via YDB CMS
-[tools/csi_driver](/cloud/blockstore/tools/csi_driver) - [K8s CSI](https://kubernetes-csi.github.io/docs/) implementation for NBS & Filestore 
+[tools/csi_driver](/cloud/blockstore/tools/csi_driver) - [K8s CSI](https://kubernetes-csi.github.io/docs/) implementation for NBS & Filestore
 [tools/debug](/cloud/blockstore/tools/debug) - some debugging stuff like e.g. pretty-printers
 [tools/fs](/cloud/blockstore/tools/fs) - filesystem analytics for common filesystems (e.g. ext4, xfs)
 [tools/http_proxy](/cloud/blockstore/tools/http_proxy) - HTTP/1.1 API over NBS gRPC API
 [tools/nbd](/cloud/blockstore/tools/nbd) - a tool which lets you connect NBS volume as an NBD device
-[tools/vhost-server](/cloud/blockstore/tools/vhost-server) - a helper dataplane-only daemon which can be used by nbsd to offload IO to to get higher performance due to a drastically simpler datapath
 
 ## Filestore
 
