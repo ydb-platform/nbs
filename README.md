@@ -14,6 +14,10 @@ Follow the instructions [here](CLANG-FORMAT.md) to install clang-format for form
 
 Additional information about features of our [Github Actions](GITHUB.md) (labels, test results and so on)
 
+### Documentation
+
+The docs can be found [here](/doc). We are in the process of writing them atm. The overall repository structure can be found [here](/doc/REPOSITORY_STRUCTURE.md).
+
 ### How to Deploy
 
 TODO
