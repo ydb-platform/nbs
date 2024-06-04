@@ -59,7 +59,7 @@ IEndpointManagerPtr CreateEndpointManager(
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     IEndpointEventProxyPtr eventProxy,
-    ISessionManagerPtr sessionManager,
+    ISessionFactoryPtr sessionFactory,
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,

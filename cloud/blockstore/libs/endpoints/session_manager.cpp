@@ -33,92 +33,103 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint
+class TEndpointSession final
+    : public IEndpointSession
+    , public std::enable_shared_from_this<TEndpointSession>
 {
 private:
-    TExecutor& Executor;
-    const ISessionPtr Session;
-    const IBlockStorePtr DataClient;
+    ISessionPtr Session;
+    IBlockStorePtr DataClient;
     const IThrottlerProviderPtr ThrottlerProvider;
     const TString ClientId;
     const TString DiskId;
 
 public:
-    TEndpoint(
-            TExecutor& executor,
+    TEndpointSession(
             ISessionPtr session,
             IBlockStorePtr dataClient,
             IThrottlerProviderPtr throttlerProvider,
             TString clientId,
             TString diskId)
-        : Executor(executor)
-        , Session(std::move(session))
+        : Session(std::move(session))
         , DataClient(std::move(dataClient))
         , ThrottlerProvider(std::move(throttlerProvider))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
     {}
 
-    NProto::TError Start(TCallContextPtr callContext, NProto::THeaders headers)
+    TFuture<NProto::TError> Start(
+        TCallContextPtr callContext,
+        NProto::THeaders headers)
     {
         DataClient->Start();
 
         headers.SetClientId(ClientId);
         auto future = Session->MountVolume(std::move(callContext), headers);
-        const auto& response = Executor.WaitFor(future);
-
-        if (HasError(response)) {
-            DataClient->Stop();
-        }
-
-        return response.GetError();
+        return future.Apply([weakPtr = weak_from_this()] (const auto& f) {
+            if (auto p = weakPtr.lock()) {
+                if (HasError(f.GetValue())) {
+                    p->DataClient->Stop();
+                }
+            }
+            return f.GetValue().GetError();
+        });
     }
 
-    NProto::TError Stop(TCallContextPtr callContext, NProto::THeaders headers)
+    TFuture<NProto::TError> Remove(
+        TCallContextPtr callContext,
+        NProto::THeaders headers) override
     {
         headers.SetClientId(ClientId);
         auto future = Session->UnmountVolume(std::move(callContext), headers);
-        const auto& response = Executor.WaitFor(future);
 
-        DataClient->Stop();
-        return response.GetError();
+        return future.Apply([weakPtr = weak_from_this()] (const auto& f) {
+            if (auto p = weakPtr.lock()) {
+                p->DataClient->Stop();
+
+                p->Session.reset();
+                p->DataClient.reset();
+                p->ThrottlerProvider->Clean();
+            };
+
+            return f.GetValue().GetError();
+        });
     }
 
-    NProto::TError Alter(
+    TFuture<NProto::TMountVolumeResponse> Alter(
         TCallContextPtr callContext,
         NProto::EVolumeAccessMode accessMode,
         NProto::EVolumeMountMode mountMode,
         ui64 mountSeqNumber,
-        NProto::THeaders headers)
+        NProto::THeaders headers) override
     {
         headers.SetClientId(ClientId);
-        auto future = Session->MountVolume(
+        return Session->MountVolume(
             accessMode,
             mountMode,
             mountSeqNumber,
             std::move(callContext),
             headers);
-        const auto& response = Executor.WaitFor(future);
-        return response.GetError();
     }
 
-    ISessionPtr GetSession()
+    TFuture<NProto::TMountVolumeResponse> Describe(
+        TCallContextPtr callContext,
+        NProto::THeaders headers) const override
+    {
+        headers.SetClientId(ClientId);
+        return Session->MountVolume(std::move(callContext), headers);
+    }
+
+    ISessionPtr GetSession() const override
     {
         return Session;
     }
 
-    TString GetDiskId()
-    {
-        return DiskId;
-    }
-
-    NProto::TClientPerformanceProfile GetPerformanceProfile()
+    NProto::TClientPerformanceProfile GetProfile() const override
     {
         return ThrottlerProvider->GetPerformanceProfile(ClientId);
     }
 };
-
-using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -269,9 +280,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSessionManager final
-    : public ISessionManager
-    , public std::enable_shared_from_this<TSessionManager>
+class TSessionFactory final
+    : public ISessionFactory
 {
 private:
     const ITimerPtr Timer;
@@ -286,15 +296,12 @@ private:
     const IThrottlerProviderPtr ThrottlerProvider;
     const IEncryptionClientFactoryPtr EncryptionClientFactory;
     const TExecutorPtr Executor;
-    const TSessionManagerOptions Options;
+    const TSessionFactoryOptions Options;
 
     TLog Log;
 
-    TMutex EndpointLock;
-    THashMap<TString, TEndpointPtr> Endpoints;
-
 public:
-    TSessionManager(
+    TSessionFactory(
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
@@ -307,7 +314,7 @@ public:
             IThrottlerProviderPtr throttlerProvider,
             IEncryptionClientFactoryPtr encryptionClientFactory,
             TExecutorPtr executor,
-            TSessionManagerOptions options)
+            TSessionFactoryOptions options)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -327,60 +334,14 @@ public:
 
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request) override;
-
-    TFuture<NProto::TError> RemoveSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override;
-
-    TFuture<NProto::TError> AlterSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode,
-        ui64 mountSeqNumber,
-        const NProto::THeaders& headers) override;
-
-    TFuture<TSessionOrError> GetSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override;
-
-    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
-        const TString& socketPath) override;
+        const NProto::TStartEndpointRequest& request,
+        NProto::TVolume& volume) override;
 
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request);
-
-    NProto::TError RemoveSessionImpl(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers);
-
-    NProto::TError AlterSessionImpl(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode,
-        ui64 mountSeqNumber,
-        const NProto::THeaders& headers);
-
-    TSessionOrError GetSessionImpl(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers);
-
-    NProto::TDescribeVolumeResponse DescribeVolume(
-        TCallContextPtr callContext,
-        const TString& diskId,
-        const NProto::THeaders& headers);
-
-    TResultOrError<TEndpointPtr> CreateEndpoint(
         const NProto::TStartEndpointRequest& request,
-        const NProto::TVolume& volume);
+        NProto::TVolume& volume);
 
     TClientAppConfigPtr CreateClientConfig(
         const NProto::TStartEndpointRequest& request);
@@ -391,225 +352,35 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
+TFuture<TSessionFactory::TSessionOrError> TSessionFactory::CreateSession(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
+    const NProto::TStartEndpointRequest& request,
+    NProto::TVolume& volume)
 {
-    return Executor->Execute([=] () mutable {
-        return CreateSessionImpl(std::move(callContext), request);
+    return Executor->Execute([=, &volume] () mutable {
+        return CreateSessionImpl(std::move(callContext), request, volume);
     });
 }
 
-TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
+TSessionFactory::TSessionOrError TSessionFactory::CreateSessionImpl(
     TCallContextPtr callContext,
-    const NProto::TStartEndpointRequest& request)
-{
-    auto describeResponse = DescribeVolume(
-        callContext,
-        request.GetDiskId(),
-        request.GetHeaders());
-    if (HasError(describeResponse)) {
-        return TErrorResponse(describeResponse.GetError());
-    }
-    const auto& volume = describeResponse.GetVolume();
-
-    auto result = CreateEndpoint(request, volume);
-    if (HasError(result)) {
-        return TErrorResponse(result.GetError());
-    }
-    const auto& endpoint = result.GetResult();
-
-    auto error = endpoint->Start(std::move(callContext), request.GetHeaders());
-    if (HasError(error)) {
-        return TErrorResponse(error);
-    }
-
-    with_lock (EndpointLock) {
-        auto [it, inserted] = Endpoints.emplace(
-            request.GetUnixSocketPath(),
-            endpoint);
-        STORAGE_VERIFY(
-            inserted,
-            TWellKnownEntityTypes::ENDPOINT,
-            request.GetUnixSocketPath());
-    }
-
-    return TSessionInfo {
-        .Volume = volume,
-        .Session = endpoint->GetSession()
-    };
-}
-
-NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
-    TCallContextPtr callContext,
-    const TString& diskId,
-    const NProto::THeaders& headers)
+    const NProto::TStartEndpointRequest& request,
+    NProto::TVolume& volume)
 {
     auto describeRequest = std::make_shared<NProto::TDescribeVolumeRequest>();
-    describeRequest->MutableHeaders()->CopyFrom(headers);
-    describeRequest->SetDiskId(diskId);
+    describeRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
+    describeRequest->SetDiskId(request.GetDiskId());
 
-    auto future = Service->DescribeVolume(
-        std::move(callContext),
+    auto describeFuture = Service->DescribeVolume(
+        callContext,
         std::move(describeRequest));
 
-    return Executor->WaitFor(future);
-}
-
-TFuture<NProto::TError> TSessionManager::RemoveSession(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
-{
-    return Executor->Execute([=] () mutable {
-        return RemoveSessionImpl(std::move(callContext), socketPath, headers);
-    });
-}
-
-NProto::TError TSessionManager::RemoveSessionImpl(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
-{
-    TEndpointPtr endpoint;
-
-    with_lock (EndpointLock) {
-        auto it = Endpoints.find(socketPath);
-        STORAGE_VERIFY(
-            it != Endpoints.end(),
-            TWellKnownEntityTypes::ENDPOINT,
-            socketPath);
-        endpoint = std::move(it->second);
-        Endpoints.erase(it);
-    }
-
-    auto error = endpoint->Stop(std::move(callContext), headers);
-
-    endpoint.reset();
-    ThrottlerProvider->Clean();
-
-    return error;
-}
-
-TFuture<NProto::TError> TSessionManager::AlterSession(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    NProto::EVolumeAccessMode accessMode,
-    NProto::EVolumeMountMode mountMode,
-    ui64 mountSeqNumber,
-    const NProto::THeaders& headers)
-{
-    return Executor->Execute([=] () mutable {
-        return AlterSessionImpl(
-            std::move(callContext),
-            socketPath,
-            accessMode,
-            mountMode,
-            mountSeqNumber,
-            headers);
-    });
-}
-
-NProto::TError TSessionManager::AlterSessionImpl(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    NProto::EVolumeAccessMode accessMode,
-    NProto::EVolumeMountMode mountMode,
-    ui64 mountSeqNumber,
-    const NProto::THeaders& headers)
-{
-    TEndpointPtr endpoint;
-
-    with_lock (EndpointLock) {
-        auto it = Endpoints.find(socketPath);
-        if (it == Endpoints.end()) {
-            return TErrorResponse(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
-        }
-        endpoint = it->second;
-    }
-
-    return endpoint->Alter(
-        std::move(callContext),
-        accessMode,
-        mountMode,
-        mountSeqNumber,
-        headers);
-}
-
-TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
-{
-    return Executor->Execute([=] () mutable {
-        return GetSessionImpl(
-            std::move(callContext),
-            socketPath,
-            headers);
-    });
-}
-
-TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
-    TCallContextPtr callContext,
-    const TString& socketPath,
-    const NProto::THeaders& headers)
-{
-    TEndpointPtr endpoint;
-
-    with_lock (EndpointLock) {
-        auto it = Endpoints.find(socketPath);
-        if (it == Endpoints.end()) {
-            return TErrorResponse(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
-        }
-        endpoint = it->second;
-    }
-
-    auto describeResponse = DescribeVolume(
-        std::move(callContext),
-        endpoint->GetDiskId(),
-        headers);
+    auto describeResponse = Executor->WaitFor(describeFuture);
     if (HasError(describeResponse)) {
         return TErrorResponse(describeResponse.GetError());
     }
 
-    return TSessionInfo {
-        .Volume = describeResponse.GetVolume(),
-        .Session = endpoint->GetSession()
-    };
-}
-
-TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
-    const TString& socketPath)
-{
-    TEndpointPtr endpoint;
-
-    with_lock (EndpointLock) {
-        auto it = Endpoints.find(socketPath);
-        if (it == Endpoints.end()) {
-            return TErrorResponse(
-                E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
-        }
-        endpoint = it->second;
-    }
-
-    return endpoint->GetPerformanceProfile();
-}
-
-TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
-    const NProto::TStartEndpointRequest& request,
-    const NProto::TVolume& volume)
-{
+    volume = describeResponse.GetVolume();
     const auto clientId = request.GetClientId();
     auto accessMode = request.GetVolumeAccessMode();
 
@@ -702,16 +473,25 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         std::move(clientConfig),
         CreateSessionConfig(request));
 
-    return std::make_shared<TEndpoint>(
-        *Executor,
+    auto endpoint = std::make_shared<TEndpointSession>(
         std::move(session),
         std::move(client),
         ThrottlerProvider,
         clientId,
         volume.GetDiskId());
+
+    auto startFuture = endpoint->Start(
+        std::move(callContext),
+        request.GetHeaders());
+    auto error = Executor->WaitFor(startFuture);
+    if (HasError(error)) {
+        return error;
+    }
+
+    return TSessionOrError(endpoint);
 }
 
-TClientAppConfigPtr TSessionManager::CreateClientConfig(
+TClientAppConfigPtr TSessionFactory::CreateClientConfig(
     const NProto::TStartEndpointRequest& request)
 {
     NProto::TClientAppConfig clientAppConfig;
@@ -734,7 +514,7 @@ TClientAppConfigPtr TSessionManager::CreateClientConfig(
     return std::make_shared<TClientAppConfig>(std::move(clientAppConfig));
 }
 
-TSessionConfig TSessionManager::CreateSessionConfig(
+TSessionConfig TSessionFactory::CreateSessionConfig(
     const NProto::TStartEndpointRequest& request)
 {
     TSessionConfig config;
@@ -753,7 +533,7 @@ TSessionConfig TSessionManager::CreateSessionConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISessionManagerPtr CreateSessionManager(
+ISessionFactoryPtr CreateSessionFactory(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
@@ -765,7 +545,7 @@ ISessionManagerPtr CreateSessionManager(
     IStorageProviderPtr storageProvider,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options)
+    TSessionFactoryOptions options)
 {
     auto throttlerProvider = CreateThrottlerProvider(
         options.HostProfile,
@@ -776,7 +556,7 @@ ISessionManagerPtr CreateSessionManager(
         requestStats,
         volumeStats);
 
-    return std::make_shared<TSessionManager>(
+    return std::make_shared<TSessionFactory>(
         std::move(timer),
         std::move(scheduler),
         std::move(logging),

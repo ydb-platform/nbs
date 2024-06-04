@@ -21,49 +21,46 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSessionInfo
+struct IEndpointSession
 {
-    NProto::TVolume Volume;
-    NClient::ISessionPtr Session;
-};
+    virtual ~IEndpointSession() = default;
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct ISessionManager
-{
-    virtual ~ISessionManager() = default;
-
-    using TSessionOrError = TResultOrError<TSessionInfo>;
-
-    virtual NThreading::TFuture<TSessionOrError> CreateSession(
+    virtual NThreading::TFuture<NProto::TError> Remove(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request) = 0;
+        NProto::THeaders headers) = 0;
 
-    virtual NThreading::TFuture<NProto::TError> RemoveSession(
+    virtual NThreading::TFuture<NProto::TMountVolumeResponse> Alter(
         TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) = 0;
-
-    virtual NThreading::TFuture<NProto::TError> AlterSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
         NProto::EVolumeAccessMode accessMode,
         NProto::EVolumeMountMode mountMode,
         ui64 mountSeqNumber,
-        const NProto::THeaders& headers) = 0;
+        NProto::THeaders headers) = 0;
 
-    virtual NThreading::TFuture<TSessionOrError> GetSession(
+    virtual NThreading::TFuture<NProto::TMountVolumeResponse> Describe(
         TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) = 0;
+        NProto::THeaders headers) const = 0;
 
-    virtual TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
-        const TString& socketPath) = 0;
+    virtual NClient::ISessionPtr GetSession() const = 0;
+    virtual NProto::TClientPerformanceProfile GetProfile() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSessionManagerOptions
+struct ISessionFactory
+{
+    virtual ~ISessionFactory() = default;
+
+    using TSessionOrError = TResultOrError<IEndpointSessionPtr>;
+
+    virtual NThreading::TFuture<TSessionOrError> CreateSession(
+        TCallContextPtr callContext,
+        const NProto::TStartEndpointRequest& request,
+        NProto::TVolume& volume) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TSessionFactoryOptions
 {
     bool StrictContractValidation = false;
     bool TemporaryServer = false;
@@ -75,7 +72,7 @@ struct TSessionManagerOptions
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ISessionManagerPtr CreateSessionManager(
+ISessionFactoryPtr CreateSessionFactory(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
@@ -87,6 +84,6 @@ ISessionManagerPtr CreateSessionManager(
     IStorageProviderPtr storageProvider,
     IEncryptionClientFactoryPtr encryptionClientFactory,
     TExecutorPtr executor,
-    TSessionManagerOptions options);
+    TSessionFactoryOptions options);
 
 }   // namespace NCloud::NBlockStore::NServer
