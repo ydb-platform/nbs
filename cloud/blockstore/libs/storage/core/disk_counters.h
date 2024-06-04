@@ -38,7 +38,7 @@ struct TMemberWithMeta: public TBase
     TMemberWithMeta(
             const char* name,
             EPublishingPolicy publishingPolicy,
-            ERequestCounterOption counterOption = ERequestCounterOption())
+            ERequestCounterOption counterOption)
         : TBase()
         , Name(name)
         , PublishingPolicy(publishingPolicy)
@@ -330,32 +330,126 @@ static_assert(
     sizeof(TCumulativeDiskCounters::TCounter) *
         std::size(TCumulativeDiskCounters::All));
 
-#define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(xxx, ...)                        \
-    xxx(Flush,                                                     __VA_ARGS__)\
-    xxx(AddBlobs,                                                  __VA_ARGS__)\
-    xxx(Compaction,                                                __VA_ARGS__)\
-    xxx(Cleanup,                                                   __VA_ARGS__)\
-    xxx(CollectGarbage,                                            __VA_ARGS__)\
-    xxx(DeleteGarbage,                                             __VA_ARGS__)\
-    xxx(TrimFreshLog,                                              __VA_ARGS__)\
-    xxx(AddConfirmedBlobs,                                         __VA_ARGS__)\
-    xxx(AddUnconfirmedBlobs,                                       __VA_ARGS__)\
-    xxx(ConfirmBlobs,                                              __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART_REQUEST_COUNTERS
+struct THistogramRequestCounters
+{
+    using TLowResCounter = TMemberWithMeta<
+        TRequestCounters<THistogram<TRequestUsTimeBucketsLowResolution>>>;
+    using TLowResCounterPtr = TLowResCounter THistogramRequestCounters::*;
 
-#define BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(xxx, ...)                   \
-    xxx(ReadBlocks,     true,                                      __VA_ARGS__)\
-    xxx(WriteBlocks,    false,                                     __VA_ARGS__)\
-    xxx(ZeroBlocks,     false,                                     __VA_ARGS__)\
-    xxx(DescribeBlocks, false,                                     __VA_ARGS__)\
-    xxx(ChecksumBlocks, false,                                     __VA_ARGS__)\
-    // BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE
+    using THighResCounter =
+        TMemberWithMeta<TRequestCounters<THistogram<TRequestUsTimeBuckets>>>;
+    using THighResCounterPtr = THighResCounter THistogramRequestCounters::*;
 
-#define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(xxx, ...)     \
-    xxx(WriteBlob,                                                 __VA_ARGS__)\
-    xxx(ReadBlob,                                                  __VA_ARGS__)\
-    xxx(PatchBlob,                                                 __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE
+    // BlobStorage based
+    TLowResCounter Flush{
+        "Flush",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter AddBlobs{
+        "AddBlobs",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter Compaction{
+        "Compaction",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter Cleanup{
+        "Cleanup",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter CollectGarbage{
+        "CollectGarbage",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter DeleteGarbage{
+        "DeleteGarbage",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter TrimFreshLog{
+        "TrimFreshLog",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter AddConfirmedBlobs{
+        "AddConfirmedBlobs",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter AddUnconfirmedBlobs{
+        "AddUnconfirmedBlobs",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TLowResCounter ConfirmBlobs{
+        "ConfirmBlobs",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+
+    // BlobStorage based with kind and size
+    TLowResCounter WriteBlob{
+        "WriteBlob",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind};
+    TLowResCounter ReadBlob{
+        "ReadBlob",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind};
+    TLowResCounter PatchBlob{
+        "PatchBlob",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasKind};
+
+    static constexpr TLowResCounterPtr AllLowResCounters[] = {
+        &THistogramRequestCounters::Flush,
+        &THistogramRequestCounters::AddBlobs,
+        &THistogramRequestCounters::Compaction,
+        &THistogramRequestCounters::Cleanup,
+        &THistogramRequestCounters::CollectGarbage,
+        &THistogramRequestCounters::DeleteGarbage,
+        &THistogramRequestCounters::TrimFreshLog,
+        &THistogramRequestCounters::AddConfirmedBlobs,
+        &THistogramRequestCounters::AddUnconfirmedBlobs,
+        &THistogramRequestCounters::ConfirmBlobs,
+
+        &THistogramRequestCounters::WriteBlob,
+        &THistogramRequestCounters::ReadBlob,
+        &THistogramRequestCounters::PatchBlob,
+    };
+
+    THighResCounter ReadBlocks{
+        "ReadBlocks",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption::HasVoidBytes};
+    THighResCounter WriteBlocks{
+        "WriteBlocks",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    THighResCounter ZeroBlocks{
+        "ZeroBlocks",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    THighResCounter DescribeBlocks{
+        "DescribeBlocks",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    THighResCounter ChecksumBlocks{
+        "ChecksumBlocks",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+
+    static constexpr THighResCounterPtr AllHighResCounters[] = {
+        &THistogramRequestCounters::ReadBlocks,
+        &THistogramRequestCounters::WriteBlocks,
+        &THistogramRequestCounters::ZeroBlocks,
+        &THistogramRequestCounters::DescribeBlocks,
+        &THistogramRequestCounters::ChecksumBlocks,
+    };
+};
+
+static_assert(
+    sizeof(THistogramRequestCounters) ==
+    (sizeof(THistogramRequestCounters::TLowResCounter) *
+         std::size(THistogramRequestCounters::AllLowResCounters) +
+     sizeof(THistogramRequestCounters::THighResCounter) *
+         std::size(THistogramRequestCounters::AllHighResCounters)));
+
 
 
 #define BLOCKSTORE_REPL_PART_ACTOR_COUNTERS(xxx, ...)                          \
@@ -425,23 +519,7 @@ struct TPartitionDiskCounters
 {
     TSimpleDiskCounters Simple;
     TCumulativeDiskCounters Cumulative;
-
-    struct {
-#define BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER(name, ...)                  \
-        TRequestCounters<THistogram<TRequestUsTimeBucketsLowResolution>> name;\
-// BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER
-
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER)
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER)
-#undef BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-        TRequestCounters<THistogram<TRequestUsTimeBuckets>> name;             \
-// BLOCKSTORE_REQUEST_COUNTER
-
-        BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
-    } RequestCounters;
+    THistogramRequestCounters RequestCounters;
 
     struct {
 #define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \

@@ -20,14 +20,16 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
         counter.Add(source.Cumulative.*counterPtr);
     }
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Add(source.RequestCounters.name);                     \
-// BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: THistogramRequestCounters::AllLowResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Add(source.RequestCounters.*counterPtr);
+    }
 
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: THistogramRequestCounters::AllHighResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Add(source.RequestCounters.*counterPtr);
+    }
+
 
 #define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
     Histogram.name.Add(source.Histogram.name);                                 \
@@ -49,14 +51,15 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
         counter.AggregateWith(source.Cumulative.*counterPtr);
     }
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.AggregateWith(source.RequestCounters.name);           \
-// BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: THistogramRequestCounters::AllLowResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.AggregateWith(source.RequestCounters.*counterPtr);
+    }
 
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: THistogramRequestCounters::AllHighResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.AggregateWith(source.RequestCounters.*counterPtr);
+    }
 
 #define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
     Histogram.name.AggregateWith(source.Histogram.name);                       \
@@ -88,16 +91,25 @@ void TPartitionDiskCounters::Publish(TInstant now)
         }
     }
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Publish();                                            \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
+    for (auto counterPtr: THistogramRequestCounters::AllLowResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish();
+        }
     }
-    BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+
+    for (auto counterPtr: THistogramRequestCounters::AllHighResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish();
+        }
+    }
 
 #define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
     Histogram.name.Publish();                                                  \
@@ -120,11 +132,6 @@ void TPartitionDiskCounters::Register(
         requestCounterOptions =
             requestCounterOptions | ERequestCounterOption::ReportHistogram;
     }
-    ERequestCounterOptions counterOptions =
-        requestCounterOptions;
-    ERequestCounterOptions kindCounterOptions =
-        requestCounterOptions |
-        ERequestCounterOption::HasKind;
 
     for (auto counterPtr: TSimpleDiskCounters::All) {
         auto& counter = (Simple.*counterPtr);
@@ -146,35 +153,29 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Register(                                             \
-        counters->GetSubgroup("request", #name), requestCounterOptions);       \
-//  BLOCKSTORE_REQUEST_COUNTER
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
+    for (auto counterPtr: THistogramRequestCounters::AllLowResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", counter.Name),
+                requestCounterOptions | counter.CounterOption);
+        }
     }
-#undef BLOCKSTORE_REQUEST_COUNTER
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, hasVoidBytes, ...)                 \
-    RequestCounters.name.Register(                                          \
-        counters->GetSubgroup("request", #name),                            \
-        hasVoidBytes ? counterOptions | ERequestCounterOption::HasVoidBytes \
-                     : counterOptions);
-
-    BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Register(                                             \
-        counters->GetSubgroup("request", #name), kindCounterOptions);          \
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
+    for (auto counterPtr: THistogramRequestCounters::AllHighResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("request", counter.Name),
+                requestCounterOptions | counter.CounterOption);
+        }
     }
-#undef BLOCKSTORE_REQUEST_COUNTER
-
 
 #define BLOCKSTORE_HIST_COUNTER(name, ...) \
     Histogram.name.Register(counters->GetSubgroup("queue", #name), aggregate);
@@ -197,15 +198,15 @@ void TPartitionDiskCounters::Reset()
         counter.Reset();
     }
 
+    for (auto counterPtr: THistogramRequestCounters::AllLowResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Reset();
+    }
 
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.Reset();                                              \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_PART_REQUEST_COUNTERS_WITH_SIZE(BLOCKSTORE_REQUEST_COUNTER)
-    BLOCKSTORE_REPL_PART_REQUEST_COUNTERS_WITH_SIZE_AND_KIND(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: THistogramRequestCounters::AllHighResCounters) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Reset();
+    }
 
 #define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
     Histogram.name.Reset();                                                    \
