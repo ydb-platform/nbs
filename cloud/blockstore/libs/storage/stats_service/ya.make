@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     stats_service.cpp
     stats_service_actor.cpp
+    stats_service_actor_bandwidth_limiter.cpp
     stats_service_actor_client_stats.cpp
     stats_service_actor_solomon.cpp
     stats_service_actor_ydb.cpp

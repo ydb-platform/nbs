@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 
 #include <util/system/hostname.h>
 

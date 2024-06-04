@@ -1,6 +1,7 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -4848,6 +4849,72 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             checkBlocks(processedRange, expectChanged);
         }
         UNIT_ASSERT_VALUES_EQUAL(2, expectChangedCount);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterBackgroundBandwidth)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        config.SetOptimizeVoidBuffersTransferForReadsEnabled(true);
+        config.SetMaxShadowDiskFillBandwidth(300);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui32 registerSourceCounter = 0;
+        auto countRegisterTrafficSourceRequests =
+            [&](TTestActorRuntimeBase& runtime,
+                TAutoPtr<IEventHandle>& event) -> bool
+        {
+            Y_UNUSED(runtime);
+
+            if (event->GetTypeRewrite() ==
+                TEvStatsServicePrivate::EvRegisterTrafficSourceRequest)
+            {
+                auto* msg = event->Get<
+                    TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
+                ++registerSourceCounter;
+                UNIT_ASSERT_VALUES_EQUAL("vol0-c1", msg->SourceId);
+                UNIT_ASSERT_VALUES_EQUAL(300, msg->BandwidthMiBs);
+            }
+            return false;
+        };
+        runtime->SetEventFilter(countRegisterTrafficSourceRequests);
+
+        // Create checkpoint when no client connected.
+        volume.CreateCheckpoint("c1");
+
+        // Reconnect pipe since partition has restarted.
+        volume.ReconnectPipe();
+
+        // Expect that the registration of the background bandwidth source has
+        // occurred, since the filling of the shadow disk has begun.
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(1, registerSourceCounter);
+
+        // The background bandwidth source should be re-registered at intervals
+        // of once per second.
+        runtime->AdvanceCurrentTime(TDuration::Seconds(1));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
     }
 }
 
