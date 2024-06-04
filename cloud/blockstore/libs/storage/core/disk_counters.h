@@ -16,46 +16,212 @@ enum class EPublishingPolicy
     DiskRegistryBased,
 };
 
-////////////////////////////////////////////////////////////////////////////////
+template <typename TBase>
+struct TMemberWithMeta: public TBase
+{
+    const char* Name = {};
+    EPublishingPolicy PublishingPolicy = {};
+    ERequestCounterOption CounterOption = {};
 
-#define BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(xxx, ...)                       \
-    xxx(BytesCount,             Generic, Permanent,                __VA_ARGS__)\
-    xxx(IORequestsInFlight,     Generic, Permanent,                __VA_ARGS__)\
-// BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS
+    TMemberWithMeta() = default;
 
-////////////////////////////////////////////////////////////////////////////////
+    template <typename... TArgs>
+    TMemberWithMeta(
+            const char* name,
+            EPublishingPolicy publishingPolicy,
+            TArgs&&... args)
+        : TBase(std::forward<TArgs>(args)...)
+        , Name(name)
+        , PublishingPolicy(publishingPolicy)
+    {}
 
-#define BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(xxx, ...)                         \
-    xxx(MixedBytesCount,        Generic, Permanent,                __VA_ARGS__)\
-    xxx(MergedBytesCount,       Generic, Permanent,                __VA_ARGS__)\
-    xxx(FreshBytesCount,        Generic, Permanent,                __VA_ARGS__)\
-    xxx(UntrimmedFreshBlobBytesCount,    Generic, Permanent        __VA_ARGS__)\
-    xxx(UsedBytesCount,         Generic, Permanent,                __VA_ARGS__)\
-    xxx(LogicalUsedBytesCount,  Generic, Permanent,                __VA_ARGS__)\
-    xxx(IORequestsQueued,       Generic, Expiring,                 __VA_ARGS__)\
-    xxx(UsedBlocksMapMemSize,   Generic, Expiring,                 __VA_ARGS__)\
-    xxx(MixedIndexCacheMemSize, Generic, Expiring,                 __VA_ARGS__)\
-    xxx(CheckpointBytes,        Generic, Permanent,                __VA_ARGS__)\
-    xxx(AlmostFullChannelCount, Generic, Expiring,                 __VA_ARGS__)\
-    xxx(FreshBlocksInFlight,    Generic, Expiring,                 __VA_ARGS__)\
-    xxx(FreshBlocksQueued,      Generic, Expiring,                 __VA_ARGS__)\
-    xxx(CleanupQueueBytes,      Generic, Permanent,                __VA_ARGS__)\
-    xxx(GarbageQueueBytes,      Generic, Permanent,                __VA_ARGS__)\
-    xxx(CompactionScore,        Max,     Permanent,                __VA_ARGS__)\
-    xxx(CompactionGarbageScore, Max,     Permanent,                __VA_ARGS__)\
-    xxx(ChannelHistorySize,     Max,     Permanent,                __VA_ARGS__)\
-    xxx(CompactionRangeCountPerRun, Max, Permanent,                __VA_ARGS__)\
-    xxx(UnconfirmedBlobCount,   Generic, Permanent,                __VA_ARGS__)\
-    xxx(ConfirmedBlobCount,     Generic, Permanent,                __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS
+    TMemberWithMeta(
+            const char* name,
+            EPublishingPolicy publishingPolicy,
+            ERequestCounterOption counterOption = ERequestCounterOption())
+        : TBase()
+        , Name(name)
+        , PublishingPolicy(publishingPolicy)
+        , CounterOption(counterOption)
+    {}
 
-////////////////////////////////////////////////////////////////////////////////
+    TMemberWithMeta(const TMemberWithMeta& rh) = default;
+    TMemberWithMeta(TMemberWithMeta&& rh) = default;
 
-#define BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(xxx, ...)                      \
-    xxx(HasBrokenDevice,        Generic, Permanent,                __VA_ARGS__)\
-    xxx(HasBrokenDeviceSilent,  Generic, Permanent,                __VA_ARGS__)\
-    xxx(ScrubbingProgress,      Generic, Permanent,                __VA_ARGS__)\
-// BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS
+    TMemberWithMeta& operator=(const TMemberWithMeta& rh) = default;
+    TMemberWithMeta& operator=(TMemberWithMeta&& rh) = default;
+};
+
+struct TSimpleDiskCounters
+{
+    using TCounter = TMemberWithMeta<TSimpleCounter>;
+    using TCounterPtr = TCounter TSimpleDiskCounters::*;
+
+    // Common
+    TCounter BytesCount{
+        "BytesCount",
+        EPublishingPolicy::All,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter IORequestsInFlight{
+        "IORequestsInFlight",
+        EPublishingPolicy::All,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    // BlobStorage based
+    TCounter MixedBytesCount{
+        "MixedBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedBytesCount{
+        "MergedBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter FreshBytesCount{
+        "FreshBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UntrimmedFreshBlobBytesCount{
+        "UntrimmedFreshBlobBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UsedBytesCount{
+        "UsedBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LogicalUsedBytesCount{
+        "LogicalUsedBytesCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter IORequestsQueued{
+        "IORequestsQueued",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter UsedBlocksMapMemSize{
+        "UsedBlocksMapMemSize",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter MixedIndexCacheMemSize{
+        "MixedIndexCacheMemSize",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter CheckpointBytes{
+        "CheckpointBytes",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter AlmostFullChannelCount{
+        "AlmostFullChannelCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter FreshBlocksInFlight{
+        "FreshBlocksInFlight",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter FreshBlocksQueued{
+        "FreshBlocksQueued",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter CleanupQueueBytes{
+        "CleanupQueueBytes",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter GarbageQueueBytes{
+        "GarbageQueueBytes",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionScore{
+        "CompactionScore",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionGarbageScore{
+        "CompactionGarbageScore",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter ChannelHistorySize{
+        "ChannelHistorySize",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionRangeCountPerRun{
+        "CompactionRangeCountPerRun",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UnconfirmedBlobCount{
+        "UnconfirmedBlobCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter ConfirmedBlobCount{
+        "ConfirmedBlobCount",
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    // DiskRegistry based
+    TCounter HasBrokenDevice{
+        "HasBrokenDevice",
+        EPublishingPolicy::DiskRegistryBased,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter HasBrokenDeviceSilent{
+        "HasBrokenDeviceSilent",
+        EPublishingPolicy::DiskRegistryBased,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    static constexpr TCounterPtr All[] = {
+        &TSimpleDiskCounters::BytesCount,
+        &TSimpleDiskCounters::IORequestsInFlight,
+
+        &TSimpleDiskCounters::MixedBytesCount,
+        &TSimpleDiskCounters::MergedBytesCount,
+        &TSimpleDiskCounters::FreshBytesCount,
+        &TSimpleDiskCounters::UntrimmedFreshBlobBytesCount,
+        &TSimpleDiskCounters::UsedBytesCount,
+        &TSimpleDiskCounters::LogicalUsedBytesCount,
+        &TSimpleDiskCounters::IORequestsQueued,
+        &TSimpleDiskCounters::UsedBlocksMapMemSize,
+        &TSimpleDiskCounters::MixedIndexCacheMemSize,
+        &TSimpleDiskCounters::CheckpointBytes,
+        &TSimpleDiskCounters::AlmostFullChannelCount,
+        &TSimpleDiskCounters::FreshBlocksInFlight,
+        &TSimpleDiskCounters::FreshBlocksQueued,
+        &TSimpleDiskCounters::CleanupQueueBytes,
+        &TSimpleDiskCounters::GarbageQueueBytes,
+        &TSimpleDiskCounters::CompactionScore,
+        &TSimpleDiskCounters::CompactionGarbageScore,
+        &TSimpleDiskCounters::ChannelHistorySize,
+        &TSimpleDiskCounters::CompactionRangeCountPerRun,
+        &TSimpleDiskCounters::UnconfirmedBlobCount,
+        &TSimpleDiskCounters::ConfirmedBlobCount,
+
+        &TSimpleDiskCounters::HasBrokenDevice,
+        &TSimpleDiskCounters::HasBrokenDeviceSilent,
+    };
+    static constexpr size_t MemberCount = std::size(All);
+};
+static_assert(
+    sizeof(TSimpleDiskCounters) ==
+    sizeof(TSimpleDiskCounters::TCounter) * TSimpleDiskCounters::MemberCount);
 
 #define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \
     xxx(ScrubbingThroughput, Generic, Permanent,                   __VA_ARGS__)\
@@ -173,19 +339,7 @@ enum class EPublishingPolicy
 
 struct TPartitionDiskCounters
 {
-    struct {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, type, policy, ...)                     \
-    TSimpleCounter name{                                                       \
-        TSimpleCounter::ECounterType::type,                                    \
-        ECounterExpirationPolicy::policy                                       \
-    };                                                                         \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-        BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
-    } Simple;
+    TSimpleDiskCounters Simple;
 
     struct {
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, type, policy, ...)                 \

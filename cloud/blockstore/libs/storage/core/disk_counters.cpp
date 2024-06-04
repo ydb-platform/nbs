@@ -10,14 +10,10 @@ using namespace NKikimr;
 
 void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.Add(source.Simple.name);                                       \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TSimpleDiskCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        counter.Add(source.Simple.*counterPtr);
+    }
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
     Cumulative.name.Add(source.Cumulative.name);                               \
@@ -46,14 +42,10 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.AggregateWith(source.Simple.name);                             \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TSimpleDiskCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        counter.AggregateWith(source.Simple.*counterPtr);
+    }
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
     Cumulative.name.AggregateWith(source.Cumulative.name);                     \
@@ -82,20 +74,15 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::Publish(TInstant now)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.Publish(now);                                                  \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+    for (auto counterPtr: TSimpleDiskCounters::All) {
+        auto& counter = (Simple.*counterPtr);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
+        }
     }
-    if (Policy == EPublishingPolicy::All
-            || Policy == EPublishingPolicy::DiskRegistryBased)
-    {
-        BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    }
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
     Cumulative.name.Publish(now);                                              \
@@ -148,20 +135,15 @@ void TPartitionDiskCounters::Register(
         requestCounterOptions |
         ERequestCounterOption::HasKind;
 
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.Register(counters, #name);                                     \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+    for (auto counterPtr: TSimpleDiskCounters::All) {
+        auto& counter = (Simple.*counterPtr);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(counters, counter.Name);
+        }
     }
-    if (Policy == EPublishingPolicy::All
-            || Policy == EPublishingPolicy::DiskRegistryBased)
-    {
-        BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    }
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
 Cumulative.name.Register(counters, #name);                                     \
@@ -218,14 +200,10 @@ Cumulative.name.Register(counters, #name);                                     \
 
 void TPartitionDiskCounters::Reset()
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.Reset();                                                       \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_PART_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TSimpleDiskCounters::All) {
+        auto& counter = (Simple.*counterPtr);
+        counter.Reset();
+    }
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
     Cumulative.name.Reset();                                                   \
