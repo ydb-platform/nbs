@@ -111,7 +111,7 @@ TODO
 * [tools/fs](/cloud/blockstore/tools/fs) - filesystem analytics for common filesystems (e.g. ext4, xfs)
 * [tools/http_proxy](/cloud/blockstore/tools/http_proxy) - HTTP/1.1 API over NBS gRPC API
 * [tools/nbd](/cloud/blockstore/tools/nbd) - a tool which lets you connect NBS volume as an NBD device
-* [tools/testing](/cloud/filestore/tools/testing) - testing mocks & load generators / response validators used in integration tests
+* [tools/testing](/cloud/blockstore/tools/testing) - testing mocks & load generators / response validators used in integration tests
 
 ## Filestore
 
