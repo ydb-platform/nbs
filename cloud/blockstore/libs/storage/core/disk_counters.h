@@ -477,19 +477,164 @@ static_assert(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(xxx, ...)                \
-    xxx(MaxReadBandwidth,           Generic, Permanent,            __VA_ARGS__)\
-    xxx(MaxWriteBandwidth,          Generic, Permanent,            __VA_ARGS__)\
-    xxx(MaxReadIops,                Generic, Permanent,            __VA_ARGS__)\
-    xxx(MaxWriteIops,               Generic, Permanent,            __VA_ARGS__)\
-    xxx(MaxUsedQuota,               Generic, Permanent,            __VA_ARGS__)\
-    xxx(LastVolumeLoadTime,         Max,     Permanent,            __VA_ARGS__)\
-    xxx(LastVolumeStartTime,        Max,     Permanent,            __VA_ARGS__)\
-    xxx(HasStorageConfigPatch,      Generic, Permanent,            __VA_ARGS__)\
-    xxx(LongRunningReadBlob,        Generic, Expiring,             __VA_ARGS__)\
-    xxx(LongRunningWriteBlob,       Generic, Expiring,             __VA_ARGS__)\
-    xxx(UseFastPath,                Generic, Permanent,            __VA_ARGS__)\
+struct TVolumeSelfSimpleCounters
+{
+    using TCounter = TMemberWithMeta<TSimpleCounter>;
+    using TCounterPtr = TCounter TVolumeSelfSimpleCounters::*;
 
+    // Common
+    TCounter MaxReadBandwidth{
+        "MaxReadBandwidth",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MaxWriteBandwidth{
+        "MaxWriteBandwidth",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MaxReadIops{
+        "MaxReadIops",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MaxWriteIops{
+        "MaxWriteIops",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MaxUsedQuota{
+        "MaxUsedQuota",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LastVolumeLoadTime{
+        "LastVolumeLoadTime",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LastVolumeStartTime{
+        "LastVolumeStartTime",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter HasStorageConfigPatch{
+        "HasStorageConfigPatch",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter LongRunningReadBlob{
+        "LongRunningReadBlob",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter LongRunningWriteBlob{
+        "LongRunningWriteBlob",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter UseFastPath{
+        "UseFastPath",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    // BlobStorage-based
+    TCounter RealMaxWriteBandwidth{
+        "RealMaxWriteBandwidth",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter PostponedQueueWeight{
+        "PostponedQueueWeight",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter BPFreshIndexScore{
+        "BPFreshIndexScore",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter BPCompactionScore{
+        "BPCompactionScore",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter BPDiskSpaceScore{
+        "BPDiskSpaceScore",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter BPCleanupScore{
+        "BPCleanupScore",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter VBytesCount{
+        "VBytesCount",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter PartitionCount{
+        "PartitionCount",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    // DiskRegistry-based
+    TCounter MigrationStarted{
+        "MigrationStarted",
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MigrationProgress{
+        "MigrationProgress",
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter ResyncStarted{
+        "ResyncStarted",
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter ResyncProgress{
+        "ResyncProgress",
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    static constexpr TCounterPtr All[] = {
+        &TVolumeSelfSimpleCounters::MaxReadBandwidth,
+        &TVolumeSelfSimpleCounters::MaxWriteBandwidth,
+        &TVolumeSelfSimpleCounters::MaxReadIops,
+        &TVolumeSelfSimpleCounters::MaxWriteIops,
+        &TVolumeSelfSimpleCounters::MaxUsedQuota,
+        &TVolumeSelfSimpleCounters::LastVolumeLoadTime,
+        &TVolumeSelfSimpleCounters::LastVolumeStartTime,
+        &TVolumeSelfSimpleCounters::HasStorageConfigPatch,
+        &TVolumeSelfSimpleCounters::LongRunningReadBlob,
+        &TVolumeSelfSimpleCounters::LongRunningWriteBlob,
+        &TVolumeSelfSimpleCounters::UseFastPath,
+
+        &TVolumeSelfSimpleCounters::RealMaxWriteBandwidth,
+        &TVolumeSelfSimpleCounters::PostponedQueueWeight,
+        &TVolumeSelfSimpleCounters::BPFreshIndexScore,
+        &TVolumeSelfSimpleCounters::BPCompactionScore,
+        &TVolumeSelfSimpleCounters::BPDiskSpaceScore,
+        &TVolumeSelfSimpleCounters::BPCleanupScore,
+        &TVolumeSelfSimpleCounters::VBytesCount,
+        &TVolumeSelfSimpleCounters::PartitionCount,
+
+        &TVolumeSelfSimpleCounters::MigrationStarted,
+        &TVolumeSelfSimpleCounters::MigrationProgress,
+        &TVolumeSelfSimpleCounters::ResyncStarted,
+        &TVolumeSelfSimpleCounters::ResyncProgress,
+    };
+};
+static_assert(
+    sizeof(TVolumeSelfSimpleCounters) ==
+    sizeof(TVolumeSelfSimpleCounters::TCounter) *
+        std::size(TVolumeSelfSimpleCounters::All));
 
 #define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \
     xxx(ThrottlerRejectedRequests,  Generic, Expiring,             __VA_ARGS__)\
@@ -507,27 +652,6 @@ static_assert(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(xxx, ...)                  \
-    xxx(RealMaxWriteBandwidth,      Generic, Permanent,            __VA_ARGS__)\
-    xxx(PostponedQueueWeight,       Generic, Expiring,             __VA_ARGS__)\
-    xxx(BPFreshIndexScore,          Generic, Expiring,             __VA_ARGS__)\
-    xxx(BPCompactionScore,          Generic, Expiring,             __VA_ARGS__)\
-    xxx(BPDiskSpaceScore,           Generic, Expiring,             __VA_ARGS__)\
-    xxx(BPCleanupScore,             Generic, Expiring,             __VA_ARGS__)\
-    xxx(VBytesCount,                Generic, Permanent,            __VA_ARGS__)\
-    xxx(PartitionCount,             Generic, Permanent,            __VA_ARGS__)\
-// BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS
-
-////////////////////////////////////////////////////////////////////////////////
-
-#define BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(xxx, ...)               \
-    xxx(MigrationStarted,           Generic, Permanent,            __VA_ARGS__)\
-    xxx(MigrationProgress,          Generic, Permanent,            __VA_ARGS__)\
-    xxx(ResyncStarted,              Generic, Permanent,            __VA_ARGS__)\
-    xxx(ResyncProgress,             Generic, Permanent,            __VA_ARGS__)\
-// BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS
-
-////////////////////////////////////////////////////////////////////////////////
 
 struct TPartitionDiskCounters
 {
@@ -553,20 +677,7 @@ struct TPartitionDiskCounters
 
 struct TVolumeSelfCounters
 {
-    struct
-    {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, type, policy, ...)                    \
-    TSimpleCounter name{                                                      \
-        TSimpleCounter::ECounterType::type,                                   \
-        ECounterExpirationPolicy::policy                                      \
-    };                                                                        \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-        BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-        BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
-    } Simple;
+    TVolumeSelfSimpleCounters Simple;
 
     struct
     {

@@ -218,14 +218,11 @@ void TPartitionDiskCounters::Reset()
 
 void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.AggregateWith(source.Simple.name);                             \
-// BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        counter.AggregateWith(source.Simple.*counterPtr);
+    }
 
-    BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
     Cumulative.name.AggregateWith(source.Cumulative.name);                     \
@@ -244,14 +241,11 @@ void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
 
 void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                   \
-    Simple.name.Add(source.Simple.name);                                       \
-// BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        counter.Add(source.Simple.*counterPtr);
+    }
 
-    BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
     Cumulative.name.Add(source.Cumulative.name);                              \
@@ -270,14 +264,11 @@ void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
 
 void TVolumeSelfCounters::Reset()
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                  \
-    Simple.name.Reset();                                                      \
-// BLOCKSTORE_SIMPLE_COUNTER
+    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        counter.Reset();
+    }
 
-    BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
     Cumulative.name.Reset();                                                  \
@@ -298,20 +289,15 @@ void TVolumeSelfCounters::Register(
     NMonitoring::TDynamicCountersPtr counters,
     bool aggregate)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                  \
-    Simple.name.Register(counters, #name);                                    \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(counters, counter.Name);
+        }
     }
-    if (Policy == EPublishingPolicy::All
-            || Policy == EPublishingPolicy::DiskRegistryBased)
-    {
-        BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    }
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
     Cumulative.name.Register(counters, #name);                                \
@@ -333,20 +319,15 @@ void TVolumeSelfCounters::Register(
 
 void TVolumeSelfCounters::Publish(TInstant now)
 {
-#define BLOCKSTORE_SIMPLE_COUNTER(name, ...)                                  \
-    Simple.name.Publish(now);                                                 \
-// BLOCKSTORE_SIMPLE_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
+    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+        auto& counter = Simple.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
+        }
     }
-    if (Policy == EPublishingPolicy::All
-            || Policy == EPublishingPolicy::DiskRegistryBased)
-    {
-        BLOCKSTORE_DRBASED_VOLUME_SELF_SIMPLE_COUNTERS(BLOCKSTORE_SIMPLE_COUNTER)
-    }
-#undef BLOCKSTORE_SIMPLE_COUNTER
 
 #define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
     Cumulative.name.Publish(now);                                             \
