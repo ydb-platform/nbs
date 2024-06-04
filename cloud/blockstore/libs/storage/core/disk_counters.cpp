@@ -10,12 +10,12 @@ using namespace NKikimr;
 
 void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 {
-    for (auto counterPtr: TSimpleDiskCounters::All) {
+    for (auto counterPtr: TSimpleDiskCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         counter.Add(source.Simple.*counterPtr);
     }
 
-    for (auto counterPtr: TCumulativeDiskCounters::All) {
+    for (auto counterPtr: TCumulativeDiskCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         counter.Add(source.Cumulative.*counterPtr);
     }
@@ -30,7 +30,7 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
         counter.Add(source.RequestCounters.*counterPtr);
     }
 
-    for (auto counterPtr: THistogramCounters::All) {
+    for (auto counterPtr: THistogramCounters::AllCounters) {
         auto& counter = Histogram.*counterPtr;
         counter.Add(source.Histogram.*counterPtr);
     }
@@ -38,12 +38,12 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 {
-    for (auto counterPtr: TSimpleDiskCounters::All) {
+    for (auto counterPtr: TSimpleDiskCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         counter.AggregateWith(source.Simple.*counterPtr);
     }
 
-    for (auto counterPtr: TCumulativeDiskCounters::All) {
+    for (auto counterPtr: TCumulativeDiskCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         counter.AggregateWith(source.Cumulative.*counterPtr);
     }
@@ -58,7 +58,7 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
         counter.AggregateWith(source.RequestCounters.*counterPtr);
     }
 
-    for (auto counterPtr: THistogramCounters::All) {
+    for (auto counterPtr: THistogramCounters::AllCounters) {
         auto& counter = Histogram.*counterPtr;
         counter.AggregateWith(source.Histogram.*counterPtr);
     }
@@ -66,7 +66,7 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
 
 void TPartitionDiskCounters::Publish(TInstant now)
 {
-    for (auto counterPtr: TSimpleDiskCounters::All) {
+    for (auto counterPtr: TSimpleDiskCounters::AllCounters) {
         auto& counter = (Simple.*counterPtr);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -76,7 +76,7 @@ void TPartitionDiskCounters::Publish(TInstant now)
         }
     }
 
-    for (auto counterPtr: TCumulativeDiskCounters::All) {
+    for (auto counterPtr: TCumulativeDiskCounters::AllCounters) {
         auto& counter = (Cumulative.*counterPtr);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -106,7 +106,7 @@ void TPartitionDiskCounters::Publish(TInstant now)
         }
     }
 
-    for (auto counterPtr: THistogramCounters::All) {
+    for (auto counterPtr: THistogramCounters::AllCounters) {
         auto& counter = Histogram.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -129,7 +129,7 @@ void TPartitionDiskCounters::Register(
             requestCounterOptions | ERequestCounterOption::ReportHistogram;
     }
 
-    for (auto counterPtr: TSimpleDiskCounters::All) {
+    for (auto counterPtr: TSimpleDiskCounters::AllCounters) {
         auto& counter = (Simple.*counterPtr);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -139,7 +139,7 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-    for (auto counterPtr: TCumulativeDiskCounters::All) {
+    for (auto counterPtr: TCumulativeDiskCounters::AllCounters) {
         auto& counter = (Cumulative.*counterPtr);
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -173,7 +173,7 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-    for (auto counterPtr: THistogramCounters::All) {
+    for (auto counterPtr: THistogramCounters::AllCounters) {
         auto& counter = Histogram.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -188,12 +188,12 @@ void TPartitionDiskCounters::Register(
 
 void TPartitionDiskCounters::Reset()
 {
-    for (auto counterPtr: TSimpleDiskCounters::All) {
+    for (auto counterPtr: TSimpleDiskCounters::AllCounters) {
         auto& counter = (Simple.*counterPtr);
         counter.Reset();
     }
 
-    for (auto counterPtr: TCumulativeDiskCounters::All) {
+    for (auto counterPtr: TCumulativeDiskCounters::AllCounters) {
         auto& counter = (Cumulative.*counterPtr);
         counter.Reset();
     }
@@ -208,7 +208,7 @@ void TPartitionDiskCounters::Reset()
         counter.Reset();
     }
 
-    for (auto counterPtr: THistogramCounters::All) {
+    for (auto counterPtr: THistogramCounters::AllCounters) {
         auto& counter = Histogram.*counterPtr;
         counter.Reset();
     }
@@ -218,17 +218,17 @@ void TPartitionDiskCounters::Reset()
 
 void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
 {
-    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+    for (auto counterPtr: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         counter.AggregateWith(source.Simple.*counterPtr);
     }
 
-    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+    for (auto counterPtr: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         counter.AggregateWith(source.Cumulative.*counterPtr);
     }
 
-    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+    for (auto counterPtr: TVolumeSelfRequestCounters::AllCounters) {
         auto& counter = RequestCounters.*counterPtr;
         counter.AggregateWith(source.RequestCounters.*counterPtr);
     }
@@ -236,17 +236,17 @@ void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
 
 void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
 {
-    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+    for (auto counterPtr: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         counter.Add(source.Simple.*counterPtr);
     }
 
-    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+    for (auto counterPtr: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         counter.Add(source.Cumulative.*counterPtr);
     }
 
-    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+    for (auto counterPtr: TVolumeSelfRequestCounters::AllCounters) {
         auto& counter = RequestCounters.*counterPtr;
         counter.Add(source.RequestCounters.*counterPtr);
     }
@@ -254,17 +254,17 @@ void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
 
 void TVolumeSelfCounters::Reset()
 {
-    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+    for (auto counterPtr: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         counter.Reset();
     }
 
-    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+    for (auto counterPtr: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         counter.Reset();
     }
 
-    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+    for (auto counterPtr: TVolumeSelfRequestCounters::AllCounters) {
         auto& counter = RequestCounters.*counterPtr;
         counter.Reset();
     }
@@ -274,7 +274,7 @@ void TVolumeSelfCounters::Register(
     NMonitoring::TDynamicCountersPtr counters,
     bool aggregate)
 {
-    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+    for (auto counterPtr: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -284,7 +284,7 @@ void TVolumeSelfCounters::Register(
         }
     }
 
-    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+    for (auto counterPtr: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -294,7 +294,7 @@ void TVolumeSelfCounters::Register(
         }
     }
 
-    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+    for (auto counterPtr: TVolumeSelfRequestCounters::AllCounters) {
         auto& counter = RequestCounters.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -310,7 +310,7 @@ void TVolumeSelfCounters::Register(
 
 void TVolumeSelfCounters::Publish(TInstant now)
 {
-    for (auto counterPtr: TVolumeSelfSimpleCounters::All) {
+    for (auto counterPtr: TVolumeSelfSimpleCounters::AllCounters) {
         auto& counter = Simple.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -320,7 +320,7 @@ void TVolumeSelfCounters::Publish(TInstant now)
         }
     }
 
-    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+    for (auto counterPtr: TVolumeSelfCumulativeCounters::AllCounters) {
         auto& counter = Cumulative.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||
@@ -330,7 +330,7 @@ void TVolumeSelfCounters::Publish(TInstant now)
         }
     }
 
-    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+    for (auto counterPtr: TVolumeSelfRequestCounters::AllCounters) {
         auto& counter = RequestCounters.*counterPtr;
         if (Policy == EPublishingPolicy::All ||
             counter.PublishingPolicy == EPublishingPolicy::All ||

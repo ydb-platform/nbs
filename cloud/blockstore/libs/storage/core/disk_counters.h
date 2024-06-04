@@ -188,7 +188,7 @@ struct TSimpleDiskCounters
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr All[] = {
+    static constexpr TCounterPtr AllCounters[] = {
         &TSimpleDiskCounters::BytesCount,
         &TSimpleDiskCounters::IORequestsInFlight,
 
@@ -219,8 +219,9 @@ struct TSimpleDiskCounters
     };
 };
 static_assert(
-    sizeof(TSimpleDiskCounters) == sizeof(TSimpleDiskCounters::TCounter) *
-                                       std::size(TSimpleDiskCounters::All));
+    sizeof(TSimpleDiskCounters) ==
+    sizeof(TSimpleDiskCounters::TCounter) *
+        std::size(TSimpleDiskCounters::AllCounters));
 
 struct TCumulativeDiskCounters
 {
@@ -306,7 +307,7 @@ struct TCumulativeDiskCounters
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr All[] = {
+    static constexpr TCounterPtr AllCounters[] = {
         &TCumulativeDiskCounters::BytesWritten,
         &TCumulativeDiskCounters::BytesRead,
         &TCumulativeDiskCounters::SysBytesWritten,
@@ -328,7 +329,7 @@ struct TCumulativeDiskCounters
 static_assert(
     sizeof(TCumulativeDiskCounters) ==
     sizeof(TCumulativeDiskCounters::TCounter) *
-        std::size(TCumulativeDiskCounters::All));
+        std::size(TCumulativeDiskCounters::AllCounters));
 
 struct THistogramRequestCounters
 {
@@ -465,7 +466,7 @@ struct THistogramCounters
         EPublishingPolicy::Repl,
         ERequestCounterOption{}};
 
-    static constexpr TCounterPtr All[] = {
+    static constexpr TCounterPtr AllCounters[] = {
         &THistogramCounters::ActorQueue,
         &THistogramCounters::MailboxQueue,
     };
@@ -473,7 +474,8 @@ struct THistogramCounters
 
 static_assert(
     sizeof(THistogramCounters) ==
-    sizeof(THistogramCounters::TCounter) * std::size(THistogramCounters::All));
+    sizeof(THistogramCounters::TCounter) *
+        std::size(THistogramCounters::AllCounters));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -603,7 +605,7 @@ struct TVolumeSelfSimpleCounters
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr All[] = {
+    static constexpr TCounterPtr AllCounters[] = {
         &TVolumeSelfSimpleCounters::MaxReadBandwidth,
         &TVolumeSelfSimpleCounters::MaxWriteBandwidth,
         &TVolumeSelfSimpleCounters::MaxReadIops,
@@ -634,12 +636,12 @@ struct TVolumeSelfSimpleCounters
 static_assert(
     sizeof(TVolumeSelfSimpleCounters) ==
     sizeof(TVolumeSelfSimpleCounters::TCounter) *
-        std::size(TVolumeSelfSimpleCounters::All));
+        std::size(TVolumeSelfSimpleCounters::AllCounters));
 
-struct TVolumeSelfCommonCumulativeCounters
+struct TVolumeSelfCumulativeCounters
 {
     using TCounter = TMemberWithMeta<TCumulativeCounter>;
-    using TCounterPtr = TCounter TVolumeSelfCommonCumulativeCounters::*;
+    using TCounterPtr = TCounter TVolumeSelfCumulativeCounters::*;
 
     // Common
     TCounter ThrottlerRejectedRequests{
@@ -663,22 +665,22 @@ struct TVolumeSelfCommonCumulativeCounters
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr All[] = {
-        &TVolumeSelfCommonCumulativeCounters::ThrottlerRejectedRequests,
-        &TVolumeSelfCommonCumulativeCounters::ThrottlerPostponedRequests,
-        &TVolumeSelfCommonCumulativeCounters::ThrottlerSkippedRequests,
-        &TVolumeSelfCommonCumulativeCounters::UsedQuota,
+    static constexpr TCounterPtr AllCounters[] = {
+        &TVolumeSelfCumulativeCounters::ThrottlerRejectedRequests,
+        &TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests,
+        &TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests,
+        &TVolumeSelfCumulativeCounters::UsedQuota,
     };
 };
 static_assert(
-    sizeof(TVolumeSelfCommonCumulativeCounters) ==
-    sizeof(TVolumeSelfCommonCumulativeCounters::TCounter) *
-        std::size(TVolumeSelfCommonCumulativeCounters::All));
+    sizeof(TVolumeSelfCumulativeCounters) ==
+    sizeof(TVolumeSelfCumulativeCounters::TCounter) *
+        std::size(TVolumeSelfCumulativeCounters::AllCounters));
 
-struct TVolumeSelfCommonRequestCounters
+struct TVolumeSelfRequestCounters
 {
     using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
-    using TCounterPtr = TCounter TVolumeSelfCommonRequestCounters::*;
+    using TCounterPtr = TCounter TVolumeSelfRequestCounters::*;
 
     // Common
     TCounter ReadBlocks{
@@ -698,20 +700,19 @@ struct TVolumeSelfCommonRequestCounters
         EPublishingPolicy::All,
         ERequestCounterOption{}};
 
-    static constexpr TCounterPtr All[] = {
-        &TVolumeSelfCommonRequestCounters::ReadBlocks,
-        &TVolumeSelfCommonRequestCounters::WriteBlocks,
-        &TVolumeSelfCommonRequestCounters::ZeroBlocks,
-        &TVolumeSelfCommonRequestCounters::DescribeBlocks,
+    static constexpr TCounterPtr AllCounters[] = {
+        &TVolumeSelfRequestCounters::ReadBlocks,
+        &TVolumeSelfRequestCounters::WriteBlocks,
+        &TVolumeSelfRequestCounters::ZeroBlocks,
+        &TVolumeSelfRequestCounters::DescribeBlocks,
     };
 };
 static_assert(
-    sizeof(TVolumeSelfCommonRequestCounters) ==
-    sizeof(TVolumeSelfCommonRequestCounters::TCounter) *
-        std::size(TVolumeSelfCommonRequestCounters::All));
+    sizeof(TVolumeSelfRequestCounters) ==
+    sizeof(TVolumeSelfRequestCounters::TCounter) *
+        std::size(TVolumeSelfRequestCounters::AllCounters));
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 struct TPartitionDiskCounters
 {
@@ -738,8 +739,8 @@ struct TPartitionDiskCounters
 struct TVolumeSelfCounters
 {
     TVolumeSelfSimpleCounters Simple;
-    TVolumeSelfCommonCumulativeCounters Cumulative;
-    TVolumeSelfCommonRequestCounters RequestCounters;
+    TVolumeSelfCumulativeCounters Cumulative;
+    TVolumeSelfRequestCounters RequestCounters;
 
     EPublishingPolicy Policy;
 
