@@ -19,8 +19,8 @@ void TStatsServiceActor::HandleRegisterTrafficSource(
         msg->BandwidthMiBs;
 
     auto response = std::make_unique<
-        TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>(
-        CalcBandwidthLimit(msg->SourceId));
+        TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>();
+    response->LimitedBandwidthMiBs = CalcBandwidthLimit(msg->SourceId);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
