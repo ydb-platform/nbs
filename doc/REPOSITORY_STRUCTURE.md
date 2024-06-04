@@ -99,8 +99,30 @@
 * [libs/ydbstats](/cloud/blockstore/libs/ydbstats) - uploads detailed diagnostics to YDB tables (not BlobStorage but YDB database) for further YQL-based analytics
 
 ### Blockstore libs/storage
-
-TODO
+* [storage/api](/cloud/blockstore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components 
+* [storage/bootstrapper](/cloud/blockstore/libs/storage/bootstrapper) - tablet bootstrapper - used by BlockStore Volume tablet to launch BlockStore Partition tablets 
+* [storage/core](/cloud/blockstore/libs/storage/core) - things that are used by 2+ storage components, e.g. TStorageConfig, localdb transaction wrappers, TCompactionMap, misc helpers, etc.
+* [storage/disk_agent](/cloud/blockstore/libs/storage/disk_agent) - blockstore-disk-agent core part - TDiskAgentActor - implements actor-based API, RDMA API, registers itself in DiskRegistry, etc.
+* [storage/disk_common](/cloud/blockstore/libs/storage/disk_common) - common funcs for DiskAgent and DiskRegistry
+* [storage/disk_registry](/cloud/blockstore/libs/storage/disk_registry) - DiskRegistry implementation - Agent and Device lists, Actor, Tablet, device allocation logic, migration controller, replication controller, disk placement groups manager, etc. - storage resource registry and allocation for STORAGE_MEDIA_{SSD,HDD}_{NONREPLICATED,MIRROR2,MIRROR3}
+* [storage/disk_registry_proxy](/cloud/blockstore/libs/storage/disk_registry_proxy) - a convenience client for DiskRegistry - caches pipes to DiskRegistry tablet
+* [storage/init](/cloud/blockstore/libs/storage/init) - ActorSystem bootstrap code for blockstore-server and blockstore-disk-agent
+* [storage/model](/cloud/blockstore/libs/storage/model) - things that are used by 2+ storage components - differs from storage/core in that "model" libs shouldn't depend on YDB BlobStorage code (therefore their build times are MUCH lower)
+* [storage/partition](/cloud/blockstore/libs/storage/partition) - BlockStore Partition tablet implementation - it is the actual block storage implementation for STORAGE_MEDIA_{SSD,HDD} disks
+* [storage/partition2](/cloud/blockstore/libs/storage/partition2) - experimental BlockStore Partition2 tablet implementation (also for STORAGE_MEDIA_{SSD,HDD} disks)
+* [storage/partition_common](/cloud/blockstore/libs/storage/partition_common) - common code for the actors that implement block storage - partition, partition2, partition_nonrepl, volume - contains some parts of the implementation of overlay disks, fresh blocks storage, draining, long-running operation tracking, changed blocks tracking 
+* [storage/partition_nonrepl](/cloud/blockstore/libs/storage/partition_nonrepl) - block storage implementation of STORAGE_MEDIA_{SSD,HDD}_{NONREPLICATED,MIRROR2,MIRROR3}
+* [storage/perf](/cloud/blockstore/libs/storage/perf) - a really tiny amount of benchmarks (which should probably be moved to storage/partition2)
+* [storage/protos](/cloud/blockstore/libs/storage/protos) - internal proto specs which don't depend on YDB BlobStorage proto specs
+* [storage/protos_ydb](/cloud/blockstore/libs/storage/protos_ydb) - internal proto specs which do depend on YDB BlobStorage proto specs
+* [storage/service](/cloud/blockstore/libs/storage/service) - TServiceActor - our entry point to the actor-based component environment - handles disk creation/destruction/resizing/altering requests, forwards IO events to TVolumeActors (can pass events to local volumes and to remote volumes as well), aggregates service-layer metrics
+* [storage/ss_proxy](/cloud/blockstore/libs/storage/ss_proxy) - a convenience client for schemeshard - used in the disk creation/destruction/resizing/altering logic
+* [storage/stats_service](/cloud/blockstore/libs/storage/stats_service) - stats aggregation actor
+* [storage/testlib](/cloud/blockstore/libs/storage/testlib) - helpers and mocks for actor uts
+* [storage/undelivered](/cloud/blockstore/libs/storage/undelivered) - an actor which can cancel all public NBS events - may be used to handle undelivered requests in a generic way
+* [storage/volume](/cloud/blockstore/libs/storage/volume) - BlockStore Volume tablet implementation - entry point for all requests for a single NBS disk
+* [storage/volume_balancer](/cloud/blockstore/libs/storage/volume_balancer) - a component which tracks some metrics like CpuWait, detects blockstore-server overload and releases Hive locks for some of the locally mounted Volume tablets (so that they get restarted by Hive on other nodes thus reducing the load on the current blockstore-server node) 
+* [storage/volume_proxy](/cloud/blockstore/libs/storage/volume_proxy) - a convenience client for all BlockStore Volumes which caches pipes to Volume tablets                    
 
 ### Blockstore tools
 * [tools/analytics](/cloud/blockstore/tools/analytics) - various visualization, dumping and statistics calculation
@@ -142,8 +164,16 @@ TODO
 * [libs/vhost](/cloud/filestore/libs/vhost) - vhost server and client implementation, used in filestore-vhost
 
 ### Filestore libs/storage
-
-TODO
+* [storage/api](/cloud/filestore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components 
+* [storage/core](/cloud/filestore/libs/storage/core) - things that are used by 2+ storage components, e.g. TStorageConfig, localdb transaction wrappers, misc helpers, etc.
+* [storage/init](/cloud/filestore/libs/storage/init) - ActorSystem bootstrap code for filestore-server and filestore-vhost
+* [storage/model](/cloud/filestore/libs/storage/model) - things that are used by 2+ storage components - differs from storage/core in that "model" libs shouldn't depend on YDB BlobStorage code (therefore their build times are MUCH lower)
+* [storage/perf](/cloud/filestore/libs/storage/perf) - some benchmarks (currently there is only TCompactionMap benchmark there)
+* [storage/service](/cloud/filestore/libs/storage/service) - TStorageServiceActor - our entry point to the actor-based component environment - handles filesystem creation/destruction/resizing/altering requests, sends IO events to local/remote TIndexTabletActors via TIndexTabletProxy, aggregates service-layer metrics
+* [storage/ss_proxy](/cloud/filestore/libs/storage/ss_proxy) - a convenience client for schemeshard - used in the filesystem creation/destruction/resizing/altering logic
+* [storage/tablet](/cloud/filestore/libs/storage/tablet) - IndexTablet implementation - actual filesystem implementation which handles all inode-layer requests and block/byte-layer requests
+* [storage/tablet_proxy](/cloud/filestore/libs/storage/tablet_proxy) - a convenience client for all FileStore tablets which caches pipes to FileStore tablets
+* [storage/testlib](/cloud/filestore/libs/storage/testlib) - helpers and mocks for actor uts
 
 ### Filestore tools
 [cloud/filestore/tools](/cloud/filestore/tools) - the layout is similar to [Blockstore tools](#blockstore-tools)
