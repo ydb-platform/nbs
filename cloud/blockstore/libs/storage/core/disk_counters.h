@@ -416,23 +416,23 @@ struct THistogramRequestCounters
 
     THighResCounter ReadBlocks{
         "ReadBlocks",
-        EPublishingPolicy::Repl,
+        EPublishingPolicy::All,
         ERequestCounterOption::HasVoidBytes};
     THighResCounter WriteBlocks{
         "WriteBlocks",
-        EPublishingPolicy::Repl,
+        EPublishingPolicy::All,
         ERequestCounterOption{}};
     THighResCounter ZeroBlocks{
         "ZeroBlocks",
-        EPublishingPolicy::Repl,
+        EPublishingPolicy::All,
         ERequestCounterOption{}};
     THighResCounter DescribeBlocks{
         "DescribeBlocks",
-        EPublishingPolicy::Repl,
+        EPublishingPolicy::All,
         ERequestCounterOption{}};
     THighResCounter ChecksumBlocks{
         "ChecksumBlocks",
-        EPublishingPolicy::Repl,
+        EPublishingPolicy::All,
         ERequestCounterOption{}};
 
     static constexpr THighResCounterPtr AllHighResCounters[] = {
