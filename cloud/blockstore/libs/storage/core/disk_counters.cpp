@@ -15,13 +15,10 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
         counter.Add(source.Simple.*counterPtr);
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-    Cumulative.name.Add(source.Cumulative.name);                               \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-    BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TCumulativeDiskCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        counter.Add(source.Cumulative.*counterPtr);
+    }
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
     RequestCounters.name.Add(source.RequestCounters.name);                     \
@@ -47,13 +44,10 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
         counter.AggregateWith(source.Simple.*counterPtr);
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-    Cumulative.name.AggregateWith(source.Cumulative.name);                     \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-    BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TCumulativeDiskCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        counter.AggregateWith(source.Cumulative.*counterPtr);
+    }
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
     RequestCounters.name.AggregateWith(source.RequestCounters.name);           \
@@ -84,18 +78,15 @@ void TPartitionDiskCounters::Publish(TInstant now)
         }
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-    Cumulative.name.Publish(now);                                              \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
+    for (auto counterPtr: TCumulativeDiskCounters::All) {
+        auto& counter = (Cumulative.*counterPtr);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
+        }
     }
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::DiskRegistryBased) {
-        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(
-            BLOCKSTORE_CUMULATIVE_COUNTER)
-    }
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
     RequestCounters.name.Publish();                                            \
@@ -145,20 +136,16 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-Cumulative.name.Register(counters, #name);                                     \
-// BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TCumulativeDiskCounters::All) {
+        auto& counter = (Cumulative.*counterPtr);
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(counters, counter.Name);
+        }
+    }
 
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-    }
-    if (Policy == EPublishingPolicy::All ||
-        Policy == EPublishingPolicy::DiskRegistryBased)
-    {
-        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(
-            BLOCKSTORE_CUMULATIVE_COUNTER)
-    }
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
     RequestCounters.name.Register(                                             \
@@ -205,13 +192,11 @@ void TPartitionDiskCounters::Reset()
         counter.Reset();
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-    Cumulative.name.Reset();                                                   \
-// BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TCumulativeDiskCounters::All) {
+        auto& counter = (Cumulative.*counterPtr);
+        counter.Reset();
+    }
 
-    BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-    BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
 
 #define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
     RequestCounters.name.Reset();                                              \

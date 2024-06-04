@@ -217,34 +217,118 @@ struct TSimpleDiskCounters
         &TSimpleDiskCounters::HasBrokenDevice,
         &TSimpleDiskCounters::HasBrokenDeviceSilent,
     };
-    static constexpr size_t MemberCount = std::size(All);
 };
 static_assert(
-    sizeof(TSimpleDiskCounters) ==
-    sizeof(TSimpleDiskCounters::TCounter) * TSimpleDiskCounters::MemberCount);
+    sizeof(TSimpleDiskCounters) == sizeof(TSimpleDiskCounters::TCounter) *
+                                       std::size(TSimpleDiskCounters::All));
 
-#define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \
-    xxx(ScrubbingThroughput, Generic, Permanent,                   __VA_ARGS__)\
-// BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS
+struct TCumulativeDiskCounters
+{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TCounterPtr = TCounter TCumulativeDiskCounters::*;
 
-////////////////////////////////////////////////////////////////////////////////
+    // BlobStorage based
+    TCounter BytesWritten{
+        "BytesWritten",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter BytesRead{
+        "BytesRead",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter SysBytesWritten{
+        "SysBytesWritten",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter SysBytesRead{
+        "SysBytesRead",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter RealSysBytesWritten{
+        "RealSysBytesWritten",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter RealSysBytesRead{
+        "RealSysBytesRead",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter BatchCount{
+        "BatchCount",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter UncompressedBytesWritten{
+        "UncompressedBytesWritten",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompressedBytesWritten{
+        "CompressedBytesWritten",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByReadStats{
+        "CompactionByReadStats",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByBlobCountPerRange{
+        "CompactionByBlobCountPerRange",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByBlobCountPerDisk{
+        "CompactionByBlobCountPerDisk",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByGarbageBlocksPerRange{
+        "CompactionByGarbageBlocksPerRange",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionByGarbageBlocksPerDisk{
+        "CompactionByGarbageBlocksPerDisk",
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
-#define BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(xxx, ...)                     \
-    xxx(BytesWritten,               Generic, Permanent,            __VA_ARGS__)\
-    xxx(BytesRead,                  Generic, Permanent,            __VA_ARGS__)\
-    xxx(SysBytesWritten,            Generic, Permanent,            __VA_ARGS__)\
-    xxx(SysBytesRead,               Generic, Permanent,            __VA_ARGS__)\
-    xxx(RealSysBytesWritten,        Generic, Permanent,            __VA_ARGS__)\
-    xxx(RealSysBytesRead,           Generic, Permanent,            __VA_ARGS__)\
-    xxx(BatchCount,                 Generic, Permanent,            __VA_ARGS__)\
-    xxx(UncompressedBytesWritten,   Generic, Permanent,            __VA_ARGS__)\
-    xxx(CompressedBytesWritten,     Generic, Permanent,            __VA_ARGS__)\
-    xxx(CompactionByReadStats,      Generic, Permanent,            __VA_ARGS__)\
-    xxx(CompactionByBlobCountPerRange,     Generic, Permanent,     __VA_ARGS__)\
-    xxx(CompactionByBlobCountPerDisk,      Generic, Permanent,     __VA_ARGS__)\
-    xxx(CompactionByGarbageBlocksPerRange, Generic, Permanent,     __VA_ARGS__)\
-    xxx(CompactionByGarbageBlocksPerDisk,  Generic, Permanent,     __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS
+    // DiskRegistry based
+    TCounter ScrubbingThroughput{
+        "ScrubbingThroughput",
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    static constexpr TCounterPtr All[] = {
+        &TCumulativeDiskCounters::BytesWritten,
+        &TCumulativeDiskCounters::BytesRead,
+        &TCumulativeDiskCounters::SysBytesWritten,
+        &TCumulativeDiskCounters::SysBytesRead,
+        &TCumulativeDiskCounters::RealSysBytesWritten,
+        &TCumulativeDiskCounters::RealSysBytesRead,
+        &TCumulativeDiskCounters::BatchCount,
+        &TCumulativeDiskCounters::UncompressedBytesWritten,
+        &TCumulativeDiskCounters::CompressedBytesWritten,
+        &TCumulativeDiskCounters::CompactionByReadStats,
+        &TCumulativeDiskCounters::CompactionByBlobCountPerRange,
+        &TCumulativeDiskCounters::CompactionByBlobCountPerDisk,
+        &TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange,
+        &TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk,
+
+        &TCumulativeDiskCounters::ScrubbingThroughput,
+    };
+};
+static_assert(
+    sizeof(TCumulativeDiskCounters) ==
+    sizeof(TCumulativeDiskCounters::TCounter) *
+        std::size(TCumulativeDiskCounters::All));
 
 #define BLOCKSTORE_REPL_PART_REQUEST_COUNTERS(xxx, ...)                        \
     xxx(Flush,                                                     __VA_ARGS__)\
@@ -340,19 +424,7 @@ static_assert(
 struct TPartitionDiskCounters
 {
     TSimpleDiskCounters Simple;
-
-    struct {
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, type, policy, ...)                 \
-    TCumulativeCounter name{                                                   \
-        TCumulativeCounter::ECounterType::type,                                \
-        ECounterExpirationPolicy::policy                                       \
-    };                                                                         \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-        BLOCKSTORE_REPL_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-        BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-    } Cumulative;
+    TCumulativeDiskCounters Cumulative;
 
     struct {
 #define BLOCKSTORE_REQUEST_LOW_RESOLUTION_COUNTER(name, ...)                  \
