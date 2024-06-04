@@ -16,6 +16,7 @@ IF (OS_LINUX)
     SRCS(
         device.cpp
     )
+ENDIF()
 
 IF (NETLINK)
     SRCS(
