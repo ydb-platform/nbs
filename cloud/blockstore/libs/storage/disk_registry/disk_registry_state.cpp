@@ -3240,16 +3240,17 @@ ui32 TDiskRegistryState::GetConfigVersion() const
     return CurrentConfig.GetVersion();
 }
 
-NProto::TError TDiskRegistryState::UpdateConfig(
-    TDiskRegistryDatabase& db,
-    NProto::TDiskRegistryConfig newConfig,
-    bool ignoreVersion,
-    TVector<TString>& affectedDisks)
+struct TDiskRegistryState::TConfigUpdateEffect
 {
-    if (!ignoreVersion && newConfig.GetVersion() != CurrentConfig.GetVersion()) {
-        return MakeError(E_ABORTED, "Wrong config version");
-    }
+    TVector<TString> RemovedDevices;
+    THashSet<TString> UpdatedAgents;
+    TVector<TString> AffectedDisks;
+};
 
+auto TDiskRegistryState::CalcConfigUpdateEffect(
+    const NProto::TDiskRegistryConfig& newConfig) const
+    -> TResultOrError<TConfigUpdateEffect>
+{
     for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
         if (pool.GetName().empty()
                 && pool.GetKind() != NProto::DEVICE_POOL_KIND_DEFAULT)
@@ -3268,17 +3269,24 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     TKnownAgents newKnownAgents;
 
     for (const auto& agent: newConfig.GetKnownAgents()) {
-        if (newKnownAgents.contains(agent.GetAgentId())) {
-            return MakeError(E_ARGUMENT, "bad config");
+        const auto& agentId = agent.GetAgentId();
+        if (newKnownAgents.contains(agentId)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "duplicate of an agent " << agentId);
         }
 
-        TKnownAgent& knownAgent = newKnownAgents[agent.GetAgentId()];
+        TKnownAgent& knownAgent = newKnownAgents[agentId];
 
         for (const auto& device: agent.GetDevices()) {
-            knownAgent.Devices.emplace(device.GetDeviceUUID(), device);
-            auto [_, ok] = allKnownDevices.insert(device.GetDeviceUUID());
+            const auto& deviceId = device.GetDeviceUUID();
+
+            knownAgent.Devices.emplace(deviceId, device);
+            auto [_, ok] = allKnownDevices.insert(deviceId);
             if (!ok) {
-                return MakeError(E_ARGUMENT, "bad config");
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "duplicate of a device " << deviceId);
             }
         }
     }
@@ -3320,17 +3328,36 @@ NProto::TError TDiskRegistryState::UpdateConfig(
         }
     }
 
-    affectedDisks.assign(
-        std::make_move_iterator(diskIds.begin()),
-        std::make_move_iterator(diskIds.end()));
+    return TConfigUpdateEffect{
+        .RemovedDevices = std::move(removedDevices),
+        .UpdatedAgents = std::move(updatedAgents),
+        .AffectedDisks = {diskIds.begin(), diskIds.end()},
+    };
+}
 
+NProto::TError TDiskRegistryState::UpdateConfig(
+    TDiskRegistryDatabase& db,
+    NProto::TDiskRegistryConfig newConfig,
+    bool ignoreVersion,
+    TVector<TString>& affectedDisks)
+{
+    if (!ignoreVersion && newConfig.GetVersion() != CurrentConfig.GetVersion()) {
+        return MakeError(E_ABORTED, "Wrong config version");
+    }
+
+    auto [effect, error] = CalcConfigUpdateEffect(newConfig);
+    if (HasError(error)) {
+        return error;
+    }
+
+    affectedDisks = std::move(effect.AffectedDisks);
     Sort(affectedDisks);
 
     if (!affectedDisks.empty()) {
         return MakeError(E_INVALID_STATE, "Destructive configuration change");
     }
 
-    ForgetDevices(db, removedDevices);
+    ForgetDevices(db, effect.RemovedDevices);
 
     if (Counters) {
         for (const auto& pool: newConfig.GetDevicePoolConfigs()) {
@@ -3342,7 +3369,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     ProcessConfig(newConfig);
 
     TVector<TDiskId> disksToReallocate;
-    for (const auto& agentId: updatedAgents) {
+    for (const auto& agentId: effect.UpdatedAgents) {
         const auto* agent = AgentList.FindAgent(agentId);
         if (agent) {
             const auto ts = TInstant::MicroSeconds(agent->GetStateTs());

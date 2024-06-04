@@ -1220,6 +1220,10 @@ private:
         const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
 
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
+
+    struct TConfigUpdateEffect;
+    TResultOrError<TConfigUpdateEffect> CalcConfigUpdateEffect(
+        const NProto::TDiskRegistryConfig& newConfig) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
