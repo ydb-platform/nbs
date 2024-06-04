@@ -111,11 +111,74 @@ TODO
 * [tools/fs](/cloud/blockstore/tools/fs) - filesystem analytics for common filesystems (e.g. ext4, xfs)
 * [tools/http_proxy](/cloud/blockstore/tools/http_proxy) - HTTP/1.1 API over NBS gRPC API
 * [tools/nbd](/cloud/blockstore/tools/nbd) - a tool which lets you connect NBS volume as an NBD device
+* [tools/testing](/cloud/filestore/tools/testing) - testing mocks & load generators / response validators used in integration tests
 
 ## Filestore
 
+* [filestore](/cloud/filestore) - Network File Store API and implementation - virtio-fs server (filestore-vhost), fs backend server (filestore-server), cmdline client (filestore-client)
+* [filestore/config](/cloud/filestore/config) - config proto specs
+* [filestore/public](/cloud/filestore/public) - gRPC public API specs
+* [filestore/private](/cloud/filestore/private) - gRPC private API specs - private API actions can be called via the ExecuteAction public API call or via filestore-client executeaction
+* [filestore/tests](/cloud/filestore/tests) - integration tests - most of them launch single-node BlobStorage cluster + NBS and then issue some requests and check the responses/metrics/etc
+
+### Filestore apps
+* [apps/client](/cloud/filestore/apps/client) - cmdline client which uses mostly gRPC API - can perform almost any operation which is present in the API of filestore-vhost and filestore-server, can mount Filestore-based filesystems via FUSE
+* [apps/server](/cloud/filestore/apps/server) - filestore-server - provides full gRPC API, contains the actual filesystem implementation and hosts Filestore tablets
+* [apps/vhost](/cloud/filestore/apps/vhost) - filestore-vhost - can serve filesystems via virtio-fs or FUSE, sends requests to filestore-server, can read/write data directly from/to YDB BlobStorage groups (to transfer the data directly between BlobStorage and the VM host without passing it through Filestore tablets)
+
+### Filestore libs
+* [libs/client](/cloud/filestore/libs/client) - similar to blockstore/libs/client - gRPC client implementation, retrying client implementation, session implementation (but Filestore sessions are stateful unlike Blockstore sessions)
+* [libs/daemon](/cloud/filestore/libs/daemon) - bootstrap code for filestore-server and filestore-vhost
+* [libs/diagnostics](/cloud/filestore/libs/diagnostics) - Filestore metrics collection and aggregation and related things
+* [libs/endpoint](/cloud/filestore/libs/endpoint) - similar to blockstore/libs/endpoint but for Filestore we have only endpoint_vhost listener
+* [libs/server](/cloud/filestore/libs/server) - Filestore gRPC server implementation
+* [libs/service](/cloud/filestore/libs/service) - main Filestore internal (in-process) APIs like IFileStore + some helpers (e.g. error builders like ErrorIsNotDirectory, ErrorInvalidTarget, etc, other helpers like LockTypeToFcntlMode)
+* [libs/service_kikimr](/cloud/filestore/libs/service) - implementation of the aforementioned APIs over YDB BlobStorage (an ActorSystem adapter actually)
+* [libs/service_local](/cloud/filestore/libs/service_local) - implementation of the aforementioned APIs over local FS - used mostly for debugging and testing purposes
+* [libs/service_null](/cloud/filestore/libs/service_null) - implementation of the aforementioned APIs which returns empty responses - used mostly for debugging and testing purposes
+* [libs/storage](/cloud/filestore/libs/storage) - ActorSystem-based file storage layer implementation
+* [libs/vfs](/cloud/filestore/libs/vfs) - IFileSystemLoop interface, some helper classes and funcs for FUSE interface implementation
+* [libs/vfs_fuse](/cloud/filestore/libs/vfs_fuse) - IFileSystemLoop implementation for FUSE and virtio-fs (based on virtiofsd code), used in filestore-vhost
+* [libs/vhost](/cloud/filestore/libs/vhost) - vhost server and client implementation, used in filestore-vhost
+
+### Filestore libs/storage
+
 TODO
+
+### Filestore tools
+[cloud/filestore/tools](/cloud/filestore/tools) - the layout is similar to [Blockstore tools](#blockstore-tools)
 
 ## Disk Manager
 
+Snapshot & Image service, control plane over NBS & Filestore. Has gRPC-based public API, stores its state in YDB.
+
+[cloud/disk_manager](/cloud/disk_manager) - Disk Manager code
+[cloud/disk_manager/api](/cloud/disk_manager/api) - Disk Manager gRPC API
+[cloud/disk_manager/test](/cloud/disk_manager/test) - Integration test environment setup recipes/mocks & e2e test runners
+[cloud/tasks](/cloud/tasks) - Go task processor (over YDB) - the foundation of Disk Manager
+
+## Disk Manager cmd
+* [cmd/disk-manager](cloud/disk_manager/cmd/disk-manager) - Disk Manager server
+* [cmd/disk-manager-admin](cloud/disk_manager/cmd/disk-manager-admin) - Disk Manager cmdline client
+* [cmd/disk-manager-init-db](cloud/disk_manager/cmd/disk-manager-init-db) - Disk Manager YDB schema initializer
+
+## Disk Manager pkg
+
 TODO
+
+## Disk Manager internal/pkg
+
+* [accounting](/cloud/disk_manager/internal/pkg/accounting) - operation metrics
+* [auth](/cloud/disk_manager/internal/pkg/auth) - auth lib
+* [client](/cloud/disk_manager/internal/pkg/client) - private API client, used mostly in tests
+* [common](/cloud/disk_manager/internal/pkg/common) - common data structures, e.g. ChannelWithCancellation
+* [configs](/cloud/disk_manager/internal/pkg/configs) - config proto specs
+* [dataplane](/cloud/disk_manager/internal/pkg/dataplane) - dataplane tasks implementation - image import, snapshotting, disk initialization from snapshot, etc.
+* [facade](/cloud/disk_manager/internal/pkg/facade) - gRPC API entry point
+* [headers](/cloud/disk_manager/internal/pkg/headers) - gRPC Context Metadata helpers
+* [health](/cloud/disk_manager/internal/pkg/health) - various Disk Manager instance healthchecks which check boot disk health, Disk Manager <-> NBS connectivity, etc
+* [monitoring](/cloud/disk_manager/internal/pkg/monitoring) - metrics HTTP/1.1 server
+* [resources](/cloud/disk_manager/internal/pkg/resources) - resource (Image/Snapshot/Disk/Filesystem/etc) metadata storage implementation over YDB
+* [services](/cloud/disk_manager/internal/pkg/services) - gRPC services implementation
+* [types](/cloud/disk_manager/internal/pkg/types) - proto specs of the internally used data types
+* [util](/cloud/disk_manager/internal/pkg/util) - helper code (less generic than internal/pkg/common) - e.g. task state pretty-printers
