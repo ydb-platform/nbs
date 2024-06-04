@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, migrations1.size());
     }
 
-    Y_UNIT_TEST(ShouldNotMigrateFromFreshDevices)
+    Y_UNIT_TEST(ShouldReplicateFreshDevicesFirst)
     {
         TEnv env;
         env.FreshDeviceIds = {"1_1"};
@@ -291,7 +291,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica0 = state.GetReplicaInfos()[0];
         UNIT_ASSERT_VALUES_EQUAL(
-            "1_1",
+            "3_1",
             replica0.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -318,9 +318,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         const auto& migrations0 = replica0.Migrations;
         UNIT_ASSERT_VALUES_EQUAL(1, migrations0.size());
 
-        UNIT_ASSERT_VALUES_EQUAL("1_2", migrations0[0].GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL("3_1", migrations0[0].GetSourceDeviceId());
         UNIT_ASSERT_VALUES_EQUAL(
-            "5_2",
+            "1_1",
             migrations0[0].GetTargetDevice().GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
@@ -328,7 +328,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         const auto& replica1 = state.GetReplicaInfos()[1];
         UNIT_ASSERT_VALUES_EQUAL(
-            "3_1",
+            "",
             replica1.Config->GetDevices()[0].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL(
             1024,
