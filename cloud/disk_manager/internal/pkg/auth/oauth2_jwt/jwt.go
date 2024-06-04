@@ -22,7 +22,7 @@ type jwtGenerator struct {
 	now        nowFunc
 }
 
-func (j *jwtGenerator) generateAndSignToken() string {
+func (j *jwtGenerator) safeGenerateAndSignToken() (string, error) {
 	now := j.now()
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodRS256,
@@ -37,12 +37,24 @@ func (j *jwtGenerator) generateAndSignToken() string {
 	)
 	token.Header["kid"] = j.id
 	line, err := token.SignedString(j.privateKey)
+
+	if err != nil {
+		return "", err
+	}
+
+	return line, nil
+}
+
+func (j *jwtGenerator) generateAndSignToken() string {
+	result, err := j.safeGenerateAndSignToken()
+
 	if err != nil {
 		// Not being able to sign a token is considered a
 		// case of invalid configuration, it's ok to panic
 		panic(err)
 	}
-	return line
+
+	return result
 }
 
 func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, error) {
@@ -77,7 +89,7 @@ func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, err
 		return nil, errors.NewNonRetriableError(err)
 	}
 
-	return &jwtGenerator{
+	generator := &jwtGenerator{
 		issuer:     serviceAccountId,
 		privateKey: privateKey,
 		subject:    serviceAccountId,
@@ -85,5 +97,11 @@ func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, err
 		ttl:        jwtTokenTTL,
 		id:         serviceAccount.GetKeyId(),
 		now:        now,
-	}, nil
+	}
+
+	_, err = generator.safeGenerateAndSignToken()
+	if err != nil {
+		return nil, errors.NewNonRetriableErrorf("Error while checking token signing %v", err)
+	}
+	return generator, nil
 }
