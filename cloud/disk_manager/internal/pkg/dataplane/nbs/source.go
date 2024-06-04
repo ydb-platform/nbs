@@ -3,7 +3,6 @@ package nbs
 import (
 	"context"
 
-	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
@@ -178,7 +177,7 @@ func (s *diskSource) ChunkIndices(
 		if s.useGetChangedBlocks {
 			err = s.generateChunkIndices(ctx, milestone.ChunkIndex)
 		}
-		if !s.useGetChangedBlocks || nbs_client.GetClientCode(err) == nbs_client.E_ARGUMENT {
+		if !s.useGetChangedBlocks || nbs.IsGetChangedBlocksNotSupportedError(err) {
 			err = s.generateChunkIndicesDefault(ctx, milestone.ChunkIndex)
 		}
 		if err != nil {

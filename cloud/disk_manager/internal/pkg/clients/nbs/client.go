@@ -383,6 +383,17 @@ func IsNotFoundError(e error) bool {
 	return errors.As(e, &clientErr) && clientErr.Code == nbs_client.E_NOT_FOUND
 }
 
+func IsGetChangedBlocksNotSupportedError(e error) bool {
+	clientErr := nbs_client.GetClientError(e)
+
+	return clientErr.Code == nbs_client.E_ARGUMENT &&
+		strings.Contains(
+			clientErr.Error(),
+			"Disk registry based disks can not handle "+
+				"GetChangedBlocks requests for normal checkpoints",
+		)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func setupStderrLogger(ctx context.Context) context.Context {
