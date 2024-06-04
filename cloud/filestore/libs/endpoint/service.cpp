@@ -134,14 +134,13 @@ public:
     void Drain() override
     {
         auto g = Guard(EndpointsLock);
+        DrainingStarted = true;
 
         TVector<TFuture<void>> futures;
         for (auto&& [_, endpoint]: Endpoints) {
             futures.push_back(endpoint.Endpoint->SuspendAsync());
         }
         WaitAll(futures).GetValueSync();
-
-        DrainingStarted = true;
     }
 
 #define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
