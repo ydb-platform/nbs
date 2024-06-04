@@ -31,6 +31,21 @@ func (s *legacyStorage) ReadChunkMap(
 	var entries <-chan ChunkMapEntry
 	var errors <-chan error
 
+	replyError := func(err error) (<-chan ChunkMapEntry, <-chan error) {
+		entries := make(chan ChunkMapEntry)
+		errors := make(chan error, 1)
+		errors <- err
+		close(entries)
+		close(errors)
+		return entries, errors
+	}
+
+	if len(s.tablesPath) == 0 {
+		return replyError(task_errors.NewNonRetriableErrorf(
+			"legacy snapshot storage does not exist",
+		))
+	}
+
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
@@ -45,12 +60,7 @@ func (s *legacyStorage) ReadChunkMap(
 		},
 	)
 	if err != nil {
-		entries := make(chan ChunkMapEntry)
-		errors := make(chan error, 1)
-		errors <- err
-		close(entries)
-		close(errors)
-		return entries, errors
+		return replyError(err)
 	}
 
 	return entries, errors
@@ -60,6 +70,12 @@ func (s *legacyStorage) ReadChunk(
 	ctx context.Context,
 	chunk *common.Chunk,
 ) error {
+
+	if len(s.tablesPath) == 0 {
+		return task_errors.NewNonRetriableErrorf(
+			"legacy snapshot storage does not exist",
+		)
+	}
 
 	return s.db.Execute(
 		ctx,
@@ -73,6 +89,12 @@ func (s *legacyStorage) CheckSnapshotReady(
 	ctx context.Context,
 	snapshotID string,
 ) (SnapshotMeta, error) {
+
+	if len(s.tablesPath) == 0 {
+		return SnapshotMeta{}, task_errors.NewNonRetriableErrorf(
+			"legacy snapshot storage does not exist",
+		)
+	}
 
 	var meta SnapshotMeta
 

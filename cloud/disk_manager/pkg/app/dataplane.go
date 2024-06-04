@@ -39,14 +39,11 @@ func initDataplane(
 		return err
 	}
 
-	snapshotLegacyStorage, err := snapshot_storage.NewLegacyStorage(
+	snapshotLegacyStorage := snapshot_storage.NewLegacyStorage(
 		snapshotConfig,
 		snapshotMetricsRegistry,
 		snapshotDB,
 	)
-	if err != nil {
-		return err
-	}
 
 	return dataplane.RegisterForExecution(
 		ctx,
