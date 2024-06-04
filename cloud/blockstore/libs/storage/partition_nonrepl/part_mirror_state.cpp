@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/datetime/base.h>
 #include <util/string/builder.h>
@@ -67,67 +68,73 @@ void TMirrorPartitionState::PrepareMigrationConfig()
         return;
     }
 
-    if (Migrations.size()) {
-        for (auto& replica: ReplicaInfos) {
-            const auto& devices = replica.Config->GetDevices();
-            const auto& freshDeviceIds = replica.Config->GetFreshDeviceIds();
-            bool migrationFound = false;
+    if (PrepareMigrationConfigForFreshDevices() ||
+        PrepareMigrationConfigForWarningDevices())
+    {
+        MigrationConfigPrepared = true;
+    }
+}
 
-            for (const auto& d: devices) {
-                if (freshDeviceIds.contains(d.GetDeviceUUID())) {
-                    // we should not migrate from fresh devices since they
-                    // don't contain all the needed data yet
+bool TMirrorPartitionState::PrepareMigrationConfigForWarningDevices()
+{
+    if (Migrations.empty()) {
+        return false;
+    }
 
-                    continue;
-                }
+    for (auto& replica: ReplicaInfos) {
+        const auto& devices = replica.Config->GetDevices();
+        const auto& freshDeviceIds = replica.Config->GetFreshDeviceIds();
 
-                auto mit = FindIf(
-                    Migrations,
-                    [&] (const NProto::TDeviceMigration& m) {
-                        return m.GetSourceDeviceId() == d.GetDeviceUUID();
-                    });
-
-                if (mit != Migrations.end()) {
-                    auto* rm = replica.Migrations.Add();
-                    rm->SetSourceDeviceId(d.GetDeviceUUID());
-                    *rm->MutableTargetDevice() = mit->GetTargetDevice();
-                    migrationFound = true;
-                    break;
-                }
+        for (const auto& d: devices) {
+            if (freshDeviceIds.contains(d.GetDeviceUUID())) {
+                STORAGE_CHECK_PRECONDITION(false);
+                // we should not migrate from fresh devices since they
+                // don't contain all the needed data yet
+                continue;
             }
 
-            if (migrationFound) {
+            auto mit = FindIf(
+                Migrations,
+                [&](const NProto::TDeviceMigration& m)
+                { return m.GetSourceDeviceId() == d.GetDeviceUUID(); });
+
+            if (mit != Migrations.end()) {
+                auto* rm = replica.Migrations.Add();
+                rm->SetSourceDeviceId(d.GetDeviceUUID());
+                *rm->MutableTargetDevice() = mit->GetTargetDevice();
+
                 // Migrating one device at a time.
+
                 // TODO: Migrate all devices at once.
                 // MigrationIndex needs to be restored from volume database for
                 // mirrored disks to make it happen. Most probably ReplicaId
                 // will need to be stored alongside MigrationIndex.
                 // Might be useful to store ReplicationIndex in a separate
                 // field. Currently it's stored in MigrationIndex (it will be
-                // easy to fix since nothing critical depends on ReplicationIndex
+                // easy to fix since nothing critical depends on
+                // ReplicationIndex
                 // - currently it's used only to display ReplicationProgress via
                 // the MigrationProgress sensor.
 
-                MigrationConfigPrepared = true;
-
-                return;
+                return true;
             }
         }
-
-        ReportMigrationSourceNotFound();
-
-        // TODO: log details
     }
 
-    // nothing to migrate, let's look for something to replicate
+    ReportMigrationSourceNotFound();
+    // TODO: log details
+    return false;
+}
+
+bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
+{
     auto* replicaInfo = FindIfPtr(ReplicaInfos, [] (const auto& info) {
         return !info.Config->GetFreshDeviceIds().empty();
     });
 
     if (!replicaInfo) {
         // nothing to replicate
-
-        return;
+        return false;
     }
 
     const auto& freshDevices = replicaInfo->Config->GetFreshDeviceIds();
@@ -144,14 +151,13 @@ void TMirrorPartitionState::PrepareMigrationConfig()
     }
 
     if (deviceIdx == devices.size()) {
-        Y_DEBUG_ABORT_UNLESS(0);
-
-        return;
+        STORAGE_CHECK_PRECONDITION(deviceIdx != devices.size());
+        return false;
     }
 
     // we need to find corresponding good device from some other replica
     for (auto& anotherReplica: ReplicaInfos) {
-        auto& anotherFreshDevices =
+        const auto& anotherFreshDevices =
             anotherReplica.Config->GetFreshDeviceIds();
         auto& anotherDevices = anotherReplica.Config->AccessDevices();
         auto& anotherDevice = anotherDevices[deviceIdx];
@@ -170,11 +176,12 @@ void TMirrorPartitionState::PrepareMigrationConfig()
             // write request replication to this device
             anotherDevice.SetDeviceUUID({});
 
-            break;
+            return true;
         }
     }
 
-    MigrationConfigPrepared = true;
+    ReportMigrationSourceNotFound();
+    return false;
 }
 
 NProto::TError TMirrorPartitionState::NextReadReplica(
