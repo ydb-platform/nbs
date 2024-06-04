@@ -42,6 +42,15 @@ class TStatsServiceActor final
 
     using TStatsUploadRequest = std::pair<TYdbRowData, TInstant>;
 
+    struct TBackgroundBandwidthInfo
+    {
+        ui32 DesiredBandwidthMiBs = 0;
+
+        // The time of the last registration
+        TInstant LastRegistrationAt;
+    };
+    using TBackgroundBandwidth = TMap<TString, TBackgroundBandwidthInfo>;
+
 private:
     const TStorageConfigPtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -73,13 +82,15 @@ private:
 
     std::shared_ptr<NCloud::NStorage::NUserStats::IUserCounterSupplier> UserCounters;
 
+    TBackgroundBandwidth BackgroundBandwidth;
+
 public:
     TStatsServiceActor(
         TStorageConfigPtr config,
         TDiagnosticsConfigPtr diagnosticsConfig,
         NYdbStats::IYdbVolumesStatsUploaderPtr statsUploader,
         IStatsAggregatorPtr clientStatsAggregator);
-    ~TStatsServiceActor();
+    ~TStatsServiceActor() override = default;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
@@ -103,6 +114,10 @@ private:
         const NActors::TActorContext& ctx);
 
     void PushYdbStats(const NActors::TActorContext& ctx);
+
+    [[nodiscard]] ui32 CalcBandwidthLimit(const TString& sourceId) const;
+    void ScheduleCleanupBackgroundSources(
+        const NActors::TActorContext& ctx) const;
 
 private:
     STFUNC(StateWork);
@@ -151,10 +166,17 @@ private:
         const TEvStatsServicePrivate::TEvStatsUploadRetryTimeout::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleRegisterTrafficSource(
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCleanupBackgroundSources(
+        const TEvStatsServicePrivate::TEvCleanupBackgroundSources::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage
-

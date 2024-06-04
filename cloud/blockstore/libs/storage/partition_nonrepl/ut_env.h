@@ -9,7 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -59,6 +59,10 @@ private:
 
             HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
 
+            HFunc(
+                TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest,
+                HandleRegisterTrafficSource);
+
             default:
                 Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
         }
@@ -80,6 +84,19 @@ private:
         Y_UNUSED(ctx);
 
         State->Counters = *ev->Get()->DiskCounters;
+    }
+
+    void HandleRegisterTrafficSource(
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        auto response = std::make_unique<
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>(
+            msg->BandwidthMiBs);
+
+        NCloud::Reply(ctx, *ev, std::move(response));
     }
 };
 
