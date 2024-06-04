@@ -93,8 +93,8 @@ private:
         auto* msg = ev->Get();
 
         auto response = std::make_unique<
-            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>(
-            msg->BandwidthMiBs);
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse>();
+        response->LimitedBandwidthMiBs = msg->BandwidthMiBs;
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }
