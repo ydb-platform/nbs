@@ -917,9 +917,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         for (auto& d: *agent.MutableDevices()) {
             const auto& uuid = d.GetDeviceUUID();
 
-            if (auto error = CheckDestructiveConfigurationChange(d, r.OldConfigs);
-                    HasError(error))
-            {
+            auto error = CheckDestructiveConfigurationChange(d, r.OldConfigs);
+            if (HasError(error)) {
                 STORAGE_ERROR(error.GetMessage());
 
                 SetDeviceErrorState(d, timestamp, error.GetMessage());
@@ -928,17 +927,8 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             }
 
             AdjustDeviceIfNeeded(d, timestamp);
-
-            if (!StorageConfig->GetNonReplicatedDontSuspendDevices()
-                    && d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL
-                    && r.NewDevices.contains(uuid))
-            {
-                STORAGE_INFO(
-                    "Suspend the new local device %s (%s)",
-                    uuid.c_str(),
-                    d.GetDeviceName().c_str());
-
-                SuspendDevice(db, uuid);
+            if (r.NewDevices.contains(uuid)) {
+                SuspendDeviceIfNeeded(db, d);
             }
         }
 
@@ -3243,7 +3233,7 @@ ui32 TDiskRegistryState::GetConfigVersion() const
 struct TDiskRegistryState::TConfigUpdateEffect
 {
     TVector<TString> RemovedDevices;
-    THashSet<TString> UpdatedAgents;
+    THashSet<TString> AffectedAgents;
     TVector<TString> AffectedDisks;
 };
 
@@ -3292,7 +3282,7 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
     }
 
     TVector<TString> removedDevices;
-    THashSet<TString> updatedAgents;
+    THashSet<TString> affectedAgents;
 
     for (const auto& agent: AgentList.GetAgents()) {
         const auto& agentId = agent.GetAgentId();
@@ -3302,7 +3292,7 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
 
             if (!allKnownDevices.contains(uuid)) {
                 removedDevices.push_back(uuid);
-                updatedAgents.insert(agentId);
+                affectedAgents.insert(agentId);
             }
         }
 
@@ -3310,12 +3300,12 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
             const auto& uuid = d.GetDeviceUUID();
 
             if (allKnownDevices.contains(uuid)) {
-                updatedAgents.insert(agentId);
+                affectedAgents.insert(agentId);
             }
         }
 
         if (!newKnownAgents.contains(agentId)) {
-            updatedAgents.insert(agentId);
+            affectedAgents.insert(agentId);
         }
     }
 
@@ -3330,9 +3320,25 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
 
     return TConfigUpdateEffect{
         .RemovedDevices = std::move(removedDevices),
-        .UpdatedAgents = std::move(updatedAgents),
+        .AffectedAgents = std::move(affectedAgents),
         .AffectedDisks = {diskIds.begin(), diskIds.end()},
     };
+}
+
+void TDiskRegistryState::SuspendDeviceIfNeeded(
+    TDiskRegistryDatabase& db,
+    NProto::TDeviceConfig& device)
+{
+    if (!StorageConfig->GetNonReplicatedDontSuspendDevices() &&
+        device.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL)
+    {
+        STORAGE_INFO(
+            "Suspend the new local device %s (%s)",
+            device.GetDeviceUUID().c_str(),
+            device.GetDeviceName().c_str());
+
+        SuspendDevice(db, device.GetDeviceUUID());
+    }
 }
 
 NProto::TError TDiskRegistryState::UpdateConfig(
@@ -3368,30 +3374,36 @@ NProto::TError TDiskRegistryState::UpdateConfig(
     newConfig.SetVersion(CurrentConfig.GetVersion() + 1);
     ProcessConfig(newConfig);
 
-    TVector<TDiskId> disksToReallocate;
-    for (const auto& agentId: effect.UpdatedAgents) {
-        const auto* agent = AgentList.FindAgent(agentId);
-        if (agent) {
-            const auto ts = TInstant::MicroSeconds(agent->GetStateTs());
-            auto config = *agent;
+    for (const auto& agentId: effect.AffectedAgents) {
+        const auto& knownAgent = KnownAgents.Value(agentId, TKnownAgent{});
 
-            config.MutableDevices()->MergeFrom(*config.MutableUnknownDevices());
-            config.MutableUnknownDevices()->Clear();
+        auto [agent, newDevices] =
+            AgentList.TryUpdateAgentDevices(agentId, knownAgent);
 
-            auto error = RegisterAgent(
-                db,
-                config,
-                ts,
-                &affectedDisks,
-                &disksToReallocate);
-
-            STORAGE_VERIFY_C(
-                !HasError(error),
-                TWellKnownEntityTypes::AGENT,
-                config.GetAgentId(),
-                "agent update failure: " << FormatError(error) << ". Config: "
-                    << config);
+        if (!agent) {
+            continue;
         }
+
+        Sort(newDevices);
+
+        const auto timestamp = TInstant::MicroSeconds(agent->GetStateTs());
+
+        // Adjust & dirty new devices
+        for (auto& device: *agent->MutableDevices()) {
+            const auto& uuid = device.GetDeviceUUID();
+            if (!std::binary_search(newDevices.begin(), newDevices.end(), uuid)) {
+                continue;
+            }
+
+            AdjustDeviceIfNeeded(device, timestamp);
+            SuspendDeviceIfNeeded(db, device);
+
+            DeviceList.MarkDeviceAsDirty(uuid);
+            db.UpdateDirtyDevice(uuid, {});
+        }
+
+        DeviceList.UpdateDevices(*agent);
+        UpdateAgent(db, *agent);
     }
 
     db.WriteDiskRegistryConfig(newConfig);

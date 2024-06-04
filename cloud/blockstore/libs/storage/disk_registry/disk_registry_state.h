@@ -737,6 +737,11 @@ public:
         bool isReplacement);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
+
+    void SuspendDeviceIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TDeviceConfig& device);
+
     void ResumeDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
