@@ -30,13 +30,10 @@ void TPartitionDiskCounters::Add(const TPartitionDiskCounters& source)
         counter.Add(source.RequestCounters.*counterPtr);
     }
 
-
-#define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
-    Histogram.name.Add(source.Histogram.name);                                 \
-// BLOCKSTORE_HIST_COUNTER
-
-    BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
-#undef BLOCKSTORE_HIST_COUNTER
+    for (auto counterPtr: THistogramCounters::All) {
+        auto& counter = Histogram.*counterPtr;
+        counter.Add(source.Histogram.*counterPtr);
+    }
 }
 
 void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
@@ -61,12 +58,10 @@ void TPartitionDiskCounters::AggregateWith(const TPartitionDiskCounters& source)
         counter.AggregateWith(source.RequestCounters.*counterPtr);
     }
 
-#define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
-    Histogram.name.AggregateWith(source.Histogram.name);                       \
-// BLOCKSTORE_HIST_COUNTER
-
-        BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
-#undef BLOCKSTORE_HIST_COUNTER
+    for (auto counterPtr: THistogramCounters::All) {
+        auto& counter = Histogram.*counterPtr;
+        counter.AggregateWith(source.Histogram.*counterPtr);
+    }
 }
 
 void TPartitionDiskCounters::Publish(TInstant now)
@@ -111,14 +106,15 @@ void TPartitionDiskCounters::Publish(TInstant now)
         }
     }
 
-#define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
-    Histogram.name.Publish();                                                  \
-// BLOCKSTORE_HIST_COUNTER
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
+    for (auto counterPtr: THistogramCounters::All) {
+        auto& counter = Histogram.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish();
+        }
     }
-#undef BLOCKSTORE_HIST_COUNTER
 
     Reset();
 }
@@ -177,13 +173,17 @@ void TPartitionDiskCounters::Register(
         }
     }
 
-#define BLOCKSTORE_HIST_COUNTER(name, ...) \
-    Histogram.name.Register(counters->GetSubgroup("queue", #name), aggregate);
-
-    if (Policy == EPublishingPolicy::All || Policy == EPublishingPolicy::Repl) {
-        BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
+    for (auto counterPtr: THistogramCounters::All) {
+        auto& counter = Histogram.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(
+                counters->GetSubgroup("queue", counter.Name),
+                aggregate);
+        }
     }
-#undef BLOCKSTORE_HIST_COUNTER
 }
 
 void TPartitionDiskCounters::Reset()
@@ -208,12 +208,10 @@ void TPartitionDiskCounters::Reset()
         counter.Reset();
     }
 
-#define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
-    Histogram.name.Reset();                                                    \
-// BLOCKSTORE_HIST_COUNTER
-
-    BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
-#undef BLOCKSTORE_HIST_COUNTER
+    for (auto counterPtr: THistogramCounters::All) {
+        auto& counter = Histogram.*counterPtr;
+        counter.Reset();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

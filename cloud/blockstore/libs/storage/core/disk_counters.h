@@ -450,16 +450,30 @@ static_assert(
      sizeof(THistogramRequestCounters::THighResCounter) *
          std::size(THistogramRequestCounters::AllHighResCounters)));
 
+struct THistogramCounters
+{
+    using TCounter = TMemberWithMeta<THistogram<TQueueSizeBuckets>>;
+    using TCounterPtr = TCounter THistogramCounters::*;
 
+    // BlobStorage based
+    TCounter ActorQueue{
+        "ActorQueue",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
+    TCounter MailboxQueue{
+        "MailboxQueue",
+        EPublishingPolicy::Repl,
+        ERequestCounterOption{}};
 
-#define BLOCKSTORE_REPL_PART_ACTOR_COUNTERS(xxx, ...)                          \
-    xxx(ActorQueue,                                                __VA_ARGS__)\
-    xxx(MailboxQueue,                                              __VA_ARGS__)\
-// BLOCKSTORE_REPL_PARTITION_ACTOR_COUNTERS
+    static constexpr TCounterPtr All[] = {
+        &THistogramCounters::ActorQueue,
+        &THistogramCounters::MailboxQueue,
+    };
+};
 
-#define BLOCKSTORE_REPL_PART_HIST_COUNTERS(xxx, ...)                           \
-    BLOCKSTORE_REPL_PART_ACTOR_COUNTERS(xxx,                       __VA_ARGS__)\
-// BLOCKSTORE_REPL_PART)PERCENTILE_COUNTERS
+static_assert(
+    sizeof(THistogramCounters) ==
+    sizeof(THistogramCounters::TCounter) * std::size(THistogramCounters::All));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -520,19 +534,11 @@ struct TPartitionDiskCounters
     TSimpleDiskCounters Simple;
     TCumulativeDiskCounters Cumulative;
     THistogramRequestCounters RequestCounters;
-
-    struct {
-#define BLOCKSTORE_HIST_COUNTER(name, ...)                                     \
-        THistogram<TQueueSizeBuckets> name;                                    \
-// BLOCKSTORE_HIST_COUNTER
-
-        BLOCKSTORE_REPL_PART_HIST_COUNTERS(BLOCKSTORE_HIST_COUNTER)
-#undef BLOCKSTORE_HIST_COUNTER
-    } Histogram;
+    THistogramCounters Histogram;
 
     EPublishingPolicy Policy;
 
-    TPartitionDiskCounters(EPublishingPolicy policy)
+    explicit TPartitionDiskCounters(EPublishingPolicy policy)
         : Policy(policy)
     {}
 
