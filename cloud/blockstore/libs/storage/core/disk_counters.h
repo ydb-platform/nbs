@@ -636,19 +636,79 @@ static_assert(
     sizeof(TVolumeSelfSimpleCounters::TCounter) *
         std::size(TVolumeSelfSimpleCounters::All));
 
-#define BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(xxx, ...)            \
-    xxx(ThrottlerRejectedRequests,  Generic, Expiring,             __VA_ARGS__)\
-    xxx(ThrottlerPostponedRequests, Generic, Expiring,             __VA_ARGS__)\
-    xxx(ThrottlerSkippedRequests,   Generic, Expiring,             __VA_ARGS__)\
-    xxx(UsedQuota,                  Generic, Permanent,            __VA_ARGS__)\
-// BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS
+struct TVolumeSelfCommonCumulativeCounters
+{
+    using TCounter = TMemberWithMeta<TCumulativeCounter>;
+    using TCounterPtr = TCounter TVolumeSelfCommonCumulativeCounters::*;
 
-#define BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(xxx, ...)               \
-    xxx(ReadBlocks,                                                __VA_ARGS__)\
-    xxx(WriteBlocks,                                               __VA_ARGS__)\
-    xxx(ZeroBlocks,                                                __VA_ARGS__)\
-    xxx(DescribeBlocks,                                            __VA_ARGS__)\
-// BLOCKSTORE_VOLUME_SELF_REQUEST_COUNTERS
+    // Common
+    TCounter ThrottlerRejectedRequests{
+        "ThrottlerRejectedRequests",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter ThrottlerPostponedRequests{
+        "ThrottlerPostponedRequests",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter ThrottlerSkippedRequests{
+        "ThrottlerSkippedRequests",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Expiring};
+    TCounter UsedQuota{
+        "UsedQuota",
+        EPublishingPolicy::All,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
+    static constexpr TCounterPtr All[] = {
+        &TVolumeSelfCommonCumulativeCounters::ThrottlerRejectedRequests,
+        &TVolumeSelfCommonCumulativeCounters::ThrottlerPostponedRequests,
+        &TVolumeSelfCommonCumulativeCounters::ThrottlerSkippedRequests,
+        &TVolumeSelfCommonCumulativeCounters::UsedQuota,
+    };
+};
+static_assert(
+    sizeof(TVolumeSelfCommonCumulativeCounters) ==
+    sizeof(TVolumeSelfCommonCumulativeCounters::TCounter) *
+        std::size(TVolumeSelfCommonCumulativeCounters::All));
+
+struct TVolumeSelfCommonRequestCounters
+{
+    using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
+    using TCounterPtr = TCounter TVolumeSelfCommonRequestCounters::*;
+
+    // Common
+    TCounter ReadBlocks{
+        "ReadBlocks",
+        EPublishingPolicy::All,
+        ERequestCounterOption{}};
+    TCounter WriteBlocks{
+        "WriteBlocks",
+        EPublishingPolicy::All,
+        ERequestCounterOption{}};
+    TCounter ZeroBlocks{
+        "ZeroBlocks",
+        EPublishingPolicy::All,
+        ERequestCounterOption{}};
+    TCounter DescribeBlocks{
+        "DescribeBlocks",
+        EPublishingPolicy::All,
+        ERequestCounterOption{}};
+
+    static constexpr TCounterPtr All[] = {
+        &TVolumeSelfCommonRequestCounters::ReadBlocks,
+        &TVolumeSelfCommonRequestCounters::WriteBlocks,
+        &TVolumeSelfCommonRequestCounters::ZeroBlocks,
+        &TVolumeSelfCommonRequestCounters::DescribeBlocks,
+    };
+};
+static_assert(
+    sizeof(TVolumeSelfCommonRequestCounters) ==
+    sizeof(TVolumeSelfCommonRequestCounters::TCounter) *
+        std::size(TVolumeSelfCommonRequestCounters::All));
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -678,33 +738,12 @@ struct TPartitionDiskCounters
 struct TVolumeSelfCounters
 {
     TVolumeSelfSimpleCounters Simple;
-
-    struct
-    {
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, type, policy, ...)                \
-    TCumulativeCounter name{                                                  \
-        TCumulativeCounter::ECounterType::type,                               \
-        ECounterExpirationPolicy::policy                                      \
-    };                                                                        \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-        BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-    } Cumulative;
-
-    struct
-    {
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-        THistogram<TRequestUsTimeBuckets> name;                                 \
-// BLOCKSTORE_REQUEST_COUNTER
-
-        BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
-    } RequestCounters;
+    TVolumeSelfCommonCumulativeCounters Cumulative;
+    TVolumeSelfCommonRequestCounters RequestCounters;
 
     EPublishingPolicy Policy;
 
-    TVolumeSelfCounters(EPublishingPolicy policy)
+    explicit TVolumeSelfCounters(EPublishingPolicy policy)
         : Policy(policy)
     {}
 

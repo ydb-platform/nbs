@@ -223,20 +223,15 @@ void TVolumeSelfCounters::AggregateWith(const TVolumeSelfCounters& source)
         counter.AggregateWith(source.Simple.*counterPtr);
     }
 
+    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        counter.AggregateWith(source.Cumulative.*counterPtr);
+    }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                               \
-    Cumulative.name.AggregateWith(source.Cumulative.name);                     \
-//  BLOCKSTORE_CUMULATIVE_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                  \
-    RequestCounters.name.AggregateWith(source.RequestCounters.name);           \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.AggregateWith(source.RequestCounters.*counterPtr);
+    }
 }
 
 void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
@@ -246,20 +241,15 @@ void TVolumeSelfCounters::Add(const TVolumeSelfCounters& source)
         counter.Add(source.Simple.*counterPtr);
     }
 
+    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        counter.Add(source.Cumulative.*counterPtr);
+    }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
-    Cumulative.name.Add(source.Cumulative.name);                              \
-//  BLOCKSTORE_CUMULATIVE_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-    RequestCounters.name.Add(source.RequestCounters.name);                    \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Add(source.RequestCounters.*counterPtr);
+    }
 }
 
 void TVolumeSelfCounters::Reset()
@@ -269,20 +259,15 @@ void TVolumeSelfCounters::Reset()
         counter.Reset();
     }
 
+    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        counter.Reset();
+    }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
-    Cumulative.name.Reset();                                                  \
-// BLOCKSTORE_CUMULATIVE_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-    RequestCounters.name.Reset();                                             \
-// BLOCKSTORE_REQUEST_COUNTER
-
-        BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+        auto& counter = RequestCounters.*counterPtr;
+        counter.Reset();
+    }
 }
 
 void TVolumeSelfCounters::Register(
@@ -299,22 +284,28 @@ void TVolumeSelfCounters::Register(
         }
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
-    Cumulative.name.Register(counters, #name);                                \
-// BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Register(counters, counter.Name);
+        }
+    }
 
-    BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-    RequestCounters.name.ForceRegister(                                       \
-        counters->GetSubgroup("request", #name),                              \
-        "ThrottlerDelay",                                                     \
-        aggregate);                                                           \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.ForceRegister(
+                counters->GetSubgroup("request", counter.Name),
+                "ThrottlerDelay",
+                aggregate);
+        }
+    }
 }
 
 void TVolumeSelfCounters::Publish(TInstant now)
@@ -329,21 +320,25 @@ void TVolumeSelfCounters::Publish(TInstant now)
         }
     }
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(name, ...)                              \
-    Cumulative.name.Publish(now);                                             \
-// BLOCKSTORE_CUMULATIVE_COUNTER
+    for (auto counterPtr: TVolumeSelfCommonCumulativeCounters::All) {
+        auto& counter = Cumulative.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish(now);
+        }
+    }
 
-    BLOCKSTORE_VOLUME_SELF_COMMON_CUMULATIVE_COUNTERS(BLOCKSTORE_CUMULATIVE_COUNTER)
-#undef BLOCKSTORE_CUMULATIVE_COUNTER
-
-#define BLOCKSTORE_REQUEST_COUNTER(name, ...)                                 \
-    RequestCounters.name.Publish();                                           \
-// BLOCKSTORE_REQUEST_COUNTER
-
-    BLOCKSTORE_VOLUME_SELF_COMMON_REQUEST_COUNTERS(BLOCKSTORE_REQUEST_COUNTER)
-#undef BLOCKSTORE_REQUEST_COUNTER
-
-    Reset();
+    for (auto counterPtr: TVolumeSelfCommonRequestCounters::All) {
+        auto& counter = RequestCounters.*counterPtr;
+        if (Policy == EPublishingPolicy::All ||
+            counter.PublishingPolicy == EPublishingPolicy::All ||
+            Policy == counter.PublishingPolicy)
+        {
+            counter.Publish();
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
