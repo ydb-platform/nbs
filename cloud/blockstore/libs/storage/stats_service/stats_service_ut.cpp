@@ -403,10 +403,11 @@ public:
     std::unique_ptr<TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>
     CreateRegisterTrafficSourceRequest(TString sourceId, ui32 bandwidth)
     {
-        return std::make_unique<
-            TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>(
-            std::move(sourceId),
-            bandwidth);
+        auto result = std::make_unique<
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>();
+        result->SourceId = std::move(sourceId);
+        result->BandwidthMiBs = bandwidth;
+        return result;
     }
 
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
