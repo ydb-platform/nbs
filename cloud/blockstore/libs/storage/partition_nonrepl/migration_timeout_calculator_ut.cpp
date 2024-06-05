@@ -42,11 +42,10 @@ public:
             switch (event->GetTypeRewrite()) {
                 case TEvStatsServicePrivate::EvRegisterTrafficSourceRequest: {
                     ++RegistrationCount;
-                    auto response =
-                        std::make_unique<TEvStatsServicePrivate::
-                                             TEvRegisterTrafficSourceResponse>(
-                            BandwidthLimit);
-
+                    auto response = std::make_unique<
+                        TEvStatsServicePrivate::
+                            TEvRegisterTrafficSourceResponse>();
+                    response->LimitedBandwidthMiBs = BandwidthLimit;
                     auto* handle = new IEventHandle(
                         event->Sender,
                         event->Recipient,
