@@ -2,11 +2,12 @@ package oauth2_jwt
 
 import (
 	"context"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth"
-	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"sync"
 	"time"
+
+	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +49,8 @@ func (t *tokenProvider) Token(ctx context.Context) (string, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			return "", errors.NewRetriableErrorf("Context deadline exceeded")
+			return "", errors.NewRetriableErrorf(
+				"Context deadline exceeded")
 		default:
 			if ok, tokenString, err := t.getToken(); ok {
 				return tokenString, err
@@ -67,7 +69,8 @@ func (t *tokenProvider) fetchTokenLoop() {
 		select {
 		case <-t.done:
 			t.mutex.Lock()
-			t.currentToken, t.err = nil, errors.NewRetriableErrorf("Context deadline exceeded")
+			t.currentToken, t.err = nil, errors.NewRetriableErrorf(
+				"Context deadline exceeded")
 			t.mutex.Unlock()
 			return
 		case <-t.timer.C:
@@ -115,11 +118,16 @@ func (t *tokenProvider) refreshOnce(ctx context.Context) {
 	}
 }
 
-func NewOauth2JWTTokenProvider(config *auth_config.AuthConfig) (auth.Credentials, error) {
+func NewOauth2JWTTokenProvider(
+	config *auth_config.AuthConfig,
+) (auth.Credentials, error) {
 	return newOauth2JWTTokenProvider(config, time.Now)
 }
 
-func newOauth2JWTTokenProvider(config *auth_config.AuthConfig, now nowFunc) (auth.Credentials, error) {
+func newOauth2JWTTokenProvider(
+	config *auth_config.AuthConfig,
+	now nowFunc,
+) (auth.Credentials, error) {
 	fetcher, err := newOauth2JWTTokenFetcher(config, now)
 	if err != nil {
 		return nil, err

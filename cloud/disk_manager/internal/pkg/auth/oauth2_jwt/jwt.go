@@ -55,7 +55,8 @@ func (j *jwtGenerator) generateAndSignToken() string {
 	result, err := j.safeGenerateAndSignToken()
 	// Not being able to sign a token is considered a
 	// case of invalid configuration, it's ok to panic
-	common.Assert(err == nil, fmt.Sprintf("Could not sign token %v", err))
+	common.Assert(
+		err == nil, fmt.Sprintf("Could not sign token %v", err))
 	return result
 }
 
@@ -64,13 +65,12 @@ func newJwtGenerator(
 	now nowFunc,
 ) (*jwtGenerator, error) {
 
-	if config == nil {
-		return nil, errors.NewNonRetriableErrorf("Authorization config is empty")
-	}
+	common.Assert(config != nil, "Authorization config is empty")
 
 	certificatePath := config.GetCertFile()
 	if certificatePath == "" {
-		return nil, errors.NewNonRetriableErrorf("No cert file in the config")
+		return nil, errors.NewNonRetriableErrorf(
+			"No cert file in the config")
 	}
 
 	privateKeyData, err := os.ReadFile(certificatePath)
@@ -82,12 +82,14 @@ func newJwtGenerator(
 
 	serviceAccount := config.GetServiceAccount()
 	if serviceAccount == nil {
-		return nil, errors.NewNonRetriableErrorf("No service account config")
+		return nil, errors.NewNonRetriableErrorf(
+			"No service account config")
 	}
 
 	serviceAccountId := serviceAccount.GetId()
 	if serviceAccountId == "" {
-		return nil, errors.NewNonRetriableErrorf("Service account id string is empty")
+		return nil, errors.NewNonRetriableErrorf(
+			"Service account id string is empty")
 	}
 
 	parsedUrl, err := url.Parse(config.GetMetadataUrl())
@@ -107,7 +109,8 @@ func newJwtGenerator(
 
 	_, err = generator.safeGenerateAndSignToken()
 	if err != nil {
-		return nil, errors.NewNonRetriableErrorf("Error while checking token signing %v", err)
+		return nil, errors.NewNonRetriableErrorf(
+			"Error while checking token signing %v", err)
 	}
 
 	return generator, nil
