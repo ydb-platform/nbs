@@ -286,6 +286,27 @@ message TListProxyEndpointsRequest
 
 message TListProxyEndpointsResponse
 {
+    message TErrorKindStats
+    {
+        string ErrorKindName = 1;
+        uint64 Count = 2;
+    }
+
+    message TRequestTypeStats
+    {
+        string RequestName = 1;
+        uint64 Count = 2;
+        uint64 RequestBytes = 3;
+        uint64 Inflight = 4;
+        uint64 InflightBytes = 5;
+        repeated TErrorKindStats ErrorKindStats = 6;
+    }
+
+    message TProxyEndpointStats
+    {
+        repeated TRequestTypeStats RequestTypeStats = 1;
+    }
+
     message TProxyEndpoint
     {
         // BlockStore unix-socket path.
@@ -300,6 +321,9 @@ message TListProxyEndpointsResponse
         // NBD StorageOptions.
         uint32 BlockSize = 4;
         uint64 BlocksCount = 5;
+
+        // Stats.
+        TProxyEndpointStats Stats = 6;
     }
 
     // Optional error, set only if error happened.

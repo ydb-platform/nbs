@@ -1,11 +1,12 @@
 #include "server.h"
 
+#include "proxy_storage.h"
+
 #include <cloud/blockstore/config/client.pb.h>
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
-#include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
@@ -15,7 +16,6 @@
 #include <cloud/blockstore/libs/nbd/server_handler.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/service.h>
-#include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/public/api/grpc/endpoint_proxy.grpc.pb.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
@@ -43,7 +43,10 @@
 #include <util/stream/file.h>
 #include <util/string/printf.h>
 #include <util/string/subst.h>
+#include <util/system/datetime.h>
 #include <util/thread/factory.h>
+
+#include <atomic>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -136,62 +139,6 @@ struct TListRequestContext: TRequestContextBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageProxy final: public IStorage
-{
-private:
-    const IBlockStorePtr Service;
-
-public:
-    explicit TStorageProxy(IBlockStorePtr service)
-        : Service(std::move(service))
-    {}
-
-    NThreading::TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
-    {
-        return Service->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    NThreading::TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
-    {
-        return Service->ReadBlocksLocal(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    NThreading::TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
-    {
-        return Service->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(request));
-    }
-
-    NThreading::TFuture<NProto::TError> EraseDevice(
-        NProto::EDeviceEraseMethod method) override
-    {
-        Y_UNUSED(method);
-        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
-    }
-
-    TStorageBuffer AllocateBuffer(size_t bytesCount) override
-    {
-        Y_UNUSED(bytesCount);
-        return nullptr;
-    }
-
-    void ReportIOError() override
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TClientStorage: NStorage::NServer::IClientStorage
 {
     grpc::Server& Server;
@@ -241,6 +188,7 @@ struct TServer: IEndpointProxyServer
         IBlockStorePtr Client;
         NBD::IDevicePtr NbdDevice;
         std::unique_ptr<TNetworkAddress> ListenAddress;
+        IProxyRequestStatsPtr RequestStats;
 
         TString UnixSocketPath;
         TString InternalUnixSocketPath;
@@ -566,7 +514,7 @@ struct TServer: IEndpointProxyServer
             << " - Started NBD client endpoint");
 
         auto retryPolicy = CreateRetryPolicy(ClientConfig);
-        auto requestStats = CreateRequestStatsStub();
+        ep.RequestStats = CreateProxyRequestStats();
         auto volumeStats = CreateVolumeStatsStub();
         ep.Client = CreateDurableClient(
             ClientConfig,
@@ -575,7 +523,7 @@ struct TServer: IEndpointProxyServer
             Logging,
             Timer,
             Scheduler,
-            requestStats,
+            ep.RequestStats,
             volumeStats);
 
         ep.Client->Start();
@@ -595,7 +543,10 @@ struct TServer: IEndpointProxyServer
         auto handlerFactory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             Logging,
-            std::make_shared<TStorageProxy>(ep.Client),
+            CreateProxyStorage(
+                ep.Client,
+                ep.RequestStats,
+                ep.NbdOptions.BlockSize),
             CreateServerStatsStub(),
             ep.NbdOptions);
 
@@ -761,7 +712,39 @@ struct TServer: IEndpointProxyServer
         RequestReceived(request);
 
         for (const auto& x: Socket2Endpoint) {
-            *response.AddEndpoints() = MakeProxyEndpoint(*x.second);
+            auto& pe = *response.AddEndpoints();
+            pe = MakeProxyEndpoint(*x.second);
+
+            auto& src = *x.second->RequestStats;
+            auto& dst = *pe.MutableStats();
+            for (ui32 i = 0; i < src.GetInternalStats().size(); ++i) {
+                const auto& srcRs = src.GetInternalStats()[i];
+                NProto::TListProxyEndpointsResponse::TRequestTypeStats dstRs;
+                dstRs.SetCount(srcRs.Count.load(std::memory_order_relaxed));
+                dstRs.SetRequestBytes(
+                    srcRs.RequestBytes.load(std::memory_order_relaxed));
+                dstRs.SetInflight(srcRs.Inflight.load(std::memory_order_relaxed));
+                dstRs.SetInflightBytes(
+                    srcRs.InflightBytes.load(std::memory_order_relaxed));
+
+                for (ui32 j = 0; j < srcRs.ErrorKind2Count.size(); ++j) {
+                    const auto& srcE = srcRs.ErrorKind2Count[j];
+                    NProto::TListProxyEndpointsResponse::TErrorKindStats dstE;
+                    dstE.SetCount(srcE.load(std::memory_order_relaxed));
+
+                    if (dstE.ByteSize()) {
+                        dstE.SetErrorKindName(
+                            ToString(static_cast<EDiagnosticsErrorKind>(j)));
+                        *dstRs.AddErrorKindStats() = std::move(dstE);
+                    }
+                }
+
+                if (dstRs.ByteSize()) {
+                    dstRs.SetRequestName(GetBlockStoreRequestName(
+                        static_cast<EBlockStoreRequest>(i)));
+                    *dst.AddRequestTypeStats() = std::move(dstRs);
+                }
+            }
         }
 
         SortBy(
