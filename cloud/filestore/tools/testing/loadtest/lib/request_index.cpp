@@ -163,7 +163,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -225,7 +225,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_RENAME_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -286,7 +286,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_REMOVE_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -348,7 +348,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -410,7 +410,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_DESTROY_HANDLE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -447,7 +447,7 @@ private:
                     return TCompletedRequest{
                         NProto::ACTION_GET_NODE_ATTR,
                         started,
-                        MakeError(E_FAIL, "cancelled")};
+                        MakeError(E_CANCELLED, "cancelled")};
                 });
     }
 
@@ -539,7 +539,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_ACQUIRE_LOCK,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -604,7 +604,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_RELEASE_LOCK,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
