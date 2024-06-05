@@ -49,6 +49,7 @@ func getNbsConfigMap() configurator.ConfigMap {
 		"nbs-iam.txt":                 {Proto: &coreProto.TIamClientConfig{}, FileName: "iam.txt"},
 		"nbs-kms.txt":                 {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "kms.txt"},
 		"nbs-compute.txt":             {Proto: &nbsProto.TGrpcClientConfig{}, FileName: "compute.txt"},
+		"nbs-rdma.txt":                {Proto: &nbsProto.TRdmaConfig{}, FileName: "rdma.txt"},
 
 		// for kikimr initializer configs used custom protobuf files
 		// from cloud/storage/core/tools/common/go/configurator/kikimr-proto
