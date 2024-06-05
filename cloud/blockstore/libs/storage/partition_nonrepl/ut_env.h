@@ -412,7 +412,7 @@ inline void WaitForMigrations(
     ui32 rangeCount)
 {
     ui32 migratedRanges = 0;
-    runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
+    auto old = runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
         switch (event->GetTypeRewrite()) {
             case TEvNonreplPartitionPrivate::EvRangeMigrated: {
                 auto* msg =
@@ -438,12 +438,13 @@ inline void WaitForMigrations(
     }
 
     UNIT_ASSERT_VALUES_EQUAL(rangeCount, migratedRanges);
+    runtime.SetObserverFunc(std::move(old));
 }
 
 inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration timeout)
 {
     ui32 migratedRanges = 0;
-    runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
+    auto old = runtime.SetObserverFunc([&] (auto& runtime, auto& event) {
         switch (event->GetTypeRewrite()) {
             case TEvNonreplPartitionPrivate::EvRangeMigrated: {
                 auto* msg =
@@ -466,6 +467,7 @@ inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration t
     runtime.DispatchEvents(options, timeout);
 
     UNIT_ASSERT_VALUES_EQUAL(0, migratedRanges);
+    runtime.SetObserverFunc(std::move(old));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
