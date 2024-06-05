@@ -38,6 +38,7 @@ target_link_libraries(libs-storage-stats_service PUBLIC
 target_sources(libs-storage-stats_service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_actor.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_actor_bandwidth_limiter.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_actor_client_stats.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_actor_solomon.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/stats_service/stats_service_actor_ydb.cpp

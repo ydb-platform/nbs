@@ -976,4 +976,9 @@ message TStorageServiceConfig
 
     // Number of volume history entries to cleanup per run.
     optional uint32 VolumeHistoryCleanupItemCount = 367;
+
+    // The full bandwidth of the server for background operations,
+    // which is used for migration and filling of shadow disks.
+    // (actual bandwidth is x2 due to the need to read and write).
+    optional uint32 BackgroundOperationsTotalBandwidth = 368;
 }

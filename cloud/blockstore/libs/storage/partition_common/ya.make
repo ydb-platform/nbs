@@ -8,6 +8,7 @@ SRCS(
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     drain_actor_companion.cpp
+    get_changed_blocks_companion.cpp
     long_running_operation_companion.cpp
 )
 

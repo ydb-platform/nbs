@@ -152,6 +152,8 @@ private:
     void SetErrorState(const NActors::TActorContext& ctx);
     void SchedulePeriodicalReAcquire(const NActors::TActorContext& ctx);
 
+    void DoRegisterTrafficSource(const NActors::TActorContext& ctx);
+
     // If we haven't started migrating to the shadow disk yet, we can send
     // write and zero requests directly to the source disk.
     bool CanJustForwardWritesToSrcDisk() const;
@@ -218,6 +220,15 @@ private:
 
     [[nodiscard]] bool HandleRWClientIdChanged(
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetChangedBlocks(
+        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateBandwidthLimit(
+        const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 };
 

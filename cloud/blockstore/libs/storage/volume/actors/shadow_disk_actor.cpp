@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -17,8 +18,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString
-MakeShadowDiskClientId(const TString& sourceDiskClientId, bool readOnlyMount)
+enum class EWakeupReason
+{
+    Reacquire,
+    RegisterBandwidth,
+};
+
+TString MakeShadowDiskClientId(
+    const TString& sourceDiskClientId,
+    bool readOnlyMount)
 {
     if (readOnlyMount || sourceDiskClientId.Empty()) {
         return TString(ShadowDiskClientId);
@@ -631,6 +639,10 @@ bool TShadowDiskActor::OnMessage(
         HFunc(
             TEvVolumePrivate::TEvUpdateShadowDiskStateResponse,
             HandleUpdateShadowDiskStateResponse);
+        HFunc(TEvService::TEvGetChangedBlocksRequest, HandleGetChangedBlocks);
+        HFunc(
+            TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse,
+            HandleUpdateBandwidthLimit);
 
         // Read request.
         HFunc(
@@ -872,6 +884,7 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 
         // Ready to fill shadow disk with data.
         State = EActorState::Preparing;
+        DoRegisterTrafficSource(ctx);
 
         TNonreplicatedPartitionMigrationCommonActor::InitWork(
             ctx,
@@ -895,7 +908,26 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
 
 void TShadowDiskActor::SchedulePeriodicalReAcquire(const TActorContext& ctx)
 {
-    ctx.Schedule(Config->GetClientRemountPeriod(), new TEvents::TEvWakeup());
+    ctx.Schedule(
+        Config->GetClientRemountPeriod(),
+        new TEvents::TEvWakeup(static_cast<ui64>(EWakeupReason::Reacquire)));
+}
+
+void TShadowDiskActor::DoRegisterTrafficSource(
+    const NActors::TActorContext& ctx)
+{
+    if (State != EActorState::Preparing) {
+        return;
+    }
+
+    if (TimeoutCalculator) {
+        TimeoutCalculator->RegisterTrafficSource(ctx);
+    }
+
+    ctx.Schedule(
+        RegisterBackgroundTrafficDuration,
+        new TEvents::TEvWakeup(
+            static_cast<ui64>(EWakeupReason::RegisterBandwidth)));
 }
 
 void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
@@ -1075,7 +1107,10 @@ void TShadowDiskActor::HandleUpdateShadowDiskStateResponse(
                     << ShadowDiskId.Quote() << " changed to "
                     << ToString(msg->NewState)
                     << ", processed block count: " << msg->ProcessedBlockCount);
-            State = EActorState::Preparing;
+            if (State != EActorState::Preparing) {
+                State = EActorState::Preparing;
+                DoRegisterTrafficSource(ctx);
+            }
             STORAGE_CHECK_PRECONDITION(Acquired());
         } break;
         case EShadowDiskState::Ready: {
@@ -1130,10 +1165,17 @@ void TShadowDiskActor::HandleWakeup(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    auto reason = static_cast<EWakeupReason>(ev->Get()->Tag);
 
-    AcquireShadowDisk(ctx, EAcquireReason::PeriodicalReAcquire);
-    SchedulePeriodicalReAcquire(ctx);
+    switch (reason) {
+        case EWakeupReason::Reacquire: {
+            AcquireShadowDisk(ctx, EAcquireReason::PeriodicalReAcquire);
+            SchedulePeriodicalReAcquire(ctx);
+        } break;
+        case EWakeupReason::RegisterBandwidth: {
+            DoRegisterTrafficSource(ctx);
+        } break;
+    }
 }
 
 void TShadowDiskActor::HandleRdmaUnavailable(
@@ -1212,6 +1254,59 @@ bool TShadowDiskActor::HandleRWClientIdChanged(
     ev->Get()->RWClientId =
         MakeShadowDiskClientId(SourceDiskClientId, ReadOnlyMount());
     return false;
+}
+
+void TShadowDiskActor::HandleGetChangedBlocks(
+    const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (msg->Record.GetHighCheckpointId() != CheckpointId) {
+        ForwardMessageToActor(ev, ctx, SrcActorId);
+        return;
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "GetChangedBlocks for shadow disk " << ShadowDiskId.Quote());
+
+    if (State != EActorState::CheckpointReady) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "Shadow disk: "
+                << ShadowDiskId.Quote()
+                << " Can't GetChangedBlocks when shadow disk is not ready.");
+
+        auto response =
+            std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
+        *response->Record.MutableError() = MakeError(
+            E_REJECTED,
+            "Can't GetChangedBlocks when shadow disk is not ready.");
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
+    auto range = TBlockRange64::WithLength(
+        msg->Record.GetStartIndex(),
+        msg->Record.GetBlocksCount());
+    response->Record.SetMask(GetChangedBlocks(range));
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TShadowDiskActor::HandleUpdateBandwidthLimit(
+    const TEvStatsServicePrivate::TEvRegisterTrafficSourceResponse::
+        TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (TimeoutCalculator) {
+        TimeoutCalculator->HandleUpdateBandwidthLimit(ev, ctx);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

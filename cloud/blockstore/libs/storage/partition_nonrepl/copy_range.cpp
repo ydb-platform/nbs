@@ -161,6 +161,7 @@ void TCopyRangeActor::Done(const TActorContext& ctx, NProto::TError error)
             WriteStartTs,
             WriteDuration,
             std::move(AffectedBlockInfos),
+            AllZeroes,
             RequestInfo->GetExecCycles());
 
     LWTRACK(
@@ -201,6 +202,7 @@ void TCopyRangeActor::HandleReadResponse(
     }
 
     if (msg->Record.GetAllZeroes()) {
+        AllZeroes = true;
         ZeroBlocks(ctx);
     } else {
         WriteBlocks(ctx, std::move(*msg->Record.MutableBlocks()));

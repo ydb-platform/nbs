@@ -25,6 +25,15 @@ constexpr bool IsWriteMethod =
     std::is_same_v<TMethod, TEvService::TZeroBlocksMethod>;
 
 template <typename TMethod>
+constexpr bool IsExactlyWriteMethod =
+    std::is_same_v<TMethod, TEvService::TWriteBlocksMethod> ||
+    std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
+
+template <typename TMethod>
+constexpr bool IsZeroMethod =
+    std::is_same_v<TMethod, TEvService::TZeroBlocksMethod>;
+
+template <typename TMethod>
 constexpr bool IsReadOrWriteMethod =
     IsReadMethod<TMethod> || IsWriteMethod<TMethod>;
 

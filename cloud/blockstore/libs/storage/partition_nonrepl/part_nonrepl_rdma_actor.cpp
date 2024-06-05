@@ -238,8 +238,6 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
     NRdma::IClientHandlerPtr handler,
     const TVector<TDeviceRequest>& deviceRequests)
 {
-    auto* serializer = TBlockStoreProtocol::Serializer();
-
     struct TDeviceRequestInfo
     {
         NRdma::IClientEndpointPtr Endpoint;
@@ -256,6 +254,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
         dr->StartIndexOffset = startBlockIndexOffset;
+        dr->BlockCount = r.DeviceBlockRange.Size();
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         NProto::TReadDeviceBlocksRequest deviceRequest;
@@ -268,7 +267,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         auto [req, err] = ep->AllocateRequest(
             handler,
             std::move(dr),
-            serializer->MessageByteSize(deviceRequest, 0),
+            NRdma::TProtoMessageSerializer::MessageByteSize(deviceRequest, 0),
             4_KB + sz);
 
         if (HasError(err)) {
@@ -280,7 +279,7 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             return err;
         }
 
-        serializer->Serialize(
+        NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
             deviceRequest,
@@ -335,6 +334,11 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
         * PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
+    PartCounters->RequestCounters.ReadBlocks.RequestNonVoidBytes +=
+        static_cast<ui64>(msg->NonVoidBlockCount) * PartConfig->GetBlockSize();
+    PartCounters->RequestCounters.ReadBlocks.RequestVoidBytes +=
+        static_cast<ui64>(msg->VoidBlockCount) * PartConfig->GetBlockSize();
+
     NetworkBytes += requestBytes;
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
@@ -522,6 +526,9 @@ STFUNC(TNonreplicatedPartitionRdmaActor::StateWork)
         HFunc(TEvService::TEvZeroBlocksRequest, HandleZeroBlocks);
 
         HFunc(NPartition::TEvPartition::TEvDrainRequest, DrainActorCompanion.HandleDrain);
+        HFunc(
+            TEvService::TEvGetChangedBlocksRequest,
+            GetChangedBlocksCompanion.HandleGetChangedBlocks);
 
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
