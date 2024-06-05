@@ -19,28 +19,23 @@ enum class EPublishingPolicy
 template <typename TBase>
 struct TMemberWithMeta: public TBase
 {
-    const char* Name = {};
     EPublishingPolicy PublishingPolicy = {};
     ERequestCounterOption CounterOption = {};
 
     TMemberWithMeta() = default;
 
     template <typename... TArgs>
-    TMemberWithMeta(
-            const char* name,
+    explicit TMemberWithMeta(
             EPublishingPolicy publishingPolicy,
             TArgs&&... args)
         : TBase(std::forward<TArgs>(args)...)
-        , Name(name)
         , PublishingPolicy(publishingPolicy)
     {}
 
     TMemberWithMeta(
-            const char* name,
             EPublishingPolicy publishingPolicy,
             ERequestCounterOption counterOption)
         : TBase()
-        , Name(name)
         , PublishingPolicy(publishingPolicy)
         , CounterOption(counterOption)
     {}
@@ -52,170 +47,187 @@ struct TMemberWithMeta: public TBase
     TMemberWithMeta& operator=(TMemberWithMeta&& rh) = default;
 };
 
+template <typename TMemberPtr>
+struct TMemberMeta
+{
+    std::string_view Name;
+    TMemberPtr MemberPtr{};
+
+    auto& GetValue(auto& object)
+    {
+        return object.*MemberPtr;
+    }
+};
+
+namespace NDetail {
+
+template <auto T>
+consteval auto ExtractMemberPtr()
+{
+    return T;
+}
+
+}   // namespace NDetail
+
+template <auto T>
+consteval auto MakeMeta()
+{
+    TMemberMeta<decltype(NDetail::ExtractMemberPtr<T>())> result;
+
+    // Extract member name from __PRETTY_FUNCTION__.
+    // __PRETTY_FUNCTION__ looks like
+    // xxx MakeMeta() [T = &NStorage::TSimpleDiskCounters::BytesCount]
+    std::string_view left = "::";
+    std::string_view right = "]";
+    std::string_view raw = __PRETTY_FUNCTION__;
+    auto start = raw.rfind(left);
+    auto end = raw.rfind(right);
+    result.Name = raw.substr(start + left.size(), end - start - left.size());
+
+    // Store member ptr.
+    result.MemberPtr = NDetail::ExtractMemberPtr<T>();
+    return result;
+}
+
 struct TSimpleDiskCounters
 {
     using TCounter = TMemberWithMeta<TSimpleCounter>;
-    using TCounterPtr = TCounter TSimpleDiskCounters::*;
+    using TMeta = TMemberMeta<TCounter TSimpleDiskCounters::*>;
 
     // Common
     TCounter BytesCount{
-        "BytesCount",
         EPublishingPolicy::All,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter IORequestsInFlight{
-        "IORequestsInFlight",
         EPublishingPolicy::All,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
     // BlobStorage based
     TCounter MixedBytesCount{
-        "MixedBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MergedBytesCount{
-        "MergedBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter FreshBytesCount{
-        "FreshBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter UntrimmedFreshBlobBytesCount{
-        "UntrimmedFreshBlobBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter UsedBytesCount{
-        "UsedBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter LogicalUsedBytesCount{
-        "LogicalUsedBytesCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter IORequestsQueued{
-        "IORequestsQueued",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter UsedBlocksMapMemSize{
-        "UsedBlocksMapMemSize",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter MixedIndexCacheMemSize{
-        "MixedIndexCacheMemSize",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter CheckpointBytes{
-        "CheckpointBytes",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter AlmostFullChannelCount{
-        "AlmostFullChannelCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter FreshBlocksInFlight{
-        "FreshBlocksInFlight",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter FreshBlocksQueued{
-        "FreshBlocksQueued",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter CleanupQueueBytes{
-        "CleanupQueueBytes",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter GarbageQueueBytes{
-        "GarbageQueueBytes",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionScore{
-        "CompactionScore",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionGarbageScore{
-        "CompactionGarbageScore",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter ChannelHistorySize{
-        "ChannelHistorySize",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionRangeCountPerRun{
-        "CompactionRangeCountPerRun",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter UnconfirmedBlobCount{
-        "UnconfirmedBlobCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter ConfirmedBlobCount{
-        "ConfirmedBlobCount",
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter HasBrokenDevice{
-        "HasBrokenDevice",
         EPublishingPolicy::DiskRegistryBased,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter HasBrokenDeviceSilent{
-        "HasBrokenDeviceSilent",
         EPublishingPolicy::DiskRegistryBased,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &TSimpleDiskCounters::BytesCount,
-        &TSimpleDiskCounters::IORequestsInFlight,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TSimpleDiskCounters::BytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::IORequestsInFlight>(),
 
-        &TSimpleDiskCounters::MixedBytesCount,
-        &TSimpleDiskCounters::MergedBytesCount,
-        &TSimpleDiskCounters::FreshBytesCount,
-        &TSimpleDiskCounters::UntrimmedFreshBlobBytesCount,
-        &TSimpleDiskCounters::UsedBytesCount,
-        &TSimpleDiskCounters::LogicalUsedBytesCount,
-        &TSimpleDiskCounters::IORequestsQueued,
-        &TSimpleDiskCounters::UsedBlocksMapMemSize,
-        &TSimpleDiskCounters::MixedIndexCacheMemSize,
-        &TSimpleDiskCounters::CheckpointBytes,
-        &TSimpleDiskCounters::AlmostFullChannelCount,
-        &TSimpleDiskCounters::FreshBlocksInFlight,
-        &TSimpleDiskCounters::FreshBlocksQueued,
-        &TSimpleDiskCounters::CleanupQueueBytes,
-        &TSimpleDiskCounters::GarbageQueueBytes,
-        &TSimpleDiskCounters::CompactionScore,
-        &TSimpleDiskCounters::CompactionGarbageScore,
-        &TSimpleDiskCounters::ChannelHistorySize,
-        &TSimpleDiskCounters::CompactionRangeCountPerRun,
-        &TSimpleDiskCounters::UnconfirmedBlobCount,
-        &TSimpleDiskCounters::ConfirmedBlobCount,
+        MakeMeta<&TSimpleDiskCounters::MixedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::UntrimmedFreshBlobBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::UsedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::LogicalUsedBytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::IORequestsQueued>(),
+        MakeMeta<&TSimpleDiskCounters::UsedBlocksMapMemSize>(),
+        MakeMeta<&TSimpleDiskCounters::MixedIndexCacheMemSize>(),
+        MakeMeta<&TSimpleDiskCounters::CheckpointBytes>(),
+        MakeMeta<&TSimpleDiskCounters::AlmostFullChannelCount>(),
+        MakeMeta<&TSimpleDiskCounters::FreshBlocksInFlight>(),
+        MakeMeta<&TSimpleDiskCounters::FreshBlocksQueued>(),
+        MakeMeta<&TSimpleDiskCounters::CleanupQueueBytes>(),
+        MakeMeta<&TSimpleDiskCounters::GarbageQueueBytes>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionGarbageScore>(),
+        MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
+        MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
+        MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
 
-        &TSimpleDiskCounters::HasBrokenDevice,
-        &TSimpleDiskCounters::HasBrokenDeviceSilent,
+        MakeMeta<&TSimpleDiskCounters::HasBrokenDevice>(),
+        MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),
     };
 };
 static_assert(
@@ -226,104 +238,89 @@ static_assert(
 struct TCumulativeDiskCounters
 {
     using TCounter = TMemberWithMeta<TCumulativeCounter>;
-    using TCounterPtr = TCounter TCumulativeDiskCounters::*;
+    using TMeta = TMemberMeta<TCounter TCumulativeDiskCounters::*>;
 
     // BlobStorage based
     TCounter BytesWritten{
-        "BytesWritten",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter BytesRead{
-        "BytesRead",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter SysBytesWritten{
-        "SysBytesWritten",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter SysBytesRead{
-        "SysBytesRead",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter RealSysBytesWritten{
-        "RealSysBytesWritten",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter RealSysBytesRead{
-        "RealSysBytesRead",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter BatchCount{
-        "BatchCount",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter UncompressedBytesWritten{
-        "UncompressedBytesWritten",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompressedBytesWritten{
-        "CompressedBytesWritten",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionByReadStats{
-        "CompactionByReadStats",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionByBlobCountPerRange{
-        "CompactionByBlobCountPerRange",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionByBlobCountPerDisk{
-        "CompactionByBlobCountPerDisk",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionByGarbageBlocksPerRange{
-        "CompactionByGarbageBlocksPerRange",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter CompactionByGarbageBlocksPerDisk{
-        "CompactionByGarbageBlocksPerDisk",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry based
     TCounter ScrubbingThroughput{
-        "ScrubbingThroughput",
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &TCumulativeDiskCounters::BytesWritten,
-        &TCumulativeDiskCounters::BytesRead,
-        &TCumulativeDiskCounters::SysBytesWritten,
-        &TCumulativeDiskCounters::SysBytesRead,
-        &TCumulativeDiskCounters::RealSysBytesWritten,
-        &TCumulativeDiskCounters::RealSysBytesRead,
-        &TCumulativeDiskCounters::BatchCount,
-        &TCumulativeDiskCounters::UncompressedBytesWritten,
-        &TCumulativeDiskCounters::CompressedBytesWritten,
-        &TCumulativeDiskCounters::CompactionByReadStats,
-        &TCumulativeDiskCounters::CompactionByBlobCountPerRange,
-        &TCumulativeDiskCounters::CompactionByBlobCountPerDisk,
-        &TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange,
-        &TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TCumulativeDiskCounters::BytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::BytesRead>(),
+        MakeMeta<&TCumulativeDiskCounters::SysBytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::SysBytesRead>(),
+        MakeMeta<&TCumulativeDiskCounters::RealSysBytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::RealSysBytesRead>(),
+        MakeMeta<&TCumulativeDiskCounters::BatchCount>(),
+        MakeMeta<&TCumulativeDiskCounters::UncompressedBytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::CompressedBytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByReadStats>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
+        MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
 
-        &TCumulativeDiskCounters::ScrubbingThroughput,
+        MakeMeta<&TCumulativeDiskCounters::ScrubbingThroughput>(),
     };
 };
 static_assert(
@@ -335,112 +332,74 @@ struct THistogramRequestCounters
 {
     using TLowResCounter = TMemberWithMeta<
         TRequestCounters<THistogram<TRequestUsTimeBucketsLowResolution>>>;
-    using TLowResCounterPtr = TLowResCounter THistogramRequestCounters::*;
+    using TLowResMeta =
+        TMemberMeta<TLowResCounter THistogramRequestCounters::*>;
 
     using THighResCounter =
         TMemberWithMeta<TRequestCounters<THistogram<TRequestUsTimeBuckets>>>;
-    using THighResCounterPtr = THighResCounter THistogramRequestCounters::*;
+    using THighResMeta =
+        TMemberMeta<THighResCounter THistogramRequestCounters::*>;
 
     // BlobStorage based
-    TLowResCounter Flush{
-        "Flush",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter AddBlobs{
-        "AddBlobs",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter Compaction{
-        "Compaction",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter Cleanup{
-        "Cleanup",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter CollectGarbage{
-        "CollectGarbage",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter DeleteGarbage{
-        "DeleteGarbage",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter TrimFreshLog{
-        "TrimFreshLog",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter AddConfirmedBlobs{
-        "AddConfirmedBlobs",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter AddUnconfirmedBlobs{
-        "AddUnconfirmedBlobs",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TLowResCounter ConfirmBlobs{
-        "ConfirmBlobs",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
+    TLowResCounter Flush{EPublishingPolicy::Repl};
+    TLowResCounter AddBlobs{EPublishingPolicy::Repl};
+    TLowResCounter Compaction{EPublishingPolicy::Repl};
+    TLowResCounter Cleanup{EPublishingPolicy::Repl};
+    TLowResCounter CollectGarbage{EPublishingPolicy::Repl};
+    TLowResCounter DeleteGarbage{EPublishingPolicy::Repl};
+    TLowResCounter TrimFreshLog{EPublishingPolicy::Repl};
+    TLowResCounter AddConfirmedBlobs{EPublishingPolicy::Repl};
+    TLowResCounter AddUnconfirmedBlobs{EPublishingPolicy::Repl};
+    TLowResCounter ConfirmBlobs{EPublishingPolicy::Repl};
 
     // BlobStorage based with kind and size
     TLowResCounter WriteBlob{
-        "WriteBlob",
         EPublishingPolicy::Repl,
         ERequestCounterOption::HasKind};
     TLowResCounter ReadBlob{
-        "ReadBlob",
         EPublishingPolicy::Repl,
         ERequestCounterOption::HasKind};
     TLowResCounter PatchBlob{
-        "PatchBlob",
         EPublishingPolicy::Repl,
         ERequestCounterOption::HasKind};
 
-    static constexpr TLowResCounterPtr AllLowResCounters[] = {
-        &THistogramRequestCounters::Flush,
-        &THistogramRequestCounters::AddBlobs,
-        &THistogramRequestCounters::Compaction,
-        &THistogramRequestCounters::Cleanup,
-        &THistogramRequestCounters::CollectGarbage,
-        &THistogramRequestCounters::DeleteGarbage,
-        &THistogramRequestCounters::TrimFreshLog,
-        &THistogramRequestCounters::AddConfirmedBlobs,
-        &THistogramRequestCounters::AddUnconfirmedBlobs,
-        &THistogramRequestCounters::ConfirmBlobs,
+    static constexpr TLowResMeta AllLowResCounters[] = {
+        MakeMeta<&THistogramRequestCounters::Flush>(),
+        MakeMeta<&THistogramRequestCounters::AddBlobs>(),
+        MakeMeta<&THistogramRequestCounters::Compaction>(),
+        MakeMeta<&THistogramRequestCounters::Cleanup>(),
+        MakeMeta<&THistogramRequestCounters::CollectGarbage>(),
+        MakeMeta<&THistogramRequestCounters::DeleteGarbage>(),
+        MakeMeta<&THistogramRequestCounters::TrimFreshLog>(),
+        MakeMeta<&THistogramRequestCounters::AddConfirmedBlobs>(),
+        MakeMeta<&THistogramRequestCounters::AddUnconfirmedBlobs>(),
+        MakeMeta<&THistogramRequestCounters::ConfirmBlobs>(),
 
-        &THistogramRequestCounters::WriteBlob,
-        &THistogramRequestCounters::ReadBlob,
-        &THistogramRequestCounters::PatchBlob,
+        MakeMeta<&THistogramRequestCounters::WriteBlob>(),
+        MakeMeta<&THistogramRequestCounters::ReadBlob>(),
+        MakeMeta<&THistogramRequestCounters::PatchBlob>(),
     };
 
     THighResCounter ReadBlocks{
-        "ReadBlocks",
         EPublishingPolicy::All,
         ERequestCounterOption::HasVoidBytes};
     THighResCounter WriteBlocks{
-        "WriteBlocks",
         EPublishingPolicy::All,
-        ERequestCounterOption{}};
-    THighResCounter ZeroBlocks{
-        "ZeroBlocks",
-        EPublishingPolicy::All,
-        ERequestCounterOption{}};
+    };
+    THighResCounter ZeroBlocks{EPublishingPolicy::All};
     THighResCounter DescribeBlocks{
-        "DescribeBlocks",
         EPublishingPolicy::All,
-        ERequestCounterOption{}};
+    };
     THighResCounter ChecksumBlocks{
-        "ChecksumBlocks",
         EPublishingPolicy::All,
-        ERequestCounterOption{}};
+    };
 
-    static constexpr THighResCounterPtr AllHighResCounters[] = {
-        &THistogramRequestCounters::ReadBlocks,
-        &THistogramRequestCounters::WriteBlocks,
-        &THistogramRequestCounters::ZeroBlocks,
-        &THistogramRequestCounters::DescribeBlocks,
-        &THistogramRequestCounters::ChecksumBlocks,
+    static constexpr THighResMeta AllHighResCounters[] = {
+        MakeMeta<&THistogramRequestCounters::ReadBlocks>(),
+        MakeMeta<&THistogramRequestCounters::WriteBlocks>(),
+        MakeMeta<&THistogramRequestCounters::ZeroBlocks>(),
+        MakeMeta<&THistogramRequestCounters::DescribeBlocks>(),
+        MakeMeta<&THistogramRequestCounters::ChecksumBlocks>(),
     };
 };
 
@@ -454,21 +413,15 @@ static_assert(
 struct THistogramCounters
 {
     using TCounter = TMemberWithMeta<THistogram<TQueueSizeBuckets>>;
-    using TCounterPtr = TCounter THistogramCounters::*;
+    using TMeta = TMemberMeta<TCounter THistogramCounters::*>;
 
     // BlobStorage based
-    TCounter ActorQueue{
-        "ActorQueue",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
-    TCounter MailboxQueue{
-        "MailboxQueue",
-        EPublishingPolicy::Repl,
-        ERequestCounterOption{}};
+    TCounter ActorQueue{EPublishingPolicy::Repl};
+    TCounter MailboxQueue{EPublishingPolicy::Repl};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &THistogramCounters::ActorQueue,
-        &THistogramCounters::MailboxQueue,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&THistogramCounters::ActorQueue>(),
+        MakeMeta<&THistogramCounters::MailboxQueue>(),
     };
 };
 
@@ -482,155 +435,132 @@ static_assert(
 struct TVolumeSelfSimpleCounters
 {
     using TCounter = TMemberWithMeta<TSimpleCounter>;
-    using TCounterPtr = TCounter TVolumeSelfSimpleCounters::*;
+    using TMeta = TMemberMeta<TCounter TVolumeSelfSimpleCounters::*>;
 
     // Common
     TCounter MaxReadBandwidth{
-        "MaxReadBandwidth",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MaxWriteBandwidth{
-        "MaxWriteBandwidth",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MaxReadIops{
-        "MaxReadIops",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MaxWriteIops{
-        "MaxWriteIops",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MaxUsedQuota{
-        "MaxUsedQuota",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter LastVolumeLoadTime{
-        "LastVolumeLoadTime",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter LastVolumeStartTime{
-        "LastVolumeStartTime",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
     TCounter HasStorageConfigPatch{
-        "HasStorageConfigPatch",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter LongRunningReadBlob{
-        "LongRunningReadBlob",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter LongRunningWriteBlob{
-        "LongRunningWriteBlob",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter UseFastPath{
-        "UseFastPath",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
     // BlobStorage-based
     TCounter RealMaxWriteBandwidth{
-        "RealMaxWriteBandwidth",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter PostponedQueueWeight{
-        "PostponedQueueWeight",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter BPFreshIndexScore{
-        "BPFreshIndexScore",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter BPCompactionScore{
-        "BPCompactionScore",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter BPDiskSpaceScore{
-        "BPDiskSpaceScore",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter BPCleanupScore{
-        "BPCleanupScore",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter VBytesCount{
-        "VBytesCount",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter PartitionCount{
-        "PartitionCount",
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
     // DiskRegistry-based
     TCounter MigrationStarted{
-        "MigrationStarted",
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter MigrationProgress{
-        "MigrationProgress",
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter ResyncStarted{
-        "ResyncStarted",
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
     TCounter ResyncProgress{
-        "ResyncProgress",
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &TVolumeSelfSimpleCounters::MaxReadBandwidth,
-        &TVolumeSelfSimpleCounters::MaxWriteBandwidth,
-        &TVolumeSelfSimpleCounters::MaxReadIops,
-        &TVolumeSelfSimpleCounters::MaxWriteIops,
-        &TVolumeSelfSimpleCounters::MaxUsedQuota,
-        &TVolumeSelfSimpleCounters::LastVolumeLoadTime,
-        &TVolumeSelfSimpleCounters::LastVolumeStartTime,
-        &TVolumeSelfSimpleCounters::HasStorageConfigPatch,
-        &TVolumeSelfSimpleCounters::LongRunningReadBlob,
-        &TVolumeSelfSimpleCounters::LongRunningWriteBlob,
-        &TVolumeSelfSimpleCounters::UseFastPath,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeSelfSimpleCounters::MaxReadBandwidth>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::MaxWriteBandwidth>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::MaxReadIops>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::MaxWriteIops>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::MaxUsedQuota>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LastVolumeLoadTime>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LastVolumeStartTime>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::HasStorageConfigPatch>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LongRunningReadBlob>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::LongRunningWriteBlob>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::UseFastPath>(),
 
-        &TVolumeSelfSimpleCounters::RealMaxWriteBandwidth,
-        &TVolumeSelfSimpleCounters::PostponedQueueWeight,
-        &TVolumeSelfSimpleCounters::BPFreshIndexScore,
-        &TVolumeSelfSimpleCounters::BPCompactionScore,
-        &TVolumeSelfSimpleCounters::BPDiskSpaceScore,
-        &TVolumeSelfSimpleCounters::BPCleanupScore,
-        &TVolumeSelfSimpleCounters::VBytesCount,
-        &TVolumeSelfSimpleCounters::PartitionCount,
+        MakeMeta<&TVolumeSelfSimpleCounters::RealMaxWriteBandwidth>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::PostponedQueueWeight>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::BPFreshIndexScore>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::BPCompactionScore>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::BPDiskSpaceScore>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::BPCleanupScore>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::VBytesCount>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::PartitionCount>(),
 
-        &TVolumeSelfSimpleCounters::MigrationStarted,
-        &TVolumeSelfSimpleCounters::MigrationProgress,
-        &TVolumeSelfSimpleCounters::ResyncStarted,
-        &TVolumeSelfSimpleCounters::ResyncProgress,
+        MakeMeta<&TVolumeSelfSimpleCounters::MigrationStarted>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::MigrationProgress>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::ResyncStarted>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::ResyncProgress>(),
     };
 };
 static_assert(
@@ -641,35 +571,31 @@ static_assert(
 struct TVolumeSelfCumulativeCounters
 {
     using TCounter = TMemberWithMeta<TCumulativeCounter>;
-    using TCounterPtr = TCounter TVolumeSelfCumulativeCounters::*;
+    using TMeta = TMemberMeta<TCounter TVolumeSelfCumulativeCounters::*>;
 
     // Common
     TCounter ThrottlerRejectedRequests{
-        "ThrottlerRejectedRequests",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter ThrottlerPostponedRequests{
-        "ThrottlerPostponedRequests",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter ThrottlerSkippedRequests{
-        "ThrottlerSkippedRequests",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Expiring};
     TCounter UsedQuota{
-        "UsedQuota",
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &TVolumeSelfCumulativeCounters::ThrottlerRejectedRequests,
-        &TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests,
-        &TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests,
-        &TVolumeSelfCumulativeCounters::UsedQuota,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerRejectedRequests>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests>(),
+        MakeMeta<&TVolumeSelfCumulativeCounters::UsedQuota>(),
     };
 };
 static_assert(
@@ -680,31 +606,19 @@ static_assert(
 struct TVolumeSelfRequestCounters
 {
     using TCounter = TMemberWithMeta<THistogram<TRequestUsTimeBuckets>>;
-    using TCounterPtr = TCounter TVolumeSelfRequestCounters::*;
+    using TMeta = TMemberMeta<TCounter TVolumeSelfRequestCounters::*>;
 
     // Common
-    TCounter ReadBlocks{
-        "ReadBlocks",
-        EPublishingPolicy::All,
-        ERequestCounterOption{}};
-    TCounter WriteBlocks{
-        "WriteBlocks",
-        EPublishingPolicy::All,
-        ERequestCounterOption{}};
-    TCounter ZeroBlocks{
-        "ZeroBlocks",
-        EPublishingPolicy::All,
-        ERequestCounterOption{}};
-    TCounter DescribeBlocks{
-        "DescribeBlocks",
-        EPublishingPolicy::All,
-        ERequestCounterOption{}};
+    TCounter ReadBlocks{EPublishingPolicy::All};
+    TCounter WriteBlocks{EPublishingPolicy::All};
+    TCounter ZeroBlocks{EPublishingPolicy::All};
+    TCounter DescribeBlocks{EPublishingPolicy::All};
 
-    static constexpr TCounterPtr AllCounters[] = {
-        &TVolumeSelfRequestCounters::ReadBlocks,
-        &TVolumeSelfRequestCounters::WriteBlocks,
-        &TVolumeSelfRequestCounters::ZeroBlocks,
-        &TVolumeSelfRequestCounters::DescribeBlocks,
+    static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeSelfRequestCounters::ReadBlocks>(),
+        MakeMeta<&TVolumeSelfRequestCounters::WriteBlocks>(),
+        MakeMeta<&TVolumeSelfRequestCounters::ZeroBlocks>(),
+        MakeMeta<&TVolumeSelfRequestCounters::DescribeBlocks>(),
     };
 };
 static_assert(
