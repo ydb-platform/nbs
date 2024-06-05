@@ -3,14 +3,17 @@ package oauth2_jwt
 import (
 	"crypto/rsa"
 	"fmt"
+	"net/url"
+	"os"
+	"time"
+
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"net/url"
-	"os"
-	"time"
 )
+
+////////////////////////////////////////////////////////////////////////////////
 
 const jwtTokenTTL = 10 * time.Minute
 
@@ -25,6 +28,7 @@ type jwtGenerator struct {
 }
 
 func (j *jwtGenerator) safeGenerateAndSignToken() (string, error) {
+
 	now := j.now()
 	token := jwt.NewWithClaims(
 		jwt.SigningMethodRS256,
@@ -37,9 +41,9 @@ func (j *jwtGenerator) safeGenerateAndSignToken() (string, error) {
 			NotBefore: jwt.NewNumericDate(now),
 		},
 	)
+
 	token.Header["kid"] = j.id
 	line, err := token.SignedString(j.privateKey)
-
 	if err != nil {
 		return "", err
 	}
@@ -55,7 +59,11 @@ func (j *jwtGenerator) generateAndSignToken() string {
 	return result
 }
 
-func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, error) {
+func newJwtGenerator(
+	config *config.AuthConfig,
+	now nowFunc,
+) (*jwtGenerator, error) {
+
 	if config == nil {
 		return nil, errors.NewNonRetriableErrorf("Authorization config is empty")
 	}
@@ -101,5 +109,6 @@ func newJwtGenerator(config *config.AuthConfig, now nowFunc) (*jwtGenerator, err
 	if err != nil {
 		return nil, errors.NewNonRetriableErrorf("Error while checking token signing %v", err)
 	}
+
 	return generator, nil
 }

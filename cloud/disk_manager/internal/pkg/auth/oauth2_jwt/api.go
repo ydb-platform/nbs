@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 type TokenResponse struct {
 	AccessToken     string `json:"access_token,omitempty"`
 	IssuedTokenType string `json:"issued_token_type,omitempty"`

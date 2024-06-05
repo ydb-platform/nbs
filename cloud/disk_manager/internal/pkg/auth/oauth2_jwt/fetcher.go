@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"io"
 	"net/http"
+
+	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
+
+////////////////////////////////////////////////////////////////////////////////
 
 type TokenFetcher interface {
 	Fetch(ctx context.Context) (Token, error)
@@ -34,16 +37,17 @@ type plainTokenFetcher struct {
 }
 
 func (fetcher plainTokenFetcher) Fetch(ctx context.Context) (Token, error) {
+
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		fetcher.tokenUrl,
 		tokenRequest(fetcher.jwtGenerator.generateAndSignToken()),
 	)
-
 	if err != nil {
 		return nil, err
 	}
+
 	request.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	response, err := http.DefaultClient.Do(request)
 
@@ -78,6 +82,7 @@ func newOauth2JWTTokenFetcher(
 	config *auth_config.AuthConfig,
 	now nowFunc,
 ) (TokenFetcher, error) {
+
 	if config.GetMetadataUrl() == "" {
 		return nil, errors.NewNonRetriableErrorf("No metadata url")
 	}
