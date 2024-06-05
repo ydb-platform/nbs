@@ -2,8 +2,10 @@ package oauth2_jwt
 
 import (
 	"crypto/rsa"
+	"fmt"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"net/url"
 	"os"
@@ -47,13 +49,9 @@ func (j *jwtGenerator) safeGenerateAndSignToken() (string, error) {
 
 func (j *jwtGenerator) generateAndSignToken() string {
 	result, err := j.safeGenerateAndSignToken()
-
-	if err != nil {
-		// Not being able to sign a token is considered a
-		// case of invalid configuration, it's ok to panic
-		panic(err)
-	}
-
+	// Not being able to sign a token is considered a
+	// case of invalid configuration, it's ok to panic
+	common.Assert(err == nil, fmt.Sprintf("Could not sign token %v", err))
 	return result
 }
 
