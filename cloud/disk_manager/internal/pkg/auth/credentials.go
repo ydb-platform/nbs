@@ -46,7 +46,7 @@ func NewCredentials(
 			),
 		)
 		if err != nil {
-			logging.Error(ctx, "failed to create token credentials: %s", err)
+			logging.Error(ctx, "failed to create token credentials: %v", err)
 			return nil
 		}
 	} else {
