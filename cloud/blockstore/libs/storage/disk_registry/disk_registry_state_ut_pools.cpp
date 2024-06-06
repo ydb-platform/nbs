@@ -670,16 +670,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             db.InitSchema();
         });
 
-        constexpr ui64 localDeviceSize = 367_GB;
-        constexpr ui64 localDeviceBS = 512;
+        constexpr ui64 smallPoolUnitSize = 1_GB;
+        constexpr ui64 bigPoolUnitSize = 100_GB;
 
         const auto agentConfig = AgentConfig(1, {
             Device("dev-1", "uuid-1.1")
-                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
-                | WithTotalSize(localDeviceSize, localDeviceBS),
+                | WithPool("small", NProto::DEVICE_POOL_KIND_GLOBAL)
+                | WithTotalSize(smallPoolUnitSize, DefaultLogicalBlockSize),
             Device("dev-2", "uuid-1.2")
-                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
-                | WithTotalSize(localDeviceSize, localDeviceBS)
+                | WithPool("big", NProto::DEVICE_POOL_KIND_LOCAL)
+                | WithTotalSize(bigPoolUnitSize, DefaultLogicalBlockSize)
         });
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
@@ -691,10 +691,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             .WithConfig([&] {
                 auto config = MakeConfig(0, {agentConfig});
 
-                auto* pool = config.AddDevicePoolConfigs();
-                pool->SetName("local-ssd");
-                pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                pool->SetAllocationUnit(localDeviceSize);
+                auto* small = config.AddDevicePoolConfigs();
+                small->SetName("small");
+                small->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                small->SetAllocationUnit(smallPoolUnitSize);
+
+                auto* big = config.AddDevicePoolConfigs();
+                big->SetName("big");
+                big->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                big->SetAllocationUnit(bigPoolUnitSize);
 
                 return config;
              }())
@@ -715,8 +720,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 const auto& expected = agentConfig.GetDevices(i);
                 const auto& device = agent->GetDevices(i);
 
+                UNIT_ASSERT_EQUAL_C(
+                    NProto::DEVICE_STATE_ONLINE,
+                    device.GetState(), device);
+
                 UNIT_ASSERT_EQUAL(
-                    NProto::DEVICE_POOL_KIND_LOCAL,
+                    expected.GetPoolKind(),
                     device.GetPoolKind());
 
                 UNIT_ASSERT_VALUES_EQUAL(
@@ -742,17 +751,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
 
         // update devices
 
-        const auto newAgentConfig = AgentConfig(1, {
-            Device("dev-1", "uuid-1.1")
-                | WithTotalSize(93_GB, 4_KB),
-            Device("dev-2", "uuid-1.2")
-                | WithTotalSize(93_GB, 4_KB),
-            // new devices
-            Device("dev-3", "uuid-1.3")
-                | WithTotalSize(93_GB, 4_KB),
-            Device("dev-4", "uuid-1.4")
-                | WithTotalSize(93_GB, 4_KB)
-        });
+        const auto newAgentConfig = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1.1") |
+                 WithTotalSize(93_GB, DefaultLogicalBlockSize),
+             Device("dev-2", "uuid-1.2") |
+                 WithTotalSize(93_GB, DefaultLogicalBlockSize),
+             // new devices
+             Device("dev-3", "uuid-1.3") |
+                 WithTotalSize(93_GB, DefaultLogicalBlockSize),
+             Device("dev-4", "uuid-1.4") |
+                 WithTotalSize(93_GB, DefaultLogicalBlockSize)});
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, newAgentConfig));
@@ -769,8 +778,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                     ? agent->GetDevices(i)
                     : agent->GetUnknownDevices(i - agent->DevicesSize());
 
+                UNIT_ASSERT_EQUAL_C(
+                    NProto::DEVICE_STATE_ONLINE,
+                    device.GetState(), device);
+
                 UNIT_ASSERT_EQUAL(
-                    NProto::DEVICE_POOL_KIND_DEFAULT,
+                    expected.GetPoolKind(),
                     device.GetPoolKind());
 
                 UNIT_ASSERT_VALUES_EQUAL(
