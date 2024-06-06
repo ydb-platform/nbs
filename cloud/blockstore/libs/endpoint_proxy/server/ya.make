@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     bootstrap.cpp
     options.cpp
+    proxy_storage.cpp
     server.cpp
 )
 
@@ -17,6 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/uds
+    cloud/storage/core/protos
 
     library/cpp/getopt/small
     library/cpp/logger
@@ -32,3 +34,5 @@ IF(NETLINK)
 ENDIF()
 
 END()
+
+RECURSE_FOR_TESTS(ut)

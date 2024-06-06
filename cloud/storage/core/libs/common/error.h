@@ -201,6 +201,7 @@ enum class EDiagnosticsErrorKind
     ErrorWriteRejectedByCheckpoint,
     ErrorSession,
     ErrorSilent,
+    Max,
 };
 
 EDiagnosticsErrorKind GetDiagnosticsErrorKind(const NProto::TError& e);
