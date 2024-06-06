@@ -1,8 +1,8 @@
-InternalUnixSocketPath: "TODO-nbs-socket.proxy"
+InternalUnixSocketPath: "TODO-nbs-socket.p"
 
 Endpoints {
   UnixSocketPath: "TODO-nbs-socket"
-  InternalUnixSocketPath: "TODO-nbs-socket.proxy"
+  InternalUnixSocketPath: "TODO-nbs-socket.p"
   BlockSize: 4096
   BlocksCount: 1024
   Stats {
@@ -11,12 +11,12 @@ Endpoints {
 
 Endpoints {
   UnixSocketPath: "TODO-nbs-socket"
-  InternalUnixSocketPath: "TODO-nbs-socket.proxy"
+  InternalUnixSocketPath: "TODO-nbs-socket.p"
   BlockSize: 4096
   BlocksCount: 1024
   Stats {
   }
 }
 
-InternalUnixSocketPath: "TODO-nbs-socket.proxy"
+InternalUnixSocketPath: "TODO-nbs-socket.p"
 
