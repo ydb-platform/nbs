@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"hash/crc32"
 
+	"github.com/golang-jwt/jwt/v4"
 	auth_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/auth/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 	metadata "github.com/ydb-platform/ydb-go-yc-metadata"
 	"github.com/ydb-platform/ydb-go-yc-metadata/trace"
 )
@@ -26,9 +28,29 @@ func NewCredentials(
 	if len(config.GetMetadataUrl()) == 0 {
 		return nil
 	}
-
-	return &credentialsWrapper{
-		impl: metadata.NewInstanceServiceAccount(
+	var (
+		impl Credentials
+		err  error
+	)
+	if config.GetServiceAccount() != nil {
+		impl, err = credentials.NewOauth2TokenExchangeCredentials(
+			credentials.WithTokenEndpoint(config.GetMetadataUrl()),
+			credentials.WithAudience(config.GetServiceAccount().GetAudience()),
+			credentials.WithJWTSubjectToken(
+				credentials.WithSigningMethod(jwt.SigningMethodRS256),
+				credentials.WithKeyID(config.GetServiceAccount().GetKeyId()),
+				credentials.WithRSAPrivateKeyPEMFile(config.GetCertFile()),
+				credentials.WithIssuer(config.GetServiceAccount().GetId()),
+				credentials.WithSubject(config.GetServiceAccount().GetId()),
+				credentials.WithAudience(config.GetServiceAccount().GetAudience()),
+			),
+		)
+		if err != nil {
+			logging.Error(ctx, "failed to create token credentials: %v", err)
+			return nil
+		}
+	} else {
+		impl = metadata.NewInstanceServiceAccount(
 			metadata.WithURL(config.GetMetadataUrl()),
 			metadata.WithTrace(trace.Trace{
 				OnRefreshToken: func(info trace.RefreshTokenStartInfo) func(trace.RefreshTokenDoneInfo) {
@@ -46,7 +68,10 @@ func NewCredentials(
 					}
 				},
 			}),
-		),
+		)
+	}
+	return &credentialsWrapper{
+		impl: impl,
 	}
 }
 

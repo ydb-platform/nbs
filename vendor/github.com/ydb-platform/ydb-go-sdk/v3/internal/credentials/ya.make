@@ -7,6 +7,7 @@ SRCS(
     access_token.go
     anonymous.go
     credentials.go
+    oauth2.go
     source_info.go
     static.go
 )

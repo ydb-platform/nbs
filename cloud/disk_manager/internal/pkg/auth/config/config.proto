@@ -8,6 +8,12 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
+message ServiceAccount {
+    required string Id = 1;
+    required string KeyId = 2;
+    required string Audience = 3;
+}
+
 message AuthConfig {
     optional bool DisableAuthorization = 1;
     optional string MetadataUrl = 2;
@@ -20,4 +26,5 @@ message AuthConfig {
     optional string KeepAliveTimeout = 9 [default = "1s"];
     optional string FolderId = 10;
     optional string AuthorizationCacheLifetime = 11 [default = "15s"];
+    optional ServiceAccount ServiceAccount = 12;
 }
