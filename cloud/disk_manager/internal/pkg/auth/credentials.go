@@ -42,8 +42,7 @@ func NewCredentials(
 				credentials.WithRSAPrivateKeyPEMFile(config.GetCertFile()),
 				credentials.WithIssuer(config.GetServiceAccount().GetId()),
 				credentials.WithSubject(config.GetServiceAccount().GetId()),
-				credentials.WithAudience(
-					config.GetServiceAccount().GetAudience()),
+				credentials.WithAudience(config.GetServiceAccount().GetAudience()),
 			),
 		)
 		if err != nil {
