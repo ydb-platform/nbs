@@ -162,12 +162,10 @@ class TestCase:
             ]
         return cmd
 
-
     def get_fio_cmd(self, fio_bin, file_name):
         cmd = self.get_common_fio_cmd(fio_bin)
         cmd += ["--filename", file_name]
         return cmd
-
 
     def get_index_fio_cmd(self, fio_bin, directory):
         cmd = self.get_common_fio_cmd(fio_bin)
@@ -186,7 +184,6 @@ class TestCase:
         if self.end_fsync:
             cmd += ["--end_fsync", "1"]
         return cmd
-
 
 
 def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_percentage, verify,
@@ -251,7 +248,6 @@ def get_dir_name(mount_dir, test_name):
     if not os.path.exists(mount_dir):
         raise Exception("invalid path " + mount_dir)
     return "{}/{}".format(mount_dir, test_name)
-
 
 
 def _lay_out_file(file_name, size):

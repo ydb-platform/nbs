@@ -25,6 +25,7 @@ QEMU_HOST = "10.0.2.2"
 
 PID_FILE = "qemu.pid"
 
+
 class QemuKvmRecipeException(Exception):
 
     def __init__(self, msg):
