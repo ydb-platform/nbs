@@ -25,7 +25,7 @@ namespace {
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
                                                                                \
-    xxx(PreferredBlockSize,     ui32,           4_KB                          )\
+    xxx(PreferredBlockSize,     ui32,           0                             )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \
