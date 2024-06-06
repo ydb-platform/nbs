@@ -82,3 +82,10 @@ def test_eternal_load_test_case_all_ok(cluster, test_case, command):
     'all'])
 def test_test_eternal_load_db_test(cluster, test_case):
     return run_test(cluster, test_case, 'rerun-db-load', 0)
+
+
+@pytest.mark.parametrize('cluster', ['cluster1'])
+@pytest.mark.parametrize('test_case', ['eternal-alternating-seq-rw-1tb-nfs-4kib-4clients'])
+@pytest.mark.parametrize('command', ['setup-fio', 'rerun-fio', 'delete-fio', 'stop-fio'])
+def test_eternal_load_fio_test_ok(cluster, test_case, command):
+    return run_test(cluster, test_case, command, 0)

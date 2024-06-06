@@ -8,6 +8,8 @@ import typing as tp
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc, get_cluster_test_config
 
+import cloud.storage.core.tools.testing.fio.lib as fio
+
 
 @dataclass
 class YcpConfig:
@@ -132,6 +134,28 @@ class LoadConfig(ITestCreateConfig):
         if self.run_in_systemd:
             return f'eternalload_{self.device_name}.service'
         return None
+
+
+@dataclass
+class FioSequentialConfig:
+    _loads_factory: tp.Callable[[], tp.List[fio.TestCase]]
+    _client_count: int
+
+    def __init__(self, loads_factory: tp.Callable[[], tp.List[fio.TestCase]], client_count: int):
+        self._loads_factory = loads_factory
+        self._client_count = client_count
+
+    @property
+    def loads(self) -> tp.List[fio.TestCase]:
+        return self._loads_factory()
+
+    @property
+    def client_count(self) -> int:
+        return self._client_count
+
+    def construct_bash_command(self, fio_bin: str, mount_path: str) -> str:
+        cmd = ' && '.join([' '.join(load.get_index_fio_cmd(fio_bin, mount_path)) for load in self.loads])
+        return f'while true ; do {cmd} || break ; done'
 
 
 _DISK_CONFIGS = {
@@ -289,6 +313,10 @@ _FS_CONFIGS = {
     # DBs
     'eternal-1tb-nfs-postgresql': FsCreateConfig(1024, 4096, 'network-ssd', 'nfs', '/DB'),
     'eternal-1tb-nfs-mysql': FsCreateConfig(1024, 4096, 'network-ssd', 'nfs', '/DB'),
+
+    # Fio tests
+    'eternal-alternating-seq-rw-1tb-nfs-4kib-4clients': FsCreateConfig(1024, 4096, 'network-ssd'),
+    'eternal-alternating-seq-rw-1tb-nfs-128kib-4clients': FsCreateConfig(1024, 4096, 'network-ssd'),
 }
 
 _LOAD_CONFIGS = {
@@ -374,6 +402,35 @@ _DB = {
     'eternal-1tb-nfs-mysql': 'mysql-nfs',
 }
 
+_FIO = {
+    "eternal-alternating-seq-rw-1tb-nfs-4kib-4clients": FioSequentialConfig(
+        lambda: [
+            *fio.generate_tests(
+                scenarios=["read", "write"],
+                iodepths=[32],
+                sizes=[4 * 1024],
+                verify=False,
+            ).values()
+        ],
+        client_count=4,
+    ),
+    "eternal-alternating-seq-rw-1tb-nfs-128kib-4clients": FioSequentialConfig(
+        lambda: [
+            *fio.generate_tests(
+                scenarios=["read", "write"],
+                iodepths=[1],
+                sizes=[128 * 1024],
+                duration=600,
+                unlinks=[True],
+                unique_name=True,
+                numjobs=[32, 1],
+                verify=False,
+            ).values(),
+        ],
+        client_count=4,
+    ),
+}
+
 
 @dataclass
 class ITestConfig(ABC):
@@ -439,6 +496,18 @@ class DBTestConfig(ITestConfig):
 
     def is_disk_config(self) -> bool:
         return self.disk_config is not None
+
+
+@dataclass
+class FioTestConfig(ITestConfig):
+    fs_config: FsCreateConfig
+    fio: FioSequentialConfig
+
+    def all_tests(self) -> [(ITestCreateConfig, LoadConfig)]:
+        yield self.fs_config, self.fio
+
+    def is_disk_config(self) -> bool:
+        return False
 
 
 def select_test_folder(args: Args, test_case: str):
@@ -538,6 +607,27 @@ def generate_test_config(args: Args, test_case: str) -> ITestConfig:
     raise Exception('Unknown test case')
 
 
+def generate_fio_test_config(args: Args, test_case: str) -> ITestConfig:
+    if test_case not in _FIO:
+        return None
+
+    folder_descr = select_test_folder(args, test_case)
+    if folder_descr is None:
+        return None
+
+    placement_group = getattr(args, 'placement_group_name', None) or "nbs-eternal-tests"
+
+    return FioTestConfig(
+        YcpConfig(
+            folder=folder_descr,
+            placement_group_name=placement_group,
+            image_name=None,
+        ),
+        _FS_CONFIGS[test_case],
+        _FIO[test_case],
+    )
+
+
 def generate_db_test_config(args: Args, test_case: str) -> ITestConfig:
     if test_case not in _DB:
         return None
@@ -580,12 +670,23 @@ def generate_all_db_test_configs(args: Args) -> [(str, ITestConfig)]:
     return configs
 
 
-def get_test_config(args: Args, db: bool) -> [(str, ITestConfig)]:
-    if db:
+def generate_all_fio_test_configs(args: Args) -> [(str, ITestConfig)]:
+    configs = []
+    for test_case in _FIO.keys():
+        configs.append((test_case, generate_fio_test_config(args, test_case)))
+
+    return configs
+
+
+def get_test_config(args: Args) -> [(str, ITestConfig)]:
+    if 'db' in args.command:
         if args.test_case == 'all':
             return generate_all_db_test_configs(args)
-        else:
-            return generate_db_test_config(args, args.test_case)
+        return generate_db_test_config(args, args.test_case)
+    elif 'fio' in args.command:
+        if args.test_case == 'all':
+            return generate_all_fio_test_configs(args)
+        return generate_fio_test_config(args, args.test_case)
     else:
         if args.test_case == 'all':
             return generate_all_test_configs(args)

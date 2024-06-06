@@ -8,5 +8,8 @@ PY_SRCS(
     test_configs.py
 )
 
-END()
+PEERDIR(
+    cloud/storage/core/tools/testing/fio/lib
+)
 
+END()

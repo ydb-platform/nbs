@@ -1,5 +1,5 @@
 Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
-SSH 1:1:1:1:1:1:1:1: pkill -f "^/usr/bin/eternal-load.*vdb"
+SSH 1:1:1:1:1:1:1:1: pkill -f -f "^/usr/bin/eternal-load.*vdb"
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"
 Execute command nohup sh -c "/usr/bin/eternal-load --config-type generated --blocksize 4096 --file /dev/vdb --filesize 640 --iodepth 32 --dump-config-path /tmp/load-config.json --write-rate 50 --write-parts 1 >> /tmp/eternal-load.log 2>&1" &>/dev/null &
