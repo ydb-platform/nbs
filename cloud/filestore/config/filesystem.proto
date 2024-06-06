@@ -34,6 +34,6 @@ message TFileSystemConfig
     optional uint32 NegativeEntryTimeout = 9;
 
     // The blocksize reported to the client via stat request. Note: this value
-    // can differe from the BlockSize in terms of the actual filestore
+    // can differ from the BlockSize in terms of the actual filestore
     optional uint32 PreferredBlockSize = 10;
 }
