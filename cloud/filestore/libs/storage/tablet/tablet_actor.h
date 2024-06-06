@@ -138,7 +138,7 @@ private:
             std::atomic<i64> RequestBytes{0};
             TLatHistogram Time;
 
-            void Update(ui32 requestCount, ui32 requestBytes, TDuration d)
+            void Update(ui64 requestCount, ui64 requestBytes, TDuration d)
             {
                 Count.fetch_add(requestCount, std::memory_order_relaxed);
                 RequestBytes.fetch_add(requestBytes, std::memory_order_relaxed);
