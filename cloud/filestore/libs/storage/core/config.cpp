@@ -158,6 +158,7 @@ namespace {
     xxx(GenerateBlobIdsReleaseCollectBarrierTimeout,                           \
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\
+    xxx(ExtendedBlockSizeEnabled,                       bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \

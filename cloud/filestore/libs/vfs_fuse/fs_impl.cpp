@@ -105,7 +105,7 @@ bool TFileSystem::UpdateNodesCache(
         entry.attr_timeout = Config->GetAttrTimeout().Seconds();
         entry.entry_timeout = Config->GetEntryTimeout().Seconds();
 
-        ConvertAttr(Config->GetBlockSize(), node->Attrs, entry.attr);
+        ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
     }
 
     return true;

@@ -34,6 +34,7 @@ public:
     TDuration GetXAttrCacheTimeout() const;
 
     ui32 GetMaxBufferSize() const;
+    ui32 GetPreferredBlockSize() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
