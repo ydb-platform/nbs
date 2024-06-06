@@ -662,6 +662,145 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, error.GetCode());
         });
     }
+
+    Y_UNIT_TEST(ShouldUpdateDevices)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        constexpr ui64 localDeviceSize = 367_GB;
+        constexpr ui64 localDeviceBS = 512;
+
+        const auto agentConfig = AgentConfig(1, {
+            Device("dev-1", "uuid-1.1")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
+                | WithTotalSize(localDeviceSize, localDeviceBS),
+            Device("dev-2", "uuid-1.2")
+                | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
+                | WithTotalSize(localDeviceSize, localDeviceBS)
+        });
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithStorageConfig([]{
+                auto config = CreateDefaultStorageConfigProto();
+                config.SetAllocationUnitNonReplicatedSSD(93);
+                return config;
+            }())
+            .WithConfig([&] {
+                auto config = MakeConfig(0, {agentConfig});
+
+                auto* pool = config.AddDevicePoolConfigs();
+                pool->SetName("local-ssd");
+                pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                pool->SetAllocationUnit(localDeviceSize);
+
+                return config;
+             }())
+            .Build();
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, agentConfig));
+
+            const auto* agent = state.FindAgent(agentConfig.GetAgentId());
+            UNIT_ASSERT(agent);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                agentConfig.DevicesSize(),
+                agent->DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
+
+            for (size_t i = 0; i != agent->DevicesSize(); ++i) {
+                const auto& expected = agentConfig.GetDevices(i);
+                const auto& device = agent->GetDevices(i);
+
+                UNIT_ASSERT_EQUAL(
+                    NProto::DEVICE_POOL_KIND_LOCAL,
+                    device.GetPoolKind());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetDeviceUUID(),
+                    device.GetDeviceUUID());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetPoolName(),
+                    device.GetPoolName());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetBlockSize(),
+                    device.GetBlockSize());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetBlocksCount(),
+                    device.GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetBlocksCount(),
+                    device.GetUnadjustedBlockCount());
+            }
+        });
+
+        // update devices
+
+        const auto newAgentConfig = AgentConfig(1, {
+            Device("dev-1", "uuid-1.1")
+                | WithTotalSize(93_GB, 4_KB),
+            Device("dev-2", "uuid-1.2")
+                | WithTotalSize(93_GB, 4_KB),
+            // new devices
+            Device("dev-3", "uuid-1.3")
+                | WithTotalSize(93_GB, 4_KB),
+            Device("dev-4", "uuid-1.4")
+                | WithTotalSize(93_GB, 4_KB)
+        });
+
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(RegisterAgent(state, db, newAgentConfig));
+
+            const auto* agent = state.FindAgent(newAgentConfig.GetAgentId());
+            UNIT_ASSERT(agent);
+
+            UNIT_ASSERT_VALUES_EQUAL(2, agent->DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(2, agent->UnknownDevicesSize());
+
+            for (size_t i = 0; i != newAgentConfig.DevicesSize(); ++i) {
+                const auto& expected = newAgentConfig.GetDevices(i);
+                const auto& device = i < agent->DevicesSize()
+                    ? agent->GetDevices(i)
+                    : agent->GetUnknownDevices(i - agent->DevicesSize());
+
+                UNIT_ASSERT_EQUAL(
+                    NProto::DEVICE_POOL_KIND_DEFAULT,
+                    device.GetPoolKind());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetDeviceUUID(),
+                    device.GetDeviceUUID());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetPoolName(),
+                    device.GetPoolName());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetBlockSize(),
+                    device.GetBlockSize());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected.GetBlocksCount(),
+                    device.GetBlocksCount());
+
+                if (i < agent->DevicesSize()) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expected.GetBlocksCount(),
+                        device.GetUnadjustedBlockCount());
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        0,
+                        device.GetUnadjustedBlockCount());
+                }
+            }
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
