@@ -119,6 +119,8 @@ void TFreshBytes::AddDeletionMarker(
         Y_ABORT_UNLESS(commitId >= c.FirstCommitId);
     }
 
+    c.TotalDeletedBytes += len;
+
     c.DeletionMarkers.push_back({
         nodeId,
         offset,

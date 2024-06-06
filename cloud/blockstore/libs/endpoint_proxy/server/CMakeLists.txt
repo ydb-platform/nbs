@@ -1,3 +1,5 @@
+add_subdirectory(ut)
+
 add_library(libs-endpoint_proxy-server)
 target_link_libraries(libs-endpoint_proxy-server PUBLIC
   contrib-libs-linux-headers
@@ -12,6 +14,7 @@ target_link_libraries(libs-endpoint_proxy-server PUBLIC
   core-libs-diagnostics
   core-libs-grpc
   core-libs-uds
+  storage-core-protos
 
   cpp-actors-util
   cpp-getopt-small
@@ -22,5 +25,6 @@ target_link_libraries(libs-endpoint_proxy-server PUBLIC
 target_sources(libs-endpoint_proxy-server PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/bootstrap.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/options.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/proxy_storage.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/endpoint_proxy/server/server.cpp
 )
