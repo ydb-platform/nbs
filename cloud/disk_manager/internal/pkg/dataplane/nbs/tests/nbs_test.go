@@ -181,7 +181,6 @@ func TestChunkIndices(t *testing.T) {
 			chunkSize,
 			false, // duplicateChunkIndices
 			false, // ignoreBaseDisk
-			false, // useGetChangedBlocksForDiskRegistryBased
 			false, // dontReadFromCheckpoint
 		)
 		require.NoError(t, err)
@@ -287,7 +286,6 @@ func TestReadWrite(t *testing.T) {
 		chunkSize,
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
-		false, // useGetChangedBlocksForDiskRegistryBased
 		false, // dontReadFromCheckpoint
 	)
 	require.NoError(t, err)
@@ -376,7 +374,6 @@ func TestDontReadFromCheckpoint(t *testing.T) {
 				chunkSize,
 				false, // duplicateChunkIndices
 				false, // ignoreBaseDisk
-				false, // useGetChangedBlocksForDiskRegistryBased
 				dontReadFromCheckpoint,
 			)
 			require.NoError(t, err)

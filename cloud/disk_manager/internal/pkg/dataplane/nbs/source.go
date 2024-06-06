@@ -30,7 +30,6 @@ type diskSource struct {
 	chunkCount       uint32
 	encryptionDesc   *types.EncryptionDesc
 
-	useGetChangedBlocks              bool
 	maxChangedBlockCountPerIteration uint64
 	duplicateChunkIndices            bool
 
@@ -173,11 +172,8 @@ func (s *diskSource) ChunkIndices(
 		defer s.chunkIndices.Close()
 		defer s.duplicatedChunkIndices.Close()
 
-		var err error
-		if s.useGetChangedBlocks {
-			err = s.generateChunkIndices(ctx, milestone.ChunkIndex)
-		}
-		if !s.useGetChangedBlocks || nbs.IsGetChangedBlocksNotSupportedError(err) {
+		err := s.generateChunkIndices(ctx, milestone.ChunkIndex)
+		if nbs.IsGetChangedBlocksNotSupportedError(err) {
 			err = s.generateChunkIndicesDefault(ctx, milestone.ChunkIndex)
 		}
 		if err != nil {
@@ -247,7 +243,6 @@ func NewDiskSource(
 	chunkSize uint32,
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
-	useGetChangedBlocksForDiskRegistryBased bool,
 	dontReadFromCheckpoint bool,
 ) (dataplane_common.Source, error) {
 
@@ -297,14 +292,6 @@ func NewDiskSource(
 
 	chunkCount := uint32(blockCount / blocksInChunk)
 
-	// TODO: NBS-3228 make GetChangedBlocks() support for Disk Registry based disks.
-	// This flag is still needed for snapshots from nrd disks because we can not use
-	// GetChangedBlocks between non-light checkpoints for Disk Registry based disks.
-	// But we can use GetChangedBlocks in disk relocation because we use
-	// light checkpoints for relocation of Disk Registry based disks.
-	useGetChangedBlocks :=
-		!session.IsDiskRegistryBasedDisk() || useGetChangedBlocksForDiskRegistryBased
-
 	return &diskSource{
 		client:           client,
 		session:          session,
@@ -316,7 +303,6 @@ func NewDiskSource(
 		chunkCount:       chunkCount,
 		encryptionDesc:   encryption,
 
-		useGetChangedBlocks:              useGetChangedBlocks,
 		maxChangedBlockCountPerIteration: maxChangedBlockCountPerIteration,
 		duplicateChunkIndices:            duplicateChunkIndices,
 

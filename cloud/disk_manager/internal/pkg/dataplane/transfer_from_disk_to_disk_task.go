@@ -63,7 +63,6 @@ func (t *transferFromDiskToDiskTask) Run(
 		chunkSize,
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
-		false, // useGetChangedBlocksForDiskRegistryBased
 		false, // dontReadFromCheckpoint
 	)
 	if err != nil {
