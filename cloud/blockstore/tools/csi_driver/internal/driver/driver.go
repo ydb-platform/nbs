@@ -30,13 +30,13 @@ func getEndpoint(unixSocket string, port uint) string {
 	}
 }
 
-func getCsiMethodName(fullMethod string) string {
+func getCsiMethodName(fullMethodName string) string {
 	// take the last part from "/csi.v1.Controller/ControllerPublishVolume"
-	index := strings.LastIndex(fullMethod, "/")
+	index := strings.LastIndex(fullMethodName, "/")
 	if index > 0 {
-		return fullMethod[index+1:]
+		return fullMethodName[index+1:]
 	}
-	return fullMethod
+	return fullMethodName
 }
 
 ////////////////////////////////////////////////////////////////////////////////
