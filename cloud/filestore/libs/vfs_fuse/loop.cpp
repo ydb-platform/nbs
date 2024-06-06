@@ -816,6 +816,11 @@ private:
         }
 
         const auto& features = filestore.GetFeatures();
+        if (features.GetPreferredBlockSize()) {
+            config.SetPreferredBlockSize(features.GetPreferredBlockSize());
+        } else {
+            config.SetPreferredBlockSize(filestore.GetBlockSize());
+        }
         if (features.GetEntryTimeout()) {
             config.SetEntryTimeout(features.GetEntryTimeout());
         }

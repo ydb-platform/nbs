@@ -322,7 +322,7 @@ void TFileSystem::ReadDir(
                     .entry_timeout = (double)Config->GetEntryTimeout().Seconds(),
                 };
 
-                ConvertAttr(Config->GetBlockSize(), attr, entry.attr);
+                ConvertAttr(Config->GetPreferredBlockSize(), attr, entry.attr);
                 if (!entry.attr.st_ino) {
                     const auto error = MakeError(
                         E_IO,

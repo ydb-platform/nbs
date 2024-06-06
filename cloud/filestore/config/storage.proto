@@ -275,4 +275,10 @@ message TStorageConfig
     // If greater than 0, the node index cache will be used. It caches
     // GetNodeAttrRequests to avoid executing GetNodeAttr tx for hot nodes.
     optional uint32 NodeIndexCacheMaxNodes = 353;
+
+    // By default, the blocksize, provided by the GetNodeAttr request, is set to
+    // the filestore blocksize. Due to the fact that every 64 blocks are stored in
+    // the same range, it may be beneficial to increase the reported blocksize 64-fold.
+    // This flag enables this feature.
+    optional bool ExtendedBlockSizeEnabled = 354;
 }

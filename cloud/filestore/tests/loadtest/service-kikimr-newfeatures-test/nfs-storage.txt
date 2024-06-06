@@ -4,3 +4,4 @@ NewCleanupEnabled: true
 ThreeStageWriteEnabled: true
 ReadAheadCacheRangeSize: 1048576
 NodeIndexCacheMaxNodes: 128
+ExtendedBlockSizeEnabled: true
