@@ -17,6 +17,7 @@ func main() {
 	flag.StringVar(&cfg.Endpoint, "endpoint", "/csi/csi.sock", "CSI endpoint")
 	flag.StringVar(&cfg.NodeID, "node-id", "undefined", "Node ID")
 	flag.BoolVar(&cfg.VMMode, "vm-mode", false, "Pass socket files to containers for VMs")
+	flag.UintVar(&cfg.MonPort, "mon-port", 8774, "Monitoring port")
 	flag.UintVar(&cfg.NbsPort, "nbs-port", 9766, "NBS port")
 	flag.StringVar(&cfg.NbsSocket, "nbs-socket", "", "NBS unix socket path")
 	flag.UintVar(&cfg.NfsServerPort, "nfs-server-port", 9021, "NFS server port")

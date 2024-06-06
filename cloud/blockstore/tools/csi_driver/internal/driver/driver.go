@@ -6,12 +6,15 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	log "github.com/sirupsen/logrus"
 	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/monitoring"
 	"github.com/ydb-platform/nbs/cloud/blockstore/tools/csi_driver/internal/mounter"
 	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	"google.golang.org/grpc"
@@ -27,6 +30,15 @@ func getEndpoint(unixSocket string, port uint) string {
 	}
 }
 
+func getCsiMethodName(fullMethod string) string {
+	// take the last part from "/csi.v1.Controller/ControllerPublishVolume"
+	index := strings.LastIndex(fullMethod, "/")
+	if index > 0 {
+		return fullMethod[index+1:]
+	}
+	return fullMethod
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Config struct {
@@ -35,6 +47,7 @@ type Config struct {
 	NodeID          string
 	VendorVersion   string
 	VMMode          bool
+	MonPort         uint
 	NbsPort         uint
 	NbsSocket       string
 	NfsServerPort   uint
@@ -49,6 +62,7 @@ type Config struct {
 
 type Driver struct {
 	grpcServer *grpc.Server
+	monitoring *monitoring.Monitoring
 }
 
 func NewDriver(cfg Config) (*Driver, error) {
@@ -87,16 +101,33 @@ func NewDriver(cfg Config) (*Driver, error) {
 		}
 	}
 
+	monintoringCfg := monitoring.MonitoringConfig{
+		Port:      cfg.MonPort,
+		Path:      "/metrics",
+		Component: "server",
+	}
+
+	monintoring := monitoring.NewMonitoring(&monintoringCfg)
+	monintoring.StartListening()
+	monintoring.ReportVersion(cfg.VendorVersion)
+
 	errInterceptor := func(
 		ctx context.Context,
 		req interface{},
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler) (interface{}, error) {
 
+		method := getCsiMethodName(info.FullMethod)
+		monintoring.ReportRequestReceived(method)
+
+		startTime := time.Now()
 		resp, err := handler(ctx, req)
+		elapsedTime := time.Since(startTime)
+
 		if err != nil {
 			log.WithError(err).WithField("method", info.FullMethod).Error("method failed")
 		}
+		monintoring.ReportRequestCompleted(method, err, elapsedTime)
 		return resp, err
 	}
 
@@ -124,7 +155,10 @@ func NewDriver(cfg Config) (*Driver, error) {
 			nfsEndpointClient,
 			mounter.NewMounter()))
 
-	return &Driver{grpcServer: grpcServer}, nil
+	return &Driver{
+		grpcServer: grpcServer,
+		monitoring: monintoring,
+	}, nil
 }
 
 func (s *Driver) Run(socketPath string) error {
