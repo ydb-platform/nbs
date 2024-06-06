@@ -466,6 +466,9 @@ struct TRequestCounters::TStatCounters
                     ErrorsSilent->Inc();
                 }
                 break;
+            case EDiagnosticsErrorKind::Max:
+                Y_DEBUG_ABORT_UNLESS(false);
+                return;
         }
 
         const auto time = requestTime - requestCompletionTime;
@@ -564,6 +567,9 @@ struct TRequestCounters::TStatCounters
             case EDiagnosticsErrorKind::ErrorAborted:
             case EDiagnosticsErrorKind::ErrorFatal:
             case EDiagnosticsErrorKind::ErrorSilent:
+                Y_DEBUG_ABORT_UNLESS(false);
+                return;
+            case EDiagnosticsErrorKind::Max:
                 Y_DEBUG_ABORT_UNLESS(false);
                 return;
         }
