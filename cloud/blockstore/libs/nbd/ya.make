@@ -16,6 +16,7 @@ IF (OS_LINUX)
     SRCS(
         device.cpp
     )
+ENDIF()
 
 IF (NETLINK)
     SRCS(
@@ -26,8 +27,8 @@ IF (NETLINK)
     )
     LDFLAGS(
         -L/usr/lib/x86_64-linux-gnu
-        -lnl-3
-        -lnl-genl-3
+        -l:libnl-3.a
+        -l:libnl-genl-3.a
     )
 ENDIF()
 
