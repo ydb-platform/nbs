@@ -17,10 +17,11 @@ enum EAction
     // FIXME: should allocate data before locking
     ACTION_ACQUIRE_LOCK = 5;
     ACTION_RELEASE_LOCK = 6;
+    ACTION_GET_NODE_ATTR = 7;
 
     // DATA
-    ACTION_WRITE = 7;
-    ACTION_READ = 8;
+    ACTION_WRITE = 101;
+    ACTION_READ = 102;
 };
 
 message TIndexLoadSpec

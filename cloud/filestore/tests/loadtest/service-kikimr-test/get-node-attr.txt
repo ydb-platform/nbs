@@ -1,0 +1,22 @@
+Tests {
+    LoadTest {
+        Name: "smoke"
+        KeepFileStore: true
+        CreateFileStoreRequest: {
+            FileSystemId: "smoke"
+            FolderId: "folder"
+            CloudId: "cloud"
+            BlocksCount: 10241024
+            BlockSize: 4096
+        }
+        IndexLoadSpec {
+            Actions {
+                Action: ACTION_GET_NODE_ATTR
+                Rate: 100
+            }
+        }
+        IODepth: 64
+        RequestsCount: 16384
+        TestDuration: 60
+    }
+}
