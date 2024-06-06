@@ -696,7 +696,7 @@ public:
     TFlushBytesCleanupInfo StartFlushBytes(
         TVector<TBytes>* bytes,
         TVector<TBytes>* deletionMarkers);
-    ui32 FinishFlushBytes(
+    ui64 FinishFlushBytes(
         TIndexTabletDatabase& db,
         ui64 chunkId,
         NProto::TProfileLogRequestInfo& profileLogRequest);

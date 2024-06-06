@@ -1417,7 +1417,7 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 ChunkId;
-        ui32 TrimmedBytes = 0;
+        ui64 TrimmedBytes = 0;
 
         TTrimBytes(TRequestInfoPtr requestInfo, ui64 chunkId)
             : TProfileAware(EFileStoreSystemRequest::TrimBytes)

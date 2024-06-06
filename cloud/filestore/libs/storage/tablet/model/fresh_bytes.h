@@ -63,6 +63,7 @@ private:
         TDeque<TBytes, TStlAllocator> DeletionMarkers;
         ui64 FirstCommitId = InvalidCommitId;
         ui64 TotalBytes = 0;
+        ui64 TotalDeletedBytes = 0;
         ui64 Id = 0;
         ui64 ClosingCommitId = 0;
 
@@ -82,13 +83,15 @@ public:
     TFreshBytes(IAllocator* allocator);
     ~TFreshBytes();
 
-    size_t GetTotalBytes() const
+    std::pair<size_t, size_t> GetTotalBytes() const
     {
-        ui64 bytes = 0;
+        size_t bytes = 0;
+        size_t deletedBytes = 0;
         for (const auto& c: Chunks) {
             bytes += c.TotalBytes;
+            deletedBytes += c.TotalDeletedBytes;
         }
-        return bytes;
+        return std::make_pair(bytes, deletedBytes);
     }
 
     void AddBytes(ui64 nodeId, ui64 offset, TStringBuf data, ui64 commitId);

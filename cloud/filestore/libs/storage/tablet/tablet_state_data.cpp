@@ -366,13 +366,13 @@ TFlushBytesCleanupInfo TIndexTabletState::StartFlushBytes(
         deletionMarkers);
 }
 
-ui32 TIndexTabletState::FinishFlushBytes(
+ui64 TIndexTabletState::FinishFlushBytes(
     TIndexTabletDatabase& db,
     ui64 chunkId,
     NProto::TProfileLogRequestInfo& profileLogRequest)
 {
-    ui32 sz = 0;
-    ui32 deletedSz = 0;
+    ui64 sz = 0;
+    ui64 deletedSz = 0;
     Impl->FreshBytes.VisitTop([&] (const TBytes& bytes, bool isDeletionMarker) {
         db.DeleteFreshBytes(bytes.NodeId, bytes.MinCommitId, bytes.Offset);
         if (isDeletionMarker) {
@@ -387,12 +387,11 @@ ui32 TIndexTabletState::FinishFlushBytes(
         range->SetBytes(bytes.Length);
     });
 
-    DecrementFreshBytesCount(db, sz);
-    // Min() needed for backwards compat
-    deletedSz = Min<ui32>(deletedSz, GetDeletedFreshBytesCount());
-    DecrementDeletedFreshBytesCount(db, deletedSz);
-
     Impl->FreshBytes.FinishCleanup(chunkId);
+
+    auto [freshBytes, deletedFreshBytes] = Impl->FreshBytes.GetTotalBytes();
+    SetFreshBytesCount(db, freshBytes);
+    SetDeletedFreshBytesCount(db, deletedFreshBytes);
 
     return sz + deletedSz;
 }

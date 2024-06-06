@@ -118,6 +118,7 @@ message TStorageStats
     uint64 AllocatedCompactionRanges = 110;
     uint64 UsedCompactionRanges = 111;
     uint64 LastCollectCommitId = 112;
+    uint64 DeletedFreshBytesCount = 113;
 
     // channel stats
     uint64 TabletChannelCount = 1000;

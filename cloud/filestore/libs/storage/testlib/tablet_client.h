@@ -321,14 +321,14 @@ public:
             TByteRange(0, length, DefaultBlockSize));
     }
 
-    auto CreateTruncateRangeRequest(ui64 node, ui64 offset, ui32 length)
+    auto CreateTruncateRangeRequest(ui64 node, ui64 offset, ui64 length)
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeRequest>(
             node,
             TByteRange(offset, length, DefaultBlockSize));
     }
 
-    auto CreateZeroRangeRequest(ui64 node, ui64 offset, ui32 length)
+    auto CreateZeroRangeRequest(ui64 node, ui64 offset, ui64 length)
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeRequest>(
             node,
@@ -530,7 +530,7 @@ public:
         return request;
     }
 
-    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui32 len, char fill)
+    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui64 len, char fill)
     {
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
@@ -539,7 +539,7 @@ public:
         return request;
     }
 
-    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui32 len, const char* data)
+    auto CreateWriteDataRequest(ui64 handle, ui64 offset, ui64 len, const char* data)
     {
         auto request = CreateSessionRequest<TEvService::TEvWriteDataRequest>();
         request->Record.SetHandle(handle);
@@ -548,7 +548,7 @@ public:
         return request;
     }
 
-    auto CreateReadDataRequest(ui64 handle, ui64 offset, ui32 len)
+    auto CreateReadDataRequest(ui64 handle, ui64 offset, ui64 len)
     {
         auto request = CreateSessionRequest<TEvService::TEvReadDataRequest>();
         request->Record.SetHandle(handle);
@@ -557,7 +557,7 @@ public:
         return request;
     }
 
-    auto CreateDescribeDataRequest(ui64 handle, ui64 offset, ui32 len)
+    auto CreateDescribeDataRequest(ui64 handle, ui64 offset, ui64 len)
     {
         auto request =
             CreateSessionRequest<TEvIndexTablet::TEvDescribeDataRequest>();
@@ -586,7 +586,7 @@ public:
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        ui32 length,
+        ui64 length,
         const TVector<NKikimr::TLogoBlobID>& blobIds,
         ui64 commitId)
     {
@@ -609,7 +609,7 @@ public:
         ui64 handle,
         ui64 owner,
         ui64 offset,
-        ui32 len,
+        ui64 len,
         i32 pid = DefaultPid,
         NProto::ELockType type = NProto::E_EXCLUSIVE,
         NProto::ELockOrigin origin = NProto::E_FCNTL)
@@ -630,7 +630,7 @@ public:
         ui64 handle,
         ui64 owner,
         ui64 offset,
-        ui32 len,
+        ui64 len,
         i32 pid = DefaultPid,
         NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
@@ -649,7 +649,7 @@ public:
         ui64 handle,
         ui64 owner,
         ui64 offset,
-        ui32 len,
+        ui64 len,
         i32 pid = DefaultPid,
         NProto::ELockType type = NProto::E_EXCLUSIVE,
         NProto::ELockOrigin origin = NProto::E_FCNTL)
