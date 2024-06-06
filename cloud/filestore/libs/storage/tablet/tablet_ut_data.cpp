@@ -5085,6 +5085,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.FlushBytes();
         tablet.DestroyHandle(handle);
         tablet.UnlinkNode(RootNodeId, "test", false);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), block);
+        }
+
         tablet.FlushBytes();
 
         {
@@ -5106,6 +5114,79 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 {{
                     {"sensor", "TrimBytes.Count"},
                     {"filesystem", "test"}}, 2},
+            });
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), 0);
+        }
+    }
+
+    TABLET_TEST(ShouldTrimFreshBytesDeletionMarkersForLargeFiles)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFlushBytesThreshold(1_GB);
+
+        TTestEnv env({}, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        tablet.ZeroRange(handle, 0, 100_GB);
+        tablet.DestroyHandle(handle);
+        tablet.UnlinkNode(RootNodeId, "test", false);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), 100_GB);
+        }
+
+        tablet.FlushBytes();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBytesCount(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetDeletedFreshBytesCount(), 0);
+        }
+
+        {
+            tablet.AdvanceTime(TDuration::Seconds(15));
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{
+                    {"sensor", "FlushBytes.RequestBytes"},
+                    {"filesystem", "test"}}, 0_KB},
+                {{
+                    {"sensor", "FlushBytes.Count"},
+                    {"filesystem", "test"}}, 0},
+                {{
+                    {"sensor", "TrimBytes.RequestBytes"},
+                    {"filesystem", "test"}}, 100_GB},
+                {{
+                    {"sensor", "TrimBytes.Count"},
+                    {"filesystem", "test"}}, 1},
             });
         }
     }

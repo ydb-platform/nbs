@@ -31,6 +31,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
     xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
     xxx(FreshBytesCount,        __VA_ARGS__)                                   \
+    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
     xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
 // FILESTORE_TABLET_STATS
 
