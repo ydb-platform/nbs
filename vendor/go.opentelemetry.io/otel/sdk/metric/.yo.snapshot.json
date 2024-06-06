@@ -1,0 +1,140 @@
+{
+	"Version": "v1.22.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:ARrRetm1HCVxq0cbnaZQlfwODYJHo3gFL8Z3tSmHBcI=",
+	"Packages": {
+		"go.opentelemetry.io/otel/sdk/metric": {
+			"Imports": [
+				"container/list",
+				"context",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/internal/global",
+				"go.opentelemetry.io/otel/metric",
+				"go.opentelemetry.io/otel/metric/embedded",
+				"go.opentelemetry.io/otel/metric/noop",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/metric/internal",
+				"go.opentelemetry.io/otel/sdk/metric/internal/aggregate",
+				"go.opentelemetry.io/otel/sdk/metric/internal/x",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"os",
+				"regexp",
+				"strconv",
+				"strings",
+				"sync",
+				"sync/atomic",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"encoding/json",
+				"errors",
+				"fmt",
+				"github.com/go-logr/logr",
+				"github.com/go-logr/logr/funcr",
+				"github.com/go-logr/logr/testr",
+				"github.com/go-logr/stdr",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"github.com/stretchr/testify/suite",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/internal/global",
+				"go.opentelemetry.io/otel/metric",
+				"go.opentelemetry.io/otel/metric/noop",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/metric",
+				"go.opentelemetry.io/otel/sdk/metric/internal/aggregate",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/semconv/v1.24.0",
+				"log",
+				"os",
+				"regexp",
+				"strconv",
+				"strings",
+				"sync",
+				"sync/atomic",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/sdk/metric/internal": {
+			"Imports": null,
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/sdk/metric/internal/aggregate": {
+			"Imports": [
+				"context",
+				"errors",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"math",
+				"sort",
+				"sync",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"fmt",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/internal/global",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest",
+				"math",
+				"sort",
+				"strconv",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/sdk/metric/internal/x": {
+			"Imports": [
+				"os",
+				"strconv",
+				"strings"
+			],
+			"TestImports": [
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"testing"
+			]
+		},
+		"go.opentelemetry.io/otel/sdk/metric/metricdata": {
+			"Imports": [
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"strconv",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest": {
+			"Imports": [
+				"bytes",
+				"fmt",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"reflect"
+			],
+			"TestImports": [
+				"github.com/stretchr/testify/assert",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/metric/metricdata",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"testing",
+				"time"
+			]
+		}
+	}
+}

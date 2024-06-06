@@ -1,0 +1,16 @@
+{
+	"Version": "v0.42.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:ZtfnDL+tUrs1F0Pzfwbg2d59Gru9NCH3bgSHBM6LDwU=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/otlp/otlpmetric": {
+			"Imports": null,
+			"TestImports": [
+				"github.com/stretchr/testify/assert",
+				"go.opentelemetry.io/otel/exporters/otlp/otlpmetric",
+				"regexp",
+				"testing"
+			]
+		}
+	}
+}

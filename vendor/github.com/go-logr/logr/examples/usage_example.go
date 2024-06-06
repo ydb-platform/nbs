@@ -51,20 +51,17 @@ var objectMap = map[string]Object{
 	},
 }
 
-// Object is an app contruct that might want to be logged.
 type Object struct {
 	Name    string
 	Kind    string
 	Details any
 }
 
-// Client is a simulated client in this example app.
 type Client struct {
 	objects map[string]Object
 	log     logr.Logger
 }
 
-// Get retrieves an object.
 func (c *Client) Get(key string) (Object, error) {
 	c.log.V(1).Info("fetching object", "key", key)
 	obj, ok := c.objects[key]
@@ -75,7 +72,6 @@ func (c *Client) Get(key string) (Object, error) {
 	return obj, nil
 }
 
-// Save stores an object.
 func (c *Client) Save(obj Object) error {
 	c.log.V(1).Info("saving object", "key", obj.Name, "object", obj)
 	if rand.Intn(2) == 0 {
@@ -85,7 +81,6 @@ func (c *Client) Save(obj Object) error {
 	return nil
 }
 
-// WatchNext waits for object updates.
 func (c *Client) WatchNext() string {
 	time.Sleep(2 * time.Second)
 
@@ -103,14 +98,12 @@ func (c *Client) WatchNext() string {
 	return ""
 }
 
-// Controller is the main point of this example.
 type Controller struct {
 	log          logr.Logger
 	expectedKind string
 	client       *Client
 }
 
-// Run starts the example controller.
 func (c *Controller) Run() {
 	c.log.Info("starting reconciliation")
 
@@ -148,7 +141,6 @@ func (c *Controller) Run() {
 	c.log.Info("stopping reconciliation")
 }
 
-// NewController allocates and initializes a Controller.
 func NewController(log logr.Logger, objectKind string) *Controller {
 	ctrlLogger := log.WithName("controller").WithName(objectKind)
 	client := &Client{

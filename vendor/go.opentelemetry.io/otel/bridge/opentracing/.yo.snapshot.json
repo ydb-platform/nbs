@@ -1,0 +1,72 @@
+{
+	"Version": "v1.22.0",
+	"GoVersion": "1.20",
+	"Sum": "h1:ZujpdLoATPdsyzp8hE5xW3jCNVZE46eMm42eu1JuxKk=",
+	"Packages": {
+		"go.opentelemetry.io/otel/bridge/opentracing": {
+			"Imports": [
+				"context",
+				"fmt",
+				"github.com/opentracing/opentracing-go",
+				"github.com/opentracing/opentracing-go/ext",
+				"github.com/opentracing/opentracing-go/log",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/baggage",
+				"go.opentelemetry.io/otel/bridge/opentracing/migration",
+				"go.opentelemetry.io/otel/codes",
+				"go.opentelemetry.io/otel/internal/baggage",
+				"go.opentelemetry.io/otel/propagation",
+				"go.opentelemetry.io/otel/trace",
+				"go.opentelemetry.io/otel/trace/embedded",
+				"go.opentelemetry.io/otel/trace/noop",
+				"strings",
+				"sync"
+			],
+			"TestImports": [
+				"context",
+				"errors",
+				"fmt",
+				"github.com/opentracing/opentracing-go",
+				"github.com/opentracing/opentracing-go/ext",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/baggage",
+				"go.opentelemetry.io/otel/bridge/opentracing/internal",
+				"go.opentelemetry.io/otel/propagation",
+				"go.opentelemetry.io/otel/trace",
+				"go.opentelemetry.io/otel/trace/embedded",
+				"net/http",
+				"reflect",
+				"strings",
+				"testing"
+			]
+		},
+		"go.opentelemetry.io/otel/bridge/opentracing/internal": {
+			"Imports": [
+				"context",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/bridge/opentracing/migration",
+				"go.opentelemetry.io/otel/codes",
+				"go.opentelemetry.io/otel/semconv/v1.24.0",
+				"go.opentelemetry.io/otel/trace",
+				"go.opentelemetry.io/otel/trace/embedded",
+				"go.opentelemetry.io/otel/trace/noop",
+				"math/rand",
+				"reflect",
+				"sync",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/bridge/opentracing/migration": {
+			"Imports": [
+				"context",
+				"go.opentelemetry.io/otel/trace"
+			],
+			"TestImports": null
+		}
+	}
+}

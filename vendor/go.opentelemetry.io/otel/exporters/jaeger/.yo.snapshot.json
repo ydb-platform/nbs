@@ -1,0 +1,180 @@
+{
+	"Version": "v1.16.0",
+	"GoVersion": "1.19",
+	"Sum": "h1:YhxxmXZ011C0aDZKoNw+juVWAmEfv/0W2XBOv9aHTaA=",
+	"Packages": {
+		"go.opentelemetry.io/otel/exporters/jaeger": {
+			"Imports": [
+				"bytes",
+				"context",
+				"encoding/binary",
+				"encoding/json",
+				"fmt",
+				"github.com/go-logr/logr",
+				"github.com/go-logr/stdr",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/codes",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/agent",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/sdk/trace",
+				"go.opentelemetry.io/otel/semconv/v1.17.0",
+				"go.opentelemetry.io/otel/trace",
+				"io",
+				"log",
+				"net",
+				"net/http",
+				"os",
+				"strings",
+				"sync",
+				"sync/atomic",
+				"time"
+			],
+			"TestImports": [
+				"context",
+				"crypto/rand",
+				"encoding/binary",
+				"fmt",
+				"github.com/google/go-cmp/cmp",
+				"github.com/stretchr/testify/assert",
+				"github.com/stretchr/testify/mock",
+				"github.com/stretchr/testify/require",
+				"go.opentelemetry.io/otel",
+				"go.opentelemetry.io/otel/attribute",
+				"go.opentelemetry.io/otel/codes",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger",
+				"go.opentelemetry.io/otel/internal/internaltest",
+				"go.opentelemetry.io/otel/sdk/instrumentation",
+				"go.opentelemetry.io/otel/sdk/resource",
+				"go.opentelemetry.io/otel/sdk/trace",
+				"go.opentelemetry.io/otel/sdk/trace/tracetest",
+				"go.opentelemetry.io/otel/semconv/v1.17.0",
+				"go.opentelemetry.io/otel/trace",
+				"net",
+				"os",
+				"runtime",
+				"sort",
+				"syscall",
+				"testing",
+				"time"
+			]
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/agent": {
+			"Imports": [
+				"bytes",
+				"context",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/agent/agent-remote": {
+			"Imports": [
+				"context",
+				"flag",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/agent",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"math",
+				"net",
+				"net/url",
+				"os",
+				"strconv",
+				"strings"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger": {
+			"Imports": [
+				"bytes",
+				"context",
+				"database/sql/driver",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger/collector-remote": {
+			"Imports": [
+				"context",
+				"flag",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/jaeger",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"math",
+				"net",
+				"net/url",
+				"os",
+				"strconv",
+				"strings"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore": {
+			"Imports": [
+				"bytes",
+				"context",
+				"database/sql/driver",
+				"errors",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"time"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore/zipkin_collector-remote": {
+			"Imports": [
+				"context",
+				"flag",
+				"fmt",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/gen-go/zipkincore",
+				"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift",
+				"math",
+				"net",
+				"net/url",
+				"os",
+				"strconv",
+				"strings"
+			],
+			"TestImports": null
+		},
+		"go.opentelemetry.io/otel/exporters/jaeger/internal/third_party/thrift/lib/go/thrift": {
+			"Imports": [
+				"bufio",
+				"bytes",
+				"compress/gzip",
+				"compress/zlib",
+				"context",
+				"crypto/tls",
+				"encoding/base64",
+				"encoding/binary",
+				"encoding/json",
+				"errors",
+				"fmt",
+				"io",
+				"log",
+				"math",
+				"net",
+				"net/http",
+				"net/url",
+				"os",
+				"strconv",
+				"strings",
+				"sync",
+				"sync/atomic",
+				"syscall",
+				"testing",
+				"time"
+			],
+			"TestImports": null
+		}
+	}
+}

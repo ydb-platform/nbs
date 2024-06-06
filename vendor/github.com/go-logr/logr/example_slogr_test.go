@@ -30,7 +30,7 @@ import (
 )
 
 var debugWithoutTime = &slog.HandlerOptions{
-	ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == "time" {
 			return slog.Attr{}
 		}

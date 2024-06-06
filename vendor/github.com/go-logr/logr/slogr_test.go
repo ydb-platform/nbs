@@ -86,7 +86,7 @@ func TestFromSlogHandler(t *testing.T) {
 }
 
 var debugWithoutTime = &slog.HandlerOptions{
-	ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+	ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == "time" {
 			return slog.Attr{}
 		}
@@ -127,7 +127,6 @@ func TestRunSlogTestsOnSlogHandlerLogSink(t *testing.T) {
 		"a Handler should handle the WithGroup method",
 		"a Handler should handle multiple WithGroup and WithAttr calls",
 		"a Handler should not output groups for an empty Record",
-		"a Handler should not output groups if there are no attributes",
 		"a Handler should call Resolve on attribute values in groups",
 		"a Handler should call Resolve on attribute values in groups from WithAttrs",
 	}
