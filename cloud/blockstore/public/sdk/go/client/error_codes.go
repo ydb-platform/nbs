@@ -102,6 +102,7 @@ var (
 	E_IO_SILENT           = makeError(13)
 	E_RETRY_TIMEOUT       = makeError(14)
 	E_PRECONDITION_FAILED = makeError(15)
+	E_NOT_SUPPORTED       = makeError(16)
 
 	E_GRPC_CANCELLED           = makeGrpcError(1)
 	E_GRPC_UNKNOWN             = makeGrpcError(2)
@@ -159,6 +160,7 @@ var resultMap = map[uint32]string{
 	E_CANCELLED:       "E_CANCELLED",
 	E_IO_SILENT:       "E_IO_SILENT",
 	E_RETRY_TIMEOUT:   "E_RETRY_TIMEOUT",
+	E_NOT_SUPPORTED:   "E_NOT_SUPPORTED",
 
 	E_GRPC_CANCELLED:           "E_GRPC_CANCELLED",
 	E_GRPC_UNKNOWN:             "E_GRPC_UNKNOWN",
