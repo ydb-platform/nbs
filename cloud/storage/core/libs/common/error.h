@@ -117,6 +117,7 @@ enum EWellKnownResultCodes: ui32
     E_IO_SILENT                  = MAKE_ERROR(13),  // XXX: need to keep this for legacy clients
     E_RETRY_TIMEOUT              = MAKE_ERROR(14),
     E_PRECONDITION_FAILED        = MAKE_ERROR(15),
+    E_NOT_SUPPORTED              = MAKE_ERROR(16),
 
     E_GRPC_CANCELLED             = MAKE_GRPC_ERROR(1),
     E_GRPC_UNKNOWN               = MAKE_GRPC_ERROR(2),
