@@ -22,6 +22,10 @@ TESTS = [
         "read-write-sequential-validation",
         "cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/read-write-sequential-validation.txt",
     ),
+    Case(
+        "get-node-attr",
+        "cloud/filestore/tests/loadtest/service-kikimr-newfeatures-test/get-node-attr.txt",
+    ),
 ]
 
 
