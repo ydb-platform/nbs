@@ -15,12 +15,9 @@ import (
 const defaultPollingInterval = time.Minute
 
 type tokenProvider struct {
-	fetcher             TokenFetcher
-	maxRetryTimeout     time.Duration
-	currentRetryTimeout time.Duration
-
+	fetcher      TokenFetcher
 	mutex        sync.RWMutex
-	timer        *time.Timer
+	ticker       *time.Ticker
 	done         chan struct{}
 	currentToken Token
 	err          error
@@ -60,11 +57,11 @@ func (t *tokenProvider) Token(ctx context.Context) (string, error) {
 }
 
 func (t *tokenProvider) fetchTokenLoop() {
-	defer t.timer.Stop()
+	defer t.ticker.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
+	t.refreshOnce(ctx)
 	for {
 		select {
 		case <-t.done:
@@ -73,7 +70,7 @@ func (t *tokenProvider) fetchTokenLoop() {
 				"Context deadline exceeded")
 			t.mutex.Unlock()
 			return
-		case <-t.timer.C:
+		case <-t.ticker.C:
 			t.refreshOnce(ctx)
 		}
 	}
@@ -91,19 +88,6 @@ func (t *tokenProvider) shouldFetchToken() bool {
 }
 
 func (t *tokenProvider) refreshOnce(ctx context.Context) {
-	defer func() {
-		t.mutex.Lock()
-		defer t.mutex.Unlock()
-
-		if t.err != nil {
-			t.timer.Reset(t.currentRetryTimeout)
-			if t.currentRetryTimeout*2 <= t.maxRetryTimeout {
-				t.currentRetryTimeout *= 2
-			}
-			return
-		}
-		t.timer.Reset(defaultPollingInterval)
-	}()
 	if !t.shouldFetchToken() {
 		return
 	}
@@ -133,26 +117,21 @@ func newOauth2JWTTokenProvider(
 		return nil, err
 	}
 
-	retryTimeout, err := time.ParseDuration(config.GetPerRetryTimeout())
+	pollingInterval, err := time.ParseDuration(config.GetPerRetryTimeout())
 	if err != nil {
 		return nil, err
 	}
-	retryMultiplier := 2 << config.GetRetryCount()
-	maxRetryTimeout := retryTimeout * time.Duration(retryMultiplier)
 
-	if maxRetryTimeout != 0 {
-		maxRetryTimeout = min(maxRetryTimeout, defaultPollingInterval)
+	if pollingInterval == 0 {
+		pollingInterval = defaultPollingInterval
 	}
-
 	provider := &tokenProvider{
-		fetcher:             fetcher,
-		maxRetryTimeout:     maxRetryTimeout,
-		currentRetryTimeout: retryTimeout,
-		mutex:               sync.RWMutex{},
-		timer:               time.NewTimer(0),
-		done:                make(chan struct{}),
-		currentToken:        nil,
-		err:                 nil,
+		fetcher:      fetcher,
+		mutex:        sync.RWMutex{},
+		ticker:       time.NewTicker(pollingInterval),
+		done:         make(chan struct{}),
+		currentToken: nil,
+		err:          nil,
 	}
 	go provider.fetchTokenLoop()
 	return provider, nil
