@@ -1,21 +1,22 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/core/kafka_proxy/kafka_events.h>
-#include "contrib/ydb/core/kafka_proxy/kafka_metrics.h"
 #include <contrib/ydb/core/base/ticket_parser.h>
+#include "contrib/ydb/core/kafka_proxy/kafka_metrics.h"
 #include <contrib/ydb/core/persqueue/fetch_request_actor.h>
-#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/persqueue/events/internal.h>
+#include <contrib/ydb/core/persqueue/user_info.h>
 #include <contrib/ydb/core/persqueue/write_meta.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/public/api/grpc/ydb_auth_v1.grpc.pb.h>
 
-#include "kafka_fetch_actor.h"
 #include "actors.h"
+#include "kafka_fetch_actor.h"
 
 
 namespace NKafka {
 
 static constexpr size_t SizeOfZeroVarint = 1;
-static constexpr size_t BatchFirstTwoFildsSize = 12;
+static constexpr size_t BatchFirstTwoFieldsSize = 12;
 static constexpr size_t KafkaMagic = 2;
 
 NActors::IActor* CreateKafkaFetchActor(const TContext::TPtr context, const ui64 correlationId, const TMessagePtr<TFetchRequestData>& message) {
@@ -33,9 +34,8 @@ void TKafkaFetchActor::SendFetchRequests(const TActorContext& ctx) {
     for (size_t topicIndex = 0; topicIndex <  Response->Responses.size(); topicIndex++) {
         TVector<NKikimr::NPQ::TPartitionFetchRequest> partPQRequests;
         PrepareFetchRequestData(topicIndex, partPQRequests);
-
-        NKikimr::NPQ::TFetchRequestSettings request(Context->DatabasePath, partPQRequests, FetchRequestData->MaxWaitMs, FetchRequestData->MaxBytes, *Context->UserToken);
-
+        auto ruPerRequest = topicIndex == 0 && Context->Config.GetMeteringV2Enabled();
+        NKikimr::NPQ::TFetchRequestSettings request(Context->DatabasePath, partPQRequests, FetchRequestData->MaxWaitMs, FetchRequestData->MaxBytes, Context->RlContext, *Context->UserToken, ruPerRequest);
         auto fetchActor = NKikimr::NPQ::CreatePQFetchRequestActor(request, NKikimr::MakeSchemeCacheID(), ctx.SelfID);
         auto actorId = ctx.Register(fetchActor);
         PendingResponses++;
@@ -54,12 +54,12 @@ void TKafkaFetchActor::PrepareFetchRequestData(const size_t topicIndex, TVector<
     for (size_t partIndex = 0; partIndex < topicKafkaRequest.Partitions.size(); partIndex++) {
         auto& partKafkaRequest = topicKafkaRequest.Partitions[partIndex];
         KAFKA_LOG_D(TStringBuilder() << "Fetch actor: New request. Topic: " << topicKafkaRequest.Topic.value() << " Partition: " << partKafkaRequest.Partition << " FetchOffset: " << partKafkaRequest.FetchOffset << " PartitionMaxBytes: " << partKafkaRequest.PartitionMaxBytes);
-        
         auto& partPQRequest = partPQRequests[partIndex];
         partPQRequest.Topic = NormalizePath(Context->DatabasePath, topicKafkaRequest.Topic.value()); // FIXME(savnik): handle empty topic
         partPQRequest.Partition = partKafkaRequest.Partition;
         partPQRequest.Offset = partKafkaRequest.FetchOffset;
         partPQRequest.MaxBytes = partKafkaRequest.PartitionMaxBytes;
+        partPQRequest.ClientId = Context->GroupId.Empty() ? NKikimr::NPQ::CLIENTID_WITHOUT_CONSUMER : Context->GroupId;
     }
 }
 
@@ -86,7 +86,7 @@ size_t TKafkaFetchActor::CheckTopicIndex(const NKikimr::TEvPQ::TEvFetchResponse:
     Y_DEBUG_ABORT_UNLESS(topicIt != TopicIndexes.end());
 
     if (topicIt == TopicIndexes.end()) {
-        KAFKA_LOG_CRIT("Fetch actor: Received unexpected TEvFetchResponse. Ignoring. Expect malformed/incompled fetch reply.");
+        KAFKA_LOG_ERROR("Fetch actor: Received unexpected TEvFetchResponse. Ignoring. Expect malformed/incompled fetch reply.");
         return std::numeric_limits<size_t>::max();
     }
 
@@ -111,9 +111,9 @@ void TKafkaFetchActor::HandleSuccessResponse(const NKikimr::TEvPQ::TEvFetchRespo
         partKafkaResponse.ErrorCode = ConvertErrorCode(partPQResponse.GetReadResult().GetErrorCode());
 
         if (partPQResponse.GetReadResult().GetErrorCode() != NPersQueue::NErrorCode::EErrorCode::OK) {
-            KAFKA_LOG_ERROR("Fetch actor: Failed to get responses for topic: " << topicResponse.Topic << 
-                ", partition: " << partPQResponse.GetPartition() << 
-                ". Code: " << static_cast<size_t>(partPQResponse.GetReadResult().GetErrorCode()) << 
+            KAFKA_LOG_ERROR("Fetch actor: Failed to get responses for topic: " << topicResponse.Topic <<
+                ", partition: " << partPQResponse.GetPartition() <<
+                ". Code: " << static_cast<size_t>(partPQResponse.GetReadResult().GetErrorCode()) <<
                 ". Reason: " + partPQResponse.GetReadResult().GetErrorReason());
         }
 
@@ -172,7 +172,7 @@ void TKafkaFetchActor::FillRecordsBatch(const NKikimrClient::TPersQueueFetchResp
         record.TimestampDelta = lastTimestamp - baseTimestamp;
 
         record.Length = record.Size(TKafkaRecord::MessageMeta::PresentVersions.Max) - SizeOfZeroVarint;
-        KAFKA_LOG_D("Fetch actor: Record info. Value: " << record.DataChunk.GetData() << ", OffsetDelta: " << record.OffsetDelta << 
+        KAFKA_LOG_D("Fetch actor: Record info. OffsetDelta: " << record.OffsetDelta <<
             ", TimestampDelta: " << record.TimestampDelta << ", Length: " << record.Length);
     }
 
@@ -184,12 +184,12 @@ void TKafkaFetchActor::FillRecordsBatch(const NKikimrClient::TPersQueueFetchResp
     recordsBatch.BaseSequence = baseSequense;
     //recordsBatch.Attributes https://kafka.apache.org/documentation/#recordbatch
 
-    recordsBatch.BatchLength = recordsBatch.Size(TKafkaRecordBatch::MessageMeta::PresentVersions.Max) - BatchFirstTwoFildsSize;
-    KAFKA_LOG_D("Fetch actor: RecordBatch info. BaseOffset: " << recordsBatch.BaseOffset << ", LastOffsetDelta: " << recordsBatch.LastOffsetDelta << 
-        ", BaseTimestamp: " << recordsBatch.BaseTimestamp << ", MaxTimestamp: " << recordsBatch.MaxTimestamp << 
+    recordsBatch.BatchLength = recordsBatch.Size(TKafkaRecordBatch::MessageMeta::PresentVersions.Max) - BatchFirstTwoFieldsSize;
+    KAFKA_LOG_D("Fetch actor: RecordBatch info. BaseOffset: " << recordsBatch.BaseOffset << ", LastOffsetDelta: " << recordsBatch.LastOffsetDelta <<
+        ", BaseTimestamp: " << recordsBatch.BaseTimestamp << ", MaxTimestamp: " << recordsBatch.MaxTimestamp <<
         ", BaseSequence: " << recordsBatch.BaseSequence << ", BatchLength: " << recordsBatch.BatchLength);
     auto topicWithoutDb = GetTopicNameWithoutDb(Context->DatabasePath, partPQResponse.GetTopic());
-    ctx.Send(MakeKafkaMetricsServiceID(), new TEvKafka::TEvUpdateCounter(recordsBatch.Records.size(), BuildLabels(Context, "", topicWithoutDb, "api.kafka.fetch.messages", ""))); 
+    ctx.Send(MakeKafkaMetricsServiceID(), new TEvKafka::TEvUpdateCounter(recordsBatch.Records.size(), BuildLabels(Context, "", topicWithoutDb, "api.kafka.fetch.messages", "")));
 }
 
 void TKafkaFetchActor::RespondIfRequired(const TActorContext& ctx) {

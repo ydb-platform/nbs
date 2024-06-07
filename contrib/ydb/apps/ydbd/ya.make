@@ -55,6 +55,7 @@ PEERDIR(
     contrib/ydb/library/yql/udfs/common/histogram
     contrib/ydb/library/yql/udfs/common/hyperloglog
     contrib/ydb/library/yql/udfs/common/ip_base
+    contrib/ydb/library/yql/udfs/common/knn
     contrib/ydb/library/yql/udfs/common/json
     contrib/ydb/library/yql/udfs/common/json2
     contrib/ydb/library/yql/udfs/common/math

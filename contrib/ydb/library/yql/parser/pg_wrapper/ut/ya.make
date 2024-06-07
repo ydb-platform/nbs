@@ -3,11 +3,10 @@ UNITTEST_FOR(contrib/ydb/library/yql/parser/pg_wrapper)
 TIMEOUT(600)
 SIZE(MEDIUM)
 
-NO_COMPILER_WARNINGS()
-
 INCLUDE(../cflags.inc)
 
 SRCS(
+    arrow_ut.cpp
     codegen_ut.cpp
     error_ut.cpp
     parser_ut.cpp
@@ -25,9 +24,9 @@ PEERDIR(
     contrib/ydb/library/yql/minikql/arrow
     contrib/ydb/library/yql/public/udf
     contrib/ydb/library/yql/public/udf/service/exception_policy
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/parser/pg_catalog
-    contrib/ydb/library/yql/minikql/codegen/llvm
+    contrib/ydb/library/yql/minikql/codegen/llvm14
     library/cpp/resource
 )
 

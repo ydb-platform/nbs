@@ -14,7 +14,7 @@
 #include <contrib/ydb/core/tablet/resource_broker.h>
 #include <contrib/ydb/core/wrappers/s3_wrapper.h>
 #include <contrib/ydb/core/wrappers/s3_storage.h>
-#include <contrib/ydb/core/io_formats/csv.h>
+#include <contrib/ydb/core/io_formats/ydb_dump/csv_ydb_dump.h>
 #include <contrib/ydb/public/lib/scheme_types/scheme_type_id.h>
 
 #include <contrib/libs/zstd/include/zstd.h>

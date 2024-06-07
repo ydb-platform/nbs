@@ -9,6 +9,7 @@ PEERDIR(
     library/cpp/deprecated/split
     library/cpp/json
     contrib/ydb/library/yql/core/issue
+    contrib/ydb/library/yql/core/pg_settings
     contrib/ydb/library/yql/core/issue/protos
     contrib/ydb/library/yql/utils
 )

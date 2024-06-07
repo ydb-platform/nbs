@@ -11,10 +11,12 @@ public:
     enum class EUnaryOp {
         Not,
         Size,
+        Minus,
+        Abs
     };
 
     enum class EBinaryOp {
-        And,
+        And = 0,
         Or,
         Xor,
 

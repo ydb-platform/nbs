@@ -51,10 +51,6 @@ struct TKikimrSettings {
     NCommon::TConfSetting<NDq::EHashJoinMode, false> HashJoinMode;
 
     /* Disable optimizer rules */
-    NCommon::TConfSetting<bool, false> OptDisableJoinRewrite;
-    NCommon::TConfSetting<bool, false> OptDisableJoinTableLookup;
-    NCommon::TConfSetting<bool, false> OptDisableJoinReverseTableLookup;
-    NCommon::TConfSetting<bool, false> OptDisableJoinReverseTableLookupLeftSemi;
     NCommon::TConfSetting<bool, false> OptDisableTopSort;
     NCommon::TConfSetting<bool, false> OptDisableSqlInToJoin;
     NCommon::TConfSetting<bool, false> OptEnableInplaceUpdate;
@@ -62,7 +58,7 @@ struct TKikimrSettings {
     NCommon::TConfSetting<bool, false> OptEnableOlapPushdown;
     NCommon::TConfSetting<bool, false> OptEnableOlapProvideComputeSharding;
     NCommon::TConfSetting<bool, false> OptUseFinalizeByKey;
-    NCommon::TConfSetting<bool, false> OptEnableCostBasedOptimization;
+    NCommon::TConfSetting<ui32, false> CostBasedOptimizationLevel;
     NCommon::TConfSetting<bool, false> OptEnableConstantFolding;
 
     NCommon::TConfSetting<ui32, false> MaxDPccpDPTableSize;
@@ -80,16 +76,11 @@ struct TKikimrSettings {
     bool SpillingEnabled() const;
     bool DisableLlvmForUdfStages() const;
 
-    bool HasOptDisableJoinRewrite() const;
-    bool HasOptDisableJoinTableLookup() const;
-    bool HasOptDisableJoinReverseTableLookup() const;
-    bool HasOptDisableJoinReverseTableLookupLeftSemi() const;
     bool HasOptDisableTopSort() const;
     bool HasOptDisableSqlInToJoin() const;
     bool HasOptEnableOlapPushdown() const;
     bool HasOptEnableOlapProvideComputeSharding() const;
     bool HasOptUseFinalizeByKey() const;
-    bool HasOptEnableCostBasedOptimization() const;
     bool HasOptEnableConstantFolding() const;
 
 

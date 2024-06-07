@@ -1,6 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/dq/actors/compute)
 
 SRCS(
+    dq_compute_actor_async_input_helper_ut.cpp
     dq_compute_issues_buffer_ut.cpp
     dq_source_watermark_tracker_ut.cpp
 )
@@ -11,5 +12,7 @@ PEERDIR(
     contrib/ydb/library/yql/public/udf/service/stub
     contrib/ydb/library/yql/sql/pg_dummy
 )
+
+YQL_LAST_ABI_VERSION()
 
 END()

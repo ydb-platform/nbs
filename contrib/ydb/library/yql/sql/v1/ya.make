@@ -17,7 +17,7 @@ PEERDIR(
     contrib/ydb/library/yql/parser/proto_ast/collect_issues
     contrib/ydb/library/yql/parser/proto_ast/gen/v1
     contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto
+    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split
     contrib/ydb/library/yql/parser/pg_catalog
     contrib/ydb/library/yql/sql/v1/lexer
     contrib/ydb/library/yql/sql/v1/proto_parser

@@ -17,10 +17,12 @@
 namespace NKikimr {
 namespace NDataShard {
 
-TValidatedWriteTx::TValidatedWriteTx(TDataShard* self, TTransactionContext& txc, const TActorContext& ctx, const TStepOrder& stepTxId, TInstant receivedAt, const NEvents::TDataEvents::TEvWrite::TPtr& ev)
+TValidatedWriteTx::TValidatedWriteTx(TDataShard* self, TTransactionContext& txc, const TActorContext& ctx, ui64 globalTxId, TInstant receivedAt, const TRowVersion& readVersion, const TRowVersion& writeVersion, const NEvents::TDataEvents::TEvWrite::TPtr& ev)
     : Ev(ev)
-    , EngineBay(self, txc, ctx, stepTxId.ToPair())
-    , StepTxId(stepTxId)
+    , UserDb(*self, txc.DB, globalTxId, readVersion, writeVersion, EngineHostCounters, TAppData::TimeProvider->Now())
+    , KeyValidator(*self, txc.DB)
+    , TabletId(self->TabletID())
+    , Ctx(ctx)
     , ReceivedAt(receivedAt)
     , TxSize(0)
     , ErrCode(NKikimrTxDataShard::TError::OK)
@@ -29,25 +31,25 @@ TValidatedWriteTx::TValidatedWriteTx(TDataShard* self, TTransactionContext& txc,
     ComputeTxSize();
     NActors::NMemory::TLabel<MemoryLabelValidatedDataTx>::Add(TxSize);
 
-    if (LockTxId())
-        EngineBay.SetLockTxId(LockTxId(), LockNodeId());
+    if (LockTxId()) {
+        UserDb.SetLockTxId(LockTxId());
+        UserDb.SetLockNodeId(LockNodeId());
+    }
 
     if (Immediate())
-        EngineBay.SetIsImmediateTx();
-
-    auto& typeRegistry = *AppData()->TypeRegistry;
+        UserDb.SetIsImmediateTx(true);
 
     NKikimrTxDataShard::TKqpTransaction::TDataTaskMeta meta;
 
-    LOG_TRACE_S(ctx, NKikimrServices::TX_DATASHARD, "Parsing write transaction for " << StepTxId << " at " << self->TabletID() << ", record: " << GetRecord().ShortDebugString());
+    LOG_TRACE_S(Ctx, NKikimrServices::TX_DATASHARD, "Parsing write transaction for " << globalTxId << " at " << TabletId << ", record: " << GetRecord().ShortDebugString());
 
     if (!ParseRecord(self->TableInfos))
         return;
 
-    SetTxKeys(RecordOperation().GetColumnIds(), typeRegistry, self->TabletID(), ctx);
+    SetTxKeys(RecordOperation().GetColumnIds());
 
-    KqpSetTxLocksKeys(GetKqpLocks(), self->SysLocksTable(), EngineBay);
-    EngineBay.MarkTxLoaded();
+    KqpSetTxLocksKeys(GetKqpLocks(), self->SysLocksTable(), KeyValidator);
+    KeyValidator.GetInfo().SetLoaded();
 }
 
 TValidatedWriteTx::~TValidatedWriteTx() {
@@ -67,7 +69,7 @@ bool TValidatedWriteTx::ParseRecord(const TDataShard::TTableInfos& tableInfos) {
     auto tableInfoPtr = tableInfos.FindPtr(tableIdRecord.GetTableId());
     if (!tableInfoPtr) {
         ErrCode = NKikimrTxDataShard::TError::SCHEME_ERROR;
-        ErrStr = TStringBuilder() << "Table '" << tableIdRecord.GetTableId() << "' doesn't exist";
+        ErrStr = TStringBuilder() << "Table '" << tableIdRecord.GetTableId() << "' doesn't exist.";
         return false;
     }
     TableInfo = tableInfoPtr->Get();
@@ -129,15 +131,45 @@ bool TValidatedWriteTx::ParseRecord(const TDataShard::TTableInfos& tableInfos) {
         }
     }
 
-    TableId = TTableId(tableIdRecord.ownerid(), tableIdRecord.GetTableId(), tableIdRecord.GetSchemaVersion());
+    for (ui32 rowIdx = 0; rowIdx < Matrix.GetRowCount(); ++rowIdx)
+    {
+        ui64 keyBytes = 0;
+        for (ui16 keyColIdx = 0; keyColIdx < TableInfo->KeyColumnIds.size(); ++keyColIdx) {
+            const auto& cellType = TableInfo->KeyColumnTypes[keyColIdx];
+            const TCell& cell = Matrix.GetCell(rowIdx, keyColIdx);
+            if (cellType.GetTypeId() == NScheme::NTypeIds::Uint8 && !cell.IsNull() && cell.AsValue<ui8>() > 127) {
+                ErrCode = NKikimrTxDataShard::TError::BAD_ARGUMENT;
+                ErrStr = TStringBuilder() << "Keys with Uint8 column values >127 are currently prohibited";
+                return false;
+            }
+            keyBytes += cell.IsNull() ? 1 : cell.Size();
+        }
+
+        if (keyBytes > NLimits::MaxWriteKeySize) {
+            ErrCode = NKikimrTxDataShard::TError::BAD_ARGUMENT;
+            ErrStr = TStringBuilder() << "Row key size of " << keyBytes << " bytes is larger than the allowed threshold " << NLimits::MaxWriteKeySize;
+            return false;
+        }
+
+        for (ui16 valueColIdx = TableInfo->KeyColumnIds.size(); valueColIdx < Matrix.GetColCount(); ++valueColIdx) {
+            const TCell& cell = Matrix.GetCell(rowIdx, valueColIdx);
+            if (cell.Size() > NLimits::MaxWriteValueSize) {
+                ErrCode = NKikimrTxDataShard::TError::BAD_ARGUMENT;
+                ErrStr = TStringBuilder() << "Row cell size of " << cell.Size() << " bytes is larger than the allowed threshold " << NLimits::MaxWriteValueSize;
+                return false;
+            }
+        }
+    }    
+
+    TableId = TTableId(tableIdRecord.GetOwnerId(), tableIdRecord.GetTableId(), tableIdRecord.GetSchemaVersion());
     return true;
 }
 
-TVector<TEngineBay::TColumnWriteMeta> GetColumnWrites(const ::google::protobuf::RepeatedField<::NProtoBuf::uint32>& columnTags) {
-    TVector<TEngineBay::TColumnWriteMeta> writeColumns;
+TVector<TKeyValidator::TColumnWriteMeta> GetColumnWrites(const ::google::protobuf::RepeatedField<::NProtoBuf::uint32>& columnTags) {
+    TVector<TKeyValidator::TColumnWriteMeta> writeColumns;
     writeColumns.reserve(columnTags.size());
     for (ui32 columnTag : columnTags) {
-        TEngineBay::TColumnWriteMeta writeColumn;
+        TKeyValidator::TColumnWriteMeta writeColumn;
         writeColumn.Column = NTable::TColumn("", columnTag, {}, {});
 
         writeColumns.push_back(std::move(writeColumn));
@@ -146,34 +178,27 @@ TVector<TEngineBay::TColumnWriteMeta> GetColumnWrites(const ::google::protobuf::
     return writeColumns;
 }
 
-void TValidatedWriteTx::SetTxKeys(const ::google::protobuf::RepeatedField<::NProtoBuf::uint32>& columnTags, const NScheme::TTypeRegistry& typeRegistry, ui64 tabletId, const TActorContext& ctx)
+void TValidatedWriteTx::SetTxKeys(const ::google::protobuf::RepeatedField<::NProtoBuf::uint32>& columnTags)
 {
     TVector<TCell> keyCells;
     for (ui32 rowIdx = 0; rowIdx <Matrix.GetRowCount(); ++rowIdx)
     {
         Matrix.GetSubmatrix(rowIdx, rowIdx, 0, TableInfo->KeyColumnIds.size() - 1, keyCells);
 
-        LOG_TRACE_S(ctx, NKikimrServices::TX_DATASHARD, "Table " << TableInfo->Path << ", shard: " << tabletId << ", "
-                                                                << "write point " << DebugPrintPoint(TableInfo->KeyColumnTypes, keyCells, typeRegistry));
+        LOG_TRACE_S(Ctx, NKikimrServices::TX_DATASHARD, "Table " << TableInfo->Path << ", shard: " << TabletId << ", "
+                                                                 << "write point " << DebugPrintPoint(TableInfo->KeyColumnTypes, keyCells, *AppData()->TypeRegistry));
         TTableRange tableRange(keyCells);
-        EngineBay.AddWriteRange(TableId, tableRange, TableInfo->KeyColumnTypes, GetColumnWrites(columnTags), false);
+        KeyValidator.AddWriteRange(TableId, tableRange, TableInfo->KeyColumnTypes, GetColumnWrites(columnTags), false);
     }
 }
 
 ui32 TValidatedWriteTx::ExtractKeys(bool allowErrors)
 {
-    using EResult = NMiniKQL::IEngineFlat::EResult;
+    SetTxKeys(RecordOperation().GetColumnIds());
 
-    EResult result = EngineBay.Validate();
-    if (allowErrors) {
-        if (result != EResult::Ok) {
-            ErrStr = EngineBay.GetEngine()->GetErrors();
-            ErrCode = ConvertErrCode(result);
-            return 0;
-        }
-    } else {
-        Y_ABORT_UNLESS(result == EResult::Ok, "Engine errors: %s", EngineBay.GetEngine()->GetErrors().data());
-    }
+    bool isValid = ReValidateKeys();
+    Y_ABORT_UNLESS(allowErrors || isValid, "Validation errors: %s", ErrStr.data());
+
     return KeysCount();
 }
 
@@ -181,8 +206,8 @@ bool TValidatedWriteTx::ReValidateKeys()
 {
     using EResult = NMiniKQL::IEngineFlat::EResult;
 
-
-    auto [result, error] = EngineBay.GetKqpComputeCtx().ValidateKeys(EngineBay.TxInfo());
+    TKeyValidator::TValidateOptions options(UserDb);
+    auto [result, error] = GetKeyValidator().ValidateKeys(options);
     if (result != EResult::Ok) {
         ErrStr = std::move(error);
         ErrCode = ConvertErrCode(result);
@@ -201,7 +226,6 @@ bool TValidatedWriteTx::CheckCancelled() {
 }
 
 void TValidatedWriteTx::ReleaseTxData() {
-    EngineBay.DestroyEngine();
     IsReleased = true;
 
     NActors::NMemory::TLabel<MemoryLabelValidatedDataTx>::Sub(TxSize);
@@ -213,9 +237,19 @@ void TValidatedWriteTx::ComputeTxSize() {
     TxSize = sizeof(TValidatedWriteTx);
 }
 
+TWriteOperation* TWriteOperation::CastWriteOperation(TOperation::TPtr op)
+{
+    Y_ABORT_UNLESS(op->IsWriteTx());
+    TWriteOperation* writeOp = dynamic_cast<TWriteOperation*>(op.Get());
+    Y_ABORT_UNLESS(writeOp);
+    return writeOp;
+}
+
 TWriteOperation::TWriteOperation(const TBasicOpInfo& op, NEvents::TDataEvents::TEvWrite::TPtr ev, TDataShard* self, TTransactionContext& txc, const TActorContext& ctx)
     : TOperation(op)
     , Ev(ev)
+    , TabletId(self->TabletID())
+    , Ctx(ctx)
     , ArtifactFlags(0)
     , TxCacheUsage(0)
     , ReleasedTxDataSize(0)
@@ -227,9 +261,6 @@ TWriteOperation::TWriteOperation(const TBasicOpInfo& op, NEvents::TDataEvents::T
     Orbit = std::move(Ev->Get()->MoveOrbit());
 
     BuildWriteTx(self, txc, ctx);
-
-    // First time parsing, so we can fail
-    Y_DEBUG_ABORT_UNLESS(WriteTx->Ready());
 
     TrackMemory();
 }
@@ -287,7 +318,8 @@ TValidatedWriteTx::TPtr TWriteOperation::BuildWriteTx(TDataShard* self, TTransac
 {
     if (!WriteTx) {
         Y_ABORT_UNLESS(Ev);
-        WriteTx = std::make_shared<TValidatedWriteTx>(self, txc, ctx, GetStepOrder(), GetReceivedAt(), Ev);
+        auto [readVersion, writeVersion] = self->GetReadWriteVersions(this);
+        WriteTx = std::make_shared<TValidatedWriteTx>(self, txc, ctx, GetGlobalTxId(), GetReceivedAt(), readVersion, writeVersion, Ev);
     }
     return WriteTx;
 }
@@ -315,11 +347,11 @@ void TWriteOperation::ReleaseTxData(NTabletFlatExecutor::TTxMemoryProviderBase& 
     LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "tx " << GetTxId() << " released its data");
 }
 
-void TWriteOperation::DbStoreLocksAccessLog(ui64 tabletId, TTransactionContext& txc, const TActorContext& ctx)
+void TWriteOperation::DbStoreLocksAccessLog(NTable::TDatabase& txcDb)
 {
     using Schema = TDataShard::Schema;
 
-    NIceDb::TNiceDb db(txc.DB);
+    NIceDb::TNiceDb db(txcDb);
 
     using TLocksVector = TVector<TSysTables::TLocksTable::TPersistentLock>;
     TLocksVector vec;
@@ -333,23 +365,23 @@ void TWriteOperation::DbStoreLocksAccessLog(ui64 tabletId, TTransactionContext& 
     TStringBuf vecData(vecDataStart, vecDataSize);
     db.Table<Schema::TxArtifacts>().Key(GetTxId()).Update(NIceDb::TUpdate<Schema::TxArtifacts::Locks>(vecData));
 
-    LOG_TRACE_S(ctx, NKikimrServices::TX_DATASHARD, "Storing " << vec.size() << " locks for txid=" << GetTxId() << " in " << tabletId);
+    LOG_TRACE_S(Ctx, NKikimrServices::TX_DATASHARD, "Storing " << vec.size() << " locks for txid=" << GetTxId() << " in " << TabletId);
 }
 
-void TWriteOperation::DbStoreArtifactFlags(ui64 tabletId, TTransactionContext& txc, const TActorContext& ctx)
+void TWriteOperation::DbStoreArtifactFlags(NTable::TDatabase& txcDb)
 {
     using Schema = TDataShard::Schema;
 
-    NIceDb::TNiceDb db(txc.DB);
+    NIceDb::TNiceDb db(txcDb);
     db.Table<Schema::TxArtifacts>().Key(GetTxId()).Update<Schema::TxArtifacts::Flags>(ArtifactFlags);
 
-    LOG_TRACE_S(ctx, NKikimrServices::TX_DATASHARD, "Storing artifactflags=" << ArtifactFlags << " for txid=" << GetTxId() << " in " << tabletId);
+    LOG_TRACE_S(Ctx, NKikimrServices::TX_DATASHARD, "Storing artifactflags=" << ArtifactFlags << " for txid=" << GetTxId() << " in " << TabletId);
 }
 
 ui64 TWriteOperation::GetMemoryConsumption() const {
     ui64 res = 0;
     if (WriteTx) {
-        res += WriteTx->GetTxSize() + WriteTx->GetMemoryAllocated();
+        res += WriteTx->GetTxSize();
     }
     if (Ev) {
         res += sizeof(NEvents::TDataEvents::TEvWrite);
@@ -383,7 +415,7 @@ ERestoreDataStatus TWriteOperation::RestoreTxData(
 
     TVector<TSysTables::TLocksTable::TLock> locks;
     if (!IsImmediate() && !HasVolatilePrepareFlag()) {
-        NIceDb::TNiceDb db(txc.DB);ExtractKeys
+        NIceDb::TNiceDb db(txc.DB);
         bool ok = self->TransQueue.LoadTxDetails(db, GetTxId(), Target, Ev, locks, ArtifactFlags);
         if (!ok) {
             Ev.Reset();
@@ -400,9 +432,10 @@ ERestoreDataStatus TWriteOperation::RestoreTxData(
         LocksCache().Locks[lock.LockId] = lock;
 
     bool extractKeys = WriteTx->IsTxInfoLoaded();
-    WriteTx = std::make_shared<TValidatedWriteTx>(self, txc, ctx, GetStepOrder(), GetReceivedAt(), Ev);
+    auto [readVersion, writeVersion] = self->GetReadWriteVersions(this);
+    WriteTx = std::make_shared<TValidatedWriteTx>(self, txc, ctx, GetStepOrder(), GetReceivedAt(), readVersion, writeVersion, Ev);
     if (WriteTx->Ready() && extractKeys) {
-        WriteTx->ExtractKeys(true);
+        WriteTx->ExtractKeys();
     }
 
     if (!WriteTx->Ready()) {
@@ -419,7 +452,7 @@ ERestoreDataStatus TWriteOperation::RestoreTxData(
 
 void TWriteOperation::FinalizeWriteTxPlan()
 {
-    Y_ABORT_UNLESS(IsDataTx());
+    Y_ABORT_UNLESS(IsWriteTx());
     Y_ABORT_UNLESS(!IsImmediate());
     Y_ABORT_UNLESS(!IsKqpScanTransaction());
 
@@ -460,8 +493,7 @@ public:
         Y_UNUSED(txc);
         Y_UNUSED(ctx);
 
-        TWriteOperation* writeOp = dynamic_cast<TWriteOperation*>(op.Get());
-        Y_VERIFY_S(writeOp, "cannot cast operation of kind " << op->GetKind());
+        TWriteOperation* writeOp = TWriteOperation::CastWriteOperation(op);
 
         writeOp->FinalizeWriteTxPlan();
 
@@ -487,9 +519,9 @@ void TWriteOperation::UntrackMemory() const {
     NActors::NMemory::TLabel<MemoryLabelActiveTransactionBody>::Sub(GetRecord().SpaceUsed());
 }
 
-void TWriteOperation::SetError(const NKikimrDataEvents::TEvWriteResult::EStatus& status, const TString& errorMsg, ui64 tabletId) {
+void TWriteOperation::SetError(const NKikimrDataEvents::TEvWriteResult::EStatus& status, const TString& errorMsg) {
     SetAbortedFlag();
-    WriteResult = NEvents::TDataEvents::TEvWriteResult::BuildError(tabletId, GetTxId(), status, errorMsg);
+    WriteResult = NEvents::TDataEvents::TEvWriteResult::BuildError(TabletId, GetTxId(), status, errorMsg);
 }
 
 void TWriteOperation::SetWriteResult(std::unique_ptr<NEvents::TDataEvents::TEvWriteResult>&& writeResult) {

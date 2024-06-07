@@ -413,6 +413,8 @@ class TExecutor
     THashMap<ui64, THolder<TScanSnapshot>> ScanSnapshots;
     ui64 ScanSnapshotId = 1;
 
+    class TActiveTransactionZone;
+
     bool ActiveTransaction = false;
     bool BrokenTransaction = false;
     ui32 ActivateTransactionWaiting = 0;
@@ -481,6 +483,7 @@ class TExecutor
     TActorContext OwnerCtx() const;
 
     TControlWrapper LogFlushDelayOverrideUsec;
+    TControlWrapper MaxCommitRedoMB;
 
     ui64 Stamp() const noexcept;
     void Registered(TActorSystem*, const TActorId&) override;

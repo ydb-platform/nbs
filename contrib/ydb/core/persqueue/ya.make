@@ -59,6 +59,7 @@ PEERDIR(
     contrib/ydb/library/logger
     contrib/ydb/library/persqueue/counter_time_keeper
     contrib/ydb/library/persqueue/topic_parser
+    contrib/ydb/library/protobuf_printer
     contrib/ydb/public/lib/base
     contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
 )

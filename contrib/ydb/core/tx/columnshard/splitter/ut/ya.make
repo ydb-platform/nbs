@@ -7,7 +7,7 @@ PEERDIR(
     contrib/ydb/library/arrow_kernels
 
     contrib/ydb/core/tx/columnshard/counters
-    contrib/ydb/core/formats/arrow/compression
+    contrib/ydb/core/tx/columnshard/engines/portions
     contrib/ydb/core/kqp/common
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/public/udf
@@ -16,9 +16,12 @@ PEERDIR(
     contrib/ydb/core/tx/tx_proxy
     contrib/ydb/core/tx
     contrib/ydb/core/mind
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/library/yql/sql/pg
+    contrib/ydb/services/kesus
+    contrib/ydb/services/persqueue_cluster_discovery
+    contrib/ydb/services/ydb
 )
 
 ADDINCL(

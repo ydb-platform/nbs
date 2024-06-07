@@ -299,7 +299,7 @@ void TWriteSessionActor<UseMigrationProtocol>::Die(const TActorContext& ctx) {
     }
 
     State = ES_DYING;
-
+    TRlHelpers::PassAway(TActorBootstrapped<TWriteSessionActor>::SelfId());
     TActorBootstrapped<TWriteSessionActor>::Die(ctx);
 }
 
@@ -389,11 +389,12 @@ void TWriteSessionActor<UseMigrationProtocol>::Handle(typename TEvWriteInit::TPt
         //      1.2. non-empty partition_id (explicit partitioning)
         //      1.3. non-empty partition_with_generation (explicit partitioning && direct write to partition host)
         //    2. Empty producer id (no deduplication, partition is selected using round-robin).
-        bool isScenarioSupported = 
+        bool isScenarioSupported =
             !InitRequest.producer_id().empty() && (
-                InitRequest.has_message_group_id() && InitRequest.message_group_id() == InitRequest.producer_id() || 
+                InitRequest.has_message_group_id() && InitRequest.message_group_id() == InitRequest.producer_id() ||
                 InitRequest.has_partition_id() ||
-                InitRequest.has_partition_with_generation()) ||
+                InitRequest.has_partition_with_generation())
+            ||
             InitRequest.producer_id().empty();
 
         if (!isScenarioSupported) {
@@ -424,7 +425,6 @@ void TWriteSessionActor<UseMigrationProtocol>::Handle(typename TEvWriteInit::TPt
             return InitRequest.has_message_group_id() ? InitRequest.message_group_id() : InitRequest.producer_id();
         }
     }();
-
     LOG_INFO_S(ctx, NKikimrServices::PQ_WRITE_PROXY, "session request cookie: " << Cookie << " " << InitRequest.ShortDebugString() << " from " << PeerName);
     if (!UseDeduplication) {
         LOG_DEBUG_S(ctx, NKikimrServices::PQ_WRITE_PROXY, "session request cookie: " << Cookie << ". Disable deduplication for empty producer id");
@@ -467,8 +467,9 @@ template<bool UseMigrationProtocol>
 void TWriteSessionActor<UseMigrationProtocol>::InitAfterDiscovery(const TActorContext& ctx) {
     Y_UNUSED(ctx);
 
-    if (SourceId.empty()) {
-        Y_ABORT_UNLESS(!UseDeduplication);
+    if (SourceId.empty() && UseDeduplication) {
+        CloseSession("Internal server error: got empty SourceId with enabled deduplication", PersQueue::ErrorCode::ERROR, ctx);
+        return;
     }
 
     InitMeta = GetInitialDataChunk(InitRequest, FullConverter->GetClientsideName(), PeerName); // ToDo[migration] - check?
@@ -623,6 +624,10 @@ template<bool UseMigrationProtocol>
 void TWriteSessionActor<UseMigrationProtocol>::DiscoverPartition(const NActors::TActorContext& ctx) {
     State = ES_WAIT_PARTITION;
 
+    if (PartitionChooser) {
+        ctx.Send(PartitionChooser,  new TEvents::TEvPoison());
+    }
+
     std::optional<ui32> preferedPartition = PreferedPartition == Max<ui32>() ? std::nullopt : std::optional(PreferedPartition);
     PartitionChooser = ctx.RegisterWithSameMailbox(NPQ::CreatePartitionChooserActor(ctx.SelfID, Config, FullConverter, SourceId, preferedPartition));
 }
@@ -631,6 +636,7 @@ template<bool UseMigrationProtocol>
 void TWriteSessionActor<UseMigrationProtocol>::Handle(NPQ::TEvPartitionChooser::TEvChooseResult::TPtr& ev, const NActors::TActorContext& ctx) {
     auto* r = ev->Get();
     PartitionTabletId = r->TabletId;
+    InitialSeqNo = r->SeqNo;
     LastSourceIdUpdate = ctx.Now();
 
     ProceedPartition(r->PartitionId, ctx);
@@ -680,6 +686,7 @@ void TWriteSessionActor<UseMigrationProtocol>::CreatePartitionWriterCache(const 
 
     opts.WithDeduplication(UseDeduplication);
     opts.WithSourceId(SourceId);
+    opts.WithInitialSeqNo(InitialSeqNo);
     opts.WithExpectedGeneration(ExpectedGeneration);
 
     if constexpr (UseMigrationProtocol) {
@@ -721,6 +728,10 @@ void TWriteSessionActor<UseMigrationProtocol>::DestroyPartitionWriterCache(const
 
 template<bool UseMigrationProtocol>
 void TWriteSessionActor<UseMigrationProtocol>::CloseSession(const TString& errorReason, const PersQueue::ErrorCode::ErrorCode errorCode, const NActors::TActorContext& ctx) {
+    if (SessionClosed) {
+        return;
+    }
+    SessionClosed = true;
 
     if (errorCode != PersQueue::ErrorCode::OK) {
 
@@ -833,9 +844,14 @@ void TWriteSessionActor<UseMigrationProtocol>::Handle(NPQ::TEvPartitionWriter::T
     OwnerCookie = result.GetResult().OwnerCookie;
 
     const auto& maxSeqNo = result.GetResult().SourceIdInfo.GetSeqNo();
-    if (!UseDeduplication) {
-        Y_ABORT_UNLESS(maxSeqNo == 0);
-    }
+
+    // ToDo: uncomment after fixing KIKIMR-21124
+    // if (!UseDeduplication) {
+    //     if (maxSeqNo != 0) {
+    //         return CloseSession("Internal server error: have maxSeqNo != with deduplication disabled",
+    //                             PersQueue::ErrorCode::ERROR, ctx);
+    //     }
+    // }
 
     OwnerCookie = result.GetResult().OwnerCookie;
     MakeAndSentInitResponse(maxSeqNo, ctx);
@@ -1278,7 +1294,9 @@ void TWriteSessionActor<UseMigrationProtocol>::Handle(NGRpcService::TGRpcRequest
         }
     } else {
         if (ev->Get()->Retryable) {
-            Request->ReplyUnavaliable();
+            TServerMessage serverMessage;
+            serverMessage.set_status(Ydb::StatusIds::UNAVAILABLE);
+            Request->GetStreamCtx()->WriteAndFinish(std::move(serverMessage), grpc::Status::OK);
         } else {
             Request->ReplyUnauthenticated("refreshed token is invalid");
         }
@@ -1493,7 +1511,10 @@ void TWriteSessionActor<UseMigrationProtocol>::Handle(TEvents::TEvWakeup::TPtr& 
 
 template<bool UseMigrationProtocol>
 void TWriteSessionActor<UseMigrationProtocol>::RecheckACL(const TActorContext& ctx) {
-    Y_ABORT_UNLESS(State == ES_INITED);
+    if (State != ES_INITED) {
+        LOG_ERROR_S(ctx, NKikimrServices::PQ_WRITE_PROXY, "WriteSessionActor state is wrong. Actual state '" << (int)State << "'");
+        return CloseSession("erroneous internal state", PersQueue::ErrorCode::ERROR, ctx);
+    }
 
     auto now = ctx.Now();
 

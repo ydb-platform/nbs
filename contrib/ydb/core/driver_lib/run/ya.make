@@ -67,6 +67,8 @@ PEERDIR(
     contrib/ydb/core/formats
     contrib/ydb/core/fq/libs/init
     contrib/ydb/core/fq/libs/logs
+    contrib/ydb/core/graph/service
+    contrib/ydb/core/graph/shard
     contrib/ydb/core/grpc_services
     contrib/ydb/core/grpc_services/base
     contrib/ydb/core/grpc_services/auth_processor
@@ -131,7 +133,7 @@ PEERDIR(
     contrib/ydb/library/folder_service/proto
     contrib/ydb/library/pdisk_io
     contrib/ydb/library/security
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/providers/pq/cm_client
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/public/lib/base

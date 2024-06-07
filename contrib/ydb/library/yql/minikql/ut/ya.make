@@ -28,9 +28,13 @@ SRCS(
     watermark_tracker_ut.cpp
 )
 
+ADDINCL(
+    contrib/ydb/library/yql/parser/pg_wrapper/postgresql/src/include
+)
+
 PEERDIR(
     contrib/libs/apache/arrow
-    contrib/ydb/library/yql/minikql/invoke_builtins/llvm
+    contrib/ydb/library/yql/minikql/invoke_builtins/llvm14
     contrib/ydb/library/yql/parser/pg_wrapper
     contrib/ydb/library/yql/public/udf/service/exception_policy
 )

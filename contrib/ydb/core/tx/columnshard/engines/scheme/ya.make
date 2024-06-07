@@ -14,6 +14,7 @@ PEERDIR(
     contrib/ydb/core/formats/arrow
 
     contrib/ydb/library/actors/core
+    contrib/ydb/core/tx/columnshard/engines/scheme/indexes
 )
 
 YQL_LAST_ABI_VERSION()

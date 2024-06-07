@@ -399,7 +399,7 @@ struct TSchemeShard::TTxInitTenantSchemeShard : public TSchemeShard::TRwTxBase {
         if (record.HasServerlessComputeResourcesMode()) {
             subdomain->SetServerlessComputeResourcesMode(record.GetServerlessComputeResourcesMode());
         }
-        
+
         RegisterShard(db, subdomain, processingParams.GetCoordinators(), TTabletTypes::Coordinator);
         RegisterShard(db, subdomain, processingParams.GetMediators(), TTabletTypes::Mediator);
         RegisterShard(db, subdomain, TVector<ui64>{processingParams.GetSchemeShard()}, TTabletTypes::SchemeShard);
@@ -411,6 +411,9 @@ struct TSchemeShard::TTxInitTenantSchemeShard : public TSchemeShard::TRwTxBase {
         }
         if (processingParams.HasStatisticsAggregator()) {
             RegisterShard(db, subdomain, TVector<ui64>{processingParams.GetStatisticsAggregator()}, TTabletTypes::StatisticsAggregator);
+        }
+        if (processingParams.HasGraphShard()) {
+            RegisterShard(db, subdomain, TVector<ui64>{processingParams.GetGraphShard()}, TTabletTypes::GraphShard);
         }
 
         subdomain->Initialize(Self->ShardInfos);
@@ -703,7 +706,8 @@ struct TSchemeShard::TTxMigrate : public TSchemeShard::TRwTxBase {
                     NIceDb::TUpdate<Schema::MigratedColumns::Family>(colDescr.GetFamily()),
                     NIceDb::TUpdate<Schema::MigratedColumns::DefaultKind>(ETableColumnDefaultKind(colDescr.GetDefaultKind())),
                     NIceDb::TUpdate<Schema::MigratedColumns::DefaultValue>(colDescr.GetDefaultValue()),
-                    NIceDb::TUpdate<Schema::MigratedColumns::NotNull>(colDescr.GetNotNull()));
+                    NIceDb::TUpdate<Schema::MigratedColumns::NotNull>(colDescr.GetNotNull()),
+                    NIceDb::TUpdate<Schema::MigratedColumns::IsBuildInProgress>(colDescr.GetIsBuildInProgress()));
             }
 
             for (const NKikimrScheme::TMigratePartition& partDescr: tableDescr.GetPartitions()) {

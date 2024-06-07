@@ -11,6 +11,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/libs/fmt
     contrib/ydb/library/actors/core
     library/cpp/lwtrace/mon
     library/cpp/monlib/service/pages

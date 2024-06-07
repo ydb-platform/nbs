@@ -7,9 +7,9 @@ SIZE(MEDIUM)
 TIMEOUT(600)
 
 PEERDIR(
-    library/cpp/testing/unittest
-    contrib/ydb/core/testlib/default
+    contrib/ydb/core/tx/replication/ut_helpers
     contrib/ydb/public/sdk/cpp/client/ydb_topic
+    library/cpp/testing/unittest
 )
 
 SRCS(

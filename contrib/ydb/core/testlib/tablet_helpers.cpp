@@ -44,6 +44,7 @@
 #include <contrib/ydb/core/persqueue/pq.h>
 #include <contrib/ydb/core/sys_view/processor/processor.h>
 #include <contrib/ydb/core/statistics/aggregator/aggregator.h>
+#include <contrib/ydb/core/graph/api/shard.h>
 
 #include <contrib/ydb/core/testlib/basics/storage.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
@@ -895,7 +896,6 @@ namespace NKikimr {
         if (SUPPRESS_REBOOTS || GetEnv("FAST_UT")=="1")
             return;
 
-        ui32 runCount = 0;
         ui32 eventCountBeforeReboot = 0;
         if (selectedReboot != Max<ui32>()) {
             eventCountBeforeReboot = selectedReboot;
@@ -913,7 +913,6 @@ namespace NKikimr {
                 Cout << "===> BEGIN dispatch: " << dispatchName << "\n";
 
             try {
-                ++runCount;
                 activeZone = false;
                 TTestActorRuntime::TEventFilter filter = filterFactory();
                 TPipeResetObserver pipeResetingObserver(eventCountBeforeReboot, activeZone, filter, tabletIds);
@@ -1223,6 +1222,8 @@ namespace NKikimr {
                     bootstrapperActorId = Boot(ctx, type, &CreatePersQueue, DataGroupErasure);
                 } else if (type == TTabletTypes::StatisticsAggregator) {
                     bootstrapperActorId = Boot(ctx, type, &NStat::CreateStatisticsAggregator, DataGroupErasure);
+                } else if (type == TTabletTypes::GraphShard) {
+                    bootstrapperActorId = Boot(ctx, type, &NGraph::CreateGraphShard, DataGroupErasure);
                 } else {
                     status = NKikimrProto::ERROR;
                 }
@@ -1444,8 +1445,12 @@ namespace NKikimr {
             
             const TSubDomainKey subdomainKey(ev->Get()->Record.GetDomainKey());
             NHive::TDomainInfo& domainInfo = State->Domains[subdomainKey];
-            domainInfo.ServerlessComputeResourcesMode = ev->Get()->Record.GetServerlessComputeResourcesMode();
-
+            if (ev->Get()->Record.HasServerlessComputeResourcesMode()) {
+                domainInfo.ServerlessComputeResourcesMode = ev->Get()->Record.GetServerlessComputeResourcesMode();
+            } else {
+                domainInfo.ServerlessComputeResourcesMode.Clear();
+            }
+            
             auto response = std::make_unique<TEvHive::TEvUpdateDomainReply>();
             response->Record.SetTxId(ev->Get()->Record.GetTxId());
             response->Record.SetOrigin(TabletID());

@@ -57,6 +57,9 @@ namespace NSchemeShardUT_Private {
         OPTION(std::optional<bool>, EnableChangefeedDynamoDBStreamsFormat, std::nullopt);
         OPTION(std::optional<bool>, EnableChangefeedDebeziumJsonFormat, std::nullopt);
         OPTION(std::optional<bool>, EnableTablePgTypes, std::nullopt);
+        OPTION(std::optional<bool>, EnableServerlessExclusiveDynamicNodes, std::nullopt);
+        OPTION(std::optional<bool>, EnableAddColumsWithDefaults, std::nullopt);
+        OPTION(std::optional<bool>, EnableReplaceIfExistsForExternalEntities, std::nullopt);
 
         #undef OPTION
     };
@@ -77,6 +80,8 @@ namespace NSchemeShardUT_Private {
         THolder<NYdb::TDriver> YdbDriver;
 
     public:
+        static bool ENABLE_SCHEMESHARD_LOG;
+
         TTestEnv(TTestActorRuntime& runtime, ui32 nchannels = 4, bool enablePipeRetries = true,
             TSchemeShardFactory ssFactory = &CreateFlatTxSchemeShard, bool enableSystemViews = false);
         TTestEnv(TTestActorRuntime& runtime, const TTestEnvOptions& opts,
@@ -112,7 +117,7 @@ namespace NSchemeShardUT_Private {
 
         void SimulateSleep(TTestActorRuntime& runtime, TDuration duration);
 
-        void TestServerlessComputeResourcesModeInHive(TTestActorRuntime& runtime, const TString& path, 
+        void TestServerlessComputeResourcesModeInHive(TTestActorRuntime& runtime, const TString& path,
                                                       NKikimrSubDomains::EServerlessComputeResourcesMode serverlessComputeResourcesMode,
                                                       ui64 hive = TTestTxConfig::Hive);
 

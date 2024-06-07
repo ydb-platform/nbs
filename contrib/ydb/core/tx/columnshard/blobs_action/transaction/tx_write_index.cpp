@@ -64,7 +64,7 @@ void TTxWriteIndex::Complete(const TActorContext& ctx) {
         Self->EnqueueBackgroundActivities(false, TriggerActivity);
     }
 
-    changes->MutableBlobsAction().OnCompleteTxAfterAction(*Self);
+    changes->MutableBlobsAction().OnCompleteTxAfterAction(*Self, Ev->Get()->GetPutStatus() == NKikimrProto::OK);
     NYDBTest::TControllers::GetColumnShardController()->OnWriteIndexComplete(Self->TabletID(), changes->TypeString());
 }
 
@@ -83,6 +83,13 @@ TTxWriteIndex::TTxWriteIndex(TColumnShard* self, TEvPrivate::TEvWriteIndex::TPtr
     , TabletTxNo(++Self->TabletTxCounter)
 {
     Y_ABORT_UNLESS(Ev && Ev->Get()->IndexChanges);
+}
+
+void TTxWriteIndex::Describe(IOutputStream& out) const noexcept {
+    out << TypeName(*this);
+    if (Ev->Get()->IndexChanges) {
+        out << ": " << Ev->Get()->IndexChanges->DebugString();
+    }
 }
 
 }

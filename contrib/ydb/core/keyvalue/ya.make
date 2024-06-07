@@ -45,6 +45,7 @@ PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/core/base
     contrib/ydb/core/blobstorage/base
+    contrib/ydb/core/control/common_controls
     contrib/ydb/core/engine/minikql
     contrib/ydb/core/keyvalue/protos
     contrib/ydb/core/protos
@@ -62,4 +63,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     ut
+    ut_trace
 )

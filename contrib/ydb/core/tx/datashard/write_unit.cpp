@@ -4,6 +4,8 @@
 #include "datashard_locks_db.h"
 #include "datashard_user_db.h"
 
+#include <contrib/ydb/core/engine/mkql_engine_flat_host.h>
+
 namespace NKikimr {
 namespace NDataShard {
 
@@ -36,80 +38,64 @@ public:
     }
 
     void DoExecute(TDataShard* self, TWriteOperation* writeOp, TTransactionContext& txc, const TActorContext& ctx) {
-        const TValidatedWriteTx::TPtr& writeTx = writeOp->GetWriteTx();
+        TValidatedWriteTx::TPtr& writeTx = writeOp->GetWriteTx();
 
         const ui64 tableId = writeTx->GetTableId().PathId.LocalPathId;
         const TTableId fullTableId(self->GetPathOwnerId(), tableId);
         const ui64 localTableId = self->GetLocalTableId(fullTableId);
         if (localTableId == 0) {
-            writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_INTERNAL_ERROR, TStringBuilder() << "Unknown table id " << tableId, self->TabletID());
+            writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_INTERNAL_ERROR, TStringBuilder() << "Unknown table id " << tableId);
             return;
         }
         const ui64 shadowTableId = self->GetShadowTableId(fullTableId);
-
         const TUserTable& TableInfo_ = *self->GetUserTables().at(tableId);
         Y_ABORT_UNLESS(TableInfo_.LocalTid == localTableId);
         Y_ABORT_UNLESS(TableInfo_.ShadowTid == shadowTableId);
 
-        const ui32 writeTableId = localTableId;
+        const NTable::TScheme& scheme = txc.DB.GetScheme();
+        const NTable::TScheme::TTableInfo* tableInfo = scheme.GetTableInfo(localTableId);
+
         auto [readVersion, writeVersion] = self->GetReadWriteVersions(writeOp);
+        writeTx->SetReadVersion(readVersion);
+        writeTx->SetWriteVersion(writeVersion);
 
-        TDataShardUserDb userDb(*self, txc.DB, readVersion);
-        TDataShardChangeGroupProvider groupProvider(*self, txc.DB);
-
-        TVector<TRawTypeValue> key;
-        TVector<NTable::TUpdateOp> value;
-
-        TVector<TCell> keyCells;
+        TSmallVec<TRawTypeValue> key;
+        TSmallVec<NTable::TUpdateOp> ops;
 
         const TSerializedCellMatrix& matrix = writeTx->GetMatrix();
 
         for (ui32 rowIdx = 0; rowIdx < matrix.GetRowCount(); ++rowIdx)
         {
             key.clear();
-            keyCells.clear();
-            ui64 keyBytes = 0;
+            key.reserve(TableInfo_.KeyColumnIds.size());
             for (ui16 keyColIdx = 0; keyColIdx < TableInfo_.KeyColumnIds.size(); ++keyColIdx) {
-                const auto& cellType = TableInfo_.KeyColumnTypes[keyColIdx];
                 const TCell& cell = matrix.GetCell(rowIdx, keyColIdx);
-                if (cellType.GetTypeId() == NScheme::NTypeIds::Uint8 && !cell.IsNull() && cell.AsValue<ui8>() > 127) {
-                    writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_BAD_REQUEST, "Keys with Uint8 column values >127 are currently prohibited", self->TabletID());
-                    return;
+                ui32 keyCol = tableInfo->KeyColumns[keyColIdx];
+                if (cell.IsNull()) {
+                    key.emplace_back();
+                } else {
+                    NScheme::TTypeInfo vtypeInfo = scheme.GetColumnInfo(tableInfo, keyCol)->PType;
+                    key.emplace_back(cell.Data(), cell.Size(), vtypeInfo);
                 }
-
-                keyBytes += cell.Size();
-                key.emplace_back(TRawTypeValue(cell.AsRef(), cellType));
-                keyCells.emplace_back(cell);
             }
 
-            if (keyBytes > NLimits::MaxWriteKeySize) {
-                writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_BAD_REQUEST, TStringBuilder() << "Row key size of " << keyBytes << " bytes is larger than the allowed threshold " << NLimits::MaxWriteKeySize, self->TabletID());
-                return;
-            }
+            ops.clear();
+            Y_ABORT_UNLESS(matrix.GetColCount() >= TableInfo_.KeyColumnIds.size());
+            ops.reserve(matrix.GetColCount() - TableInfo_.KeyColumnIds.size());
 
-            value.clear();
             for (ui16 valueColIdx = TableInfo_.KeyColumnIds.size(); valueColIdx < matrix.GetColCount(); ++valueColIdx) {
                 ui32 columnTag = writeTx->RecordOperation().GetColumnIds(valueColIdx);
                 const TCell& cell = matrix.GetCell(rowIdx, valueColIdx);
-                if (cell.Size() > NLimits::MaxWriteValueSize) {
-                    writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_BAD_REQUEST, TStringBuilder() << "Row cell size of " << cell.Size() << " bytes is larger than the allowed threshold " << NLimits::MaxWriteValueSize, self->TabletID());
-                    return;
-                }
 
-                auto* col = TableInfo_.Columns.FindPtr(valueColIdx + 1);
-                Y_ABORT_UNLESS(col);
-
-                value.emplace_back(NTable::TUpdateOp(columnTag, NTable::ECellOp::Set, TRawTypeValue(cell.AsRef(), col->Type)));
+                NScheme::TTypeInfo vtypeInfo = scheme.GetColumnInfo(tableInfo, columnTag)->PType;
+                ops.emplace_back(columnTag, NTable::ECellOp::Set, cell.IsNull() ? TRawTypeValue() : TRawTypeValue(cell.Data(), cell.Size(), vtypeInfo));
             }
 
-            txc.DB.Update(writeTableId, NTable::ERowOp::Upsert, key, value, writeVersion);
-            self->GetConflictsCache().GetTableCache(writeTableId).RemoveUncommittedWrites(keyCells, txc.DB);
+            writeTx->GetUserDb().UpdateRow(fullTableId, key, ops);
         }
-        //TODO: Counters
-        // self->IncCounter(COUNTER_UPLOAD_ROWS, rowCount);
-        // self->IncCounter(COUNTER_UPLOAD_ROWS_BYTES, matrix.GetBuffer().size());
 
-        TableInfo_.Stats.UpdateTime = TAppData::TimeProvider->Now();
+        self->IncCounter(COUNTER_WRITE_ROWS, matrix.GetRowCount());
+        self->IncCounter(COUNTER_WRITE_BYTES, matrix.GetBuffer().size());
 
         writeOp->SetWriteResult(NEvents::TDataEvents::TEvWriteResult::BuildCommited(self->TabletID(), writeOp->GetTxId()));
 
@@ -117,8 +103,7 @@ public:
     }
 
     EExecutionStatus Execute(TOperation::TPtr op, TTransactionContext& txc, const TActorContext& ctx) override {
-        TWriteOperation* writeOp = dynamic_cast<TWriteOperation*>(op.Get());
-        Y_ABORT_UNLESS(writeOp != nullptr);
+        TWriteOperation* writeOp = TWriteOperation::CastWriteOperation(op);
 
         LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "Executing write operation for " << *op << " at " << DataShard.TabletID());
 
@@ -142,6 +127,22 @@ public:
 
         TDataShardLocksDb locksDb(DataShard, txc);
         TSetupSysLocks guardLocks(op, DataShard, &locksDb);
+
+        const TValidatedWriteTx::TPtr& writeTx = writeOp->GetWriteTx();
+
+        if (op->IsImmediate() && !writeOp->ReValidateKeys()) {
+            // Immediate transactions may be reordered with schema changes and become invalid
+            Y_ABORT_UNLESS(!writeTx->Ready());
+            writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_INTERNAL_ERROR, writeTx->GetErrStr());
+            return EExecutionStatus::Executed;
+        }
+
+        if (writeTx->CheckCancelled()) {
+            writeOp->ReleaseTxData(txc, ctx);
+            writeOp->SetError(NKikimrDataEvents::TEvWriteResult::STATUS_CANCELLED, "Tx was cancelled");
+            DataShard.IncCounter(COUNTER_WRITE_CANCELLED);
+            return EExecutionStatus::Executed;
+        }
 
         try {
             DoExecute(&DataShard, writeOp, txc, ctx);
@@ -181,20 +182,15 @@ public:
     void Complete(TOperation::TPtr op, const TActorContext& ctx) override {
         Pipeline.RemoveCommittingOp(op);
         DataShard.EnqueueChangeRecords(std::move(op->ChangeRecords()));
-        DataShard.EmitHeartbeats(ctx);
+        DataShard.EmitHeartbeats();
 
-        TWriteOperation* writeOp = dynamic_cast<TWriteOperation*>(op.Get());
-        Y_ABORT_UNLESS(writeOp != nullptr);
+        TWriteOperation* writeOp = TWriteOperation::CastWriteOperation(op);
 
         const auto& status = writeOp->GetWriteResult()->Record.status();
         LOG_DEBUG_S(ctx, NKikimrServices::TX_DATASHARD, "Completed write operation for " << *op << " at " << DataShard.TabletID() << ", status " << status);
 
-        //TODO: Counters
-        // if (WriteResult->Record.status() == NKikimrDataEvents::TEvWriteResult::STATUS_COMPLETED || WriteResult->Record.status() == NKikimrDataEvents::TEvWriteResult::STATUS_PREPARED) {
-        //     self->IncCounter(COUNTER_WRITE_SUCCESS);
-        // } else {
-        //     self->IncCounter(COUNTER_WRITE_ERROR);
-        // }
+        DataShard.IncCounter(writeOp->GetWriteResult()->Record.status() == NKikimrDataEvents::TEvWriteResult::STATUS_COMPLETED ?
+            COUNTER_WRITE_SUCCESS : COUNTER_WRITE_ERROR);
 
         ctx.Send(writeOp->GetEv()->Sender, writeOp->ReleaseWriteResult().release(), 0, writeOp->GetEv()->Cookie);
     }

@@ -64,6 +64,7 @@ PEERDIR(
     library/cpp/deprecated/enum_codegen
     library/cpp/yson
     contrib/ydb/core/base
+    contrib/ydb/core/graph/shard/protos
     contrib/ydb/core/mon
     contrib/ydb/core/mon_alloc
     contrib/ydb/core/node_whiteboard

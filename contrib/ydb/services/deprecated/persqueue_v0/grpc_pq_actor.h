@@ -470,6 +470,7 @@ private:
     ui64 PartitionTabletId;
     ui32 PreferedPartition;
     TString SourceId;
+    std::optional<ui64> InitialSeqNo;
     TString OwnerCookie;
     TString UserAgent;
 
@@ -553,6 +554,8 @@ private:
     NPersQueue::TWriteRequest::TInit InitRequest;
 
     TActorId PartitionChooser;
+
+    bool SessionClosed = false;
 };
 
 class TReadSessionActor : public TActorBootstrapped<TReadSessionActor> {

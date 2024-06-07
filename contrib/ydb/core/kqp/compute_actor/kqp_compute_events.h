@@ -6,7 +6,6 @@
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
 #include <contrib/libs/apache/arrow/cpp/src/arrow/api.h>
-#include <contrib/ydb/core/formats/arrow/serializer/full.h>
 
 namespace NKikimr::NKqp {
 

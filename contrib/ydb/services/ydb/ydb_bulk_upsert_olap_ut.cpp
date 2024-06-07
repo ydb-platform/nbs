@@ -2,7 +2,6 @@
 
 #include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
-#include <contrib/ydb/public/sdk/cpp/client/draft/ydb_long_tx.h>
 
 #include <contrib/ydb/library/yql/public/issue/yql_issue.h>
 #include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>

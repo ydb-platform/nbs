@@ -616,7 +616,7 @@ Y_UNIT_TEST_SUITE(KqpScripting) {
 
         NJson::TJsonValue plan;
         NJson::ReadJsonTree(planJson, &plan, true);
-        auto node = FindPlanNodeByKv(plan.GetMap().at("queries").GetArray()[2], "Node Type", "Aggregate-TableFullScan");
+        auto node = FindPlanNodeByKv(plan.GetMap().at("queries").GetArray()[2], "Node Type", "Aggregate");
         UNIT_ASSERT_EQUAL(node.GetMap().at("Stats").GetMapSafe().at("Tasks").GetIntegerSafe(), 1);
     }
 
@@ -942,7 +942,8 @@ Y_UNIT_TEST_SUITE(KqpScripting) {
 
         auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
 
-        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.query_phases().size(), 3);
+        UNIT_ASSERT(stats.query_phases(1).table_access().empty());
         for (const auto& phase : stats.query_phases()) {
             if (phase.table_access().size()) {
                 if (phase.table_access(0).name() == "/Root/EightShard") {

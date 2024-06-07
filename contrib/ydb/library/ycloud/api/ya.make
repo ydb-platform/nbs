@@ -11,6 +11,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/public/api/client/yc_private/iam
     contrib/ydb/public/api/client/yc_private/servicecontrol
+    contrib/ydb/public/api/client/yc_private/accessservice
     contrib/ydb/public/api/client/yc_private/resourcemanager
     contrib/ydb/library/actors/core
     contrib/ydb/library/grpc/client

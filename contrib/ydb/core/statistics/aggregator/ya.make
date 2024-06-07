@@ -1,5 +1,10 @@
 LIBRARY()
 
+OWNER(
+    monster
+    g:kikimr
+)
+
 SRCS(
     aggregator.h
     aggregator.cpp

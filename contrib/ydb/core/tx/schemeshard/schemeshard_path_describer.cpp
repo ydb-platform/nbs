@@ -48,6 +48,11 @@ static void FillAggregatedStats(NKikimrSchemeOp::TPathDescription& pathDescripti
     FillTableMetrics(pathDescription.MutableTabletMetrics(), stats.Aggregated);
 }
 
+static void FillTableStats(NKikimrSchemeOp::TPathDescription& pathDescription, const TPartitionStats& stats) {
+    FillTableStats(pathDescription.MutableTableStats(), stats);
+    FillTableMetrics(pathDescription.MutableTabletMetrics(), stats);
+}
+
 void TPathDescriber::FillPathDescr(NKikimrSchemeOp::TDirEntry* descr, TPathElement::TPtr pathEl, TPathElement::EPathSubType subType) {
     FillChildDescr(descr, pathEl);
 
@@ -369,6 +374,7 @@ void TPathDescriber::DescribeTable(const TActorContext& ctx, TPathId pathId, TPa
 
 void TPathDescriber::DescribeOlapStore(TPathId pathId, TPathElement::TPtr pathEl) {
     const TOlapStoreInfo::TPtr storeInfo = *Self->OlapStores.FindPtr(pathId);
+
     Y_ABORT_UNLESS(storeInfo, "OlapStore not found");
     Y_UNUSED(pathEl);
 
@@ -406,6 +412,9 @@ void TPathDescriber::DescribeColumnTable(TPathId pathId, TPathElement::TPtr path
         *description->MutableSchema() = presetProto.GetSchema();
         if (description->HasSchemaPresetVersionAdj()) {
             description->MutableSchema()->SetVersion(description->GetSchema().GetVersion() + description->GetSchemaPresetVersionAdj());
+        }
+        if (tableInfo->GetStats().TableStats.contains(pathId)) {
+            FillTableStats(*pathDescription, tableInfo->GetStats().TableStats.at(pathId));
         }
     }
 }
@@ -716,7 +725,7 @@ void TPathDescriber::DescribeDomainRoot(TPathElement::TPtr pathEl) {
     if (const auto& serverlessComputeResourcesMode = subDomainInfo->GetServerlessComputeResourcesMode()) {
         entry->SetServerlessComputeResourcesMode(*serverlessComputeResourcesMode);
     }
-    
+
     if (TTabletId sharedHive = subDomainInfo->GetSharedHive()) {
         entry->SetSharedHive(sharedHive.GetValue());
     }
@@ -935,11 +944,7 @@ THolder<TEvSchemeShard::TEvDescribeSchemeResultBuilder> TPathDescriber::Describe
                 pathStr = path.PathString();
             }
 
-            Result.Reset(new TEvSchemeShard::TEvDescribeSchemeResultBuilder(
-                pathStr,
-                Self->TabletID(),
-                pathId
-                ));
+            Result.Reset(new TEvSchemeShard::TEvDescribeSchemeResultBuilder(pathStr, pathId));
             Result->Record.SetStatus(checks.GetStatus());
             Result->Record.SetReason(checks.GetError());
 
@@ -954,7 +959,7 @@ THolder<TEvSchemeShard::TEvDescribeSchemeResultBuilder> TPathDescriber::Describe
         }
     }
 
-    Result = MakeHolder<TEvSchemeShard::TEvDescribeSchemeResultBuilder>(pathStr, Self->TabletID(), pathId);
+    Result = MakeHolder<TEvSchemeShard::TEvDescribeSchemeResultBuilder>(pathStr, pathId);
 
     auto descr = Result->Record.MutablePathDescription()->MutableSelf();
     FillPathDescr(descr, path);
@@ -1109,6 +1114,8 @@ void TSchemeShard::DescribeTable(const TTableInfo::TPtr tableInfo, const NScheme
                 colDescr->SetFamilyName(it->second);
             }
         }
+
+        colDescr->SetIsBuildInProgress(cinfo.IsBuildInProgress);
 
         switch (cinfo.DefaultKind) {
             case ETableColumnDefaultKind::None:

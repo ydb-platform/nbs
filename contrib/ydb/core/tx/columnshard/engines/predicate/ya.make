@@ -13,4 +13,6 @@ PEERDIR(
     contrib/ydb/core/formats/arrow
 )
 
+YQL_LAST_ABI_VERSION()
+
 END()

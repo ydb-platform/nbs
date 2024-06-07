@@ -9,6 +9,8 @@ ELSE()
     SIZE(MEDIUM)
 ENDIF()
 
+OWNER(g:yql)
+
 SRCDIR(contrib/ydb/library/yql/minikql/computation)
 
 SRCS(

@@ -302,6 +302,14 @@ protected:
         Register(CreateKafkaOffsetCommitActor(Context, header->CorrelationId, message));
     }
 
+    void HandleMessage(const TRequestHeaderData* header, const TMessagePtr<TCreateTopicsRequestData>& message) {
+        Register(CreateKafkaCreateTopicsActor(Context, header->CorrelationId, message));
+    }
+
+    void HandleMessage(const TRequestHeaderData* header, const TMessagePtr<TCreatePartitionsRequestData>& message) {
+        Register(CreateKafkaCreatePartitionsActor(Context, header->CorrelationId, message));
+    }
+
     template<class T>
     TMessagePtr<T> Cast(std::shared_ptr<Msg>& request) {
         return TMessagePtr<T>(request->Buffer, request->Message);
@@ -311,14 +319,21 @@ protected:
         KAFKA_LOG_D("process message: ApiKey=" << Request->Header.RequestApiKey << ", ExpectedSize=" << Request->ExpectedSize
                                                << ", Size=" << Request->Size);
 
-        Request->Method = EApiKeyNames.find(static_cast<EApiKey>(Request->Header.RequestApiKey))->second;
+        auto apiKeyNameIt = EApiKeyNames.find(static_cast<EApiKey>(Request->Header.RequestApiKey));
+        if (apiKeyNameIt == EApiKeyNames.end()) {
+            KAFKA_LOG_ERROR("Unsupported message: ApiKey=" << Request->Header.RequestApiKey);
+            PassAway();
+            return false;
+        }
+
+        Request->Method = apiKeyNameIt->second;
 
         PendingRequestsQueue.push_back(Request);
         PendingRequests[Request->Header.CorrelationId] = Request;
 
         SendRequestMetrics(ctx);
         if (Request->Header.ClientId.has_value() && Request->Header.ClientId != "") {
-            Context->ClientId = Request->Header.ClientId.value();
+            Context->KafkaClient = Request->Header.ClientId.value();
         }
         
         switch (Request->Header.RequestApiKey) {
@@ -382,6 +397,14 @@ protected:
                 HandleMessage(&Request->Header, Cast<TOffsetCommitRequestData>(Request));
                 break;
 
+            case CREATE_TOPICS:
+                HandleMessage(&Request->Header, Cast<TCreateTopicsRequestData>(Request));
+                break;
+
+            case CREATE_PARTITIONS:
+                HandleMessage(&Request->Header, Cast<TCreatePartitionsRequestData>(Request));
+                break;
+
             default:
                 KAFKA_LOG_ERROR("Unsupported message: ApiKey=" << Request->Header.RequestApiKey);
                 PassAway();
@@ -400,6 +423,11 @@ protected:
     void Handle(TEvKafka::TEvResponse::TPtr response, const TActorContext& ctx) {
         auto r = response->Get();
         Reply(r->CorrelationId, r->Response, r->ErrorCode, ctx);
+    }
+
+    void Handle(TEvKafka::TEvReadSessionInfo::TPtr readInfo, const TActorContext& /*ctx*/) {
+        auto r = readInfo->Get();
+        Context->GroupId = r->GroupId;
     }
 
     void Handle(TEvKafka::TEvAuthResult::TPtr ev, const TActorContext& ctx) {
@@ -585,6 +613,8 @@ protected:
 
                         Step = INFLIGTH_CHECK;
 
+                        [[fallthrough]];
+
                     case INFLIGTH_CHECK:
                         if (!Context->Authenticated() && !PendingRequestsQueue.empty()) {
                             // Allow only one message to be processed at a time for non-authenticated users
@@ -596,6 +626,8 @@ protected:
                         }
                         InflightSize += Request->ExpectedSize;
                         Step = MESSAGE_READ;
+
+                        [[fallthrough]];
 
                     case HEADER_READ:
                         KAFKA_LOG_T("start read header. ExpectedSize=" << Request->ExpectedSize);
@@ -627,6 +659,8 @@ protected:
                         }
 
                         Step = MESSAGE_READ;
+
+                        [[fallthrough]];
 
                     case MESSAGE_READ:
                         KAFKA_LOG_T("start read new message. ExpectedSize=" << Request->ExpectedSize);
@@ -719,6 +753,7 @@ protected:
             hFunc(TEvPollerRegisterResult, HandleConnected);
             HFunc(TEvKafka::TEvResponse, Handle);
             HFunc(TEvKafka::TEvAuthResult, Handle);
+            HFunc(TEvKafka::TEvReadSessionInfo, Handle);
             HFunc(TEvKafka::TEvHandshakeResult, Handle);
             sFunc(TEvKafka::TEvKillReadSession, HandleKillReadSession);
             sFunc(NActors::TEvents::TEvPoison, PassAway);

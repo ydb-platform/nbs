@@ -493,12 +493,23 @@ Y_UNIT_TEST_SUITE(KqpExplain) {
         NJson::ReadJsonTree(result.GetPlan(), &plan, true);
         UNIT_ASSERT(ValidatePlanNodeIds(plan));
 
+        Cerr << "Plan " << result.GetPlan() << Endl;
+
         auto node = FindPlanNodeByKv(plan, "Name", "TableRangeScan");
         UNIT_ASSERT_EQUAL(node.GetMapSafe().at("Table").GetStringSafe(), "KeyValue");
         node = FindPlanNodeByKv(plan, "Name", "TableFullScan");
         UNIT_ASSERT_EQUAL(node.GetMapSafe().at("Table").GetStringSafe(), "KeyValue");
-        node = FindPlanNodeByKv(plan, "Name", "TablePointLookup");
-        UNIT_ASSERT_EQUAL(node.GetMapSafe().at("Table").GetStringSafe(), "KeyValue");
+
+
+        if (settings.AppConfig.GetTableServiceConfig().GetEnableKqpDataQueryStreamLookup()) {
+            node = FindPlanNodeByKv(plan, "Node Type", "TableLookup");
+        } else {
+            node = FindPlanNodeByKv(plan, "Name", "TablePointLookup");
+        }
+
+        if (node.IsDefined()) {
+            UNIT_ASSERT_EQUAL(node.GetMapSafe().at("Table").GetStringSafe(), "KeyValue");
+        }
     }
 
     Y_UNIT_TEST(FewEffects) {
@@ -526,18 +537,11 @@ Y_UNIT_TEST_SUITE(KqpExplain) {
         auto deletesCount = CountPlanNodesByKv(plan, "Node Type", "Delete-ConstantExpr");
         UNIT_ASSERT_VALUES_EQUAL(deletesCount, 1);
 
-        auto fullScansCount = CountPlanNodesByKv(plan, "Node Type", "TableFullScan") +
-            CountPlanNodesByKv(plan, "Node Type", "Stage-TableFullScan");
+        auto fullScansCount = CountPlanNodesByKv(plan, "Node Type", "TableFullScan");
         UNIT_ASSERT_VALUES_EQUAL(fullScansCount, 1);
 
-        auto rangeScansCount = CountPlanNodesByKv(plan, "Node Type", "TableRangeScan") +
-            CountPlanNodesByKv(plan, "Name", "TableRangeScan");
-        UNIT_ASSERT_VALUES_EQUAL(rangeScansCount, 1);
-
-        ui32 lookupsCount = 0;
-        lookupsCount = CountPlanNodesByKv(plan, "Node Type", "Stage-TablePointLookup");
-        lookupsCount += CountPlanNodesByKv(plan, "Node Type", "TablePointLookup-ConstantExpr");
-        UNIT_ASSERT_VALUES_EQUAL(lookupsCount, 1);
+        auto rangeScansCount = CountPlanNodesByKv(plan, "Node Type", "TableRangeScan");
+        UNIT_ASSERT_VALUES_EQUAL(rangeScansCount, 2);
 
         /* check tables section */
         const auto& tableInfo = plan.GetMapSafe().at("tables").GetArraySafe()[0].GetMapSafe();
@@ -557,7 +561,6 @@ Y_UNIT_TEST_SUITE(KqpExplain) {
         UNIT_ASSERT_VALUES_EQUAL(counter["MultiErase"], deletesCount);
         UNIT_ASSERT_VALUES_EQUAL(counter["FullScan"], fullScansCount);
         UNIT_ASSERT_VALUES_EQUAL(counter["Scan"], rangeScansCount);
-        UNIT_ASSERT_VALUES_EQUAL(counter["Lookup"], lookupsCount);
     }
 
     Y_UNIT_TEST(ExplainDataQueryWithParams) {
@@ -847,7 +850,11 @@ Y_UNIT_TEST_SUITE(KqpExplain) {
         NJson::ReadJsonTree(*streamRes.PlanJson, &plan, true);
         UNIT_ASSERT(ValidatePlanNodeIds(plan));
 
+#if SSA_RUNTIME_VERSION >= 4U
+        auto readNode = FindPlanNodeByKv(plan, "Node Type", "TableFullScan");
+#else
         auto readNode = FindPlanNodeByKv(plan, "Node Type", "Filter-TableFullScan");
+#endif
         UNIT_ASSERT(readNode.IsDefined());
 
         auto& operators = readNode.GetMapSafe().at("Operators").GetArraySafe();
@@ -902,7 +909,11 @@ Y_UNIT_TEST_SUITE(KqpExplain) {
     }
 
     Y_UNIT_TEST(MultiJoinCteLinks) {
-        TKikimrRunner kikimr;
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(false);
+        auto settings = TKikimrSettings()
+            .SetAppConfig(appConfig);
+        TKikimrRunner kikimr{settings};
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 

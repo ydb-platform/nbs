@@ -1813,15 +1813,34 @@ TExprNode::TPtr BuildDictOverList(TPositionHandle pos, const TExprNode::TPtr& co
 
 TExprNode::TPtr BuildDictOverTuple(TExprNode::TPtr&& collection, const TTypeAnnotationNode*& dictKeyType, TExprContext& ctx)
 {
-    if (!collection->GetTypeAnn()->Cast<TTupleExprType>()->GetSize()) {
+    const auto pos = collection->Pos();
+    const auto tupleType = collection->GetTypeAnn()->Cast<TTupleExprType>();
+    if (!tupleType->GetSize()) {
         dictKeyType = nullptr;
         return nullptr;
     }
+    TTypeAnnotationNode::TListType types(tupleType->GetItems());
+    dictKeyType = CommonType(pos, types, ctx);
+    YQL_ENSURE(dictKeyType, "Uncompatible collection elements.");
 
-    dictKeyType = CommonTypeForChildren(*collection, ctx);
-    YQL_ENSURE(dictKeyType, "Uncompatible colllection elements.");
-    const auto pos = collection->Pos();
-    return ctx.NewCallable(pos, "DictFromKeys", {ExpandType(pos, *dictKeyType, ctx), std::move(collection)});
+    TExprNode::TPtr tuple;
+    if (collection->IsList()) {
+        tuple = collection;
+    } else {
+        TExprNode::TListType items;
+        items.reserve(tupleType->GetSize());
+        for (size_t i = 0; i != tupleType->GetSize(); ++i) {
+            items.push_back(
+                ctx.NewCallable(
+                    pos,
+                    "Nth",
+                    {collection, ctx.NewAtom(pos, ui32(i))}
+                )
+            );
+        }
+        tuple = ctx.NewList(pos, std::move(items));
+    }
+    return ctx.NewCallable(pos, "DictFromKeys", {ExpandType(pos, *dictKeyType, ctx), std::move(tuple)});
 }
 
 TExprNode::TPtr ExpandSqlIn(const TExprNode::TPtr& input, TExprContext& ctx) {
@@ -5469,6 +5488,19 @@ bool CollectBlockRewrites(const TMultiExprType* multiInputType, bool keepInputCo
     return true;
 }
 
+bool CanRewriteToBlocksWithInput(const TExprNode& input, const TTypeAnnotationContext& types) {
+    EBlockEngineMode effectiveMode = types.UseBlocks ? EBlockEngineMode::Force : types.BlockEngineMode;
+    switch (effectiveMode) {
+        case NYql::EBlockEngineMode::Disable:
+            return false;
+        case NYql::EBlockEngineMode::Auto:
+            return input.IsCallable("WideFromBlocks");
+        case NYql::EBlockEngineMode::Force:
+            return true;
+    }
+    Y_UNREACHABLE();
+}
+
 TExprNode::TPtr OptimizeWideMapBlocks(const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& types) {
     const auto lambda = node->TailPtr();
     if (node->Head().IsCallable("WideFromBlocks")) {
@@ -5483,6 +5515,10 @@ TExprNode::TPtr OptimizeWideMapBlocks(const TExprNode::TPtr& node, TExprContext&
                 .Seal()
                 .Build();
         }
+    }
+
+    if (!CanRewriteToBlocksWithInput(node->Head(), types)) {
+        return node;
     }
 
     auto multiInputType = node->Head().GetTypeAnn()->Cast<TFlowExprType>()->GetItemType()->Cast<TMultiExprType>();
@@ -5522,6 +5558,10 @@ TExprNode::TPtr OptimizeWideMapBlocks(const TExprNode::TPtr& node, TExprContext&
 }
 
 TExprNode::TPtr OptimizeWideFilterBlocks(const TExprNode::TPtr& node, TExprContext& ctx, TTypeAnnotationContext& types) {
+    if (!CanRewriteToBlocksWithInput(node->Head(), types)) {
+        return node;
+    }
+
     auto multiInputType = node->Head().GetTypeAnn()->Cast<TFlowExprType>()->GetItemType()->Cast<TMultiExprType>();
     auto lambda = node->ChildPtr(1);
     YQL_ENSURE(lambda->ChildrenSize() == 2); // filter lambda should have single output
@@ -5642,6 +5682,10 @@ TExprNode::TPtr OptimizeSkipTakeToBlocks(const TExprNode::TPtr& node, TExprConte
         return node;
     }
 
+    if (!CanRewriteToBlocksWithInput(node->Head(), types)) {
+        return node;
+    }
+
     TStringBuf newName = node->Content() == "Skip" ? "WideSkipBlocks" : "WideTakeBlocks";
     YQL_CLOG(DEBUG, CorePeepHole) << "Convert " << node->Content() << " to " << newName;
     return ctx.Builder(node->Pos())
@@ -5679,6 +5723,10 @@ TExprNode::TPtr OptimizeTopOrSortBlocks(const TExprNode::TPtr& node, TExprContex
         TVector<const TTypeAnnotationNode*>(allTypes.begin(), allTypes.end()), ctx);
     YQL_ENSURE(resolveStatus != IArrowResolver::ERROR);
     if (resolveStatus != IArrowResolver::OK) {
+        return node;
+    }
+
+    if (!CanRewriteToBlocksWithInput(node->Head(), types)) {
         return node;
     }
 
@@ -7426,6 +7474,14 @@ TExprNode::TPtr DropToFlowDeps(const TExprNode::TPtr& node, TExprContext& ctx) {
     return ctx.ChangeChildren(*node, std::move(children));
 }
 
+TExprNode::TPtr OptimizeToFlow(const TExprNode::TPtr& node, TExprContext&) {
+    if (node->ChildrenSize() == 1 && node->Head().IsCallable("FromFlow")) {
+        YQL_CLOG(DEBUG, CorePeepHole) << "Drop ToFlow over FromFlow";
+        return node->Head().HeadPtr();
+    }
+    return node;
+}
+
 TExprNode::TPtr BuildCheckedBinaryOpOverDecimal(TPositionHandle pos, TStringBuf op, const TExprNode::TPtr& lhs, const TExprNode::TPtr& rhs, const TTypeAnnotationNode& resultType, TExprContext& ctx) {
     auto typeNode = ExpandType(pos, resultType, ctx);
     return ctx.Builder(pos)
@@ -7583,6 +7639,7 @@ struct TPeepHoleRules {
         {"RangeEmpty", &ExpandRangeEmpty},
         {"AsRange", &ExpandAsRange},
         {"RangeFor", &ExpandRangeFor},
+        {"RangeToPg", &ExpandRangeToPg},
         {"ToFlow", &DropToFlowDeps},
         {"CheckedAdd", &ExpandCheckedAdd},
         {"CheckedSub", &ExpandCheckedSub},
@@ -7681,6 +7738,7 @@ struct TPeepHoleRules {
         {"AggrGreater", &ExpandAggrCompare<false, false>},
         {"AggrLessOrEqual", &ExpandAggrCompare<true, true>},
         {"AggrGreaterOrEqual", &ExpandAggrCompare<false, true>},
+        {"ToFlow", &OptimizeToFlow},
     };
 
     const TExtPeepHoleOptimizerMap FinalStageExtRules = {};

@@ -9,7 +9,7 @@
 #include <contrib/ydb/library/yql/sql/settings/translation_settings.h>
 #include <contrib/ydb/library/yql/sql/cluster_mapping.h>
 
-#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto/SQLv1Parser.pb.h>
+#include <contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split/SQLv1Parser.pb.main.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>

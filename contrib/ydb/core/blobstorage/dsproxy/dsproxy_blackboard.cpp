@@ -48,12 +48,6 @@ void TBlobState::AddPartToPut(ui32 partIdx, TRope&& partData) {
     IsChanged = true;
 }
 
-void TBlobState::MarkBlobReadyToPut(ui8 blobIdx) {
-    Y_ABORT_UNLESS(WholeSituation == ESituation::Unknown || WholeSituation == ESituation::Present);
-    BlobIdx = blobIdx;
-    IsChanged = true;
-}
-
 bool TBlobState::Restore(const TBlobStorageGroupInfo &info) {
     const TIntervalVec<i32> fullBlobInterval(0, Id.BlobSize());
     const TIntervalSet<i32> here = Whole.Here();
@@ -87,7 +81,7 @@ bool TBlobState::Restore(const TBlobStorageGroupInfo &info) {
 }
 
 void TBlobState::AddResponseData(const TBlobStorageGroupInfo &info, const TLogoBlobID &id, ui32 orderNumber,
-        ui32 shift, TRope&& data, bool keep, bool doNotKeep) {
+        ui32 shift, TRope&& data) {
     // Add actual data to Parts
     Y_ABORT_UNLESS(id.PartId() != 0);
     const ui32 partIdx = id.PartId() - 1;
@@ -112,9 +106,6 @@ void TBlobState::AddResponseData(const TBlobStorageGroupInfo &info, const TLogoB
         TIntervalVec<i32> responseInterval(shift, shift + dataSize);
         diskPart.Requested.Subtract(responseInterval);
     }
-
-    Keep |= keep;
-    DoNotKeep |= doNotKeep;
 }
 
 void TBlobState::AddNoDataResponse(const TBlobStorageGroupInfo &info, const TLogoBlobID &id, ui32 orderNumber) {
@@ -164,8 +155,7 @@ void TBlobState::AddErrorResponse(const TBlobStorageGroupInfo &info, const TLogo
     diskPart.Requested.Clear();
 }
 
-void TBlobState::AddNotYetResponse(const TBlobStorageGroupInfo &info, const TLogoBlobID &id, ui32 orderNumber,
-        bool keep, bool doNotKeep) {
+void TBlobState::AddNotYetResponse(const TBlobStorageGroupInfo &info, const TLogoBlobID &id, ui32 orderNumber) {
     Y_ABORT_UNLESS(id.PartId() != 0);
     const ui32 partIdx = id.PartId() - 1;
     IsChanged = true;
@@ -179,9 +169,6 @@ void TBlobState::AddNotYetResponse(const TBlobStorageGroupInfo &info, const TLog
     TDiskPart &diskPart = disk.DiskParts[partIdx];
     diskPart.Situation = ESituation::Lost;
     diskPart.Requested.Clear();
-
-    Keep |= keep;
-    DoNotKeep |= doNotKeep;
 }
 
 ui64 TBlobState::GetPredictedDelayNs(const TBlobStorageGroupInfo &info, TGroupQueues &groupQueues,
@@ -234,7 +221,7 @@ TString TBlobState::ToString() const {
     for (ui32 i = 0; i < Disks.size(); ++i) {
         str << Endl << " Disks[" << i << "]# " << Disks[i].ToString() << Endl;
     }
-    str << " BlobIdx# " << (ui32)BlobIdx << Endl;
+    str << " BlobIdx# " << BlobIdx << Endl;
     str << "}";
     return str.Str();
 }
@@ -300,28 +287,19 @@ TString TBlobState::TWholeState::ToString() const {
 // TGroupDiskRequests
 //
 
-TGroupDiskRequests::TGroupDiskRequests(ui32 disks) {
-    DiskRequestsForOrderNumber.resize(disks);
-}
-
-void TGroupDiskRequests::AddGet(const ui32 diskOrderNumber, const TLogoBlobID &id, const TIntervalSet<i32> &intervalSet) {
-    Y_ABORT_UNLESS(diskOrderNumber < DiskRequestsForOrderNumber.size());
-    auto &requestsToSend = DiskRequestsForOrderNumber[diskOrderNumber].GetsToSend;
-    for (auto pair: intervalSet) {
-        requestsToSend.emplace_back(id, pair.first, pair.second - pair.first);
+void TGroupDiskRequests::AddGet(ui32 diskOrderNumber, const TLogoBlobID &id, const TIntervalSet<i32> &intervalSet) {
+    for (const auto& pair : intervalSet) {
+        GetsPending.emplace_back(diskOrderNumber, id, pair.first, pair.second - pair.first);
     }
 }
 
-void TGroupDiskRequests::AddGet(const ui32 diskOrderNumber, const TLogoBlobID &id, const ui32 shift,
-        const ui32 size) {
-    Y_ABORT_UNLESS(diskOrderNumber < DiskRequestsForOrderNumber.size());
-    DiskRequestsForOrderNumber[diskOrderNumber].GetsToSend.emplace_back(id, shift, size);
+void TGroupDiskRequests::AddGet(ui32 diskOrderNumber, const TLogoBlobID &id, ui32 shift, ui32 size) {
+    GetsPending.emplace_back(diskOrderNumber, id, shift, size);
 }
 
-void TGroupDiskRequests::AddPut(const ui32 diskOrderNumber, const TLogoBlobID &id, TRope buffer,
-        TDiskPutRequest::EPutReason putReason, bool isHandoff, ui8 blobIdx) {
-    Y_ABORT_UNLESS(diskOrderNumber < DiskRequestsForOrderNumber.size());
-    DiskRequestsForOrderNumber[diskOrderNumber].PutsToSend.emplace_back(id, buffer, putReason, isHandoff, blobIdx);
+void TGroupDiskRequests::AddPut(ui32 diskOrderNumber, const TLogoBlobID &id, TRope buffer,
+        TDiskPutRequest::EPutReason putReason, bool isHandoff, size_t blobIdx) {
+    PutsPending.emplace_back(diskOrderNumber, id, buffer, putReason, isHandoff, blobIdx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -356,20 +334,6 @@ void TBlackboard::AddPartToPut(const TLogoBlobID &id, ui32 partIdx, TRope&& part
     (*this)[id].AddPartToPut(partIdx, std::move(partData));
 }
 
-void TBlackboard::MarkBlobReadyToPut(const TLogoBlobID &id, ui8 blobIdx) {
-    Y_ABORT_UNLESS(bool(id));
-    Y_ABORT_UNLESS(id.PartId() == 0);
-    Y_ABORT_UNLESS(id.BlobSize() != 0);
-    (*this)[id].MarkBlobReadyToPut(blobIdx);
-}
-
-void TBlackboard::MoveBlobStateToDone(const TLogoBlobID &id) {
-    Y_ABORT_UNLESS(bool(id));
-    Y_ABORT_UNLESS(id.PartId() == 0);
-    Y_ABORT_UNLESS(id.BlobSize() != 0);
-    DoneBlobStates.insert(BlobStates.extract(id));
-}
-
 void TBlackboard::AddPutOkResponse(const TLogoBlobID &id, ui32 orderNumber) {
     Y_ABORT_UNLESS(bool(id));
     Y_ABORT_UNLESS(id.PartId() != 0);
@@ -377,11 +341,11 @@ void TBlackboard::AddPutOkResponse(const TLogoBlobID &id, ui32 orderNumber) {
     state.AddPutOkResponse(*Info, id, orderNumber);
 }
 
-void TBlackboard::AddResponseData(const TLogoBlobID &id, ui32 orderNumber, ui32 shift, TRope&& data, bool keep, bool doNotKeep) {
+void TBlackboard::AddResponseData(const TLogoBlobID &id, ui32 orderNumber, ui32 shift, TRope&& data) {
     Y_ABORT_UNLESS(bool(id));
     Y_ABORT_UNLESS(id.PartId() != 0);
     TBlobState &state = GetState(id);
-    state.AddResponseData(*Info, id, orderNumber, shift, std::move(data), keep, doNotKeep);
+    state.AddResponseData(*Info, id, orderNumber, shift, std::move(data));
 }
 
 void TBlackboard::AddNoDataResponse(const TLogoBlobID &id, ui32 orderNumber) {
@@ -391,11 +355,11 @@ void TBlackboard::AddNoDataResponse(const TLogoBlobID &id, ui32 orderNumber) {
     state.AddNoDataResponse(*Info, id, orderNumber);
 }
 
-void TBlackboard::AddNotYetResponse(const TLogoBlobID &id, ui32 orderNumber, bool keep, bool doNotKeep) {
+void TBlackboard::AddNotYetResponse(const TLogoBlobID &id, ui32 orderNumber) {
     Y_ABORT_UNLESS(bool(id));
     Y_ABORT_UNLESS(id.PartId() != 0);
     TBlobState &state = GetState(id);
-    state.AddNotYetResponse(*Info, id, orderNumber, keep, doNotKeep);
+    state.AddNotYetResponse(*Info, id, orderNumber);
 }
 
 void TBlackboard::AddErrorResponse(const TLogoBlobID &id, ui32 orderNumber) {
@@ -406,8 +370,7 @@ void TBlackboard::AddErrorResponse(const TLogoBlobID &id, ui32 orderNumber) {
 }
 
 EStrategyOutcome TBlackboard::RunStrategies(TLogContext &logCtx, const TStackVec<IStrategy*, 1>& s,
-        TBatchedVec<TBlobStates::value_type*> *finished, const TBlobStorageGroupInfo::TGroupVDisks *expired) {
-    TString errorReason;
+        TBatchedVec<TFinishedBlob> *finished, const TBlobStorageGroupInfo::TGroupVDisks *expired) {
     for (auto it = BlobStates.begin(); it != BlobStates.end(); ) {
         auto& blob = it->second;
         if (!std::exchange(blob.IsChanged, false)) {
@@ -417,6 +380,7 @@ EStrategyOutcome TBlackboard::RunStrategies(TLogContext &logCtx, const TStackVec
 
         // recalculate blob outcome if it is not yet determined
         NKikimrProto::EReplyStatus status = NKikimrProto::OK;
+        TString errorReason;
         for (IStrategy *strategy : s) {
             switch (auto res = strategy->Process(logCtx, blob, *Info, *this, GroupDiskRequests)) {
                 case EStrategyOutcome::IN_PROGRESS:
@@ -424,16 +388,11 @@ EStrategyOutcome TBlackboard::RunStrategies(TLogContext &logCtx, const TStackVec
                     break;
 
                 case EStrategyOutcome::ERROR:
-                    if (IsAllRequestsTogether) {
+                    if (!finished) {
                         return res;
                     }
-                    if (errorReason) {
-                        errorReason += " && ";
-                        errorReason += res.ErrorReason;
-                    } else {
-                        errorReason = res.ErrorReason;
-                    }
                     status = NKikimrProto::ERROR;
+                    errorReason = std::move(res.ErrorReason);
                     break;
 
                 case EStrategyOutcome::DONE:
@@ -447,26 +406,25 @@ EStrategyOutcome TBlackboard::RunStrategies(TLogContext &logCtx, const TStackVec
             status = NKikimrProto::UNKNOWN;
         }
         if (status != NKikimrProto::UNKNOWN) {
+            if (finished) { // we are operating on independent blobs
+                finished->push_back(TFinishedBlob{
+                    blob.BlobIdx,
+                    status,
+                    std::move(errorReason),
+                });
+            }
             const auto [doneIt, inserted, node] = DoneBlobStates.insert(BlobStates.extract(it++));
             Y_ABORT_UNLESS(inserted);
-            if (!IsAllRequestsTogether) {
-                blob.Status = status;
-                if (finished) {
-                    finished->push_back(&*doneIt);
-                }
-            }
         } else {
             ++it;
         }
     }
 
-    EStrategyOutcome outcome(BlobStates.empty() ? EStrategyOutcome::DONE : EStrategyOutcome::IN_PROGRESS);
-    outcome.ErrorReason = std::move(errorReason);
-    return outcome;
+    return BlobStates.empty() ? EStrategyOutcome::DONE : EStrategyOutcome::IN_PROGRESS;
 }
 
 EStrategyOutcome TBlackboard::RunStrategy(TLogContext &logCtx, const IStrategy& s,
-        TBatchedVec<TBlobStates::value_type*> *finished, const TBlobStorageGroupInfo::TGroupVDisks *expired) {
+        TBatchedVec<TFinishedBlob> *finished, const TBlobStorageGroupInfo::TGroupVDisks *expired) {
     return RunStrategies(logCtx, {const_cast<IStrategy*>(&s)}, finished, expired);
 }
 
@@ -480,8 +438,7 @@ TBlobState& TBlackboard::GetState(const TLogoBlobID &id) {
                 << " blobId# " << fullId
                 << " BlackBoard# " << ToString());
     }
-    TBlobState &state = it->second;
-    return state;
+    return it->second;
 }
 
 ssize_t TBlackboard::AddPartMap(const TLogoBlobID &id, ui32 diskOrderNumber, ui32 requestIndex) {
@@ -528,8 +485,12 @@ void TBlackboard::GetWorstPredictedDelaysNs(const TBlobStorageGroupInfo &info, T
     }
 }
 
-void TBlackboard::RegisterBlobForPut(const TLogoBlobID& id) {
-    (*this)[id];
+void TBlackboard::RegisterBlobForPut(const TLogoBlobID& id, size_t blobIdx) {
+    const auto [it, inserted] = BlobStates.try_emplace(id);
+    Y_ABORT_UNLESS(inserted);
+    TBlobState& state = it->second;
+    state.Init(id, *Info);
+    state.BlobIdx = blobIdx;
 }
 
 TBlobState& TBlackboard::operator [](const TLogoBlobID& id) {
@@ -575,9 +536,7 @@ void TBlackboard::InvalidatePartStates(ui32 orderNumber) {
     const TVDiskID vdiskId = Info->GetVDiskId(orderNumber);
     for (auto& [id, state] : BlobStates) {
         if (const ui32 diskIdx = Info->GetIdxInSubgroup(vdiskId, id.Hash()); diskIdx != Info->Type.BlobSubgroupSize()) {
-            TBlobState::TDisk& disk = state.Disks[diskIdx];
-            for (ui32 partIdx = 0; partIdx < disk.DiskParts.size(); ++partIdx) {
-                TBlobState::TDiskPart& part = disk.DiskParts[partIdx];
+            for (TBlobState::TDiskPart& part : state.Disks[diskIdx].DiskParts) {
                 if (part.Situation == TBlobState::ESituation::Present) {
                     part.Situation = TBlobState::ESituation::Unknown;
                     if (state.WholeSituation == TBlobState::ESituation::Present) {

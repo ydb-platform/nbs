@@ -1706,7 +1706,7 @@ namespace NSchemeShardUT_Private {
     }
 
     void TestBuildColumn(TTestActorRuntime& runtime, ui64 id, ui64 schemeShard, const TString &dbName,
-        const TString &src, const TString& columnName, const Ydb::TypedValue& literal, Ydb::StatusIds::StatusCode expectedStatus) 
+        const TString &src, const TString& columnName, const Ydb::TypedValue& literal, Ydb::StatusIds::StatusCode expectedStatus)
     {
         AsyncBuildColumn(runtime, id, schemeShard, dbName, src, columnName, literal);
 
@@ -2181,8 +2181,13 @@ namespace NSchemeShardUT_Private {
         return combination;
     }
 
-    void AsyncSend(TTestActorRuntime &runtime, ui64 targetTabletId, IEventBase *ev) {
-        ForwardToTablet(runtime, targetTabletId, runtime.AllocateEdgeActor(), ev);
+    void AsyncSend(TTestActorRuntime &runtime, ui64 targetTabletId, IEventBase *ev,
+            ui32 nodeIndex, TActorId sender) {
+        if (sender == TActorId()) {
+            ForwardToTablet(runtime, targetTabletId, runtime.AllocateEdgeActor(nodeIndex), ev);
+        } else {
+            ForwardToTablet(runtime, targetTabletId, sender, ev, nodeIndex);
+        }
     }
 
     TTestActorRuntimeBase::TEventObserver SetSuppressObserver(TTestActorRuntime &runtime, TVector<THolder<IEventHandle> > &suppressed, ui32 type) {
@@ -2323,9 +2328,11 @@ namespace NSchemeShardUT_Private {
 
     void WriteRow(TTestActorRuntime& runtime, const ui64 txId, const TString& tablePath, int partitionIdx, const ui32 key, const TString& value, bool successIsExpected) {
         auto tableDesc = DescribePath(runtime, tablePath, true, true);
-        const auto& tablePartitions = tableDesc.GetPathDescription().GetTablePartitions();
+        const auto& pathDesc = tableDesc.GetPathDescription();
+        TTableId tableId(pathDesc.GetSelf().GetSchemeshardId(), pathDesc.GetSelf().GetPathId(), pathDesc.GetTable().GetTableSchemaVersion());
+
+        const auto& tablePartitions = pathDesc.GetTablePartitions();
         UNIT_ASSERT(partitionIdx < tablePartitions.size());
-        const ui64 tableId = tableDesc.GetPathId();
         const ui64 datashardTabletId = tablePartitions[partitionIdx].GetDatashardId();
 
         const auto& sender = runtime.AllocateEdgeActor();
@@ -2338,7 +2345,7 @@ namespace NSchemeShardUT_Private {
 
         auto evWrite = std::make_unique<NKikimr::NEvents::TDataEvents::TEvWrite>(txId, NKikimrDataEvents::TEvWrite::MODE_IMMEDIATE);
         ui64 payloadIndex = NKikimr::NEvWrite::TPayloadHelper<NKikimr::NEvents::TDataEvents::TEvWrite>(*evWrite).AddDataToPayload(std::move(matrix.ReleaseBuffer()));
-        evWrite->AddOperation(NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPSERT, tableId, 1, columnIds, payloadIndex, NKikimrDataEvents::FORMAT_CELLVEC);
+        evWrite->AddOperation(NKikimrDataEvents::TEvWrite::TOperation::OPERATION_UPSERT, tableId, columnIds, payloadIndex, NKikimrDataEvents::FORMAT_CELLVEC);
 
         ForwardToTablet(runtime, datashardTabletId, sender, evWrite.release());
 

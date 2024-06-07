@@ -11,6 +11,7 @@ SRCS(
 )
 
 PEERDIR(
+    library/cpp/testing/common
     contrib/ydb/core/kqp/federated_query
     contrib/ydb/core/testlib
     contrib/ydb/library/yql/public/udf

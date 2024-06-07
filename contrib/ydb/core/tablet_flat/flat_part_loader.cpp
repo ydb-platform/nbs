@@ -78,15 +78,15 @@ void TLoader::StageParseMeta() noexcept
 
         BTreeGroupIndexes.clear();
         BTreeHistoricIndexes.clear();
-        if (AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex()) {
+        if (false) { // will be in 24-2: AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex()
             for (bool history : {false, true}) {
                 for (const auto &meta : history ? layout.GetBTreeHistoricIndexes() : layout.GetBTreeGroupIndexes()) {
                     NPage::TBtreeIndexMeta converted{{
                         meta.GetRootPageId(), 
-                        meta.GetCount(), 
+                        meta.GetRowCount(), 
                         meta.GetDataSize(), 
-                        meta.GetErasedCount()}, 
-                        meta.GetLevelsCount(), 
+                        meta.GetErasedRowCount()}, 
+                        meta.GetLevelCount(), 
                         meta.GetIndexSize()};
                     (history ? BTreeHistoricIndexes : BTreeGroupIndexes).push_back(converted);
                 }

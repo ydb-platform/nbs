@@ -1,0 +1,12 @@
+RECURSE(
+    codec
+    common
+    comp_nodes
+    expr_nodes
+    gateway
+    job
+    lib
+    mkql_dq
+    opt
+    provider
+)

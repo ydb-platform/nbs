@@ -11,7 +11,7 @@
 #include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
-#include <contrib/ydb/core/io_formats/csv.h>
+#include <contrib/ydb/core/io_formats/ydb_dump/csv_ydb_dump.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
 

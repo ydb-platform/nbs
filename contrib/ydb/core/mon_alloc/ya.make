@@ -22,8 +22,6 @@ PEERDIR(
     library/cpp/lfalloc/dbg_info
     library/cpp/malloc/api
     library/cpp/monlib/service/pages
-    library/cpp/ytalloc/api
-    library/cpp/yt/memory
     contrib/ydb/core/base
     contrib/ydb/core/control
     contrib/ydb/library/services
