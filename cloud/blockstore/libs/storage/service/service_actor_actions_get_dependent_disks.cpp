@@ -70,27 +70,23 @@ TGetDependentDisksActor::TGetDependentDisksActor(
 
 void TGetDependentDisksActor::Bootstrap(const TActorContext& ctx)
 {
+    Cerr << "CREATEA ACTOR!" << Endl;
     if (!Input) {
         HandleError(ctx, MakeError(E_ARGUMENT, "Empty input"));
         return;
     }
 
-    NJson::TJsonValue input;
-    if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+    NProto::TGetDependentDisksRequest request;
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
+        HandleError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
-    if (!input.Has("Host")) {
+    if (request.GetHost().empty()) {
         HandleError(ctx, MakeError(E_ARGUMENT, "Host should be supplied"));
         return;
     }
 
-    NProto::TGetDependentDisksRequest request;
-    request.SetHost(input["Host"].GetString());
-    request.SetPath(input["Path"].GetStringSafe({}));
-    request.SetIgnoreReplicatedDisks(
-        input["IgnoreReplicatedDisks"].GetBooleanSafe(false));
     GetDependentDisks(ctx, std::move(request));
 }
 
@@ -100,7 +96,8 @@ void TGetDependentDisksActor::GetDependentDisks(
 {
     Become(&TThis::StateWork);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    Cerr << "Sending get dependent disks request!" << Endl;
+    LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
         "Sending get dependent disks request");
 
     NCloud::Send(
@@ -149,6 +146,7 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
     const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "HandleGetDependentDisksResponse" << Endl;
     auto* msg = ev->Get();
 
     auto error = msg->GetError();
@@ -161,17 +159,19 @@ void TGetDependentDisksActor::HandleGetDependentDisksResponse(
         return;
     }
 
-    NJsonWriter::TBuf result;
-    auto list = result
-        .BeginObject()
-            .WriteKey("DependentDiskIds")
-        .BeginList();
-    for (const auto& diskId: msg->Record.GetDependentDiskIds()) {
-        list.WriteString(diskId);
+    TString result;
+    auto status =
+        google::protobuf::util::MessageToJsonString(msg->Record, &result);
+    if (!status.ok()) {
+        HandleError(
+            ctx,
+            MakeError(
+                E_FAIL,
+                TStringBuilder() << "Couldn't convert response to JSON: "
+                                 << status.ToString()));
+        return;
     }
-    list.EndList().EndObject();
-
-    HandleSuccess(ctx, result.Str());
+    HandleSuccess(ctx, result);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

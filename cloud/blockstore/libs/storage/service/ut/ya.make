@@ -1,6 +1,8 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/service)
 
+TIMEOUT(30)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+TIMEOUT(30)
 
 SRCS(
     service_state_ut.cpp
