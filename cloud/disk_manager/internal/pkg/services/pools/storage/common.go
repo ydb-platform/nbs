@@ -146,7 +146,7 @@ func (d *baseDisk) applyInvariants() {
 			return
 		}
 
-		// If base disk is not from pool and it does not have active units then
+		// If base disk is not from pool and it does not have active slots then
 		// it should be deleted.
 		if !d.isDoomed() && !d.fromPool {
 			d.status = baseDiskStatusDeleting
