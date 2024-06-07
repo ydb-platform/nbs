@@ -12,6 +12,7 @@ namespace {
     xxx(Owner,                  ui64,                 0                       )\
     xxx(OwnerIdx,               ui64,                 0                       )\
     xxx(LookupTimeout,          TDuration,            TDuration::Minutes(1)   )\
+    xxx(RetryLookupTimeout,     TDuration,            TDuration::Seconds(5)   )\
     xxx(DiskRegistryTabletId,   ui64,                 0                       )\
 // BLOCKSTORE_DISK_REGISTRY_PROXY_CONFIG
 

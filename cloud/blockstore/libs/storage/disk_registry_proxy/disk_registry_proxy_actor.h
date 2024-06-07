@@ -99,11 +99,11 @@ private:
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev);
 
-    void HandleCreateTablet(
-        NCloud::NStorage::TEvHiveProxy::TEvCreateTabletResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
+    // void HandleCreateTabletResponse(
+    //     NCloud::NStorage::TEvHiveProxy::TEvCreateTabletResponse::TPtr& ev,
+    //     const NActors::TActorContext& ctx);
 
-    void HandleLookupTablet(
+    void HandleLookupTabletResponse(
         NCloud::NStorage::TEvHiveProxy::TEvLookupTabletResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
@@ -116,7 +116,16 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleCreateResult(
-        const TEvDiskRegistryProxy::TEvDiskRegistryCreateResult::TPtr& ev,
+        const TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult::TPtr&
+            ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleLookupTablet(
+        const TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCreateTablet(
+        const TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
@@ -125,6 +134,10 @@ private:
     BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS(
         BLOCKSTORE_IMPLEMENT_REQUEST,
         TEvDiskRegistryProxy)
+
+    // BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS_PRIVATE(
+    //     BLOCKSTORE_IMPLEMENT_REQUEST,
+    //     TEvDiskRegistryProxyPrivate)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

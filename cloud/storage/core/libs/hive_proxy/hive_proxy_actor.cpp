@@ -270,7 +270,28 @@ void THiveProxyActor::HandleConnectionError(
         }
 
         // SendNextCreateOrLookupRequest() won't send any requests after the
-        // first undelivery. Clear the queue and hope that clients will retry.
+        // first undelivery. Reject and hope that clients will retry.
+        for (auto& kv : states->CreateRequests) {
+            auto& queue = kv.second;
+            while (!queue.empty()) {
+                TCreateOrLookupRequest request = std::move(queue.front());
+                queue.pop_front();
+
+                std::unique_ptr<IEventBase> response;
+                auto error =
+                    MakeError(E_REJECTED, "Pipe to hive has been reset.");
+                if (request.IsLookup) {
+                    response =
+                        std::make_unique<TEvHiveProxy::TEvLookupTabletResponse>(
+                            error);
+                } else {
+                    response =
+                        std::make_unique<TEvHiveProxy::TEvCreateTabletResponse>(
+                            error);
+                }
+                NCloud::Reply(ctx, request, std::move(response));
+            }
+        }
         states->CreateRequests.clear();
 
         for (auto& kv: states->GetInfoRequests) {

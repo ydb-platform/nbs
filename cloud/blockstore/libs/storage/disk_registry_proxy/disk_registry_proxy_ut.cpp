@@ -1039,6 +1039,51 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         client.AllocateDisk("disk-1", 10_GB);
         client.Unsubscribe(subscriber);
     }
+
+    Y_UNIT_TEST(ShouldHandleRejectFromHive)
+    {
+        auto builder = TTestRuntimeBuilder();
+        auto runtime = builder.Build(false);
+
+        auto baseFilter = runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLookupTabletRequest: {
+                        static int RequestCount = 0;
+                        if (++RequestCount > 2) {
+                            return false;
+                        }
+
+                        auto response = std::make_unique<
+                            TEvHiveProxy::TEvLookupTabletResponse>(
+                            MakeError(E_REJECTED));
+                        runtime.Send(new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie));
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        builder.InitializeDiskRegistryProxy(*runtime, {});
+
+        TDiskRegistryClient client(*runtime);
+        auto subscriber = runtime->AllocateEdgeActor();
+
+        {
+            auto response = client.Subscribe(subscriber);
+            UNIT_ASSERT(response->Discovered);
+        }
+
+        client.AllocateDisk("disk-1", 10_GB);
+        client.Unsubscribe(subscriber);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -24,6 +24,7 @@ public:
     ui64 GetOwnerIdx() const;
 
     TDuration GetLookupTimeout() const;
+    TDuration GetRetryLookupTimeout() const;
 
     ui64 GetDiskRegistryTabletId() const;
 
