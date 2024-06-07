@@ -183,7 +183,7 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
 
     auto request = std::make_unique<TEvVolume::TEvGetVolumeInfoRequest>();
     request->Record.SetDiskId(DependentDiskStates[cookie].GetDiskId());
-    ctx.ExecutorThread.Schedule(
+    TActivationContext::Schedule(
         RetryTimeout,
         new IEventHandle(
             MakeVolumeProxyServiceId(),
@@ -267,7 +267,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetDependentDisksResponse(
                 TEvDiskRegistry::TEvGetDependentDisksRequest>();
             request->Record.SetHost(Request.GetAgentId());
 
-            ctx.ExecutorThread.Schedule(
+            TActivationContext::Schedule(
                 RetryTimeout,
                 new IEventHandle(
                     MakeDiskRegistryProxyServiceId(),

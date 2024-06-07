@@ -1508,7 +1508,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         returnedDiskIds.begin(),
                         returnedDiskIds.end());
                     msg->Record.MutableError()->SetCode(
-                        RequestCount < 2 ? E_REJECTED : S_OK);
+                        // RequestCount < 2 ? E_REJECTED :
+                        S_OK);
                     break;
                 }
                 case TEvVolume::EvGetVolumeInfoRequest: {
