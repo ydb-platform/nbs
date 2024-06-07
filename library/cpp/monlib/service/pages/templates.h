@@ -228,7 +228,6 @@ namespace NMonitoring {
     extern const char DListTag[3];
     extern const char DTermTag[3];
     extern const char DDescTag[3];
-    extern const char InputTag[6];
 
     typedef TTag<HtmlTag> THtml;
     typedef TTag<HeadTag> THead;
@@ -260,5 +259,4 @@ namespace NMonitoring {
     typedef TTag<DListTag> DLIST;
     typedef TTag<DTermTag> DTERM;
     typedef TTag<DDescTag> DDESC;
-    typedef TTag<InputTag> TInput;
 }
