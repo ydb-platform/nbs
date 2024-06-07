@@ -115,6 +115,8 @@ public:
             return DoCreateHandle();
         case NProto::ACTION_DESTROY_HANDLE:
             return DoDestroyHandle();
+        case NProto::ACTION_GET_NODE_ATTR:
+            return DoGetNodeAttr();
         case NProto::ACTION_ACQUIRE_LOCK:
             return DoAcquireLock();
         case NProto::ACTION_RELEASE_LOCK:
@@ -161,7 +163,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_CREATE_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -223,7 +225,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_RENAME_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -284,7 +286,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_REMOVE_NODE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -346,7 +348,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_CREATE_HANDLE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -408,8 +410,78 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_DESTROY_HANDLE,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
+    }
+
+    TFuture<TCompletedRequest> DoGetNodeAttr()
+    {
+        TGuard<TMutex> guard(StateLock);
+        if (Nodes.empty()) {
+            return DoCreateNode();
+        }
+
+        auto started = TInstant::Now();
+        auto it = Nodes.begin();
+        if (Nodes.size() > 1) {
+            std::advance(it, Min(RandomNumber(Nodes.size() - 1), 64lu));
+        }
+
+        auto name = it->first;
+
+        auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
+        request->SetNodeId(RootNodeId);
+        request->SetName(name);
+
+        auto self = weak_from_this();
+        STORAGE_DEBUG("GetNodeAttr client started");
+        return Session->GetNodeAttr(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TGetNodeAttrResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleGetNodeAttr(name, future, started);
+                    }
+
+                    return TCompletedRequest{
+                        NProto::ACTION_GET_NODE_ATTR,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
+    }
+
+    TCompletedRequest HandleGetNodeAttr(
+        const TString& name,
+        const TFuture<NProto::TGetNodeAttrResponse>& future,
+        TInstant started)
+    {
+        try {
+            auto response = future.GetValue();
+            STORAGE_DEBUG("GetNodeAttr client completed");
+            CheckResponse(response);
+            TGuard<TMutex> guard(StateLock);
+            if (response.GetNode().SerializeAsString() !=
+                Nodes[name].Attrs.SerializeAsString())
+            {
+                auto error = MakeError(
+                    E_FAIL,
+                    TStringBuilder()
+                        << "attributes are not equal for node " << name << ": "
+                        << response.GetNode().DebugString().Quote()
+                        << " != " << Nodes[name].Attrs.DebugString().Quote());
+                STORAGE_ERROR(error.GetMessage().c_str());
+            }
+            return {NProto::ACTION_GET_NODE_ATTR, started, {}};
+        } catch (const TServiceError& e) {
+            auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
+            STORAGE_ERROR(
+                "get node attr %s has failed: %s",
+                name.c_str(),
+                FormatError(error).c_str());
+
+            return {NProto::ACTION_GET_NODE_ATTR, started, error};
+        }
     }
 
     TCompletedRequest HandleDestroyHandle(
@@ -467,7 +539,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_ACQUIRE_LOCK,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 
@@ -532,7 +604,7 @@ private:
                 return TCompletedRequest{
                     NProto::ACTION_RELEASE_LOCK,
                     started,
-                    MakeError(E_FAIL, "cancelled")};
+                    MakeError(E_CANCELLED, "cancelled")};
             });
     }
 

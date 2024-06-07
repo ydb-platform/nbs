@@ -34,6 +34,10 @@ TESTS = [
         "intrahost-migration",
         "cloud/filestore/tests/loadtest/service-kikimr-test/intrahost-migration.txt",
     ),
+    Case(
+        "get-node-attr.txt",
+        "cloud/filestore/tests/loadtest/service-kikimr-test/get-node-attr.txt",
+    )
 ]
 
 
