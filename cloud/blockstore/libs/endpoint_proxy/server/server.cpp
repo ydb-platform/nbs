@@ -550,7 +550,7 @@ struct TServer: IEndpointProxyServer
             CreateServerStatsStub(),
             ep.NbdOptions);
 
-        ep.InternalUnixSocketPath = request.GetUnixSocketPath() + ".proxy";
+        ep.InternalUnixSocketPath = request.GetUnixSocketPath() + ".p";
         ep.ListenAddress = std::make_unique<TNetworkAddress>(
             TUnixSocketPath{ep.InternalUnixSocketPath});
 
