@@ -27,7 +27,7 @@ struct TTestEndpointProxyClient: NClient::IEndpointProxyClient
         StartRequest = *request;
         NProto::TStartProxyEndpointResponse response;
         response.SetInternalUnixSocketPath(
-            StartRequest.GetUnixSocketPath() + ".proxy");
+            StartRequest.GetUnixSocketPath() + ".p");
         return NThreading::MakeFuture(response);
     }
 
@@ -37,7 +37,7 @@ struct TTestEndpointProxyClient: NClient::IEndpointProxyClient
         StopRequest = *request;
         NProto::TStopProxyEndpointResponse response;
         response.SetInternalUnixSocketPath(
-            StartRequest.GetUnixSocketPath() + ".proxy");
+            StartRequest.GetUnixSocketPath() + ".p");
         return NThreading::MakeFuture(response);
     }
 
