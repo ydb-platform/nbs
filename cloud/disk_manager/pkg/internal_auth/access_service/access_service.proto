@@ -6,9 +6,9 @@ import "google/api/field_behavior.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
-import "cloud/disk_manager/pkg/auth/internal_auth/access_service/access.proto";
+import "cloud/disk_manager/pkg/internal_auth/access_service/access.proto";
 
-option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth/internal_auth/access_service";
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/internal_auth/access_service";
 
 
 service AccessService {
