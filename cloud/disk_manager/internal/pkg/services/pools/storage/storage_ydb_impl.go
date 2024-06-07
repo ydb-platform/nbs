@@ -1851,7 +1851,6 @@ func (s *storageYDB) baseDiskCreationFailed(
 	}
 
 	updated := found
-	updated.fromPool = false
 	updated.status = baseDiskStatusCreationFailed
 
 	err = s.updateBaseDisk(ctx, tx, baseDiskTransition{

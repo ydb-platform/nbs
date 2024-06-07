@@ -140,10 +140,17 @@ func (d *baseDisk) isDoomed() bool {
 }
 
 func (d *baseDisk) applyInvariants() {
-	if (!d.isDoomed() || d.status == baseDiskStatusCreationFailed) &&
-		!d.fromPool && d.activeSlots == 0 {
+	if d.activeUnits == 0 {
+		if d.status == baseDiskStatusCreationFailed {
+			d.status = baseDiskStatusDeleting
+			return
+		}
 
-		d.status = baseDiskStatusDeleting
+		// If base disk is not from pool and it does not have active units then
+		// it should be deleted.
+		if !d.isDoomed() && !d.fromPool {
+			d.status = baseDiskStatusDeleting
+		}
 	}
 }
 
