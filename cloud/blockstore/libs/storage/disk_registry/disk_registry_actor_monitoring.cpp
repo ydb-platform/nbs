@@ -1795,18 +1795,24 @@ void TDiskRegistryActor::RenderAgentList(
                         TABLED() {
                             DumpAgentState(out, config.GetState());
 
-                            auto it = AgentRegInfo.find(config.GetAgentId());
-
-                            const bool connected = it != AgentRegInfo.end()
-                                && it->second.Connected;
-
+                            const size_t connectedCount = CountIf(
+                                AgentRegInfo,
+                                [agentId =
+                                     config.GetAgentId()](const auto& info) {
+                                    return info.second.AgentId == agentId &&
+                                           info.second.Connected;
+                                });
                             if (config.GetState()
                                     != NProto::AGENT_STATE_UNAVAILABLE)
                             {
-                                if (!connected) {
-                                    out << " <font color=gray>disconnected</font>";
+                                if (connectedCount == 0) {
+                                    out << " <font "
+                                           "color=gray>disconnected</font>";
+                                } else if (connectedCount > 1) {
+                                    out << " <font color=DarkTurquoise>["
+                                        << connectedCount << "]</font>";
                                 }
-                            } else if (connected) {
+                            } else if (connectedCount != 0) {
                                 out << " <font color=gray>connected</font>";
                             }
                         }

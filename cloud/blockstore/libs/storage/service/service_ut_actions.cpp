@@ -1473,7 +1473,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         env.GetRuntime().EnableScheduleForActor(MakeVolumeProxyServiceId());
 
         NProto::TStorageServiceConfig config;
-        // config.SetAllocationUnitNonReplicatedSSD(100);
         config.SetWaitDependentDisksRetryRequestDelay(50);  // 50 ms.
         ui32 nodeIdx = SetupTestEnv(env, config);
         TServiceClient service(env.GetRuntime(), nodeIdx);

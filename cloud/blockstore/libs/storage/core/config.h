@@ -584,6 +584,8 @@ public:
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
     bool GetDisableDiskWithCloudIdDestruction() const;
+
+    bool GetAllowDRToManageMultipleDiskAgents() const;
 };
 
 ui64 GetAllocationUnit(

@@ -25,18 +25,16 @@ void TDiskRegistryActor::HandleGetAgentNodeId(
     Y_DEBUG_ABORT_UNLESS(State);
     auto response =
         std::make_unique<TEvDiskRegistry::TEvGetAgentNodeIdResponse>();
-    const NProto::TAgentConfig* agent =
-        State->FindAgent(msg->Record.GetAgentId());
-    if (!agent) {
+    if (const NProto::TAgentConfig* agent =
+            State->FindAgent(msg->Record.GetAgentId()))
+    {
+        response->Record.SetNodeId(agent->GetNodeId());
+    } else {
         *response->Record.MutableError() = MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "Couldn't find agent with id: " << msg->Record.GetAgentId());
-        NCloud::Reply(ctx, *ev, std::move(response));
-        return;
     }
-
-    response->Record.SetNodeId(agent->GetNodeId());
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
