@@ -1609,7 +1609,7 @@ message TGetAgentNodeIdResponse
 
 message TWaitDependentDisksToSwitchNodeRequest
 {
-    // Agent hostname to search for dependent disks.
+    // Target agent.
     string AgentId = 1;
 
     // Wait for this Disk Agent node id to disappear from dependent volume
@@ -1634,7 +1634,7 @@ message TWaitDependentDisksToSwitchNodeResponse
         // The volume is ready.
         DISK_STATE_READY = 2;
 
-        // An error is occured during waiting.
+        // An error occured during waiting.
         DISK_STATE_ERROR = 3;
     }
 

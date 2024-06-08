@@ -1,8 +1,10 @@
 #include "service_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
@@ -460,7 +462,8 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, diskIds.size());
         UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol0"), 1);
-        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol1"), 1);    }
+        UNIT_ASSERT_VALUES_EQUAL(diskIds.count("vol1"), 1);
+    }
 
     Y_UNIT_TEST(ShouldDrainNode)
     {
@@ -1435,6 +1438,218 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, r.GetResult().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, r.DependentDisksSize());
         UNIT_ASSERT_VALUES_EQUAL("vol0", r.GetDependentDisks(0));
+    }
+
+    Y_UNIT_TEST(ShouldWaitDependentDisksToSwitchNodeTest)
+    {
+        struct TVolumeStructure
+        {
+            TString DiskId;
+            int DeviceCount = 3;
+            int ReplicaCount = 0;
+            int NodeId = 50002;
+        };
+        auto getVolumeDescripriton =
+            [](const TVolumeStructure& structure)
+        {
+            NProto::TVolume volume;
+            for (int i = 0; i < structure.DeviceCount; i++) {
+                auto* device = volume.AddDevices();
+                device->SetNodeId(structure.NodeId);
+            }
+            for (int i = 0; i < structure.ReplicaCount; i++) {
+                auto* replica = volume.AddReplicas();
+                for (int j = 0; j < structure.DeviceCount; j++) {
+                    auto* device = replica->AddDevices();
+                    device->SetNodeId(structure.NodeId);
+                }
+            }
+            volume.SetDiskId(structure.DiskId);
+            return volume;
+        };
+
+        TTestEnv env(1, 1, 4, 1, MakeIntrusive<TDiskRegistryState>());
+        env.GetRuntime().EnableScheduleForActor(MakeDiskRegistryProxyServiceId());
+        env.GetRuntime().EnableScheduleForActor(MakeVolumeProxyServiceId());
+
+        NProto::TStorageServiceConfig config;
+        // config.SetAllocationUnitNonReplicatedSSD(100);
+        config.SetWaitDependentDisksRetryRequestDelay(50);  // 50 ms.
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TVector<TString> returnedDiskIds{"nrd1", "nrd2"};
+        constexpr int OldNodeId = 50001;
+        auto evFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistry::EvGetDependentDisksRequest: {
+                    auto* msg = event->Get<
+                        TEvDiskRegistry::TEvGetDependentDisksRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "localhost",
+                        msg->Record.GetHost());
+                    UNIT_ASSERT_VALUES_EQUAL("", msg->Record.GetPath());
+                    break;
+                }
+                case TEvDiskRegistry::EvGetDependentDisksResponse: {
+                    static int RequestCount = 0;
+                    RequestCount++;
+
+                    auto* msg = event->Get<
+                        TEvDiskRegistry::TEvGetDependentDisksResponse>();
+                    msg->Record.MutableDependentDiskIds()->Add(
+                        returnedDiskIds.begin(),
+                        returnedDiskIds.end());
+                    // Check proper retriable errors handling.
+                    msg->Record.MutableError()->SetCode(
+                        RequestCount < 2 ? E_REJECTED : S_OK);
+                    break;
+                }
+                case TEvVolume::EvGetVolumeInfoRequest: {
+                    static int RequestCount = 0;
+                    RequestCount++;
+
+                    auto* msg =
+                        event->Get<TEvVolume::TEvGetVolumeInfoRequest>();
+                    auto response =
+                        std::make_unique<TEvVolume::TEvGetVolumeInfoResponse>();
+                    *response->Record.MutableVolume() =
+                        getVolumeDescripriton(TVolumeStructure{
+                            .DiskId = msg->Record.GetDiskId(),
+                            // Make sure that the actor will retry requests
+                            // until the NodeId hasn't changed.
+                            .NodeId =
+                                (RequestCount > 3 ? OldNodeId + 1
+                                                  : OldNodeId)
+                            });
+                    runtime.Send(new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie));
+                    return true;
+                }
+                case TEvVolume::EvWaitReadyRequest: {
+                    auto* msg = event->Get<TEvVolume::TEvWaitReadyRequest>();
+                    auto response =
+                        std::make_unique<TEvVolume::TEvWaitReadyResponse>();
+                    *response->Record.MutableVolume() = getVolumeDescripriton(
+                        TVolumeStructure{.DiskId = msg->Record.GetDiskId()});
+                    runtime.Send(new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0,   // flags
+                        event->Cookie));
+                    return true;
+                }
+            }
+            return false;
+        };
+        env.GetRuntime().SetEventFilter(evFilter);
+
+        NProto::TWaitDependentDisksToSwitchNodeRequest request;
+        request.SetAgentId("localhost");
+        request.SetOldNodeId(OldNodeId);
+        TString jsonInput;
+        UNIT_ASSERT(
+            google::protobuf::util::MessageToJsonString(request, &jsonInput)
+                .ok());
+        service.SendExecuteActionRequest(
+            "WaitDependentDisksToSwitchNode",
+            jsonInput);
+
+        const auto response = service.RecvExecuteActionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        NProto::TWaitDependentDisksToSwitchNodeResponse output;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                        response->Record.GetOutput(),
+                        &output)
+                        .ok());
+        UNIT_ASSERT_VALUES_EQUAL(
+            returnedDiskIds.size(),
+            output.GetDependentDiskStates().size());
+        for (const auto& state: output.GetDependentDiskStates()) {
+            UNIT_ASSERT_C(
+                AnyOf(
+                    returnedDiskIds,
+                    [&](const auto& diskId)
+                    { return state.GetDiskId() == diskId; }),
+                "Missing disk id: " << state.GetDiskId());
+            UNIT_ASSERT_EQUAL(
+                state.GetDiskState(),
+                NProto::TWaitDependentDisksToSwitchNodeResponse::
+                    DISK_STATE_READY);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWaitDependentDisksToSwitchNodeErrorTest)
+    {
+        TTestEnv env(1, 1, 4, 1, MakeIntrusive<TDiskRegistryState>());
+
+        NProto::TStorageServiceConfig config;
+        // config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        constexpr int OldNodeId = 50001;
+        auto evFilter =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvDiskRegistry::EvGetDependentDisksRequest: {
+                    auto* msg = event->Get<
+                        TEvDiskRegistry::TEvGetDependentDisksRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "localhost",
+                        msg->Record.GetHost());
+                    UNIT_ASSERT_VALUES_EQUAL("", msg->Record.GetPath());
+                    break;
+                }
+                case TEvDiskRegistry::EvGetDependentDisksResponse: {
+                    auto* msg = event->Get<
+                        TEvDiskRegistry::TEvGetDependentDisksResponse>();
+                    *msg->Record.MutableError() =
+                        MakeError(E_FAIL, "test error");
+                    break;
+                }
+            }
+            return false;
+        };
+        env.GetRuntime().SetEventFilter(evFilter);
+
+        env.GetRuntime().SetRegistrationObserverFunc(
+            [](TTestActorRuntimeBase& runtime,
+               const TActorId& parentId,
+               const TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        NProto::TWaitDependentDisksToSwitchNodeRequest request;
+        request.SetAgentId("localhost");
+        request.SetOldNodeId(OldNodeId);
+        TString jsonInput;
+        UNIT_ASSERT(
+            google::protobuf::util::MessageToJsonString(request, &jsonInput)
+                .ok());
+        service.SendExecuteActionRequest(
+            "WaitDependentDisksToSwitchNode",
+            jsonInput);
+        const auto response = service.RecvExecuteActionResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response->GetStatus());
+        NProto::TWaitDependentDisksToSwitchNodeResponse output;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                        response->Record.GetOutput(),
+                        &output)
+                        .ok());
+        UNIT_ASSERT_VALUES_EQUAL(0, output.GetDependentDiskStates().size());
     }
 }
 
