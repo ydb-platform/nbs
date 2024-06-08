@@ -489,6 +489,7 @@ TDuration MSeconds(ui32 value)
     xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
+    xxx(AllowDRToManageMultipleDiskAgents,              bool,      false         )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW

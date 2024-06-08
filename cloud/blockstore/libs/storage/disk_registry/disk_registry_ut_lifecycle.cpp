@@ -1958,16 +1958,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldKillPreviousAgentAfterRegisteringNewAgent)
-    {
+    void ShouldKillPreviousAgentAfterRegisteringNewAgent(bool shouldKill) {
         auto agent = CreateAgentConfig("agent-1", {
             Device("dev-1", "uuid-1", "rack-1", 10_GB)
         });
         agent.SetSeqNumber(0);
         agent.SetNodeId(42);
 
-        auto runtime = TTestRuntimeBuilder()
-            .Build();
+        auto config = CreateDefaultStorageConfig();
+        config.SetAllowDRToManageMultipleDiskAgents(!shouldKill);
+        auto runtime = TTestRuntimeBuilder().With(std::move(config)).Build();
 
         size_t poisonPillCount = 0;
         runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
@@ -2003,8 +2003,18 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             diskRegistry1.SendRegisterAgentRequest(agent);
             auto response = diskRegistry1.RecvRegisterAgentResponse();
             UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
-            UNIT_ASSERT_VALUES_EQUAL(1, poisonPillCount);
+            UNIT_ASSERT_VALUES_EQUAL(shouldKill ? 1 : 0, poisonPillCount);
         }
+    }
+
+    Y_UNIT_TEST(ShouldKillPreviousAgentAfterRegisteringNewAgent)
+    {
+        ShouldKillPreviousAgentAfterRegisteringNewAgent(true);
+    }
+
+    Y_UNIT_TEST(ShouldIgnorePreviousAgentAfterRegisteringNewAgent)
+    {
+        ShouldKillPreviousAgentAfterRegisteringNewAgent(false);
     }
 
     Y_UNIT_TEST(ShouldMuteIOErrorsForTempUnavailableDisk)
@@ -2217,6 +2227,121 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT(response->Record.HasError());
             UNIT_ASSERT_EQUAL(E_NOT_FOUND, response->Record.GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTest)
+    {
+        TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB)
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-3", "uuid-3", "rack-1", 10_GB),
+                Device("dev-4", "uuid-4", "rack-1", 10_GB)
+            }),
+            // Temporary agent:
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB)
+            }),
+        };
+        agents[2].SetTemporaryAgent(true);
+
+        auto config = CreateDefaultStorageConfig();
+        config.SetAllowDRToManageMultipleDiskAgents(true);
+        config.SetNonReplicatedDiskSwitchToReadOnlyTimeout(
+            TDuration{5s}.MilliSeconds());
+        config.SetNonReplicatedAgentMaxTimeout(TDuration{5s}.MilliSeconds());
+
+        auto runtime =
+            TTestRuntimeBuilder().With(config).WithAgents(agents).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agents[0], agents[1]}));
+
+        struct TPipeData
+        {
+            TActorId Sender;
+            TActorId Recipient;
+            TActorId ServerId;
+        };
+        TVector<TPipeData> pipes;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvTabletPipe::EvServerConnected: {
+                        const auto& msg =
+                            *event->Get<TEvTabletPipe::TEvServerConnected>();
+                        pipes.push_back(
+                            {event->Sender, event->Recipient, msg.ServerId});
+                        break;
+                    }
+                    case TEvTabletPipe::EvServerDisconnected: {
+                        const auto& msg =
+                            *event->Get<TEvTabletPipe::TEvServerDisconnected>();
+                        EraseIf(
+                            pipes,
+                            [&](const TPipeData& data)
+                            {
+                                return data.Sender == event->Sender &&
+                                       data.Recipient == event->Recipient &&
+                                       data.ServerId == msg.ServerId;
+                            });
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto disconnectServer = [&](const TPipeData& data)
+        {
+            auto event = std::make_unique<TEvTabletPipe::TEvServerDisconnected>(
+                TestTabletId,
+                data.ServerId,
+                data.ServerId);
+            runtime->Send(
+                new IEventHandle(data.Recipient, data.Sender, event.release()),
+                0,
+                true);
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+        };
+
+        RegisterAndWaitForAgents(*runtime, {agents[0], agents[1]});
+        // Normal agents shoul be online.
+        UNIT_ASSERT_VALUES_EQUAL(2U, pipes.size());
+        {
+            const auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
+        }
+
+        // Register temporary agent-1 and check that volume allocation returns
+        // devices with NodeId from temporary agent.
+        RegisterAgent(*runtime, 2);
+        UNIT_ASSERT_VALUES_EQUAL(3U, pipes.size());
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
+            size_t tempAgenteDeviceCount = CountIf(
+                response->Record.GetDevices(),
+                [&](const NProto::TDeviceConfig& device)
+                { return device.GetNodeId() == runtime->GetNodeId(2); });
+            UNIT_ASSERT_VALUES_EQUAL(2, tempAgenteDeviceCount);
+        }
+
+        // Destroy normal agent-1.
+        KillAgent(*runtime, 0);
+        disconnectServer(pipes[0]);
+        UNIT_ASSERT_VALUES_EQUAL(2U, pipes.size());
+        {
+            auto response = diskRegistry.AllocateDisk("disk-1", 40_GB);
+            EXPECT_DISK_STATE(response, 4, NProto::VOLUME_IO_OK, false);
         }
     }
 }

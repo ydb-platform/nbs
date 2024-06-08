@@ -985,4 +985,8 @@ message TStorageServiceConfig
     // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
     // Set in ms.
     optional uint32 WaitDependentDisksRetryRequestDelay = 369;
+
+    // Do not send poison pill to disk agent with an AgentId that matches an
+    // already connected one. This is necessary for blue-green deployment.
+    optional bool AllowDRToManageMultipleDiskAgents = 370;
 }

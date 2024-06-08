@@ -579,6 +579,8 @@ public:
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
+
+    bool GetAllowDRToManageMultipleDiskAgents() const;
 };
 
 ui64 GetAllocationUnit(
