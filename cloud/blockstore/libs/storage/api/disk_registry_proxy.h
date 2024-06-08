@@ -104,21 +104,6 @@ struct TEvDiskRegistryProxy
     };
 
     //
-    // DiskRegistryCreateResult notification
-    //
-
-    struct TDiskRegistryCreateResult
-    {
-        const ui64 TabletId = 0;
-
-        TDiskRegistryCreateResult() = default;
-
-        explicit TDiskRegistryCreateResult(ui64 tabletId)
-            : TabletId(tabletId)
-        {}
-    };
-
-    //
     // GetDrTabletId notification
     //
 
@@ -157,8 +142,6 @@ struct TEvDiskRegistryProxy
         EvReassignRequest,
         EvReassignResponse,
 
-        EvDiskRegistryCreateResult,
-
         EvGetDrTabletInfoRequest,
         EvGetDrTabletInfoResponse,
 
@@ -173,8 +156,6 @@ struct TEvDiskRegistryProxy
     using TEvConnectionLost = TResponseEvent<TConnectionLost, EvConnectionLost>;
     using TEvConnectionEstablished =
         TResponseEvent<TConnectionEstablished, EvConnectionEstablished>;
-    using TEvDiskRegistryCreateResult =
-        TResponseEvent<TDiskRegistryCreateResult, EvDiskRegistryCreateResult>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

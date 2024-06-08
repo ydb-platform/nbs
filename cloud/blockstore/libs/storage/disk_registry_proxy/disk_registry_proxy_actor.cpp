@@ -73,7 +73,6 @@ void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
         "Lookup Disk Registry tablet. Hive: " << hiveTabletId);
 
     const ui64 cookie = ++RequestId;
-
     NCloud::Send<TEvHiveProxy::TEvLookupTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
@@ -82,7 +81,14 @@ void TDiskRegistryProxyActor::LookupTablet(const TActorContext& ctx)
         Config->GetOwner(),
         Config->GetOwnerIdx());
 
-    ctx.Schedule(Config->GetLookupTimeout(), new TEvents::TEvWakeup());
+    ctx.ExecutorThread.Schedule(
+        Config->GetLookupTimeout(),
+        new IEventHandle(
+            ctx.SelfID,
+            ctx.SelfID,
+            new TEvents::TEvWakeup(),
+            0,  // flags
+            cookie));
 }
 
 void TDiskRegistryProxyActor::StartWork(
@@ -372,7 +378,7 @@ bool TDiskRegistryProxyActor::LogLateMessage(STFUNC_SIG)
 #undef BLOCKSTORE_LOG_MESSAGE
 }
 
-void TDiskRegistryProxyActor::HandleLookupTablet(
+void TDiskRegistryProxyActor::HandleLookupTabletResponse(
     TEvHiveProxy::TEvLookupTabletResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -383,10 +389,25 @@ void TDiskRegistryProxyActor::HandleLookupTablet(
         return;
     }
 
-    if (ev->Cookie != RequestId) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
-            "Received expired LookupTablet response");
+    if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "LookupTablet failed with a retriable error: "
+                << FormatError(msg->GetError()));
 
+        ++RequestId;
+        ctx.Schedule(
+            Config->GetRetryLookupTimeout(),
+            new TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest());
+        return;
+    }
+
+    if (ev->Cookie != RequestId) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "Received expired LookupTablet response");
         return;
     }
 
@@ -477,10 +498,18 @@ void TDiskRegistryProxyActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
+    if (ev->Cookie != RequestId) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "Received expired Lookup tablet timeout.");
+        return;
+    }
 
-    LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
-        "Lookup/Create tablet request timed out. Retry.");
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_PROXY,
+        "Lookup tablet request timed out. Retry.");
 
     LookupTablet(ctx);
 }
@@ -522,6 +551,23 @@ void TDiskRegistryProxyActor::HandleGetDrTabletInfo(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TDiskRegistryProxyActor::HandleLookupTablet(
+    const TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    LookupTablet(ctx);
+}
+
+void TDiskRegistryProxyActor::HandleCreateTablet(
+    const TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    auto* msg = ev->Get();
+    CreateTablet(ctx, std::move(msg->Kinds));
+}
+
 STFUNC(TDiskRegistryProxyActor::StateError)
 {
     switch (ev->GetTypeRewrite()) {
@@ -534,6 +580,8 @@ STFUNC(TDiskRegistryProxyActor::StateError)
 
         IgnoreFunc(TEvHiveProxy::TEvLookupTabletResponse);
         IgnoreFunc(TEvHiveProxy::TEvCreateTabletResponse);
+        IgnoreFunc(TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest);
+        IgnoreFunc(TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest);
 
         default:
             if (!ReplyWithError(ActorContext(), ev)) {
@@ -547,8 +595,16 @@ STFUNC(TDiskRegistryProxyActor::StateError)
 STFUNC(TDiskRegistryProxyActor::StateLookup)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxy::TEvLookupTabletResponse, HandleLookupTablet);
-        HFunc(TEvDiskRegistryProxy::TEvDiskRegistryCreateResult, HandleCreateResult);
+        HFunc(TEvHiveProxy::TEvLookupTabletResponse, HandleLookupTabletResponse);
+        HFunc(
+            TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult,
+            HandleCreateResult);
+        HFunc(
+            TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest,
+            HandleLookupTablet);
+        HFunc(
+            TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest,
+            HandleCreateTablet);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -583,7 +639,11 @@ STFUNC(TDiskRegistryProxyActor::StateWork)
             HandleGetDrTabletInfo);
 
         IgnoreFunc(TEvHiveProxy::TEvLookupTabletResponse);
-        HFunc(TEvDiskRegistryProxy::TEvDiskRegistryCreateResult, HandleCreateResult);
+        HFunc(
+            TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult,
+            HandleCreateResult);
+        IgnoreFunc(TEvDiskRegistryProxyPrivate::TEvLookupTabletRequest);
+        IgnoreFunc(TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest);
 
         HFunc(TEvDiskRegistryProxy::TEvSubscribeRequest, HandleSubscribe);
         HFunc(TEvDiskRegistryProxy::TEvUnsubscribeRequest, HandleUnsubscribe);
