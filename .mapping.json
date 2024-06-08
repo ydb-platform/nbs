@@ -7020,7 +7020,7 @@
   "example/1-start_storage.sh":"cloud/blockstore/github_toplevel/example/1-start_storage.sh",
   "example/2-init_storage.sh":"cloud/blockstore/github_toplevel/example/2-init_storage.sh",
   "example/3-start_nbs.sh":"cloud/blockstore/github_toplevel/example/3-start_nbs.sh",
-  "example/4-start_nbs_storage.sh":"cloud/blockstore/github_toplevel/example/4-start_nbs_storage.sh",
+  "example/4-start_disk_agent.sh":"cloud/blockstore/github_toplevel/example/4-start_disk_agent.sh",
   "example/5-create_and_attach_disk.sh":"cloud/blockstore/github_toplevel/example/5-create_and_attach_disk.sh",
   "example/6-run_qemu.sh":"cloud/blockstore/github_toplevel/example/6-run_qemu.sh",
   "example/BUILD.md":"cloud/blockstore/github_toplevel/example/BUILD.md",
