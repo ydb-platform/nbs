@@ -251,9 +251,12 @@ private:
 
         const auto& request = resultOrError.GetResult();
 
-        bool isZeroCopyDataSupported = request.Flags & NRdma::RDMA_PROTO_FLAG_RDATA;
-        if (Y_UNLIKELY(isZeroCopyDataSupported && !ZeroCopyEnabled)) {
-            return MakeError(E_NOT_IMPLEMENTED, "Zero copy is disabled on disk agent");
+        const bool isZeroCopyDataSupported =
+            request.Flags & NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END;
+        if (isZeroCopyDataSupported && !ZeroCopyEnabled) {
+            return MakeError(
+                E_NOT_IMPLEMENTED,
+                "Zero copy is disabled on disk agent");
         }
 
         switch (request.MsgId) {
@@ -601,7 +604,7 @@ private:
             NRdma::TProtoMessageSerializer::Serialize(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                NRdma::RDMA_PROTO_FLAG_RDATA,
+                NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END,
                 proto,
                 requestDetails.DataBuffer.size());
             bytes = requestDetails.Out.size();
