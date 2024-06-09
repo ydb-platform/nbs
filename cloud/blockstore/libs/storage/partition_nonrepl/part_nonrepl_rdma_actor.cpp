@@ -292,7 +292,9 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
-            RdmaClient->IsZeroCopyEnabled() ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
+            RdmaClient->IsZeroCopyEnabled()
+                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
+                : 0,
             deviceRequest,
             TContIOVector(nullptr, 0));
 

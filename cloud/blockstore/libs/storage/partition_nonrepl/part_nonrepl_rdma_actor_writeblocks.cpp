@@ -285,7 +285,9 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsZeroCopyEnabled() ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
+            RdmaClient->IsZeroCopyEnabled()
+                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
+                : 0,
             deviceRequest,
             TContIOVector(parts.data(), parts.size()));
 
@@ -428,16 +430,16 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsZeroCopyEnabled() ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
+            RdmaClient->IsZeroCopyEnabled()
+                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
+                : 0,
             deviceRequest,
             // XXX (cast)
             TContIOVector(
                 const_cast<IOutputStream::TPart*>(
                     reinterpret_cast<const IOutputStream::TPart*>(
-                        sglist.begin() + blocks
-                )),
-                r.DeviceBlockRange.Size()
-            ));
+                        sglist.begin() + blocks)),
+                r.DeviceBlockRange.Size()));
 
         blocks += r.DeviceBlockRange.Size();
 
