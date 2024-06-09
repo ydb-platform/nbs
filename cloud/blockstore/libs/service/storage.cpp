@@ -339,6 +339,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
          promise,
          response = std::move(response),
          buffer = std::move(buffer),
+         dataBuffer,
          guardedSgList = std::move(guardedSgList),
          requestBlocksCount = request->GetBlocksCount(),
          requestBlockSize,
@@ -376,8 +377,9 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
                     Y_ABORT_UNLESS(bytesCopied == bytesCount);
                 }
             } else {
-                if (optimizeNetworkTransfer ==
-                    NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
+                if (!dataBuffer.size() &&
+                    optimizeNetworkTransfer ==
+                        NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
                 {
                     // If we read the data directly to the final destination,
                     // then we clean out the void buffers where the data

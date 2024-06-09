@@ -90,7 +90,7 @@ public:
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
-            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
+            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -202,7 +202,7 @@ public:
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_RDATA : 0,
+            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
             Proto,
             TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
     }

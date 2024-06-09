@@ -54,8 +54,11 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
         IOutputStream::TPart part(data.data(), data.length());
 
         size_t msgByteSize = serializer->MessageByteSize(proto, data.length());
-        TVector testedFlags{0U, RDMA_PROTO_FLAG_RDATA};
-        TVector testedBufferSizes{msgByteSize, msgByteSize + 1024, msgByteSize + 4096};
+        TVector testedFlags{0U, RDMA_PROTO_FLAG_DATA_AT_THE_END};
+        TVector testedBufferSizes{
+            msgByteSize,
+            msgByteSize + 1024,
+            msgByteSize + 4096};
 
         for (auto bufferSize : testedBufferSizes) {
             for (auto flags : testedFlags) {
@@ -68,7 +71,7 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
                     proto,
                     TContIOVector(&part, 1));
 
-                if (flags & RDMA_PROTO_FLAG_RDATA) {
+                if (flags & RDMA_PROTO_FLAG_DATA_AT_THE_END) {
                     UNIT_ASSERT_EQUAL(serializedBytes, bufferSize);
                 } else {
                     UNIT_ASSERT_EQUAL(serializedBytes, msgByteSize);

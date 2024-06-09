@@ -56,7 +56,7 @@ enum {
     // If buffer allocated in chunks of 4k
     // and data is allocated in multiple of block size (512, 4k)
     // then data address is also aligned to (512, 4k)
-    RDMA_PROTO_FLAG_RDATA  = 1 << 0,
+    RDMA_PROTO_FLAG_DATA_AT_THE_END  = 1 << 0,
 };
 
 
