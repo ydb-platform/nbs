@@ -88,6 +88,7 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
     xxx(QueryAvailableStorage,              __VA_ARGS__)                       \
     xxx(CreateVolumeFromDevice,             __VA_ARGS__)                       \
     xxx(ResumeDevice,                       __VA_ARGS__)                       \
+    xxx(QueryAgentsInfo,                    __VA_ARGS__)                       \
 // BLOCKSTORE_GRPC_STORAGE_SERVICE
 
 #define BLOCKSTORE_ENDPOINT_SERVICE(xxx, ...)                                  \
