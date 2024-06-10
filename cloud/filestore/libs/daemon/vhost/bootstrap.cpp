@@ -145,8 +145,8 @@ private:
             Logging,
             Timer,
             Scheduler,
-            NClient::CreateRetryPolicy(clientConfig),
-            filestore);
+            NClient::CreateRetryPolicy(std::move(clientConfig)),
+            std::move(filestore));
 
         Endpoints.emplace(name, std::move(client));
         return true;
