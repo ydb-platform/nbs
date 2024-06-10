@@ -387,12 +387,8 @@ func IsGetChangedBlocksNotSupportedError(e error) bool {
 	clientErr := nbs_client.GetClientError(e)
 
 	// TODO: don't check E_ARGUMENT after https://github.com/ydb-platform/nbs/issues/1297#issuecomment-2149816298
-	return (clientErr.Code == nbs_client.E_ARGUMENT &&
-		strings.Contains(
-			clientErr.Error(),
-			"Disk registry based disks can not handle "+
-				"GetChangedBlocks requests for normal checkpoints",
-		)) || clientErr.Code == nbs_client.E_NOT_SUPPORTED
+	return clientErr.Code == nbs_client.E_ARGUMENT && strings.Contains(clientErr.Error(), "Disk registry based disks can not handle GetChangedBlocks requests for normal checkpoints") ||
+		clientErr.Code == nbs_client.E_NOT_IMPLEMENTED
 }
 
 ////////////////////////////////////////////////////////////////////////////////

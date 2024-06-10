@@ -1182,7 +1182,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
             E_CANCELLED,
             E_IO_SILENT,
             E_RETRY_TIMEOUT,
-            E_NOT_SUPPORTED,
         };
 
         for (auto nbsErrorCode: nbsErrorCodes) {
