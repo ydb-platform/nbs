@@ -214,11 +214,7 @@ void TFileSystem::AcquireLock(
                     // error code shouldn't really matter for the guest since
                     // if we are in FUSE_SUSPEND mode we won't respond to
                     // the guest anyway
-                    self->ReplyError(
-                        *callContext,
-                        MakeError(E_CANCELLED),
-                        req,
-                        EINTR);
+                    CancelRequest(std::move(callContext), req);
                 } else {
                     // locks should be acquired synchronously if asked so retry attempt
                     self->ScheduleAcquireLock(
