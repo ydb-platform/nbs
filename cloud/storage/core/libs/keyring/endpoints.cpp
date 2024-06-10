@@ -2,6 +2,9 @@
 
 #include "keyring.h"
 
+#include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/protos/error.pb.h>
+
 #include <library/cpp/string_utils/base64/base64.h>
 
 #include <util/folder/path.h>
@@ -23,13 +26,18 @@ class TKeyringStorage final
     : public IEndpointStorage
 {
 private:
-    TString RootKeyringDesc;
-    TString EndpointsKeyringDesc;
+    const TString RootKeyringDesc;
+    const TString EndpointsKeyringDesc;
+    const bool NotImplementedErrorIsFatal;
 
 public:
-    TKeyringStorage(TString rootKeyringDesc, TString endpointsKeyringDesc)
+    TKeyringStorage(
+            TString rootKeyringDesc,
+            TString endpointsKeyringDesc,
+            bool notImplementedErrorIsFatal)
         : RootKeyringDesc(std::move(rootKeyringDesc))
         , EndpointsKeyringDesc(std::move(endpointsKeyringDesc))
+        , NotImplementedErrorIsFatal(notImplementedErrorIsFatal)
     {}
 
     TResultOrError<TVector<TString>> GetEndpointIds() override
@@ -73,17 +81,26 @@ public:
         Y_UNUSED(endpointId);
         Y_UNUSED(endpointSpec);
         // TODO:
-        return MakeError(E_NOT_IMPLEMENTED, "Failed to add endpoint to storage");
+        return NotImplemented("Failed to add endpoint to storage");
     }
 
     NProto::TError RemoveEndpoint(const TString& endpointId) override
     {
         Y_UNUSED(endpointId);
         // TODO:
-        return MakeError(E_NOT_IMPLEMENTED, "Failed to remove endpoint from storage");
+        return NotImplemented("Failed to remove endpoint from storage");
     }
 
 private:
+    NProto::TError NotImplemented(TString message) const
+    {
+        ui32 flags = 0;
+        if (!NotImplementedErrorIsFatal) {
+            SetProtoFlag(flags, NProto::EF_SILENT);
+        }
+        return MakeError(E_NOT_IMPLEMENTED, std::move(message), flags);
+    }
+
     TResultOrError<TVector<TKeyring>> GetEndpointKeyrings()
     {
         if (RootKeyringDesc.empty() || EndpointsKeyringDesc.empty()) {
@@ -129,8 +146,8 @@ private:
     TMutex Mutex;
 
 public:
-    TFileStorage(TString dirPath)
-        : DirPath(std::move(dirPath))
+    explicit TFileStorage(const TString& dirPath)
+        : DirPath(dirPath)
     {}
 
     TResultOrError<TVector<TString>> GetEndpointIds() override
@@ -143,7 +160,11 @@ public:
         }
 
         TVector<TFsPath> endpointFiles;
-        DirPath.List(endpointFiles);
+        try {
+            DirPath.List(endpointFiles);
+        } catch (...) {
+            return MakeError(E_IO, CurrentExceptionMessage());
+        }
 
         TVector<TString> endpointIds;
         for (const auto& endpointFile: endpointFiles) {
@@ -176,23 +197,31 @@ public:
     {
         TGuard guard(Mutex);
 
-        TFsPath tmpFilePath(MakeTempName(nullptr, "endpoint"));
-        TFileOutput(tmpFilePath).Write(endpointSpec);
-        tmpFilePath.ForceRenameTo(DirPath.Child(Base64EncodeUrl(endpointId)));
-        return {};
+        try {
+            TFsPath tmpFilePath(MakeTempName(nullptr, "endpoint"));
+            TFileOutput(tmpFilePath).Write(endpointSpec);
+            tmpFilePath.ForceRenameTo(DirPath.Child(Base64EncodeUrl(endpointId)));
+            return {};
+        } catch (...) {
+            return MakeError(E_IO, CurrentExceptionMessage());
+        }
     }
 
     NProto::TError RemoveEndpoint(const TString& endpointId) override
     {
         TGuard guard(Mutex);
 
-        auto filepath = DirPath.Child(Base64EncodeUrl(endpointId));
-        filepath.DeleteIfExists();
-        return {};
+        try {
+            auto filepath = DirPath.Child(Base64EncodeUrl(endpointId));
+            filepath.DeleteIfExists();
+            return {};
+        } catch (...) {
+            return MakeError(E_IO, CurrentExceptionMessage());
+        }
     }
 
 private:
-    TResultOrError<TString> ReadFile(const TFsPath& filepath)
+    static TResultOrError<TString> ReadFile(const TFsPath& filepath)
     {
         TFile file;
         try {
@@ -208,10 +237,14 @@ private:
                 << "Failed to open file " << filepath.GetPath().Quote());
         }
 
-        return TFileInput(file).ReadAll();
+        try {
+            return TFileInput(file).ReadAll();
+        } catch (...) {
+            return MakeError(E_IO, CurrentExceptionMessage());
+        }
     }
 
-    TResultOrError<TString> SafeBase64Decode(const TString& s)
+    static TResultOrError<TString> SafeBase64Decode(const TString& s)
     {
         try {
             return Base64Decode(s);
@@ -227,11 +260,13 @@ private:
 
 IEndpointStoragePtr CreateKeyringEndpointStorage(
     TString rootKeyringDesc,
-    TString endpointsKeyringDesc)
+    TString endpointsKeyringDesc,
+    bool notImplementedErrorIsFatal)
 {
     return std::make_shared<TKeyringStorage>(
         std::move(rootKeyringDesc),
-        std::move(endpointsKeyringDesc));
+        std::move(endpointsKeyringDesc),
+        notImplementedErrorIsFatal);
 }
 
 IEndpointStoragePtr CreateFileEndpointStorage(TString dirPath)

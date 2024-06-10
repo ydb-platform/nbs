@@ -191,6 +191,9 @@ message TServerConfig
 
     // Allow all control requests via unix socket (e.g., for CSI-driver)
     optional bool AllowAllRequestsViaUDS = 115;
+
+    // Causes E_NOT_IMPLEMENTED errors in endpoint storages to be logged.
+    optional bool EndpointStorageNotImplementedErrorIsFatal = 116;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -48,7 +48,8 @@ TStorages InitKeyringStorages()
 
     auto endpointStorage = CreateKeyringEndpointStorage(
         nbsDesc,
-        endpointsDesc);
+        endpointsDesc,
+        true /* notImplementedErrorIsFatal */);
 
     auto mutableEndpointStorage = CreateKeyringMutableEndpointStorage(
         nbsDesc,
@@ -221,6 +222,11 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
     Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromFiles)
     {
         ShouldNotGetStoredEndpointByWrongId(InitFileStorages());
+    }
+
+    Y_UNIT_TEST(FileStorageShouldNotThrow)
+    {
+        auto s = CreateFileEndpointStorage("nonexistent_dir");
     }
 }
 

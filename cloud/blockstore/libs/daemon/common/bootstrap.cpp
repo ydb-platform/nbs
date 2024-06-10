@@ -491,11 +491,16 @@ void TBootstrapBase::Init()
     IEndpointStoragePtr endpointStorage;
     switch (Configs->ServerConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
-        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING:
+        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
+            const bool notImplementedErrorIsFatal = Configs->ServerConfig
+                ->GetEndpointStorageNotImplementedErrorIsFatal();
+
             endpointStorage = CreateKeyringEndpointStorage(
                 Configs->ServerConfig->GetRootKeyringName(),
-                Configs->ServerConfig->GetEndpointsKeyringName());
+                Configs->ServerConfig->GetEndpointsKeyringName(),
+                notImplementedErrorIsFatal);
             break;
+        }
         case NCloud::NProto::ENDPOINT_STORAGE_FILE:
             endpointStorage = CreateFileEndpointStorage(
                 Configs->ServerConfig->GetEndpointStorageDir());
