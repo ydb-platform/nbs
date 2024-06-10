@@ -58,6 +58,28 @@ ui64 CalcTotalSize(const C& devices)
     });
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TDevicePoolConfigs CreateDevicePoolConfigs(
+    std::initializer_list<std::tuple<TString, ui64, NProto::EDevicePoolKind>>
+        pools)
+{
+    NProto::TDevicePoolConfig nonrepl;
+    nonrepl.SetAllocationUnit(DefaultBlockCount * DefaultBlockSize);
+
+    TDevicePoolConfigs result{{TString{}, nonrepl}};
+
+    for (auto [name, size, kind]: pools) {
+        NProto::TDevicePoolConfig config;
+        config.SetAllocationUnit(size);
+        config.SetName(name);
+        config.SetKind(kind);
+        result.emplace(name, std::move(config));
+    }
+
+    return result;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,6 +88,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 {
     Y_UNIT_TEST(ShouldAllocateSingleDevice)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (THashSet<TString> racks) {
@@ -90,9 +114,9 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         baz.MutableDevices(6)->SetState(NProto::DEVICE_STATE_WARNING);
         baz.MutableDevices(9)->SetState(NProto::DEVICE_STATE_ERROR);
 
-        deviceList.UpdateDevices(foo);
-        deviceList.UpdateDevices(bar);
-        deviceList.UpdateDevices(baz);
+        deviceList.UpdateDevices(foo, poolConfigs);
+        deviceList.UpdateDevices(bar, poolConfigs);
+        deviceList.UpdateDevices(baz, poolConfigs);
 
         deviceList.MarkDeviceAsDirty("foo-13");
         deviceList.MarkDeviceAsDirty("bar-13");
@@ -120,7 +144,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         UNIT_ASSERT(allocate({}).empty());
 
         UNIT_ASSERT(deviceList.MarkDeviceAsClean("foo-1"));
-        deviceList.UpdateDevices(foo);
+        deviceList.UpdateDevices(foo, poolConfigs);
 
         UNIT_ASSERT(allocate({"rack-1"}).empty());
         UNIT_ASSERT_VALUES_EQUAL("foo-1", allocate({}));
@@ -128,6 +152,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldAllocateDevices)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n, THashSet<TString> racks) {
@@ -154,13 +180,13 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         baz.MutableDevices(6)->SetState(NProto::DEVICE_STATE_WARNING);
         baz.MutableDevices(9)->SetState(NProto::DEVICE_STATE_ERROR);
 
-        deviceList.UpdateDevices(foo);
+        deviceList.UpdateDevices(foo, poolConfigs);
         UNIT_ASSERT_VALUES_EQUAL(15, deviceList.Size());
 
-        deviceList.UpdateDevices(bar);
+        deviceList.UpdateDevices(bar, poolConfigs);
         UNIT_ASSERT_VALUES_EQUAL(30, deviceList.Size());
 
-        deviceList.UpdateDevices(baz);
+        deviceList.UpdateDevices(baz, poolConfigs);
         UNIT_ASSERT_VALUES_EQUAL(45, deviceList.Size());
 
         UNIT_ASSERT_VALUES_EQUAL(0, deviceList.GetDirtyDevices().size());
@@ -254,11 +280,11 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         }
 
         UNIT_ASSERT(deviceList.MarkDeviceAsClean("foo-13"));
-        deviceList.UpdateDevices(foo);
+        deviceList.UpdateDevices(foo, poolConfigs);
         UNIT_ASSERT(deviceList.MarkDeviceAsClean("bar-13"));
-        deviceList.UpdateDevices(bar);
+        deviceList.UpdateDevices(bar, poolConfigs);
         UNIT_ASSERT(deviceList.MarkDeviceAsClean("baz-13"));
-        deviceList.UpdateDevices(baz);
+        deviceList.UpdateDevices(baz, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(0, allocate(3, {"rack-1"}).size());
         UNIT_ASSERT_VALUES_EQUAL(0, allocate(3, {"rack-2"}).size());
@@ -278,6 +304,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldMinimizeRackCountUponDeviceAllocation)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n, THashSet<TString> racks) {
@@ -303,7 +331,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     rack * 100 + agent,
                     Sprintf("rack-%u", rack));
 
-                deviceList.UpdateDevices(config);
+                deviceList.UpdateDevices(config, poolConfigs);
             }
         }
 
@@ -338,6 +366,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldMinimizeDeviceNameCountUponDeviceAllocation)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n) {
@@ -358,7 +388,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             {"/dev/1", "/dev/2", "/dev/3", "/dev/4"},
             400);
 
-        deviceList.UpdateDevices(config);
+        deviceList.UpdateDevices(config, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(400, deviceList.Size());
 
@@ -391,6 +421,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldSelectRackWithTheMostFreeSpaceUponDeviceAllocation)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n, THashSet<TString> preferredRacks = {}) {
@@ -408,10 +440,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         NProto::TAgentConfig agent2 = CreateAgentConfig("agent2", 2, "rack1");
         NProto::TAgentConfig agent3 = CreateAgentConfig("agent3", 3, "rack2");
         NProto::TAgentConfig agent4 = CreateAgentConfig("agent4", 4, "rack2");
-        deviceList.UpdateDevices(agent1);
-        deviceList.UpdateDevices(agent2);
-        deviceList.UpdateDevices(agent3);
-        deviceList.UpdateDevices(agent4);
+        deviceList.UpdateDevices(agent1, poolConfigs);
+        deviceList.UpdateDevices(agent2, poolConfigs);
+        deviceList.UpdateDevices(agent3, poolConfigs);
+        deviceList.UpdateDevices(agent4, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(60, deviceList.Size());
 
@@ -438,6 +470,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldSelectPhysicalDeviceWithTheMostSpaceUponDeviceAllocation)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n) {
@@ -464,8 +498,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             "",
             {"/dev1", "/dev2"},
             100);
-        deviceList.UpdateDevices(agent1);
-        deviceList.UpdateDevices(agent2);
+        deviceList.UpdateDevices(agent1, poolConfigs);
+        deviceList.UpdateDevices(agent2, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(200, deviceList.Size());
 
@@ -507,6 +541,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldSelectAgentWithTheLeastOccupiedSpaceUponDeviceAllocation)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (ui32 n) {
@@ -533,8 +569,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             "",
             {"/dev1"},
             200);
-        deviceList.UpdateDevices(agent1);
-        deviceList.UpdateDevices(agent2);
+        deviceList.UpdateDevices(agent1, poolConfigs);
+        deviceList.UpdateDevices(agent2, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(300, deviceList.Size());
 
@@ -592,6 +628,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldSelectRackAccordingToRestrictions)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         auto allocate = [&] (
@@ -613,9 +651,9 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         NProto::TAgentConfig agent1 = CreateAgentConfig("agent1", 1, "rack1");
         NProto::TAgentConfig agent2 = CreateAgentConfig("agent2", 2, "rack2");
         NProto::TAgentConfig agent3 = CreateAgentConfig("agent3", 3, "rack2");
-        deviceList.UpdateDevices(agent1);
-        deviceList.UpdateDevices(agent2);
-        deviceList.UpdateDevices(agent3);
+        deviceList.UpdateDevices(agent1, poolConfigs);
+        deviceList.UpdateDevices(agent2, poolConfigs);
+        deviceList.UpdateDevices(agent3, poolConfigs);
 
         UNIT_ASSERT_VALUES_EQUAL(45, deviceList.Size());
 
@@ -642,6 +680,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldAllocateFromSpecifiedNode)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
 
         TVector agents {
@@ -652,7 +692,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         for (const auto& agent: agents) {
             UNIT_ASSERT_VALUES_EQUAL(15, agent.DevicesSize());
-            deviceList.UpdateDevices(agent);
+            deviceList.UpdateDevices(agent, poolConfigs);
         }
 
         auto allocate = [&] (ui32 n, ui32 nodeId) {
@@ -697,6 +737,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     /*
     Y_UNIT_TEST(ShouldAllocateFromSpecifiedNodeByTag)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         const TString ssdLocalTag = "ssd_local";
 
         TDeviceList deviceList({}, {});
@@ -719,7 +761,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         for (const auto& agent: agents) {
             UNIT_ASSERT_VALUES_EQUAL(15, agent.DevicesSize());
-            deviceList.UpdateDevices(agent);
+            deviceList.UpdateDevices(agent, poolConfigs);
         }
 
         auto allocate = [&] (ui32 n, ui32 nodeId, TString name) {
@@ -775,6 +817,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const TString localPoolName = "local-ssd";
 
+        const auto poolConfigs = CreateDevicePoolConfigs({{
+            localPoolName, 93_GB, NProto::DEVICE_POOL_KIND_LOCAL
+        }});
+
         TDeviceList deviceList({}, {});
 
         TVector agents {
@@ -791,7 +837,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         for (const auto& agent: agents) {
             UNIT_ASSERT_VALUES_EQUAL(15, agent.DevicesSize());
-            deviceList.UpdateDevices(agent);
+            deviceList.UpdateDevices(agent, poolConfigs);
         }
 
         auto allocate = [&] (ui32 n) {
@@ -829,6 +875,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         const TString rotPoolName = "rot";
         const TString otherPoolName = "other";
 
+        const auto poolConfigs = CreateDevicePoolConfigs(
+            {{rotPoolName, 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL},
+             {otherPoolName, 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL}});
+
         TDeviceList deviceList({}, {});
 
         TVector agents {
@@ -841,7 +891,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         };
 
         for (const auto& agent: agents) {
-            deviceList.UpdateDevices(agent);
+            deviceList.UpdateDevices(agent, poolConfigs);
         }
 
         auto allocate = [&] (ui32 n) {
@@ -982,9 +1032,11 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         TDeviceList deviceList({}, {});
 
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         NProto::TAgentConfig foo = CreateAgentConfig("foo", 1000, "rack-1");
 
-        deviceList.UpdateDevices(foo);
+        deviceList.UpdateDevices(foo, poolConfigs);
         deviceList.MarkDeviceAsDirty("foo-1");
 
         deviceList.MarkDeviceAllocated("vol0", "foo-2");
@@ -1050,6 +1102,9 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
     Y_UNIT_TEST(ShouldTrackDeviceCountPerPool)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs(
+            {{"rot", 93_GB, NProto::DEVICE_POOL_KIND_GLOBAL}});
+
         TDeviceList deviceList({}, {});
 
         auto a1 = CreateAgentConfig("a1", 1000, "rack-1");
@@ -1061,8 +1116,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             {"/some/device"},
             100);
 
-        deviceList.UpdateDevices(a1);
-        deviceList.UpdateDevices(a2);
+        deviceList.UpdateDevices(a1, poolConfigs);
+        deviceList.UpdateDevices(a2, poolConfigs);
 
         auto devCounts = deviceList.GetPoolName2DeviceCount();
         UNIT_ASSERT_VALUES_EQUAL(2, devCounts.size());
@@ -1084,6 +1139,77 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         UNIT_ASSERT_VALUES_EQUAL(2, devCounts.size());
         UNIT_ASSERT_VALUES_EQUAL(14, devCounts[""]);
         UNIT_ASSERT_VALUES_EQUAL(0, devCounts["rot"]);
+    }
+
+    Y_UNIT_TEST(ShouldFilterOutDeviceWithWrongSize)
+    {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+        const ui64 hugeDeviceBlockCount = 10 * DefaultBlockCount;
+
+        auto createAgentConfig = [] (bool withHugeDevice) {
+            NProto::TAgentConfig agentConfig;
+            agentConfig.SetAgentId("node-id");
+            agentConfig.SetNodeId(42);
+
+            for (int i = 0; i != 3; ++i) {
+                auto* device = agentConfig.AddDevices();
+                device->SetBlockSize(DefaultBlockSize);
+                if (withHugeDevice && i == 1) {
+                    device->SetBlocksCount(hugeDeviceBlockCount);
+                    device->SetUnadjustedBlockCount(hugeDeviceBlockCount + 5);
+                } else {
+                    device->SetBlocksCount(DefaultBlockCount);
+                    device->SetUnadjustedBlockCount(DefaultBlockCount + 5);
+                }
+                device->SetRack("rack");
+                device->SetNodeId(agentConfig.GetNodeId());
+                device->SetDeviceUUID("uuid-" + ToString(i + 1));
+                device->SetDeviceName("path-" + device->GetDeviceUUID());
+                device->SetAgentId(agentConfig.GetAgentId());
+            }
+
+            return agentConfig;
+        };
+
+        const ui32 expectedDeviceCount = 3;
+
+        TDeviceList deviceList({}, {});
+
+        {
+            deviceList.UpdateDevices(createAgentConfig(true), poolConfigs);
+
+            const auto devices = deviceList.AllocateDevices("disk-id", {
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = expectedDeviceCount * DefaultBlockCount,
+            });
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+
+        {
+
+            deviceList.UpdateDevices(createAgentConfig(false), poolConfigs);
+
+            const auto devices = deviceList.AllocateDevices("disk-id", {
+                .LogicalBlockSize = DefaultBlockSize,
+                .BlockCount = expectedDeviceCount * DefaultBlockCount,
+            });
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedDeviceCount, devices.size());
+            for (const auto& device: devices) {
+                const ui64 size =
+                    device.GetBlockSize() * device.GetBlocksCount();
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    DefaultBlockCount * DefaultBlockSize,
+                    size,
+                    device);
+
+                UNIT_ASSERT_LT_C(
+                    device.GetBlocksCount(),
+                    device.GetUnadjustedBlockCount(),
+                    device);
+            }
+        }
     }
 }
 

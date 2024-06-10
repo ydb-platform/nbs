@@ -814,6 +814,141 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             }
         });
     }
+
+    Y_UNIT_TEST(ShouldEnforceAllocationUnitSize)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto criticalEvents = serverGroup->FindCounter(
+            "AppCriticalEvents/DiskRegistryAgentDevicePoolConfigMismatch");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, criticalEvents->Val());
+
+        TTestExecutor executor;
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        constexpr ui64 allocationUnitSize = 10_GB;
+
+        auto device = [] (TString uuid, ui64 size, TString rack) {
+            TDeviceConfig config;
+
+            config.SetDeviceName("path-" + uuid);
+            config.SetDeviceUUID(std::move(uuid));
+            config.SetRack(std::move(rack));
+            config.SetBlockSize(DefaultLogicalBlockSize);
+            config.SetBlocksCount(size / DefaultLogicalBlockSize);
+            config.SetUnadjustedBlockCount(size / DefaultLogicalBlockSize + 5);
+
+            return config;
+        };
+
+        const TVector agents {
+            AgentConfig(1, {
+                device("uuid-1.1", allocationUnitSize, "rack-1"),
+                device("uuid-1.2", allocationUnitSize, "rack-1"),
+            }),
+            AgentConfig(2, {
+                // uuid-2.1 has a non-standard size
+                device("uuid-2.1", 2 * allocationUnitSize, "rack-2"),
+                device("uuid-2.2", allocationUnitSize, "rack-2"),
+            }),
+            AgentConfig(3, {
+                device("uuid-3.1", allocationUnitSize, "rack-3"),
+                device("uuid-3.2", allocationUnitSize, "rack-3"),
+            })
+        };
+
+        TDiskRegistryState state = TDiskRegistryStateBuilder()
+            .WithStorageConfig([] {
+                auto config = CreateDefaultStorageConfigProto();
+                config.SetAllocationUnitNonReplicatedSSD(
+                    static_cast<ui32>(allocationUnitSize / 1_GB));
+                return config;
+            }())
+            .WithKnownAgents(agents)
+            .Build();
+
+        // uuid-2.1 was detected as a non-standart size device.
+        UNIT_ASSERT_VALUES_EQUAL(1, criticalEvents->Val());
+
+        auto allocate = [&] (auto db) {
+            TDiskRegistryState::TAllocateDiskResult result;
+
+            // Try allocating a mirrored disk with 2 devices per replica.
+            auto error = state.AllocateDisk(
+                Now(),
+                db,
+                TDiskRegistryState::TAllocateDiskParams{
+                    .DiskId = "m3",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount =
+                        2 * allocationUnitSize / DefaultLogicalBlockSize,
+                    .ReplicaCount = 2,
+                    .PoolName = {},
+                    .MediaKind = NProto::STORAGE_MEDIA_SSD_MIRROR3},
+                &result);
+
+            return std::make_pair(result, error);
+        };
+
+        // The allocation should fail because uuid-2.1 hasn't been added to
+        // the free pool and there is no enough space.
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto [_, error] = allocate(db);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_DISK_ALLOCATION_FAILED,
+                error.GetCode(),
+                error);
+        });
+
+        // cleaning devices after an unsuccessful allocation
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(4, state.GetDirtyDevices().size());
+
+                state.MarkDeviceAsClean(Now(), db, "uuid-1.1");
+                state.MarkDeviceAsClean(Now(), db, "uuid-1.2");
+                state.MarkDeviceAsClean(Now(), db, "uuid-3.1");
+                state.MarkDeviceAsClean(Now(), db, "uuid-3.2");
+
+                UNIT_ASSERT_VALUES_EQUAL(0, state.GetDirtyDevices().size());
+            });
+
+        // fix uuid-2.1
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto fixedConfig = agents[1];
+                auto& uuid21 = *fixedConfig.MutableDevices(0);
+
+                UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", uuid21.GetDeviceUUID());
+
+                uuid21.SetBlocksCount(allocationUnitSize);
+
+                auto error = RegisterAgent(state, db, fixedConfig, Now());
+                UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            });
+
+        // Now the free pool has enough space.
+        executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            auto [result, error] = allocate(db);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Replicas.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Replicas[0].size());
+            UNIT_ASSERT_VALUES_EQUAL(2, result.Replicas[1].size());
+        });
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
