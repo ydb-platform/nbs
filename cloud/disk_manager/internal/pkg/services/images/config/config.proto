@@ -21,4 +21,5 @@ message ImagesConfig {
     repeated DiskPoolConfig DefaultDiskPoolConfigs = 5;
     repeated string UseS3ForFolder = 6;
     optional uint32 UseS3Percentage = 7;
+    optional bool ConfigurePoolsByDefault = 8;
 }

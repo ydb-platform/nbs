@@ -31,7 +31,7 @@ func (s *service) CreateImage(
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
 
 	pools := make([]*types.DiskPool, 0)
-	if req.Pooled {
+	if req.Pooled || s.config.GetConfigurePoolsByDefault() {
 		for _, c := range s.config.GetDefaultDiskPoolConfigs() {
 			pools = append(pools, &types.DiskPool{
 				ZoneId:   c.GetZoneId(),
