@@ -1280,9 +1280,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldNotTriggerFatalErrorForCancelledRequests)
     {
         TBootstrap bootstrap;
-        auto promise = NewPromise<NProto::TCreateHandleResponse>();
+        auto promise = NewPromise<NProto::TAcquireLockResponse>();
 
-        bootstrap.Service->CreateHandleHandler = [&] (auto callContext, auto request) {
+        bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
             Y_UNUSED(request);
             return promise.GetFuture();
@@ -1290,13 +1290,21 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         bootstrap.Start();
 
-        auto future = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
-        UNIT_ASSERT_C(!future.HasValue(), "Future should not be set");
+        auto future =
+            bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
+        UNIT_ASSERT_C(
+            !future.HasValue(),
+            "TAcquireLockRequest future should not be set");
+
         bootstrap.Stop(); // wait till all requests are done writing their stats
+
+        UNIT_ASSERT_C(
+            !future.HasValue(),
+            "TAcquireLockRequest future should not be set after stop");
 
         auto counters = bootstrap.Counters
             ->FindSubgroup("component", "fs_ut")
-            ->FindSubgroup("request", "CreateHandle");
+            ->FindSubgroup("request", "AcquireLock");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
         UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
     }
