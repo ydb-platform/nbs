@@ -363,7 +363,9 @@ void CancelRequest(
     requestStats.RequestCompleted(
         log,
         callContext,
-        MakeError(E_CANCELLED, "Driver is stopping"));
+        MakeError(
+            MAKE_FILESTORE_ERROR(E_CANCELLED),
+            "Driver is stopping"));
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);

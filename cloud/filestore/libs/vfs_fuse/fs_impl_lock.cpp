@@ -216,7 +216,7 @@ void TFileSystem::AcquireLock(
                     // the guest anyway
                     self->ReplyError(
                         *callContext,
-                        MakeError(E_CANCELLED),
+                        MakeError(MAKE_FILESTORE_ERROR(E_CANCELLED)),
                         req,
                         EINTR);
                 } else {
