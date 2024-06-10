@@ -12,7 +12,7 @@
         "uri": "file://test_with_client.test_endpoint_proxy/results.txt"
     },
     "test_with_client.test_endpoint_proxy_uds": {
-        "uri": "file://test_with_client.test_endpoint_proxy_uds/results.txt"
+        "uri": "file://test_with_client.test_endpoint_proxy_uds/results.txt.processed"
     },
     "test_with_client.test_nbs_with_endpoint_proxy_uds": {
         "uri": "file://test_with_client.test_nbs_with_endpoint_proxy_uds/results.txt"
