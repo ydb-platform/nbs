@@ -823,9 +823,7 @@ void TDiskRegistryState::AdjustDeviceIfNeeded(
         return;
     }
 
-    if (deviceSize > unit) {
-        device.SetBlocksCount(unit / device.GetBlockSize());
-    }
+    device.SetBlocksCount(unit / device.GetBlockSize());
 }
 
 void TDiskRegistryState::RemoveAgentFromNode(
