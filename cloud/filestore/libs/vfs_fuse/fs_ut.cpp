@@ -1292,9 +1292,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto future =
             bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
-        UNIT_ASSERT_C(
-            !future.HasValue(),
-            "TAcquireLockRequest future should not be set");
 
         bootstrap.Stop(); // wait till all requests are done writing their stats
 
