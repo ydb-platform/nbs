@@ -339,6 +339,9 @@ NProto::TError TIndexTabletActor::ValidateWriteRequest(
 
     TString message;
     if (!IsWriteAllowed(BuildBackpressureThresholds(), &message)) {
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueBlobIndexOpIfNeeded(ctx);
+
         if (CompactionStateLoadStatus.Finished &&
             ++BackpressureErrorCount >=
                 Config->GetMaxBackpressureErrorsBeforeSuicide())
