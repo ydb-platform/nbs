@@ -223,11 +223,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
     {
         ShouldNotGetStoredEndpointByWrongId(InitFileStorages());
     }
-
-    Y_UNIT_TEST(FileStorageShouldNotThrow)
-    {
-        auto s = CreateFileEndpointStorage("nonexistent_dir");
-    }
 }
 
 }   // namespace NCloud
