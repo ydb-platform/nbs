@@ -16,21 +16,16 @@ namespace {
 constexpr ui32 META_KEY = 1;
 constexpr ui32 THROTTLER_STATE_KEY = 1;
 
-ui64 ConvertHistoryTime(TInstant ts)
-{
-    return Max<ui64>() - ts.MicroSeconds();
-}
-
-ui64 ConvertHistorySeqno(ui64 seqNo)
-{
-    return Max<ui64>() - seqNo;
-}
-
 THistoryLogKey CreateHistoryLogKey(ui64 ts, ui64 seqNo)
 {
     return THistoryLogKey{
         TInstant::MicroSeconds(Max<ui64>() - ts),
         Max<ui64>() - seqNo};
+}
+
+THistoryLogKey CreateReversedHistoryLogKey(const THistoryLogKey& key)
+{
+    return CreateHistoryLogKey(key.Timestamp.MicroSeconds(), key.SeqNo);
 }
 
 };  // namespace
@@ -267,12 +262,13 @@ bool TVolumeDatabase::ReadOutdatedHistory(
 
     using TTable = TVolumeSchema::History;
 
-    auto ts = THistoryLogKey(oldestTimestamp);
+    auto dbKey =
+        CreateReversedHistoryLogKey(THistoryLogKey(oldestTimestamp));
 
     auto it = Table<TTable>()
         .GreaterOrEqual(
-            ConvertHistoryTime(ts.Timestamp),
-            ConvertHistorySeqno(ts.SeqNo))
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Select<TTable::TKeyColumns>();
 
     if (!it.IsReady()) {
@@ -305,10 +301,12 @@ bool TVolumeDatabase::ReadHistory(
 {
     using TTable = TVolumeSchema::History;
 
+    auto dbKey = CreateReversedHistoryLogKey(startTs);
+
     auto it = Table<TTable>()
         .GreaterOrEqual(
-            ConvertHistoryTime(startTs.Timestamp),
-            ConvertHistorySeqno(startTs.SeqNo))
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
@@ -345,19 +343,23 @@ void TVolumeDatabase::DeleteHistoryEntry(THistoryLogKey entry)
 {
     using TTable = TVolumeSchema::History;
 
+    auto dbKey = CreateReversedHistoryLogKey(entry);
+
     Table<TTable>()
         .Key(
-            ConvertHistoryTime(entry.Timestamp),
-            ConvertHistorySeqno(entry.SeqNo))
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Delete();
 }
 
 void TVolumeDatabase::WriteHistory(THistoryLogItem item)
 {
     using TTable = TVolumeSchema::History;
+
+    auto dbKey = CreateReversedHistoryLogKey(item.Key);
+
     Table<TTable>()
-        .Key(ConvertHistoryTime(item.Key.Timestamp),
-            ConvertHistorySeqno(item.Key.SeqNo))
+        .Key(dbKey.Timestamp.MicroSeconds(), dbKey.SeqNo)
         .Update(NIceDb::TUpdate<TTable::OperationInfo>(item.Operation));
 }
 
