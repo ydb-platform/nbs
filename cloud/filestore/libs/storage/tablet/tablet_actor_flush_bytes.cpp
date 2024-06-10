@@ -562,8 +562,8 @@ void TIndexTabletActor::HandleFlushBytes(
         if (deletionMarkers.empty()) {
             FlushState.Complete();
             BlobIndexOpState.Complete();
-            // TODO: enqueue flush and blob index op
-            // TODO: enqueue these ops upon backpressure error as well
+            EnqueueBlobIndexOpIfNeeded(ctx);
+            EnqueueFlushIfNeeded(ctx);
 
             reply(ctx, *ev, MakeError(S_FALSE, "no bytes to flush"));
 
@@ -816,7 +816,8 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
 
             BlobIndexOpState.Complete();
             FlushState.Complete();
-            // TODO: enqueue flush and blob index op
+            EnqueueBlobIndexOpIfNeeded(ctx);
+            EnqueueFlushIfNeeded(ctx);
 
             return;
         }

@@ -1276,6 +1276,35 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto create = bootstrap.Fuse->SendRequest<TCreateHandleRequest>("/file1", RootNodeId);
         UNIT_ASSERT_EQUAL(create.GetValueSync(), handleId); // no interrupted
     }
+
+    Y_UNIT_TEST(ShouldNotTriggerFatalErrorForCancelledRequests)
+    {
+        TBootstrap bootstrap;
+        auto promise = NewPromise<NProto::TAcquireLockResponse>();
+
+        bootstrap.Service->AcquireLockHandler = [&] (auto callContext, auto request) {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            return promise.GetFuture();
+        };
+
+        bootstrap.Start();
+
+        auto future =
+            bootstrap.Fuse->SendRequest<TAcquireLockRequest>(0, F_RDLCK);
+
+        bootstrap.Stop(); // wait till all requests are done writing their stats
+
+        UNIT_ASSERT_C(
+            !future.HasValue(),
+            "TAcquireLockRequest future should not be set after stop");
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut")
+            ->FindSubgroup("request", "AcquireLock");
+        UNIT_ASSERT_EQUAL(1, counters->GetCounter("Errors")->GetAtomic());
+        UNIT_ASSERT_EQUAL(0, counters->GetCounter("Errors/Fatal")->GetAtomic());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
