@@ -162,6 +162,61 @@ message TDescribeDiskRegistryConfigResponse
     repeated TKnownDevicePool KnownDevicePools = 5;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+// Device Info
+
+message TDeviceInfo
+{
+    // Device  name.
+    string DeviceName = 1;
+
+    // Serial number.
+    string DeviceSerialNumber = 2;
+
+    // Total space in bytes.
+    uint64 DeviceTotalSpaceInBytes = 3;
+
+    // Allocated space in bytes.
+    uint64 DeviceAllocatedSpaceInBytes = 4;
+
+    // Free space in bytes.
+    uint64 DeviceFreeSpaceInBytes = 5;
+
+    // Dirty space in bytes.
+    uint64 DeviceDirtySpaceInBytes = 6;
+
+    // Suspended space in bytes.
+    uint64 DeviceSuspendedSpaceInBytes = 7;
+}
+
+message TAgentInfo {
+    // Agent  id.
+    string AgentId = 1;
+
+    // List of device info
+    repeated TDeviceInfo Devices = 2;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Query agents info
+
+message TQueryAgentsInfoRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+}
+
+message TQueryAgentsInfoResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // List of agent info
+    repeated TAgentInfo Agents = 2;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Volume create from device request/response.
 
