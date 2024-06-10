@@ -44,6 +44,7 @@
 #include <util/string/printf.h>
 #include <util/string/subst.h>
 #include <util/system/datetime.h>
+#include <util/system/fs.h>
 #include <util/thread/factory.h>
 
 #include <atomic>
@@ -172,6 +173,7 @@ struct TServer: IEndpointProxyServer
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
+    const TFsPath WorkingDirectory;
     NClient::TClientAppConfigPtr ClientConfig;
     TLog Log;
 
@@ -209,6 +211,7 @@ struct TServer: IEndpointProxyServer
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
+        , WorkingDirectory(NFs::CurrentWorkingDirectory())
         , Log(Logging->CreateLog("BLOCKSTORE_ENDPOINT_PROXY"))
     {
         NProto::TClientAppConfig clientConfig;
@@ -267,6 +270,18 @@ struct TServer: IEndpointProxyServer
         Thread->Join();
     }
 
+    TUnixSocketPath MakeUnixSocketAddress(TStringBuf unixSocketPath) const
+    {
+        TFsPath originalPath(unixSocketPath);
+        TFsPath resultingPath;
+        if (originalPath.IsSubpathOf(WorkingDirectory)) {
+            resultingPath = originalPath.RelativeTo(WorkingDirectory);
+        } else {
+            resultingPath = std::move(originalPath);
+        }
+        return TUnixSocketPath(resultingPath);
+    }
+
     void PreStart()
     {
         NbdClient = NBD::CreateClient(Logging, 4);
@@ -316,7 +331,7 @@ struct TServer: IEndpointProxyServer
 
             const int socketBacklog = 128;
             auto error = EndpointPoller.StartListenEndpoint(
-                Config.UnixSocketPath,
+                MakeUnixSocketAddress(Config.UnixSocketPath).Path,
                 socketBacklog,
                 S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
                 true, // multiClient
@@ -504,7 +519,7 @@ struct TServer: IEndpointProxyServer
             << " - Validated request");
 
         TNetworkAddress connectAddress(
-            TUnixSocketPath{request.GetUnixSocketPath()});
+            MakeUnixSocketAddress(request.GetUnixSocketPath()));
         ep.Client = NbdClient->CreateEndpoint(
             connectAddress,
             NBD::CreateClientHandler(Logging),
@@ -552,7 +567,7 @@ struct TServer: IEndpointProxyServer
 
         ep.InternalUnixSocketPath = request.GetUnixSocketPath() + ".p";
         ep.ListenAddress = std::make_unique<TNetworkAddress>(
-            TUnixSocketPath{ep.InternalUnixSocketPath});
+            MakeUnixSocketAddress(ep.InternalUnixSocketPath));
 
         // TODO fix StartEndpoint signature - it's actually synchronous
         auto startResult = NbdServer->StartEndpoint(

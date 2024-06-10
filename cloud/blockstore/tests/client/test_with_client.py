@@ -62,7 +62,7 @@ NRD_BLOCKS_COUNT = 1024**3 // BLOCK_SIZE
 ################################################################################
 # proc utils
 
-def run_async(job, stderr, stdout, cwd=None):
+def run_async(job, stdout, stderr, cwd=None):
     return subprocess.Popen(
         job,
         stdout=open(os.path.join(common.output_path(), stdout), "w"),
@@ -285,6 +285,7 @@ def setup(
         if input is not None:
             input = (input + "\n").encode("utf8")
 
+        logging.info("running command: %s" % args)
         process = subprocess.Popen(
             args,
             stdout=env.results_file,
@@ -1004,8 +1005,11 @@ def test_endpoint_proxy_uds():
     endpoint_proxy_path = common.binary_path(
         "cloud/blockstore/apps/endpoint_proxy/blockstore-endpoint-proxy")
 
-    ep_sock = "ep-%s.sock" % hash(common.context.test_name)
-    stored_endpoints = "sep-%s" % hash(common.context.test_name)
+    h = str(hash(common.context.test_name))
+    ep_sock = "ep-%s.sock" % h
+    vol_sock = os.path.abspath("vol-%s.sock" % h)
+
+    stored_endpoints = "sep-%s" % h
     os.makedirs(stored_endpoints, exist_ok=True)
 
     cmdline = [
@@ -1018,7 +1022,7 @@ def test_endpoint_proxy_uds():
 
     run("startproxyendpoint",
         "--endpoint-proxy-unix-socket-path", ep_sock,
-        "--socket", "TODO-nbs-socket",
+        "--socket", vol_sock,
         # can't use modprobe nbd in tests
         # "--nbd-device", "TODO-nbd-device",
         "--block-size", "4096",
@@ -1035,9 +1039,16 @@ def test_endpoint_proxy_uds():
 
     run("stopproxyendpoint",
         "--endpoint-proxy-unix-socket-path", ep_sock,
-        "--socket", "TODO-nbs-socket")
+        "--socket", vol_sock)
 
-    ret = common.canonical_file(env.results_path, local=True)
+    processed_results_path = env.results_path + ".processed"
+    cwd = os.getcwd()
+    with open(processed_results_path, "w") as rout:
+        with open(env.results_path) as rin:
+            for line in rin.readlines():
+                rout.write(line.replace(cwd, "CWD").replace(h, "H"))
+
+    ret = common.canonical_file(processed_results_path, local=True)
     tear_down(env)
     return ret
 

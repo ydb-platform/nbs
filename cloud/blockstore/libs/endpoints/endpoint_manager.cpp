@@ -1211,7 +1211,8 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
     if (request.GetUnixSocketPath().size() > UnixSocketPathLengthLimit) {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "Length of socket path should not be more than "
-            << UnixSocketPathLengthLimit);
+            << UnixSocketPathLengthLimit
+            << ", socket: " << request.GetUnixSocketPath());
     }
 
     auto future = listener->StartEndpoint(
