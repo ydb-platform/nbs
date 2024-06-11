@@ -360,6 +360,10 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 		return a, nil
 	}
 
+	if t.oldState.isInflight() && !t.state.isInflight() {
+		a.baseDisksInflightDiff = -1
+	}
+
 	if !t.oldState.fromPool {
 		// Returning base disk to pool is forbidden (otherwise it's nothing to
 		// do here).
@@ -400,10 +404,6 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 				t.state,
 			)
 		}
-	}
-
-	if t.oldState.isInflight() && !t.state.isInflight() {
-		a.baseDisksInflightDiff = -1
 	}
 
 	// NOTE: already existing base disk can't switch its state from
