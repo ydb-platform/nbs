@@ -43,7 +43,7 @@ func (s *storageYDB) getPools(
 	return pools, nil
 }
 
-func (s *storageYDB) getPoolBaseDisks(
+func (s *storageYDB) getBaseDisksFromPool(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	pool pool,
@@ -217,7 +217,7 @@ func (s *storageYDB) checkPoolConsistency(
 	for _, baseDisk := range baseDisks {
 		logging.Debug(
 			ctx,
-			"processing baseDisk %+v for pool %+v",
+			"checking consistency of baseDisk %+v from pool %+v",
 			baseDisk,
 			expectedPoolState,
 		)
@@ -289,7 +289,7 @@ func (s *storageYDB) checkPoolsConsistency(
 	}
 
 	for _, pool := range pools {
-		baseDisks, err := s.getPoolBaseDisks(ctx, tx, pool)
+		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
 		if err != nil {
 			return err
 		}
@@ -313,10 +313,5 @@ func (s *storageYDB) checkConsistency(
 		return err
 	}
 
-	err = s.checkBaseDisksConsistency(ctx, session)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.checkBaseDisksConsistency(ctx, session)
 }

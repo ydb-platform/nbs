@@ -2435,7 +2435,7 @@ func (s *storageYDB) configurePool(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) markBaseDisksDeleting(
+func (s *storageYDB) removeBaseDisksFromPool(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	toDelete []baseDisk,
@@ -2566,7 +2566,7 @@ func (s *storageYDB) deletePool(
 		return tx.Commit(ctx)
 	}
 
-	err = s.markBaseDisksDeleting(ctx, tx, toDelete)
+	err = s.removeBaseDisksFromPool(ctx, tx, toDelete)
 	if err != nil {
 		return err
 	}

@@ -392,6 +392,14 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 		a.sizeDiff = int64(t.state.freeSlots()) - int64(t.oldState.freeSlots())
 		a.freeUnitsDiff = int64(t.state.freeUnits()) - int64(t.oldState.freeUnits())
 		a.acquiredUnitsDiff = int64(t.state.activeUnits) - int64(t.oldState.activeUnits)
+
+		if t.oldState.isDoomed() {
+			return poolAction{}, errors.NewNonRetriableErrorf(
+				"internal inconsistency: invalid base disk transition from %+v to %+v",
+				t.oldState,
+				t.state,
+			)
+		}
 	}
 
 	if t.oldState.isInflight() && !t.state.isInflight() {
