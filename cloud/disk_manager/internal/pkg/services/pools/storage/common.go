@@ -132,11 +132,7 @@ func (d *baseDisk) toBaseDisk() BaseDisk {
 }
 
 func (d *baseDisk) isInflight() bool {
-	if d.fromPool {
-		return d.status == baseDiskStatusScheduling || d.status == baseDiskStatusCreating
-	}
-
-	return false
+	return d.status == baseDiskStatusScheduling || d.status == baseDiskStatusCreating
 }
 
 func (d *baseDisk) isDoomed() bool {
@@ -355,10 +351,10 @@ func computePoolAction(t baseDiskTransition) (poolAction, error) {
 			a.sizeDiff = int64(t.state.freeSlots())
 			a.freeUnitsDiff = int64(t.state.freeUnits())
 			a.acquiredUnitsDiff = int64(t.state.activeUnits)
+		}
 
-			if t.state.isInflight() {
-				a.baseDisksInflightDiff = 1
-			}
+		if t.state.isInflight() {
+			a.baseDisksInflightDiff = 1
 		}
 
 		return a, nil
