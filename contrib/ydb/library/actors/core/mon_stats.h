@@ -172,9 +172,14 @@ namespace NActors {
             AggregateOne(ActorsAliveByActivity, other.ActorsAliveByActivity);
             AggregateOne(ScheduledEventsByActivity, other.ScheduledEventsByActivity);
             AggregateOne(StuckActorsByActivity, other.StuckActorsByActivity);
-            if (other.CurrentActivationTime.TimeUs) {
-                AggregatedCurrentActivationTime.push_back(other.CurrentActivationTime);
+
+            auto timeUs = RelaxedLoad(&other.CurrentActivationTime.TimeUs);
+            if (timeUs) {
+                AggregatedCurrentActivationTime.push_back(TActivationTime{
+                    .TimeUs = timeUs,
+                    .LastActivity = RelaxedLoad(&other.CurrentActivationTime.LastActivity)});
             }
+
             if (other.AggregatedCurrentActivationTime.size()) {
                 AggregatedCurrentActivationTime.insert(AggregatedCurrentActivationTime.end(), other.AggregatedCurrentActivationTime.begin(), other.AggregatedCurrentActivationTime.end());
             }
