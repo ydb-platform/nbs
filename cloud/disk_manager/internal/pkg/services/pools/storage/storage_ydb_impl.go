@@ -686,7 +686,11 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			baseDiskTransition.state,
 		)
 
-		action := computePoolAction(baseDiskTransition)
+		action, err := computePoolAction(baseDiskTransition)
+		if err != nil {
+			return nil, err
+		}
+
 		logging.Debug(
 			ctx,
 			"computed pool action is %+v",
@@ -711,6 +715,12 @@ func (s *storageYDB) updatePoolsTable(
 	tx *persistence.Transaction,
 	transitions []poolTransition,
 ) error {
+
+	logging.Debug(
+		ctx,
+		"applying pool transitions %+v",
+		transitions,
+	)
 
 	var values []persistence.Value
 
@@ -1470,9 +1480,19 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		slot.targetAllottedSlots = 0
 		slot.targetAllottedUnits = 0
 
-		err = s.updateSlot(
+		baseDiskOldState := *found
+		err = releaseTargetUnitsAndSlots(ctx, tx, found, slotOldState)
+		if err != nil {
+			return err
+		}
+
+		err = s.updateBaseDiskAndSlot(
 			ctx,
 			tx,
+			baseDiskTransition{
+				oldState: &baseDiskOldState,
+				state:    found,
+			},
 			slotTransition{
 				oldState: &slotOldState,
 				state:    &slot,
@@ -2415,57 +2435,24 @@ func (s *storageYDB) configurePool(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) markBaseDisksDeleting(
+func (s *storageYDB) removeBaseDisksFromPool(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	toDelete []baseDisk,
 ) error {
 
+	var baseDiskTransitions []baseDiskTransition
 	for i := 0; i < len(toDelete); i++ {
-		toDelete[i].status = baseDiskStatusDeleting
+		baseDiskOldState := toDelete[i]
+		toDelete[i].fromPool = false
+
+		baseDiskTransitions = append(baseDiskTransitions, baseDiskTransition{
+			oldState: &baseDiskOldState,
+			state:    &toDelete[i],
+		})
 	}
 
-	var values []persistence.Value
-	for _, disk := range toDelete {
-		values = append(values, disk.structValue())
-	}
-
-	_, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $base_disks as List<%v>;
-
-		upsert into base_disks
-		select *
-		from AS_TABLE($base_disks)
-	`, s.tablesPath, baseDiskStructTypeString()),
-		persistence.ValueParam("$base_disks", persistence.ListValue(values...)),
-	)
-	if err != nil {
-		return err
-	}
-
-	values = nil
-	for _, disk := range toDelete {
-		structValue := persistence.StructValue(persistence.StructFieldValue(
-			"base_disk_id",
-			persistence.UTF8Value(disk.id),
-		))
-		values = append(values, structValue)
-	}
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $values as List<Struct<base_disk_id:Utf8>>;
-
-		upsert into deleting
-		select *
-		from AS_TABLE($values)
-	`, s.tablesPath),
-		persistence.ValueParam("$values", persistence.ListValue(values...)),
-	)
-	return err
+	return s.updateBaseDisks(ctx, tx, baseDiskTransitions)
 }
 
 func (s *storageYDB) deletePool(
@@ -2555,16 +2542,11 @@ func (s *storageYDB) deletePool(
 		return err
 	}
 
-	p = pool{
-		imageID:           p.imageID,
-		zoneID:            p.zoneID,
-		size:              0,
-		freeUnits:         0,
-		acquiredUnits:     0,
-		baseDisksInflight: 0,
-		status:            poolStatusDeleted,
-		createdAt:         p.createdAt,
-	}
+	updated := p
+	updated.status = poolStatusDeleted
+
+	logging.Debug(ctx, "applying pool transition from %+v to %+v", p, updated)
+
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -2574,7 +2556,7 @@ func (s *storageYDB) deletePool(
 		select *
 		from AS_TABLE($pool)
 	`, s.tablesPath, poolStructTypeString()),
-		persistence.ValueParam("$pool", persistence.ListValue(p.structValue())),
+		persistence.ValueParam("$pool", persistence.ListValue(updated.structValue())),
 	)
 	if err != nil {
 		return err
@@ -2584,7 +2566,7 @@ func (s *storageYDB) deletePool(
 		return tx.Commit(ctx)
 	}
 
-	err = s.markBaseDisksDeleting(ctx, tx, toDelete)
+	err = s.removeBaseDisksFromPool(ctx, tx, toDelete)
 	if err != nil {
 		return err
 	}

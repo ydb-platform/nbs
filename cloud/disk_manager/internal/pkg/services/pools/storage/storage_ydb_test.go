@@ -164,6 +164,9 @@ func TestStorageYDBReleaseNonExistent(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, baseDisk)
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, baseDisk))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBCreateBaseDisksPool(t *testing.T) {
@@ -375,6 +378,9 @@ func TestStorageYDBCreateBaseDisksPool(t *testing.T) {
 		require.Empty(t, disk.CreateTaskID)
 		require.False(t, disk.Ready)
 	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBPoolReusage1(t *testing.T) {
@@ -429,6 +435,9 @@ func TestStorageYDBPoolReusage1(t *testing.T) {
 	actual, err = storage.AcquireBaseDiskSlot(ctx, "image", slot2)
 	require.NoError(t, err)
 	require.Equal(t, baseDisks[0], actual)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBPoolReusage2(t *testing.T) {
@@ -485,6 +494,9 @@ func TestStorageYDBPoolReusage2(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, baseDisks[0], actual)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBDeletePool(t *testing.T) {
@@ -561,6 +573,9 @@ func TestStorageYDBDeletePool(t *testing.T) {
 
 	// Should not affect anything.
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }
 
@@ -655,6 +670,9 @@ func TestStorageYDBImageDeleting(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, scheduled[0].ID, actual.ID)
 	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, actual))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBBaseDisksDeleted(t *testing.T) {
@@ -741,6 +759,9 @@ func TestStorageYDBBaseDisksDeleted(t *testing.T) {
 	// Should not affect anything.
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
 	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBBaseDiskCreationFailed(t *testing.T) {
@@ -803,6 +824,9 @@ func TestStorageYDBBaseDiskCreationFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(actual))
 	require.Equal(t, baseDisks1[0], actual[0])
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBAcquireShouldUseBaseDiskAllocationUnits(t *testing.T) {
@@ -887,6 +911,9 @@ func TestStorageYDBAcquireShouldUseBaseDiskAllocationUnits(t *testing.T) {
 			require.Equal(t, baseDisks[0].ID, actual.ID)
 		}
 	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
@@ -1019,6 +1046,9 @@ func TestStorageYDBRebaseOverlayDisk1(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRebaseOverlayDisk2(t *testing.T) {
@@ -1098,6 +1128,9 @@ func TestStorageYDBRebaseOverlayDisk2(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
@@ -1209,6 +1242,9 @@ func TestStorageYDBRelocateOverlayDisk(t *testing.T) {
 		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
 		SlotGeneration:   relocateInfo.SlotGeneration,
 	})
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }
 
@@ -1374,6 +1410,9 @@ func TestStorageYDBRebaseOverlayDiskDuringRelocating(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.ErrorContains(t, err, "another rebase or relocate is in progress for slot")
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRetiringOverlayDiskDuringRelocating(t *testing.T) {
@@ -1469,6 +1508,9 @@ func TestStorageYDBRetiringOverlayDiskDuringRelocating(t *testing.T) {
 		TargetBaseDiskID: relocateInfo.TargetBaseDiskID,
 		SlotGeneration:   relocateInfo.SlotGeneration,
 	})
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }
 
@@ -1616,6 +1658,9 @@ func TestStorageYDBRelocatingOverlayDiskAfterRelocatingToAnotherZone(
 		SlotGeneration:   relocateInfo.SlotGeneration,
 	})
 	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBAbortOverlayDiskRebasing(t *testing.T) {
@@ -1713,6 +1758,9 @@ func TestStorageYDBAbortOverlayDiskRebasing(t *testing.T) {
 		OverlayDisk:      slot.OverlayDisk,
 		TargetBaseDiskID: anotherTarget.ID,
 	})
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 }
 
@@ -1874,6 +1922,9 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, retired)
 	}
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBBaseDiskShouldNotBeFreeAfterRetireStarted(t *testing.T) {
@@ -1948,6 +1999,9 @@ func TestStorageYDBBaseDiskShouldNotBeFreeAfterRetireStarted(t *testing.T) {
 	require.Error(t, err)
 	// Check that there are no free slots (on base disks).
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBCreatePoolOnDemand(t *testing.T) {
@@ -1989,6 +2043,9 @@ func TestStorageYDBCreatePoolOnDemand(t *testing.T) {
 	configured, err = storage.IsPoolConfigured(ctx, "image", "zone")
 	require.NoError(t, err)
 	require.True(t, configured)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
@@ -2060,6 +2117,9 @@ func TestStorageYDBCreatePoolWithImageSize(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
@@ -2102,6 +2162,9 @@ func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
 	require.Equal(t, imageSize, baseDisks[0].Size)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
@@ -2162,6 +2225,9 @@ func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
 	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBReleasingOneSlotShouldNotIncreaseSizeOfPoolIfBaseDiskIsStillUnfree(t *testing.T) {
@@ -2251,6 +2317,9 @@ func TestStorageYDBReleasingOneSlotShouldNotIncreaseSizeOfPoolIfBaseDiskIsStillU
 	require.NoError(t, err)
 	require.Equal(t, 1, len(actual))
 	require.NotEqual(t, baseDisks[0].ID, actual[0].ID)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBReleaseSlotOnDeletedBaseDisk(t *testing.T) {
@@ -2288,6 +2357,9 @@ func TestStorageYDBReleaseSlotOnDeletedBaseDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = storage.ReleaseBaseDiskSlot(ctx, slot.OverlayDisk)
+	require.NoError(t, err)
+
+	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
 
 	err = storage.BaseDisksDeleted(ctx, baseDisks)
@@ -2342,6 +2414,9 @@ func TestStorageYDBShouldSurviveBaseDisksInflightOverlimit(t *testing.T) {
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Empty(t, baseDisks)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }
 
 func TestStorageYDBDeletePoolWhenRetiringIsInFlight(t *testing.T) {
@@ -2409,4 +2484,7 @@ func TestStorageYDBDeletePoolWhenRetiringIsInFlight(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(actual))
 	require.Equal(t, targetBaseDiskID, actual[0].ID)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }

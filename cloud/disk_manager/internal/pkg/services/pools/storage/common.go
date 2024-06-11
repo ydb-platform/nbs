@@ -342,51 +342,74 @@ func (a *poolAction) apply(state *pool) {
 	)
 }
 
-func computePoolAction(t baseDiskTransition) poolAction {
+func computePoolAction(t baseDiskTransition) (poolAction, error) {
 	var a poolAction
 
 	if t.oldState == nil {
-		if !t.state.isDoomed() {
+		if t.state.fromPool {
 			// Add all free slots to pool when creating new base disk.
 			a.sizeDiff = int64(t.state.freeSlots())
 			a.freeUnitsDiff = int64(t.state.freeUnits())
+			a.acquiredUnitsDiff = int64(t.state.activeUnits)
 		}
 
 		if t.state.isInflight() {
 			a.baseDisksInflightDiff = 1
 		}
 
-		return a
-	}
-
-	if !t.oldState.fromPool {
-		// Returning base disk to pool is forbidden (otherwise it's nothing to
-		// do here).
-		return a
-	}
-
-	switch {
-	case !t.state.fromPool || (!t.oldState.isDoomed() && t.state.isDoomed()):
-		// Remove all free slots from pool when ejecting base disk.
-		a.sizeDiff = -int64(t.oldState.freeSlots())
-		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
-		// TODO: check that t.oldState.activeUnits is 0
-
-	case t.oldState.status == t.state.status && !t.state.isDoomed():
-		// Regular transition for healthy base disks.
-		a.sizeDiff = int64(t.state.freeSlots()) - int64(t.oldState.freeSlots())
-		a.freeUnitsDiff = int64(t.state.freeUnits()) - int64(t.oldState.freeUnits())
-		a.acquiredUnitsDiff = int64(t.state.activeUnits) - int64(t.oldState.activeUnits)
+		return a, nil
 	}
 
 	if t.oldState.isInflight() && !t.state.isInflight() {
 		a.baseDisksInflightDiff = -1
 	}
 
+	if !t.oldState.fromPool {
+		// Returning base disk to pool is forbidden (otherwise it's nothing to
+		// do here).
+		return a, nil
+	}
+
+	switch {
+	case !t.oldState.isDoomed() && t.state.isDoomed():
+		a.sizeDiff = -int64(t.oldState.freeSlots())
+		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
+		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
+
+		if t.state.status != baseDiskStatusCreationFailed &&
+			t.state.activeUnits != 0 {
+
+			return poolAction{}, errors.NewNonRetriableErrorf(
+				"internal inconsistency: invalid base disk state %+v",
+				t.state,
+			)
+		}
+
+	case !t.state.fromPool:
+		// Remove all free slots from pool when ejecting base disk.
+		a.sizeDiff = -int64(t.oldState.freeSlots())
+		a.freeUnitsDiff = -int64(t.oldState.freeUnits())
+		a.acquiredUnitsDiff = -int64(t.oldState.activeUnits)
+
+	case !t.state.isDoomed():
+		// Regular transition for base disks.
+		a.sizeDiff = int64(t.state.freeSlots()) - int64(t.oldState.freeSlots())
+		a.freeUnitsDiff = int64(t.state.freeUnits()) - int64(t.oldState.freeUnits())
+		a.acquiredUnitsDiff = int64(t.state.activeUnits) - int64(t.oldState.activeUnits)
+
+		if t.oldState.isDoomed() {
+			return poolAction{}, errors.NewNonRetriableErrorf(
+				"internal inconsistency: invalid base disk transition from %+v to %+v",
+				t.oldState,
+				t.state,
+			)
+		}
+	}
+
 	// NOTE: already existing base disk can't switch its state from
 	// 'not inflight' to 'inflight'.
 
-	return a
+	return a, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
