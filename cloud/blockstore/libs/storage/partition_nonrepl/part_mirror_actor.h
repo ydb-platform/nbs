@@ -30,6 +30,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration ChecksumMismatchTimeout = TDuration::Minutes(5);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
@@ -63,10 +67,10 @@ private:
 
     bool ScrubbingScheduled = false;
     ui64 ScrubbingRangeId = 0;
-    TBlockRange64 ScrubbingRange;
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
     bool WriteIntersectsWithScrubbing = false;
     ui64 ScrubbingThroughput = 0;
+    TInstant ScrubbingRangeStarted;
 
 public:
     TMirrorPartitionActor(

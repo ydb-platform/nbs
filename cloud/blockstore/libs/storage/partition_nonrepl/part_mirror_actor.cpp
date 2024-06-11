@@ -60,6 +60,7 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
 
     if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
         ScheduleScrubbingNextRange(ctx);
+        ScrubbingRangeStarted = ctx.Now();
     }
 
     Become(&TThis::StateWork);
@@ -136,6 +137,20 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     }
 
     if (!equal) {
+        if (ctx.Now() - ScrubbingRangeStarted < ChecksumMismatchTimeout) {
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[%s] Checksum mismatch for range %s, reshedule scrubbing",
+                DiskId.c_str(),
+                DescribeRange(
+                    RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize()))
+                    .c_str());
+
+            ScheduleScrubbingNextRange(ctx);
+            return;
+        }
+
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -160,6 +175,7 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
 
     ++ScrubbingRangeId;
     ScheduleScrubbingNextRange(ctx);
+    ScrubbingRangeStarted = ctx.Now();
 }
 
 void TMirrorPartitionActor::ReplyAndDie(const TActorContext& ctx)
@@ -304,6 +320,7 @@ void TMirrorPartitionActor::HandleScrubbingNextRange(
 
         ++ScrubbingRangeId;
         ScheduleScrubbingNextRange(ctx);
+        ScrubbingRangeStarted = ctx.Now();
         return;
     }
 

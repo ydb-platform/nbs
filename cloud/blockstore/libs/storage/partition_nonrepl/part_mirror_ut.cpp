@@ -1144,13 +1144,14 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TTestEnv env(runtime);
 
-        auto& counter = env.StorageStatsServiceState->Counters.Cumulative.ScrubbingThroughput;
+        auto& counter = env.StorageStatsServiceState->Counters;
 
         runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 
-        UNIT_ASSERT_VALUES_EQUAL(2 * 4_MB, counter.Value);
+        UNIT_ASSERT_VALUES_EQUAL(2 * 4_MB, counter.Cumulative.ScrubbingThroughput.Value);
+        UNIT_ASSERT_VALUES_EQUAL(33, counter.Simple.ScrubbingProgress.Value);
     }
 
     Y_UNIT_TEST(ShouldFindChecksumMismatch)
@@ -1166,17 +1167,6 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             runtime.EnableScheduleForActor(actorId);
         });
 
-        ui32 rangeCount = 0;
-        runtime.SetScheduledEventFilter([&] (auto& runtime, auto& event, auto&& delay, auto&& deadline) {
-            Y_UNUSED(runtime);
-            Y_UNUSED(delay);
-            Y_UNUSED(deadline);
-            if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
-                ++rangeCount;
-            }
-
-            return false;
-        });
 
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
@@ -1192,8 +1182,16 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range2, 'A');
         env.WriteReplica(2, range2, 'B');
 
-        while (rangeCount < 6) {
-            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        ui64 prevScrubbingProgress = 101;
+        auto& counter = env.StorageStatsServiceState->Counters;
+        ui32 fullCyclesCount = 0;
+        while (fullCyclesCount < 2) {
+            if (prevScrubbingProgress != 0 && counter.Simple.ScrubbingProgress.Value == 0) {
+                fullCyclesCount++;
+            }
+            prevScrubbingProgress = counter.Simple.ScrubbingProgress.Value;
+            runtime.AdvanceCurrentTime(UpdateCountersInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
 
         auto mirroredDiskChecksumMismatch =
@@ -1205,9 +1203,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         env.WriteMirror(range3, 'A');
         env.WriteReplica(1, range3, 'B');
 
-        rangeCount = 0;
-        while (rangeCount < 6) {
-            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        while (fullCyclesCount < 3) {
+            if (prevScrubbingProgress != 0 && counter.Simple.ScrubbingProgress.Value == 0) {
+                fullCyclesCount++;
+            }
+            prevScrubbingProgress = counter.Simple.ScrubbingProgress.Value;
+            runtime.AdvanceCurrentTime(UpdateCountersInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
         }
         UNIT_ASSERT_VALUES_EQUAL(5, mirroredDiskChecksumMismatch->Val());
     }
@@ -1292,7 +1294,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         TTestEnv env(runtime);
 
-        const auto range = TBlockRange64::WithLength(0, 200);
+        const auto range = TBlockRange64::WithLength(5, 200);
 
         env.WriteReplica(0, range, 'A');
         env.WriteReplica(1, range, 'B');
@@ -1369,6 +1371,92 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         auto mirroredDiskChecksumMismatch =
             counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotFindMismatchIfWriteRequestToOneReplicaHasError)
+    {
+        using namespace NMonitoring;
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+
+        TTestBasicRuntime runtime;
+        runtime.SetRegistrationObserverFunc(
+            [] (auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
+
+        TTestEnv env(runtime);
+
+        const auto range = TBlockRange64::WithLength(5, 200);
+
+        env.WriteMirror(range, 'A');
+
+        ui32 rangeCount = 0;
+        TAutoPtr<IEventHandle> delayedChecksumRequest;
+        ui32 writeDeviceResponses = 0;
+        runtime.SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+            if (event->GetTypeRewrite() == TEvDiskAgent::EvWriteDeviceBlocksRequest) {
+                writeDeviceResponses++;
+                if (writeDeviceResponses == 3) {
+                    auto response = std::make_unique<TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
+                        MakeError(E_REJECTED, "error")
+                    );
+                    runtime.Send(new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        response.release(),
+                        0, // flags
+                        event->Cookie
+                    ), 0);
+
+                    if (delayedChecksumRequest) {
+                        runtime.Send(delayedChecksumRequest.Release());
+                    }
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        runtime.SetScheduledEventFilter([&] (auto& runtime, auto& event, auto&& delay, auto&& deadline) {
+            Y_UNUSED(runtime);
+            Y_UNUSED(delay);
+            Y_UNUSED(deadline);
+            if (event->GetTypeRewrite() == TEvNonreplPartitionPrivate::EvScrubbingNextRange) {
+                ++rangeCount;
+            }
+
+            return false;
+        });
+
+        TPartitionClient client(runtime, env.ActorId);
+        TString data(DefaultBlockSize, 'B');
+        client.SendWriteBlocksLocalRequest(range, data);
+        auto response = client.RecvWriteBlocksLocalResponse();
+
+        runtime.AdvanceCurrentTime(UpdateCountersInterval);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+
+        auto mirroredDiskChecksumMismatch =
+            counters->GetCounter("AppCriticalEvents/MirroredDiskChecksumMismatch", true);
+        auto& counter = env.StorageStatsServiceState->Counters;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, counter.Simple.ScrubbingProgress.Value);
+
+        client.SendWriteBlocksLocalRequest(range, data);
+        response = client.RecvWriteBlocksLocalResponse();
+
+        while (counter.Simple.ScrubbingProgress.Value == 0) {
+            runtime.AdvanceCurrentTime(UpdateCountersInterval);
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
     }
