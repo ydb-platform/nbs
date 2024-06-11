@@ -28,9 +28,9 @@ bool TVolumeActor::PrepareCleanupHistory(
 
     TVolumeDatabase db(tx.DB);
     return db.ReadOutdatedHistory(
-        args.OutdatedHistory,
         args.Key,
-        args.ItemsToRemove);
+        args.ItemsToRemove,
+        args.OutdatedHistory);
 }
 
 void TVolumeActor::ExecuteCleanupHistory(

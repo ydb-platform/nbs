@@ -16,16 +16,16 @@ namespace {
 constexpr ui32 META_KEY = 1;
 constexpr ui32 THROTTLER_STATE_KEY = 1;
 
-////////////////////////////////////////////////////////////////////////////////
-
-TInstant ConvertHistoryTime(ui64 ts)
+THistoryLogKey CreateHistoryLogKey(ui64 ts, ui64 seqNo)
 {
-    return TInstant::MicroSeconds(Max<ui64>() - ts);
+    return THistoryLogKey{
+        TInstant::MicroSeconds(Max<ui64>() - ts),
+        Max<ui64>() - seqNo};
 }
 
-ui64 ConvertHistoryTime(TInstant ts)
+THistoryLogKey CreateReversedHistoryLogKey(const THistoryLogKey& key)
 {
-    return Max<ui64>() - ts.MicroSeconds();
+    return CreateHistoryLogKey(key.Timestamp.MicroSeconds(), key.SeqNo);
 }
 
 };  // namespace
@@ -252,14 +252,23 @@ void TVolumeDatabase::RemoveClient(const TString& clientId)
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TVolumeDatabase::ReadOutdatedHistory(
-    TVector<THistoryLogKey>& records,
     TInstant oldestTimestamp,
-    ui32 itemCount)
+    ui32 itemCount,
+    TVector<THistoryLogKey>& records)
 {
+    if (!itemCount) {
+        return true;
+    }
+
     using TTable = TVolumeSchema::History;
 
+    auto dbKey =
+        CreateReversedHistoryLogKey(THistoryLogKey(oldestTimestamp));
+
     auto it = Table<TTable>()
-        .GreaterOrEqual(ConvertHistoryTime(oldestTimestamp), 0)
+        .GreaterOrEqual(
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Select<TTable::TKeyColumns>();
 
     if (!it.IsReady()) {
@@ -267,9 +276,9 @@ bool TVolumeDatabase::ReadOutdatedHistory(
     }
 
     while (it.IsValid()) {
-        THistoryLogKey key {
-            ConvertHistoryTime(it.GetValue<TTable::Timestamp>()),
-            it.GetValue<TTable::SeqNo>()};
+        auto key = CreateHistoryLogKey(
+            it.GetValue<TTable::Timestamp>(),
+            it.GetValue<TTable::SeqNo>());
         records.push_back(key);
 
         if (records.size() == itemCount) {
@@ -285,36 +294,19 @@ bool TVolumeDatabase::ReadOutdatedHistory(
 }
 
 bool TVolumeDatabase::ReadHistory(
-    TDeque<THistoryLogItem>& records,
-    TInstant startTs,
+    THistoryLogKey startTs,
     TInstant endTs,
-    ui64 numRecords)
-{
-    TVector<THistoryLogItem> out;
-    bool result = ReadHistory(
-        out,
-        startTs,
-        endTs,
-        numRecords);
-
-    if (result) {
-        for (auto& h : out) {
-            records.push_back(std::move(h));
-        }
-    }
-    return result;
-}
-
-bool TVolumeDatabase::ReadHistory(
-    TVector<THistoryLogItem>& records,
-    TInstant startTs,
-    TInstant endTs,
-    ui64 numRecords)
+    ui64 numRecords,
+    TVolumeMountHistorySlice& records)
 {
     using TTable = TVolumeSchema::History;
 
+    auto dbKey = CreateReversedHistoryLogKey(startTs);
+
     auto it = Table<TTable>()
-        .GreaterOrEqual(ConvertHistoryTime(startTs), 0)
+        .GreaterOrEqual(
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
@@ -322,29 +314,28 @@ bool TVolumeDatabase::ReadHistory(
     }
 
     while (it.IsValid()) {
-        THistoryLogKey itemKey;
-        itemKey.Timestamp = ConvertHistoryTime(it.template GetValue<TTable::Timestamp>());
+        auto itemKey = CreateHistoryLogKey(
+            it.template GetValue<TTable::Timestamp>(),
+            it.template GetValue<TTable::SeqNo>());
+
         if (itemKey.Timestamp < endTs) {
             return true;
         }
 
-        itemKey.Seqno = it.template GetValue<TTable::SeqNo>();
-
-        THistoryLogItem item {itemKey, it.template GetValue<TTable::OperationInfo>()};
-
-        if (numRecords &&
-            records.size() >= numRecords &&
-            itemKey.Timestamp != records.back().Key.Timestamp)
-        {
+        if (records.Items.size() == numRecords) {
+            records.NextOlderRecord.emplace(itemKey);
             return true;
         }
 
-        records.push_back(std::move(item));
+        THistoryLogItem item {itemKey, it.template GetValue<TTable::OperationInfo>()};
+
+        records.Items.push_back(std::move(item));
 
         if (!it.Next()) {
             return false;   // not ready
         }
     }
+
     return true;
 }
 
@@ -352,18 +343,23 @@ void TVolumeDatabase::DeleteHistoryEntry(THistoryLogKey entry)
 {
     using TTable = TVolumeSchema::History;
 
+    auto dbKey = CreateReversedHistoryLogKey(entry);
+
     Table<TTable>()
-        .Key(ConvertHistoryTime(entry.Timestamp), entry.Seqno)
+        .Key(
+            dbKey.Timestamp.MicroSeconds(),
+            dbKey.SeqNo)
         .Delete();
 }
 
 void TVolumeDatabase::WriteHistory(THistoryLogItem item)
 {
     using TTable = TVolumeSchema::History;
+
+    auto dbKey = CreateReversedHistoryLogKey(item.Key);
+
     Table<TTable>()
-        .Key(ConvertHistoryTime(
-            item.Key.Timestamp),
-            item.Key.Seqno)
+        .Key(dbKey.Timestamp.MicroSeconds(), dbKey.SeqNo)
         .Update(NIceDb::TUpdate<TTable::OperationInfo>(item.Operation));
 }
 

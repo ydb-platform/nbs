@@ -35,7 +35,7 @@ void TVolumeActor::HandleReadHistory(
     ProcessReadHistory(
         ctx,
         std::move(requestInfo),
-        msg->StartTs,
+        THistoryLogKey(msg->StartTs),
         msg->EndTs.value_or(ctx.Now() - Config->GetVolumeHistoryDuration()),
         msg->RecordCount,
         false);
@@ -44,7 +44,7 @@ void TVolumeActor::HandleReadHistory(
 void TVolumeActor::ProcessReadHistory(
     const NActors::TActorContext& ctx,
     TRequestInfoPtr requestInfo,
-    TInstant startTs,
+    THistoryLogKey startTs,
     TInstant endTs,
     size_t recordCount,
     bool monRequest)
@@ -71,11 +71,12 @@ bool TVolumeActor::PrepareReadHistory(
     Y_UNUSED(tx);
 
     TVolumeDatabase db(tx.DB);
+
     return db.ReadHistory(
-        args.History,
         args.Ts,
         args.OldestTs,
-        args.RecordCount);
+        args.RecordCount,
+        args.History);
 }
 
 void TVolumeActor::ExecuteReadHistory(
@@ -93,20 +94,16 @@ void TVolumeActor::CompleteReadHistory(
     TTxVolume::TReadHistory& args)
 {
     if (args.MonRequest) {
-        TDeque<THistoryLogItem> history;
-        for (auto& h : args.History) {
-            history.push_back(std::move(h));
-        }
         HandleHttpInfo_Default(
             ctx,
-            history,
+            args.History,
             State ? State->GetMetaHistory() : TVector<TVolumeMetaHistoryItem>{},
             "History",
             {},
             args.RequestInfo);
     } else {
         auto response = std::make_unique<TEvVolumePrivate::TEvReadHistoryResponse>();
-        response->History = std::move(args.History);
+        response->History = std::move(args.History.Items);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     }
