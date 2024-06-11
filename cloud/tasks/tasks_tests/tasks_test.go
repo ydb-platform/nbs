@@ -737,7 +737,7 @@ func TestTasksSendEvent(t *testing.T) {
 			}
 		}
 
-		return tasks_storage.TaskState{}, fmt.Errorf("Should never reach this line")
+		return tasks_storage.TaskState{}, errors.NewPanicError("Should never reach this line")
 	}
 
 	err = s.scheduler.SendEvent(ctx, id, 10)
