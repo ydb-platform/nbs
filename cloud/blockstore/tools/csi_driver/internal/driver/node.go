@@ -408,7 +408,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		Endpoint: &nfsapi.TEndpointConfig{
 			SocketPath:       socketPath,
 			FileSystemId:     req.VolumeId,
-			ClientId:         s.clientID,
+			ClientId:         fmt.Sprintf("%s-%s", s.clientID, s.getPodId(req)),
 			VhostQueuesCount: 8,
 			Persistent:       true,
 		},

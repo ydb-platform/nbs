@@ -32,6 +32,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	ctx := context.Background()
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
+	nfsClientId := "testClientId-test-pod-id-13"
 	diskID := "test-disk-id-42"
 	podSocketsDir := filepath.Join(tempDir, "sockets")
 	nbsSocketsDir := "/test/sockets/folder"
@@ -88,7 +89,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
 				FileSystemId:     diskID,
-				ClientId:         clientID,
+				ClientId:         nfsClientId,
 				VhostQueuesCount: 8,
 				Persistent:       true,
 			},
