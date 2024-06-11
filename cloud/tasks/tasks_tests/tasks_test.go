@@ -725,20 +725,19 @@ func TestTasksSendEvent(t *testing.T) {
 	updateTask := func() (tasks_storage.TaskState, error) {
 		ticker := time.NewTicker(20 * time.Millisecond)
 
-		for {
-			select {
-			case <-ticker.C:
-				taskState, err := s.storage.GetTask(ctx, id)
-				require.NoError(t, err)
+		for range ticker.C {
+			taskState, err := s.storage.GetTask(ctx, id)
+			require.NoError(t, err)
 
-				taskState, err = s.storage.UpdateTask(ctx, taskState)
-				// Retry UpdateTask as it might encounter 'wrong generation'
-				// because task might be locked/executed in parallel.
-				if err == nil {
-					return taskState, err
-				}
+			taskState, err = s.storage.UpdateTask(ctx, taskState)
+			// Retry UpdateTask as it might encounter 'wrong generation'
+			// because task might be locked/executed in parallel.
+			if err == nil {
+				return taskState, err
 			}
 		}
+
+		return tasks_storage.TaskState{}, fmt.Errorf("Should never reach this line")
 	}
 
 	err = s.scheduler.SendEvent(ctx, id, 10)
