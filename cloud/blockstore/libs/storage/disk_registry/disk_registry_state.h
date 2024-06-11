@@ -737,6 +737,11 @@ public:
         bool isReplacement);
 
     NProto::TError SuspendDevice(TDiskRegistryDatabase& db, const TDeviceId& id);
+
+    void SuspendDeviceIfNeeded(
+        TDiskRegistryDatabase& db,
+        NProto::TDeviceConfig& device);
+
     void ResumeDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -1220,6 +1225,10 @@ private:
         const THashMap<TDeviceId, NProto::TDeviceConfig>& oldConfigs) const;
 
     void ResetMigrationStartTsIfNeeded(TDiskState& disk);
+
+    struct TConfigUpdateEffect;
+    TResultOrError<TConfigUpdateEffect> CalcConfigUpdateEffect(
+        const NProto::TDiskRegistryConfig& newConfig) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
