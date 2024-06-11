@@ -6,42 +6,37 @@ using namespace NBlobMarkers;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ApplyMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksRequest& request)
-{
-    Y_UNUSED(blockMarks);
-    Y_UNUSED(request);
-}
-
-void ApplyMask(
-    const TBlockMarks& blockMarks,
+void ClearEmptyBlocks(
+    const TBlockMarks& usedBlocks,
     NProto::TReadBlocksResponse& response)
 {
     auto& buffers = *response.MutableBlocks()->MutableBuffers();
-    const size_t minSize = std::min(std::ssize(blockMarks), std::ssize(buffers));
-    for (size_t i = 0; i < minSize; ++i) {
-        if (buffers[i].data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
-            memset(buffers[i].begin(), 0, buffers[i].size());
+    const size_t blockCount = Min<size_t>(usedBlocks.size(), buffers.size());
+    for (size_t i = 0; i < blockCount; ++i) {
+        auto& buffer = buffers[i];
+        if (buffer.data() && std::holds_alternative<TEmptyMark>(usedBlocks[i]))
+        {
+            memset(buffer.begin(), 0, buffer.size());
         }
     }
 }
 
-void ApplyMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksLocalRequest& request)
+void ClearEmptyBlocks(
+    const TBlockMarks& usedBlocks,
+    const TGuardedSgList& sglist)
 {
-    auto& sglist = request.Sglist;
     auto guard = sglist.Acquire();
     if (!guard) {
         return;
     }
 
-    auto& blockDatas = guard.Get();
+    const auto& buffers = guard.Get();
 
-    for (size_t i = 0; i < blockMarks.size() && i < blockDatas.size(); ++i) {
-        auto& buffer = blockDatas[i];
-        if (buffer.Data() && std::holds_alternative<TEmptyMark>(blockMarks[i])) {
+    const size_t blockCount = Min(usedBlocks.size(), buffers.size());
+    for (size_t i = 0; i < blockCount; ++i) {
+        const auto& buffer = buffers[i];
+        if (buffer.Data() && std::holds_alternative<TEmptyMark>(usedBlocks[i]))
+        {
             memset(const_cast<char*>(buffer.Data()), 0, buffer.Size());
         }
     }
@@ -49,32 +44,7 @@ void ApplyMask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void FillUnencryptedBlockMask(
-    const TBlockMarks& blockMarks,
-    NProto::TReadBlocksResponse& response)
-{
-    if (blockMarks.empty()) {
-        return;
-    }
-
-    TDynBitMap bitmap;
-    for (size_t i = 0; i < blockMarks.size(); ++i) {
-        if (std::holds_alternative<TEmptyMark>(blockMarks[i]) ||
-            std::holds_alternative<TFreshMarkOnBaseDisk>(blockMarks[i]) ||
-            std::holds_alternative<TBlobMarkOnBaseDisk>(blockMarks[i])) {
-            bitmap.Set(i);
-        }
-    }
-
-    auto& blockMask = *response.MutableUnencryptedBlockMask();
-    blockMask.assign(TStringBuf{
-        reinterpret_cast<const char*>(bitmap.GetChunks()),
-        bitmap.Size() / 8});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-TBlockMarks MakeBlockMarks(
+TBlockMarks MakeUsedBlockMarks(
     const TCompressedBitmap& usedBlocks,
     TBlockRange64 range)
 {
