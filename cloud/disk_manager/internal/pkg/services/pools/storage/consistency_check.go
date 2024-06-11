@@ -223,6 +223,8 @@ func (s *storageYDB) checkPoolConsistency(
 		)
 
 		if baseDisk.fromPool && baseDisk.status != baseDiskStatusCreationFailed {
+			actualPoolState.size += baseDisk.freeSlots()
+			actualPoolState.freeUnits += baseDisk.freeUnits()
 			actualPoolState.acquiredUnits += baseDisk.activeUnits
 
 			if baseDisk.isInflight() {
@@ -245,6 +247,24 @@ func (s *storageYDB) checkPoolConsistency(
 			"actual baseDisksInflight %v is not equal to expected %v for pool %+v",
 			actualPoolState.baseDisksInflight,
 			expectedPoolState.baseDisksInflight,
+			expectedPoolState,
+		)
+	}
+
+	if expectedPoolState.size != actualPoolState.size {
+		return errors.NewNonRetriableErrorf(
+			"actual size %v is not equal to expected %v for pool %+v",
+			actualPoolState.size,
+			expectedPoolState.size,
+			expectedPoolState,
+		)
+	}
+
+	if expectedPoolState.freeUnits != actualPoolState.freeUnits {
+		return errors.NewNonRetriableErrorf(
+			"actual freeUnits %v is not equal to expected %v for pool %+v",
+			actualPoolState.freeUnits,
+			expectedPoolState.freeUnits,
 			expectedPoolState,
 		)
 	}
