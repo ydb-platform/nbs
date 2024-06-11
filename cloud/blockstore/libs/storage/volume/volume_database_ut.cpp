@@ -9,6 +9,8 @@
 
 #include <util/generic/guid.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -851,43 +853,45 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
          });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
-            TVector<THistoryLogItem> records;
+            TVolumeMountHistorySlice records;
 
             UNIT_ASSERT(db.ReadHistory(
-                records,
-                TInstant::Seconds(2),
+                { TInstant::Seconds(2), 1 },
                 TInstant::Seconds(0),
-                100));
+                100,
+                records));
 
-            UNIT_ASSERT_VALUES_EQUAL(5, records.size());
+            UNIT_ASSERT_VALUES_EQUAL(5, records.Items.size());
+            UNIT_ASSERT_C(!records.HasMoreItems(), "Should read all records");
 
-            CheckRemoveClientLog(one.GetClientId(), "reason1", records[0].Operation.GetRemove());
-            CheckRemoveClientLog(two.GetClientId(), "reason2", records[1].Operation.GetRemove());
+            CheckRemoveClientLog(two.GetClientId(), "reason2", records.Items[0].Operation.GetRemove());
+            CheckRemoveClientLog(one.GetClientId(), "reason1", records.Items[1].Operation.GetRemove());
 
-            CheckAddClientLog(one, records[2].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[2].Operation.GetAdd());
 
-            CheckAddClientLog(one, records[3].Operation.GetAdd());
-            CheckAddClientLog(two, records[4].Operation.GetAdd());
+            CheckAddClientLog(two, records.Items[3].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[4].Operation.GetAdd());
         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
-            TDeque<THistoryLogItem> records;
+            TVolumeMountHistorySlice records;
 
             UNIT_ASSERT(db.ReadHistory(
-                records,
-                TInstant::Seconds(2),
+                { TInstant::Seconds(2), 1 },
                 TInstant::Seconds(0),
-                100));
+                100,
+                records));
 
-            UNIT_ASSERT_VALUES_EQUAL(5, records.size());
+            UNIT_ASSERT_VALUES_EQUAL(5, records.Items.size());
+            UNIT_ASSERT_C(!records.HasMoreItems(), "Should read all records");
 
-            CheckRemoveClientLog(one.GetClientId(), "reason1", records[0].Operation.GetRemove());
-            CheckRemoveClientLog(two.GetClientId(), "reason2", records[1].Operation.GetRemove());
+            CheckRemoveClientLog(two.GetClientId(), "reason2", records.Items[0].Operation.GetRemove());
+            CheckRemoveClientLog(one.GetClientId(), "reason1", records.Items[1].Operation.GetRemove());
 
-            CheckAddClientLog(one, records[2].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[2].Operation.GetAdd());
 
-            CheckAddClientLog(one, records[3].Operation.GetAdd());
-            CheckAddClientLog(two, records[4].Operation.GetAdd());
+            CheckAddClientLog(two, records.Items[3].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[4].Operation.GetAdd());
         });
     }
 
@@ -927,9 +931,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             TVector<THistoryLogKey> records;
 
             UNIT_ASSERT(db.ReadOutdatedHistory(
-                records,
                 TInstant::Seconds(1),
-                1));
+                1,
+                records));
 
             UNIT_ASSERT_VALUES_EQUAL(1, records.size());
 
@@ -940,15 +944,15 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
             TVector<THistoryLogKey> records;
 
             UNIT_ASSERT(db.ReadOutdatedHistory(
-                records,
                 TInstant::Seconds(1),
-                Max<ui32>()));
+                Max<ui32>(),
+                records));
 
             UNIT_ASSERT_VALUES_EQUAL(3, records.size());
 
             UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey(TInstant::Seconds(1)), records[0]);
-            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 0), records[1]);
-            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 1), records[2]);
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 1), records[1]);
+            UNIT_ASSERT_VALUES_EQUAL(THistoryLogKey({}, 0), records[2]);
         });
     }
 
@@ -985,24 +989,27 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
          });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
-            TVector<THistoryLogItem> records;
+            TVolumeMountHistorySlice records;
 
             UNIT_ASSERT(db.ReadHistory(
-                records,
-                TInstant::Seconds(2),
+                {TInstant::Seconds(2), 1},
                 TInstant::Seconds(1),
-                100));
+                100,
+                records));
 
-            UNIT_ASSERT_VALUES_EQUAL(3, records.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, records.Items.size());
+            UNIT_ASSERT_C(
+                !records.HasMoreItems(),
+                "Should not take into account outdated records");
 
-            CheckRemoveClientLog(one.GetClientId(), "reason1", records[0].Operation.GetRemove());
-            CheckRemoveClientLog(two.GetClientId(), "reason2", records[1].Operation.GetRemove());
+            CheckRemoveClientLog(two.GetClientId(), "reason2", records.Items[0].Operation.GetRemove());
+            CheckRemoveClientLog(one.GetClientId(), "reason1", records.Items[1].Operation.GetRemove());
 
-            CheckAddClientLog(one, records[2].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[2].Operation.GetAdd());
         });
     }
 
-    Y_UNIT_TEST(ShouldReadMinimumPossibleNumberOfRecords)
+    Y_UNIT_TEST(ShouldReadExactNumberOfRecords)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TVolumeDatabase db) {
@@ -1029,62 +1036,32 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
          });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
-            TVector<THistoryLogItem> records;
+            TVolumeMountHistorySlice records;
 
             UNIT_ASSERT(db.ReadHistory(
-                records,
-                TInstant::Seconds(2),
+                {TInstant::Seconds(2), 1},
                 {},
-                2));
+                2,
+                records));
 
-            UNIT_ASSERT_VALUES_EQUAL(2, records.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, records.Items.size());
+            UNIT_ASSERT_C(records.HasMoreItems(), "Should not read all records");
 
-            CheckAddClientLog(one, records[0].Operation.GetAdd());
-            CheckAddClientLog(two, records[1].Operation.GetAdd());
+            CheckAddClientLog(two, records.Items[0].Operation.GetAdd());
+            CheckAddClientLog(one, records.Items[1].Operation.GetAdd());
         });
-    }
-
-    Y_UNIT_TEST(ShouldReadAllRecordsIfLimitIsNotSpecified)
-    {
-        TTestExecutor executor;
-        executor.WriteTx([&] (TVolumeDatabase db) {
-            db.InitSchema();
-        });
-
-        auto one = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0);
-
-        auto two = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE,
-            0);
-
-        executor.WriteTx([&] (TVolumeDatabase db) {
-            // zero
-            db.WriteHistory(CreateAddClient({}, 0, one, {}, {}, {}));
-            db.WriteHistory(CreateAddClient({}, 1, two, {}, {}, {}));
-
-            db.WriteHistory(CreateAddClient(TInstant::Seconds(1), 0, one, {}, {}, {}));
-            db.WriteHistory(CreateAddClient(TInstant::Seconds(1), 1, two, {}, {}, {}));
-         });
 
         executor.ReadTx([&] (TVolumeDatabase db) {
-            TVector<THistoryLogItem> records;
+            TVolumeMountHistorySlice records;
 
             UNIT_ASSERT(db.ReadHistory(
-                records,
-                TInstant::Seconds(2),
+                {TInstant::Seconds(2), 1},
                 {},
-                0));
+                0,
+                records));
 
-            UNIT_ASSERT_VALUES_EQUAL(4, records.size());
-
-            CheckAddClientLog(one, records[0].Operation.GetAdd());
-            CheckAddClientLog(two, records[1].Operation.GetAdd());
-            CheckAddClientLog(one, records[2].Operation.GetAdd());
-            CheckAddClientLog(two, records[3].Operation.GetAdd());
+            UNIT_ASSERT_VALUES_EQUAL(0, records.Items.size());
+            UNIT_ASSERT_C(records.HasMoreItems(), "Should not read all records");
         });
     }
 
@@ -1313,7 +1290,7 @@ void Out<NCloud::NBlockStore::NStorage::THistoryLogKey>(
 {
     out << '{'
         << "Timestamp: " << value.Timestamp << ", "
-        << "Seqno: " << value.Seqno
+        << "Seqno: " << value.SeqNo
         << '}';
 }
 

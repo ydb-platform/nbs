@@ -32,10 +32,10 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
         db.ReadHistory(
-            args.History,
-            now,
+            THistoryLogKey(now),
             args.OldestLogEntry,
-            Config->GetVolumeHistoryCacheSize()),
+            Config->GetVolumeHistoryCacheSize(),
+            args.MountHistory),
         db.ReadPartStats(args.PartStats),
         db.ReadNonReplPartStats(args.PartStats),
         db.CollectCheckpointsToDelete(
@@ -118,6 +118,10 @@ void TVolumeActor::CompleteLoadState(
 
         bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
 
+        TCachedVolumeMountHistory volumeHistory{
+            Config->GetVolumeHistoryCacheSize(),
+            std::move(args.MountHistory)};
+
         State.reset(new TVolumeState(
             Config,
             std::move(*args.Meta),
@@ -125,7 +129,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.VolumeParams),
             throttlerConfig,
             std::move(args.Clients),
-            std::move(args.History),
+            std::move(volumeHistory),
             std::move(args.CheckpointRequests),
             startPartitionsNeeded));
 

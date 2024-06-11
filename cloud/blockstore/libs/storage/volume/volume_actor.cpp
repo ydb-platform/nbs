@@ -649,7 +649,8 @@ void TVolumeActor::HandleUpdateCounters(
     ScheduleRegularUpdates(ctx);
 
     if (State) {
-        State->CleanupHistoryIfNeeded(ctx.Now() - Config->GetVolumeHistoryDuration());
+        State->AccessMountHistory().CleanupHistoryIfNeeded(
+            ctx.Now() - Config->GetVolumeHistoryDuration());
 
         auto requestInfo = CreateRequestInfo(
             ev->Sender,

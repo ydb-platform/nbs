@@ -64,21 +64,15 @@ public:
     void WriteHistory(THistoryLogItem item);
 
     bool ReadOutdatedHistory(
-        TVector<THistoryLogKey>& records,
         TInstant oldestTimestamp,
-        ui32 itemCount);
+        ui32 itemCount,
+        TVector<THistoryLogKey>& records);
 
     bool ReadHistory(
-        TVector<THistoryLogItem>& records,
-        TInstant startTs,
+        THistoryLogKey startTs,
         TInstant endTs,
-        ui64 numRecords);
-
-    bool ReadHistory(
-        TDeque<THistoryLogItem>& records,
-        TInstant startTs,
-        TInstant endTs,
-        ui64 numRecords);
+        ui64 numRecords,
+        TVolumeMountHistorySlice& records);
 
     void DeleteHistoryEntry(THistoryLogKey entry);
 

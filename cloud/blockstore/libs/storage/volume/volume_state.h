@@ -46,18 +46,23 @@ using TMigrations = google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
 struct THistoryLogKey
 {
     TInstant Timestamp;
-    ui64 Seqno = 0;
+    ui64 SeqNo = 0;
 
     THistoryLogKey() = default;
 
-    THistoryLogKey(TInstant timestamp, ui64 seqno = 0)
+    THistoryLogKey(TInstant timestamp, ui64 seqNo)
         : Timestamp(timestamp)
-        , Seqno(seqno)
+        , SeqNo(seqNo)
+    {}
+
+    explicit THistoryLogKey(TInstant timestamp)
+        : THistoryLogKey(timestamp, 0)
     {}
 
     bool operator == (const THistoryLogKey& rhs) const;
     bool operator != (const THistoryLogKey& rhs) const;
     bool operator < (THistoryLogKey rhs) const;
+    bool operator >= (THistoryLogKey rhs) const;
 };
 
 struct THistoryLogItem
@@ -105,6 +110,74 @@ ui64 ComputeBlockCount(const NProto::TVolumeMeta& meta);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TVolumeMountHistorySlice
+{
+    TVector<THistoryLogItem> Items;
+    std::optional<THistoryLogKey> NextOlderRecord;
+
+    void Clear()
+    {
+        Items.clear();
+        NextOlderRecord.reset();
+    }
+
+    bool HasMoreItems() const
+    {
+        return NextOlderRecord.has_value();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCachedVolumeMountHistory
+{
+private:
+    const ui32 Capacity = 0;
+
+    THistoryLogKey LastLogRecord;
+    TDeque<THistoryLogItem> Items;
+    std::optional<THistoryLogKey> NextOlderRecord;
+
+public:
+    TCachedVolumeMountHistory() = default;
+
+    TCachedVolumeMountHistory(
+        ui32 capacity,
+        TVolumeMountHistorySlice records);
+
+    void AddHistoryLogItem(THistoryLogKey key, NProto::TVolumeOperation op);
+
+    const TDeque<THistoryLogItem>& GetItems() const
+    {
+        return Items;
+    }
+
+    bool HasMoreItems() const
+    {
+        return NextOlderRecord.has_value();
+    }
+
+    void CleanupHistoryIfNeeded(TInstant oldest);
+
+    THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
+
+    TVolumeMountHistorySlice GetSlice() const
+    {
+        return {
+            .Items{Items.begin(), Items.end()},
+            .NextOlderRecord = NextOlderRecord
+            };
+    }
+
+    // for testing purposes
+    const std::optional<THistoryLogKey> GetNextOlderRecord() const
+    {
+        return NextOlderRecord;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TVolumeState
 {
 private:
@@ -133,15 +206,14 @@ private:
     TThrottlerConfig ThrottlerConfig;
     TVolumeThrottlingPolicy ThrottlingPolicy;
 
+    TCachedVolumeMountHistory MountHistory;
+
     ui64 MountSeqNumber = 0;
 
     EStorageAccessMode StorageAccessMode = EStorageAccessMode::Default;
     bool ForceRepair = false;
     bool AcceptInvalidDiskAllocationResponse = false;
     bool RejectWrite = false;
-
-    THistoryLogKey LastLogRecord;
-    TDeque<THistoryLogItem> History;
 
     TCheckpointStore CheckpointStore;
     std::unique_ptr<TCheckpointLight> CheckpointLight;
@@ -173,7 +245,7 @@ public:
         TVector<TRuntimeVolumeParamsValue> volumeParams,
         TThrottlerConfig throttlerConfig,
         THashMap<TString, TVolumeClientState> infos,
-        TDeque<THistoryLogItem> history,
+        TCachedVolumeMountHistory mountHistory,
         TVector<TCheckpointRequest> checkpointRequests,
         bool startPartitionsNeeded);
 
@@ -536,21 +608,15 @@ public:
         const TString& reason,
         const NProto::TError& error);
 
-    const TDeque<THistoryLogItem>& GetHistory() const
+    const TCachedVolumeMountHistory& GetMountHistory() const
     {
-        return History;
+        return MountHistory;
     }
 
-    THistoryLogKey GetRecentLogEvent() const
+    TCachedVolumeMountHistory& AccessMountHistory()
     {
-        if (History.size()) {
-            return History.front().Key;
-        } else {
-            return {};
-        }
+        return MountHistory;
     }
-
-    void CleanupHistoryIfNeeded(TInstant oldest);
 
     //
     // Checkpoint request history
@@ -654,8 +720,6 @@ private:
         ui64 proposedFillGeneration);
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
-
-    THistoryLogKey AllocateHistoryLogKey(TInstant timestamp);
 
     THashSet<TString> MakeFilteredDeviceIds() const;
 };
