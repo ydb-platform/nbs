@@ -32,6 +32,9 @@ message TVhostServiceConfig
 
     // Access mode for endpoint socket files
     optional uint32 SocketAccessMode = 7;
+
+    // Causes E_NOT_IMPLEMENTED errors in endpoint storages to be logged.
+    optional bool EndpointStorageNotImplementedErrorIsFatal = 8;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
