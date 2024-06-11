@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/keyring/endpoints.h>
@@ -358,7 +359,13 @@ NProto::TStopEndpointResponse TEndpointManager::DoStopEndpoint(
 
     const auto& response = future.GetValue();
     if (SUCCEEDED(response.GetError().GetCode())) {
-        Storage->RemoveEndpoint(request.GetSocketPath());
+        if (auto error = Storage->RemoveEndpoint(request.GetSocketPath());
+            HasError(error)
+                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        {
+            STORAGE_ERROR("Failed to remove endpoint from storage: "
+                << FormatError(error));
+        }
     }
 
     Endpoints.erase(it);

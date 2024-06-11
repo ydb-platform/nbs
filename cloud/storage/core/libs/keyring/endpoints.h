@@ -31,7 +31,8 @@ struct IEndpointStorage
 
 IEndpointStoragePtr CreateKeyringEndpointStorage(
     TString rootKeyringDesc,
-    TString endpointsKeyringDesc);
+    TString endpointsKeyringDesc,
+    bool notImplementedErrorIsFatal);
 
 IEndpointStoragePtr CreateFileEndpointStorage(TString dirPath);
 

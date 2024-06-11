@@ -636,7 +636,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*configCounter));
 
-        auto endpointStorage = CreateKeyringEndpointStorage("nbs", "");
+        auto endpointStorage = CreateKeyringEndpointStorage("nbs", "", false);
 
         auto executor = TExecutor::Create("TestService");
         executor->Start();

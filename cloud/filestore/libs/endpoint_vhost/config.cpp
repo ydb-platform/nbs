@@ -24,6 +24,7 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
         NCloud::NProto::ENDPOINT_STORAGE_KEYRING                              )\
     xxx(EndpointStorageDir,         TString,                {}                )\
     xxx(SocketAccessMode,           ui32,                   MODE0660          )\
+    xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
 // VHOST_SERVICE_CONFIG
 
 #define VHOST_SERVICE_DECLARE_CONFIG(name, type, value)                        \
