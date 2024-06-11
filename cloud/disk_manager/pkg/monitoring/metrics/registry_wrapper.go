@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -402,4 +403,14 @@ func (v *histogramVec) With(kv map[string]string) metrics.Histogram {
 
 func (v *histogramVec) Reset() {
 	v.histogramVec.Reset()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type NewCoreRegistryFunc = func(mux *http.ServeMux, path string) core_metrics.Registry
+
+func WithWrapper(coreRegistryFunc NewCoreRegistryFunc) metrics.NewRegistryFunc {
+	return func(mux *http.ServeMux, path string) Registry {
+		return WrapRegistry(coreRegistryFunc(mux, path))
+	}
 }

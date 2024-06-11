@@ -15,9 +15,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -29,7 +29,7 @@ import (
 func Run(
 	appName string,
 	defaultConfigFilePath string,
-	newMetricsRegistry metrics.NewRegistryFunc,
+	newMetricsRegistry metrics.NewCoreRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
 ) {
 
@@ -62,7 +62,7 @@ func Run(
 
 func run(
 	config *server_config.ServerConfig,
-	newMetricsRegistry metrics.NewRegistryFunc,
+	newMetricsRegistry metrics.NewCoreRegistryFunc,
 	newAuthorizer auth.NewAuthorizer,
 ) error {
 
@@ -102,7 +102,10 @@ func run(
 	}
 
 	logging.Info(ctx, "Starting monitoring")
-	mon := monitoring.NewMonitoring(config.MonitoringConfig, newMetricsRegistry)
+	mon := monitoring.NewMonitoring(
+		config.MonitoringConfig,
+		metrics.WithWrapper(newMetricsRegistry),
+	)
 	mon.Start(ctx)
 
 	accounting.Init(mon.NewRegistry("accounting"))

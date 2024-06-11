@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	clientmodel "github.com/prometheus/client_model/go"
 
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	core_metrics "github.com/ydb-platform/nbs/library/go/core/metrics"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/prometheus"
 )
 
@@ -55,7 +55,7 @@ func sanitizeName(name string) string {
 
 var newRegistryOnce sync.Once
 
-func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
+func NewPrometheusRegistry(mux *http.ServeMux, path string) core_metrics.Registry {
 	registry := prometheus.NewRegistry(
 		prometheus.NewRegistryOpts().SetNameSanitizer(
 			sanitizeName,
@@ -78,5 +78,5 @@ func NewPrometheusRegistry(mux *http.ServeMux, path string) metrics.Registry {
 			)
 		},
 	)
-	return WrapRegistry(registry)
+	return registry
 }
