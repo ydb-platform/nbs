@@ -50,22 +50,23 @@ struct TByUUID
     }
 };
 
-void PrepareConfig(
+void FilterOutUnknownDevices(
     NProto::TAgentConfig& agentConfig,
     const TKnownAgent& knownAgent)
 {
+    auto& devices = *agentConfig.MutableDevices();
+    auto& unknownDevices = *agentConfig.MutableUnknownDevices();
+
     auto it = std::partition(
-        agentConfig.MutableDevices()->begin(),
-        agentConfig.MutableDevices()->end(),
+        devices.begin(),
+        devices.end(),
         [&] (const auto& d) {
             return knownAgent.Devices.contains(d.GetDeviceUUID());
         });
 
-    agentConfig.MutableUnknownDevices()->Assign(
-        it,
-        agentConfig.MutableDevices()->end());
+    std::move(it, devices.end(), RepeatedFieldBackInserter(&unknownDevices));
 
-    agentConfig.MutableDevices()->erase(it, agentConfig.MutableDevices()->end());
+    devices.erase(it, devices.end());
 }
 
 bool IsAllowedDevice(
@@ -330,12 +331,63 @@ void TAgentList::AddNewDevice(
     agent.MutableDevices()->Add(std::move(device));
 }
 
+auto TAgentList::TryUpdateAgentDevices(
+    const TString& agentId,
+    const TKnownAgent& knownAgent) -> TUpdateAgentDevicesResult
+{
+    auto* agent = FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
+
+    const auto timestamp = TInstant::MicroSeconds(agent->GetStateTs());
+
+    TVector<TDeviceId> newDevices;
+
+    // move known devices from UnknownDevices to Devices
+    {
+        auto end = agent->MutableUnknownDevices()->end();
+        auto it = std::partition(
+            agent->MutableUnknownDevices()->begin(),
+            end,
+            [&](const auto& device) {
+                return !knownAgent.Devices.contains(device.GetDeviceUUID());
+            });
+
+        std::for_each(it, end, [&] (auto& newDevice) {
+            newDevices.push_back(newDevice.GetDeviceUUID());
+            AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
+        });
+
+        agent->MutableUnknownDevices()->erase(it, end);
+    }
+
+    FilterOutUnknownDevices(*agent, knownAgent);
+
+    Sort(*agent->MutableDevices(), TByUUID());
+    Sort(*agent->MutableUnknownDevices(), TByUUID());
+
+    RegisterCounters(*agent);
+
+    return {agent, std::move(newDevices)};
+}
+
+void TAgentList::RegisterCounters(const NProto::TAgentConfig& agent)
+{
+    if (ComponentGroup) {
+        auto it = AgentIdToIdx.find(agent.GetAgentId());
+        if (it != AgentIdToIdx.end()) {
+            AgentCounters[it->second].Register(agent, ComponentGroup);
+        }
+    }
+}
+
 auto TAgentList::RegisterAgent(
     NProto::TAgentConfig agentConfig,
     TInstant timestamp,
     const TKnownAgent& knownAgent) -> TAgentRegistrationResult
 {
-    PrepareConfig(agentConfig, knownAgent);
+    FilterOutUnknownDevices(agentConfig, knownAgent);
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
 
@@ -435,13 +487,9 @@ auto TAgentList::RegisterAgent(
     }
 
     Sort(*agent->MutableDevices(), TByUUID());
+    Sort(*agent->MutableUnknownDevices(), TByUUID());
 
-    if (ComponentGroup) {
-        auto it = AgentIdToIdx.find(agent->GetAgentId());
-        if (it != AgentIdToIdx.end()) {
-            AgentCounters[it->second].Register(*agent, ComponentGroup);
-        }
-    }
+    RegisterCounters(*agent);
 
     return { *agent, std::move(newDeviceIds), prevNodeId, std::move(oldConfigs) };
 }

@@ -325,7 +325,7 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldUpdateDevices, TFixture)
+    Y_UNIT_TEST_F(ShouldUpdateDevicesOnRegisterAgent, TFixture)
     {
         TAgentList agentList = CreateAgentList({
             .Agents = [] {
@@ -1226,6 +1226,103 @@ Y_UNIT_TEST_SUITE(TAgentListTest)
             UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ERROR, d.GetState());
             UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldUpdateDevices, TFixture)
+    {
+        auto getIds = [] (const auto& devices) {
+            TVector<TString> ids;
+            for (const auto& d: devices) {
+                ids.push_back(d.GetDeviceUUID());
+            }
+            Sort(ids);
+            return ids;
+        };
+
+        NProto::TAgentConfig config;
+
+        config.SetAgentId("agent-id");
+        for (const char* id: {"a", "b", "c", "x", "y", "z"}) {
+            *config.AddDevices() = CreateDevice(id);
+        }
+
+        TAgentList agentList = CreateAgentList({
+            .Agents = {config}
+        });
+
+        {
+            auto* agent = agentList.FindAgent("agent-id");
+            UNIT_ASSERT(agent);
+            UNIT_ASSERT(
+                getIds(config.GetDevices()) == getIds(agent->GetDevices()));
+            UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
+        }
+
+        {
+            auto [unk, newDevices] = agentList.TryUpdateAgentDevices("unk", {});
+
+            UNIT_ASSERT(!unk);
+            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+        }
+
+        {
+            auto [agent, newDevices] = agentList.TryUpdateAgentDevices(
+                "agent-id",
+                {.Devices = {
+                     {"x", CreateDevice("x", 0)},
+                     {"y", CreateDevice("y", 0)},
+                     {"z", CreateDevice("z", 0)},
+                     {"a", CreateDevice("a", 0)},
+                     {"b", CreateDevice("b", 0)},
+                     {"c", CreateDevice("c", 0)}}});
+
+            UNIT_ASSERT(agent);
+            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+            UNIT_ASSERT(
+                getIds(config.GetDevices()) == getIds(agent->GetDevices()));
+            UNIT_ASSERT_VALUES_EQUAL(0, agent->UnknownDevicesSize());
+        }
+
+        {
+            auto [agent, newDevices] = agentList.TryUpdateAgentDevices(
+                "agent-id",
+                {.Devices = {
+                     {"x", CreateDevice("x", 0)},
+                     {"y", CreateDevice("y", 0)},
+                     {"z", CreateDevice("z", 0)}}});
+
+            UNIT_ASSERT(agent);
+            UNIT_ASSERT_VALUES_EQUAL(0, newDevices.size());
+
+            const TVector<TString> expectedIds{"x", "y", "z"};
+            const TVector<TString> expectedUnknownIds{"a", "b", "c"};
+
+            UNIT_ASSERT(expectedIds == getIds(agent->GetDevices()));
+            UNIT_ASSERT(
+                expectedUnknownIds == getIds(agent->GetUnknownDevices()));
+        }
+
+        {
+            auto [agent, newDevices] = agentList.TryUpdateAgentDevices(
+                "agent-id",
+                {.Devices = {
+                     {"x", CreateDevice("x", 0)},
+                     {"y", CreateDevice("y", 0)},
+                     // no "z"
+                     {"a", CreateDevice("a", 0)},
+                     {"b", CreateDevice("b", 0)},
+                     {"c", CreateDevice("c", 0)}}});
+
+            UNIT_ASSERT(agent);
+            const TVector<TString> expectedIds{"a", "b", "c", "x", "y"};
+            const TVector<TString> expectedUnknownIds{"z"};
+            const TVector<TString> expectedNewIds{"a", "b", "c"};
+
+            UNIT_ASSERT(expectedIds == getIds(agent->GetDevices()));
+            UNIT_ASSERT(
+                expectedUnknownIds == getIds(agent->GetUnknownDevices()));
+            UNIT_ASSERT(expectedNewIds == newDevices);
         }
     }
 }
