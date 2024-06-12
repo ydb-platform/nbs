@@ -173,7 +173,7 @@ func (s *diskSource) ChunkIndices(
 		defer s.duplicatedChunkIndices.Close()
 
 		err := s.generateChunkIndices(ctx, milestone.ChunkIndex)
-		if nbs.IsGetChangedBlocksNotSupportedError(err) {
+		if err != nil && nbs.IsGetChangedBlocksNotSupportedError(err) {
 			err = s.generateChunkIndicesDefault(ctx, milestone.ChunkIndex)
 		}
 		if err != nil {
