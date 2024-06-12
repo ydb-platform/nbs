@@ -137,11 +137,13 @@ void TMirrorPartitionActor::CompareChecksums(const TActorContext& ctx)
     }
 
     if (!equal) {
-        if (ctx.Now() - ScrubbingRangeStarted < ChecksumMismatchTimeout) {
+        if (ctx.Now() - ScrubbingRangeStarted <
+            Config->GetScrubbingChecksumMismatchTimeout())
+        {
             LOG_WARN(
                 ctx,
                 TBlockStoreComponents::PARTITION,
-                "[%s] Checksum mismatch for range %s, reshedule scrubbing",
+                "[%s] Checksum mismatch for range %s, reschedule scrubbing",
                 DiskId.c_str(),
                 DescribeRange(
                     RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize()))

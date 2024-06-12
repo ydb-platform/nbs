@@ -30,10 +30,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration ChecksumMismatchTimeout = TDuration::Minutes(5);
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
