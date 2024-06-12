@@ -325,6 +325,11 @@ void TVolumeActor::DoSendPartStatsToService(
         return;
     }
     stats->Simple.ChannelHistorySize.Set(channelsHistorySize);
+    // having 2 metrics with the same meaning is pointless - will need to get
+    // rid of one of them
+    const auto vbytesCount = GetBlocksCount() * State->GetBlockSize();
+    stats->Simple.BytesCount.Set(
+        Max(stats->Simple.BytesCount.Value, vbytesCount));
 
     auto blobLoadMetrics = NBlobMetrics::MakeBlobLoadMetrics(
         State->GetMeta().GetVolumeConfig().GetVolumeExplicitChannelProfiles(),
