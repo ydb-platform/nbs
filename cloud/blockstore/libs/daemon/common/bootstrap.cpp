@@ -95,7 +95,8 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/logging.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>

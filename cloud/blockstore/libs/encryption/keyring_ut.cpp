@@ -3,7 +3,7 @@
 #include "encryption_test.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/keyring/endpoints_test.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

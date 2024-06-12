@@ -7,10 +7,10 @@ RECURSE(
     coroutine
     daemon
     diagnostics
+    endpoints
     features
     grpc
     hive_proxy
-    keyring
     kikimr
     tablet
     throttling

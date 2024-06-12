@@ -1,4 +1,6 @@
-#include "endpoints_test.h"
+#include "keyring_endpoints_test.h"
+
+#include "keyring.h"
 
 #include <library/cpp/string_utils/base64/base64.h>
 
@@ -32,7 +34,7 @@ public:
         , SubKeyringDesc(std::move(endpointsKeyringDesc))
     {}
 
-    ~TKeyringMutableEndpointStorage()
+    ~TKeyringMutableEndpointStorage() override
     {
         Remove();
     }
@@ -251,12 +253,6 @@ IMutableEndpointStoragePtr CreateKeyringMutableEndpointStorage(
     return std::make_shared<TKeyringMutableEndpointStorage>(
         std::move(rootKeyringDesc),
         std::move(endpointsKeyringDesc));
-}
-
-IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath)
-{
-    return std::make_shared<TFileMutableEndpointStorage>(
-        std::move(dirPath));
 }
 
 }   // namespace NCloud
