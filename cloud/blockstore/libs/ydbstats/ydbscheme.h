@@ -28,10 +28,28 @@ struct TStatsTableScheme
     TStatsTableScheme(
             TVector<NYdb::TColumn> columns,
             TVector<TString> keyColumns,
-            std::optional<NYdb::NTable::TTtlSettings> ttl = {})
+            NYdb::NTable::TTtlSettings ttl)
         : Columns(std::move(columns))
         , KeyColumns(std::move(keyColumns))
         , Ttl(std::move(ttl))
+    {}
+
+    TStatsTableScheme(
+            TVector<NYdb::TColumn> columns,
+            TVector<TString> keyColumns,
+            std::optional<NYdb::NTable::TTtlSettings> ttl)
+        : Columns(std::move(columns))
+        , KeyColumns(std::move(keyColumns))
+        , Ttl(std::move(ttl))
+    {}
+
+    TStatsTableScheme(
+            TVector<NYdb::TColumn> columns,
+            TVector<TString> keyColumns,
+            TMaybe<NYdb::NTable::TTtlSettings> ttl)
+        : Columns(std::move(columns))
+        , KeyColumns(std::move(keyColumns))
+        , Ttl(ttl.Empty() ? decltype(Ttl){} : *ttl)
     {}
 };
 
@@ -107,9 +125,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsTableSchemePtr CreateStatsTableScheme();
+TStatsTableSchemePtr CreateStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateHistoryTableScheme();
-TStatsTableSchemePtr CreateArchiveStatsTableScheme();
+TStatsTableSchemePtr CreateArchiveStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme();
 
 }   // namespace NCloud::NBlockStore::NYdbStats

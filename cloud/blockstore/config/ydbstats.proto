@@ -37,4 +37,10 @@ message TYdbStatsConfig
 
     // use secure connection to YDB.
     optional bool UseSsl = 10;
+
+    // Stats table ttl.
+    optional uint32 StatsTableTtl = 11;
+
+    // Archive stats table ttl.
+    optional uint32 ArchiveStatsTableTtl = 12;
 }

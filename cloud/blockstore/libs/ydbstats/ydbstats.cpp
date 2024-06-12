@@ -22,6 +22,8 @@
 #include <util/string/cast.h>
 #include <util/system/mutex.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NYdbStats {
 
 using namespace NThreading;
@@ -38,13 +40,17 @@ struct TAlterCheckResult
 {
     const NProto::TError Error;
     const THashMap<TString, EPrimitiveType> Columns;
+    const std::optional<NYdb::NTable::TTtlSettings> Ttl;
 
     TAlterCheckResult(NProto::TError error)
         : Error(std::move(error))
     {}
 
-    TAlterCheckResult(THashMap<TString, EPrimitiveType> columns)
+    TAlterCheckResult(
+        THashMap<TString, EPrimitiveType> columns,
+        std::optional<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
+        , Ttl(std::move(ttl))
     {}
 };
 
@@ -383,8 +389,8 @@ private:
         const TVector<TTableStat>& historyTables) const;
 
     TAlterCheckResult CheckForAlter(
-        const TVector<NYdb::TColumn>& existingColumns,
-        const TVector<NYdb::TColumn>& newColumns) const;
+        const TStatsTableScheme& existingColumns,
+        const TStatsTableScheme& newColumns) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -710,12 +716,28 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
     const TStatsTableScheme& scheme,
     const TStatsTableScheme& existingScheme) const
 {
-    auto diff = CheckForAlter(existingScheme.Columns, scheme.Columns);
+    auto diff = CheckForAlter(existingScheme, scheme);
     if (FAILED(diff.Error.GetCode())) {
         return MakeFuture(diff.Error);
     }
 
-    if (!diff.Columns) {
+    auto areTtlSettingsDifferent = [] (auto&& ttl1, auto&& ttl2) {
+        return ttl1.GetColumnName() != ttl2.GetColumnName()
+            || ttl1.GetColumnUnit() != ttl2.GetColumnUnit()
+            || ttl1.GetExpireAfter() != ttl2.GetExpireAfter();
+    };
+
+    auto areTtlSettingsUpdated = [&] () {
+        return !scheme.Ttl.has_value()
+            || diff.Ttl.value().GetMode() != scheme.Ttl.value().GetMode()
+            || areTtlSettingsDifferent(
+                diff.Ttl.value().GetValueSinceUnixEpoch(),
+                scheme.Ttl.value().GetValueSinceUnixEpoch());
+    };
+
+    bool shouldUpdateTtl = diff.Ttl.has_value() && areTtlSettingsUpdated();
+
+    if (!diff.Columns && !shouldUpdateTtl) {
         // nothing to do
         return MakeFuture<NProto::TError>();
     }
@@ -728,6 +750,15 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
         builder.EndOptional();
 
         settings.AppendAddColumns(TColumn(c.first, builder.Build()));
+    }
+
+    if (diff.Ttl.has_value()) {
+        const auto& ttl = diff.Ttl->GetValueSinceUnixEpoch();
+        settings.AlterTtlSettings(
+            TAlterTtlSettings::Set(
+                ttl.GetColumnName(),
+                ttl.GetColumnUnit(),
+                ttl.GetExpireAfter()));
     }
 
     return DbStorage->AlterTable(tableName, settings);
@@ -804,13 +835,13 @@ TFuture<NProto::TError> TYdbStatsUploader::RemoveObsoleteTables(
 }
 
 TAlterCheckResult TYdbStatsUploader::CheckForAlter(
-    const TVector<NYdb::TColumn>& existingColumns,
-    const TVector<NYdb::TColumn>& newColumns) const
+    const TStatsTableScheme& existingTable,
+    const TStatsTableScheme& newTable) const
 {
     THashMap<TString, EPrimitiveType> columnsSet;
     THashMap<TString, EPrimitiveType> diff;
 
-    for (const auto& column: existingColumns) {
+    for (const auto& column: existingTable.Columns) {
         auto typeParser = TTypeParser(column.Type);
         typeParser.OpenOptional();
 
@@ -824,7 +855,7 @@ TAlterCheckResult TYdbStatsUploader::CheckForAlter(
 
     TStringBuilder newColumnList;
 
-    for (const auto& column: newColumns) {
+    for (const auto& column: newTable.Columns) {
         auto typeParser = TTypeParser(column.Type);
 
         auto it = columnsSet.find(column.Name);
@@ -839,9 +870,11 @@ TAlterCheckResult TYdbStatsUploader::CheckForAlter(
         }
     }
 
-    STORAGE_INFO("New columns are: [" << newColumnList << ']')
+    if (!diff.empty()) {
+        STORAGE_INFO("New columns are: [" << newColumnList << ']')
+    }
 
-    return std::move(diff);
+    return TAlterCheckResult{diff, newTable.Ttl};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
