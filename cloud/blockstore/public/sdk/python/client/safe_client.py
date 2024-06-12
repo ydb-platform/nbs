@@ -917,6 +917,50 @@ class _SafeClient(object):
         return response
 
     @_handle_errors
+    def query_agents_info_async(
+            self,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = protos.TQueryAgentsInfoRequest()
+
+        future = futures.Future()
+        response = self.__impl.query_agents_info_async(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+        def set_result(f):
+            exception = f.exception()
+            if exception:
+                future.set_exception(exception)
+            else:
+                future.set_result(f.result())
+        response.add_done_callback(set_result)
+
+        return future
+
+    @_handle_errors
+    def query_agents_info(
+            self,
+            idempotence_id=None,
+            timestamp=None,
+            trace_id=None,
+            request_timeout=None):
+
+        request = protos.TQueryAgentsInfoRequest()
+        return self.__impl.query_agents_info(
+            request,
+            idempotence_id,
+            timestamp,
+            trace_id,
+            request_timeout)
+
+    @_handle_errors
     def update_disk_registry_config_async(
             self,
             config,
