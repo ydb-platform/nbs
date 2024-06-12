@@ -629,3 +629,20 @@ func (client *safeClient) CmsAddDevices(
 		},
 	)
 }
+
+func (client *safeClient) QueryAgentsInfo(
+	ctx context.Context,
+	agentId string,
+	path string,
+	dryRun bool,
+) error {
+
+	req := &protos.TQueryAgentsInfoRequest{
+		AgentId: agentId,
+		Path:    path,
+		DryRun:  dryRun,
+	}
+
+	_, err := client.Impl.QueryAgentsInfo(ctx, req)
+	return err
+}

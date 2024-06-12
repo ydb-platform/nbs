@@ -250,4 +250,13 @@ type ClientIface interface {
 		ctx context.Context,
 		req *protos.TCmsActionRequest,
 	) (*protos.TCmsActionResponse, error)
+
+	//
+	// Agents Info.
+	//
+
+	QueryAgentsInfo(
+		ctx context.Context,
+		req *protos.TQueryAgentsInfoRequest,
+	) (*protos.TQueryAgentsInfoResponse, error)
 }

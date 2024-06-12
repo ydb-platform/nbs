@@ -44,6 +44,7 @@ type describePlacementGroupHandlerFunc func(ctx context.Context, req *protos.TDe
 type alterPlacementGroupMembershipHandlerFunc func(ctx context.Context, req *protos.TAlterPlacementGroupMembershipRequest) (*protos.TAlterPlacementGroupMembershipResponse, error)
 type listPlacementGroupsHandlerFunc func(ctx context.Context, req *protos.TListPlacementGroupsRequest) (*protos.TListPlacementGroupsResponse, error)
 type cmsActionHandlerFunc func(ctx context.Context, req *protos.TCmsActionRequest) (*protos.TCmsActionResponse, error)
+type queryAgentsInfo func(ctx context.Context, req *protos.TQueryAgentsInfoRequest) (*protos.TQueryAgentsInfoResponse, error)
 type closeHandlerFunc func() error
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -86,6 +87,7 @@ type testClient struct {
 	AlterPlacementGroupMembershipHandler alterPlacementGroupMembershipHandlerFunc
 	ListPlacementGroupsHandler           listPlacementGroupsHandlerFunc
 	CmsActionHandler                     cmsActionHandlerFunc
+	QueryAgentsInfo                      queryAgentsInfo
 	CloseHandlerFunc                     closeHandlerFunc
 }
 
@@ -539,4 +541,16 @@ func (client *testClient) CmsAction(
 	}
 
 	return &protos.TCmsActionResponse{}, nil
+}
+
+func (client *testClient) QueryAgentsInfo(
+	ctx context.Context,
+	req *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+
+	if client.QueryAgentsInfoHandler != nil {
+		return client.QueryAgentsInfoHandler(ctx, req)
+	}
+
+	return &protos.TQueryAgentsInfoResponse{}, nil
 }

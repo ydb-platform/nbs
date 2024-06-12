@@ -139,6 +139,7 @@ def _test_every_method_impl(sync):
         "kick_endpoint": {
             "keyring_id": 42,
         },
+        "query_agents_info": {},
     }
 
     for client_method in client_methods:

@@ -12,6 +12,9 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
+from cloud.blockstore.public.api.protos.disk_pb2 import (
+    TQueryAgentsInfoResponse,
+)
 from cloud.blockstore.public.api.protos.placement_pb2 import (
     TListPlacementGroupsResponse,
     TDescribePlacementGroupResponse,
@@ -193,6 +196,12 @@ def describe_volume(env, run, disk_id):
         "--input", tmp_file.name,
         "--proto")
     return file_parse(env.results_path, TDescribeVolumeResponse())
+
+
+def query_agents_info(env, run):
+    clear_file(env.results_file)
+    run("queryagentsinfo")
+    return file_parse(env.results_path, TQueryAgentsInfoResponse())
 
 
 def clear_file(file):
@@ -1121,3 +1130,17 @@ def test_nbs_with_endpoint_proxy_uds():
     ret = common.canonical_file(env.results_path, local=True)
     tear_down(env)
     return ret
+
+
+def test_query_agents_info():
+    env, run = setup()
+
+    run("createvolume",
+        "--disk-id", "volume-0",
+        "--blocks-count", str(BLOCKS_COUNT))
+
+    agents = query_agents_info()
+    assert len(agents) == 1
+    assert len(agents[0].devices) == 1
+    device = agents[0].devices[0]
+    assert device.devicename == "volume-0"
