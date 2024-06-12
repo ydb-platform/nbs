@@ -130,6 +130,73 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             true);
     }
 
+    Y_UNIT_TEST(BytesCountShouldNeverBeZero)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMinChannelCount(4);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        const ui64 blockCount = 1024;
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            blockCount,
+            "vol0",
+            "cloud",
+            "folder",
+            1,          // partition count
+            2
+        );
+
+        volume.WaitReady();
+
+        ui64 expectedBytesCount = blockCount * DefaultBlockSize;
+        ui64 bytesCount = 0;
+        ui64 vbytesCount = 0;
+
+        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+            if (event->Recipient == MakeStorageStatsServiceId()
+                    && event->GetTypeRewrite()
+                        == TEvStatsService::EvVolumePartCounters)
+            {
+                auto* msg = event->Get<TEvStatsService::TEvVolumePartCounters>();
+
+                bytesCount = msg->DiskCounters->Simple.BytesCount.Value;
+            }
+
+            if (event->Recipient == MakeStorageStatsServiceId()
+                    && event->GetTypeRewrite()
+                        == TEvStatsService::EvVolumeSelfCounters)
+            {
+                auto* msg = event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+
+                vbytesCount = msg->VolumeSelfCounters->Simple.VBytesCount.Value;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(obs);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, bytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, vbytesCount);
+    }
+
     Y_UNIT_TEST(ShouldSendCachedValuesWhenNonReplPartitionIsOffline)
     {
         NProto::TStorageServiceConfig config;
