@@ -483,6 +483,7 @@ TDuration MSeconds(ui32 value)
     xxx(MaxAcquireShadowDiskRetryDelayWhenNonBlocked,   TDuration, Seconds(10)   )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenBlocked,    TDuration, Seconds(5)    )\
     xxx(MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked, TDuration, Seconds(600)  )\
+    xxx(WaitDependentDisksRetryRequestDelay,            TDuration, Seconds(1)    )\
                                                                                   \
     xxx(DataScrubbingEnabled,                           bool,      false         )\
     xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\

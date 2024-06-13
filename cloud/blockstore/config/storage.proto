@@ -981,4 +981,8 @@ message TStorageServiceConfig
     // which is used for migration and filling of shadow disks.
     // (actual bandwidth is x2 due to the need to read and write).
     optional uint32 BackgroundOperationsTotalBandwidth = 368;
+
+    // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
+    // Set in ms.
+    optional uint32 WaitDependentDisksRetryRequestDelay = 369;
 }
