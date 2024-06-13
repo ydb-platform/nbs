@@ -563,7 +563,6 @@ void TDiskRegistryProxyActor::HandleCreateTablet(
     const TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
     auto* msg = ev->Get();
     CreateTablet(ctx, std::move(msg->Kinds));
 }
