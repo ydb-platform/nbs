@@ -150,7 +150,6 @@ func (t *createSnapshotFromDiskTask) run(
 		chunkSize,
 		incremental, // duplicateChunkIndices
 		false,       // ignoreBaseDisk
-		false,       // useGetChangedBlocksForDiskRegistryBased
 		false,       // dontReadFromCheckpoint
 	)
 	if err != nil {

@@ -120,7 +120,6 @@ func newDiskSourceFull(
 		chunkSize,
 		duplicateChunkIndices,
 		ignoreBaseDisk,
-		false, // useGetChangedBlocksForDiskRegistryBased
 		dontReadFromCheckpoint,
 	)
 	require.NoError(t, err)
