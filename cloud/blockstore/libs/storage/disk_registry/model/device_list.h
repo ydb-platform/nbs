@@ -15,6 +15,10 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TDevicePoolConfigs = THashMap<TString, NProto::TDevicePoolConfig>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDeviceList
 {
     using TDeviceId = TString;
@@ -94,8 +98,15 @@ public:
         return PoolName2DeviceCount;
     }
 
-    void UpdateDevices(const NProto::TAgentConfig& agent, TNodeId prevNodeId);
-    void UpdateDevices(const NProto::TAgentConfig& agent);
+    void UpdateDevices(
+        const NProto::TAgentConfig& agent,
+        const TDevicePoolConfigs& poolConfigs,
+        TNodeId prevNodeId);
+
+    void UpdateDevices(
+        const NProto::TAgentConfig& agent,
+        const TDevicePoolConfigs& poolConfigs);
+
     void RemoveDevices(const NProto::TAgentConfig& agent);
 
     TNodeId FindNodeId(const TDeviceId& id) const;
