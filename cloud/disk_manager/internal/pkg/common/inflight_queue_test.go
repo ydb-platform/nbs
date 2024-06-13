@@ -81,6 +81,12 @@ func TestInflightQueueMilestone(t *testing.T) {
 		inflightLimit,
 	)
 
+	addToQueue := func(ctx context.Context, value uint32) {
+		added, err := queue.Add(ctx, value)
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+
 	expectedProcessedValueCount := uint32(3)
 	sendProcessedValue := func(value uint32) {
 		processedValues <- value
@@ -93,14 +99,14 @@ func TestInflightQueueMilestone(t *testing.T) {
 
 	require.Equal(t, Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
-	queue.Add(ctx, 10)
+	addToQueue(ctx, 10)
 	require.Equal(t, Milestone{Value: 10, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(10)
 	require.Equal(t, Milestone{Value: 11, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
-	queue.Add(ctx, 13)
-	queue.Add(ctx, 15)
-	queue.Add(ctx, 16)
+	addToQueue(ctx, 13)
+	addToQueue(ctx, 15)
+	addToQueue(ctx, 16)
 	sendProcessedValue(13)
 	require.Equal(t, Milestone{Value: 15, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 	sendProcessedValue(15)
@@ -111,8 +117,8 @@ func TestInflightQueueMilestone(t *testing.T) {
 	queue.UpdateMilestoneHint(20)
 	require.Equal(t, Milestone{Value: 20, ProcessedValueCount: expectedProcessedValueCount}, queue.Milestone())
 
-	queue.Add(ctx, 22)
-	queue.Add(ctx, 25)
+	addToQueue(ctx, 22)
+	addToQueue(ctx, 25)
 	queue.UpdateMilestoneHint(30)
 
 	sendProcessedValue(22)
