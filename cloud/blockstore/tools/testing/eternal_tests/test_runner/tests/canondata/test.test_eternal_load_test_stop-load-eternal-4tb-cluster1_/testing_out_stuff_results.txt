@@ -1,4 +1,4 @@
 Command=ycp --format json --profile cluster1 compute instance list --folder-id fake-folder
 Input=
-SSH 1:1:1:1:1:1:1:1: pkill -f -f "^/usr/bin/eternal-load.*vdb"
+SSH 1:1:1:1:1:1:1:1: pkill -f "^/usr/bin/eternal-load.*vdb"
 SSH 1:1:1:1:1:1:1:1: pgrep -f "^/usr/bin/eternal-load.*vdb"

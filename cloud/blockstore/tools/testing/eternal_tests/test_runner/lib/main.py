@@ -238,7 +238,7 @@ class EternalTestHelper:
     def exec_pkill_on_instance(self, instance_ip: str, command: str):
         self.logger.info(f'Running pkill {command} on instance <{instance_ip}>')
         with self.module_factories.make_ssh_client(self.args.dry_run, instance_ip, ssh_key_path=self.args.ssh_key_path) as ssh:
-            _, stdout, _ = ssh.exec_command(f'pkill -f {command}')
+            _, stdout, _ = ssh.exec_command(f'pkill {command}')
             stdout.channel.recv_exit_status()
             self._wait_until_killing(instance_ip, command)
 
@@ -608,7 +608,7 @@ class EternalTestHelper:
         self.logger.info('Stopping fio')
         instances = self.find_instances()
         for instance in instances:
-            self.exec_pkill_on_instance(instance.ip, self._FIO_BIN_PATH)
+            self.exec_pkill_on_instance(instance.ip, f'-f {self._FIO_BIN_PATH}')
 
     def _run_fio_on_instances(self, instances):
         self.logger.info('Running fio')
