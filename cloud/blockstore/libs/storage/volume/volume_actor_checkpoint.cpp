@@ -906,14 +906,14 @@ void TVolumeActor::ReplyErrorOnNormalGetChangedBlocksRequestForDiskRegistryBased
         << ", LowCheckpointId: " << msg->Record.GetLowCheckpointId().Quote()
         << ", HighCheckpointId: " << msg->Record.GetHighCheckpointId().Quote();
 
-    LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
+    LOG_WARN(ctx, TBlockStoreComponents::VOLUME,
         "[%lu] %s %s",
         TabletID(),
         TGetChangedBlocksMethod::Name,
         errorMsg.c_str());
 
     auto response = std::make_unique<TGetChangedBlocksMethod::TResponse>();
-    *response->Record.MutableError() = MakeError(E_ARGUMENT, errorMsg);
+    *response->Record.MutableError() = MakeError(E_NOT_IMPLEMENTED, errorMsg);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
