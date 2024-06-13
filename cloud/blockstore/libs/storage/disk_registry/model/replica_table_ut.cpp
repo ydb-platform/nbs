@@ -40,6 +40,28 @@ void SetDeviceState(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+TDevicePoolConfigs CreateDevicePoolConfigs(
+    std::initializer_list<std::tuple<TString, ui64, NProto::EDevicePoolKind>>
+        pools)
+{
+    NProto::TDevicePoolConfig nonrepl;
+    nonrepl.SetAllocationUnit(93_GB);
+
+    TDevicePoolConfigs result{{TString{}, nonrepl}};
+
+    for (auto [name, size, kind]: pools) {
+        NProto::TDevicePoolConfig config;
+        config.SetAllocationUnit(size);
+        config.SetName(name);
+        config.SetKind(kind);
+        result.emplace(name, std::move(config));
+    }
+
+    return result;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +70,8 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 {
     Y_UNIT_TEST(ShouldTryReplaceDevice)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
         TReplicaTable t(&deviceList);
         t.AddReplica("disk-1", {"d1-1", "d1-2", "d1-3", "d1-4"});
@@ -61,7 +85,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
         *agentConfig.AddDevices() = CreateDevice("d1-2-new-new");
         *agentConfig.AddDevices() = CreateDevice("d2-2-new");
         *agentConfig.AddDevices() = CreateDevice("d2-2-new");
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
 
         // We have mirror-3 disk.
         // Mark device "d2-2" as replacement. We still have two good devices in
@@ -101,7 +125,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
             agentConfig,
             "d2-2-new",
             NProto::EDeviceState::DEVICE_STATE_ERROR);
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
         // Cannot replace last good device in cell (one broken, one in
         // replacement state).
         UNIT_ASSERT(!t.IsReplacementAllowed("disk-1", "d3-2"));
@@ -111,14 +135,14 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
             agentConfig,
             "d2-2-new",
             NProto::EDeviceState::DEVICE_STATE_ONLINE);
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
 
         // Transfer replacement device to the error state.
         SetDeviceState(
             agentConfig,
             "d1-2-new-new",
             NProto::EDeviceState::DEVICE_STATE_ERROR);
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
 
         // Now we can replace the device. Since it is not the last good one in
         // the cell.
@@ -131,6 +155,8 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 
     Y_UNIT_TEST(ShouldCalculateReplicaStats)
     {
+        const auto poolConfigs = CreateDevicePoolConfigs({});
+
         TDeviceList deviceList({}, {});
         TReplicaTable t(&deviceList);
         t.AddReplica("disk-1", {"d1-1-1", "d1-1-2", "d1-1-3", "d1-1-4"});
@@ -144,7 +170,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
 
         AddDevicesToAgent(agentConfig, t.AsMatrix("disk-1"));
         AddDevicesToAgent(agentConfig, t.AsMatrix("disk-2"));
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
 
         auto replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(1, replicaCountStats.Mirror3DiskMinus0);
@@ -206,7 +232,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
             agentConfig,
             "d2-1-1",
             NProto::EDeviceState::DEVICE_STATE_ERROR);
-        deviceList.UpdateDevices(agentConfig);
+        deviceList.UpdateDevices(agentConfig, poolConfigs);
 
         replicaCountStats = t.CalculateReplicaCountStats();
         UNIT_ASSERT_VALUES_EQUAL(0, replicaCountStats.Mirror2DiskMinus0);

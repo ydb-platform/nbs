@@ -320,7 +320,7 @@ private:
 
     TReplicaTable ReplicaTable{&DeviceList};
 
-    THashMap<TString, NProto::TDevicePoolConfig> DevicePoolConfigs;
+    TDevicePoolConfigs DevicePoolConfigs;
 
     TPendingCleanup PendingCleanup;
 

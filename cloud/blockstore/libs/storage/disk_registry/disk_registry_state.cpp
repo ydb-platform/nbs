@@ -112,7 +112,7 @@ TDuration GetInfraTimeout(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THashMap<TString, NProto::TDevicePoolConfig> CreateDevicePoolConfigs(
+TDevicePoolConfigs CreateDevicePoolConfigs(
     const NProto::TDiskRegistryConfig& config,
     const TStorageConfig& storageConfig)
 {
@@ -120,7 +120,7 @@ THashMap<TString, NProto::TDevicePoolConfig> CreateDevicePoolConfigs(
     nonrepl.SetAllocationUnit(
         storageConfig.GetAllocationUnitNonReplicatedSSD() * 1_GB);
 
-    THashMap<TString, NProto::TDevicePoolConfig> result {
+    TDevicePoolConfigs result {
         { TString {}, nonrepl }
     };
 
@@ -676,7 +676,7 @@ void TDiskRegistryState::ProcessPlacementGroups(
 void TDiskRegistryState::ProcessAgents()
 {
     for (auto& agent: AgentList.GetAgents()) {
-        DeviceList.UpdateDevices(agent);
+        DeviceList.UpdateDevices(agent, DevicePoolConfigs);
         TimeBetweenFailures.SetWorkTime(
             TimeBetweenFailures.GetWorkTime() +
             agent.GetTimeBetweenFailures().GetWorkTime());
@@ -857,7 +857,7 @@ void TDiskRegistryState::RemoveAgentFromNode(
     }
 
     AgentList.RemoveAgentFromNode(nodeId);
-    DeviceList.UpdateDevices(agent, nodeId);
+    DeviceList.UpdateDevices(agent, DevicePoolConfigs, nodeId);
 
     for (const auto& id: diskIds) {
         AddReallocateRequest(db, id);
@@ -930,7 +930,7 @@ NProto::TError TDiskRegistryState::RegisterAgent(
             }
         }
 
-        DeviceList.UpdateDevices(agent, r.PrevNodeId);
+        DeviceList.UpdateDevices(agent, DevicePoolConfigs, r.PrevNodeId);
 
         for (const auto& uuid: r.NewDevices) {
             if (!DeviceList.FindDiskId(uuid)) {
@@ -1258,7 +1258,7 @@ NProto::TError TDiskRegistryState::ReplaceDevice(
         devicePtr->SetStateMessage(std::move(message));
         devicePtr->SetStateTs(timestamp.MicroSeconds());
 
-        DeviceList.UpdateDevices(*agentPtr);
+        DeviceList.UpdateDevices(*agentPtr, DevicePoolConfigs);
 
         DeviceList.ReleaseDevice(deviceId);
         db.UpdateDirtyDevice(deviceId, diskId);
@@ -1317,7 +1317,7 @@ void TDiskRegistryState::AdjustDeviceBlockCount(
     source->SetBlocksCount(newBlockCount);
 
     UpdateAgent(db, *agent);
-    DeviceList.UpdateDevices(*agent);
+    DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
 
     device = *source;
 }
@@ -1348,7 +1348,7 @@ void TDiskRegistryState::AdjustDeviceState(
     source->SetStateMessage(std::move(message));
 
     UpdateAgent(db, *agent);
-    DeviceList.UpdateDevices(*agent);
+    DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
 
     device = *source;
 }
@@ -3617,7 +3617,7 @@ bool TDiskRegistryState::TryUpdateDevice(
     AdjustDeviceIfNeeded(*device, {});
 
     UpdateAgent(db, *agent);
-    DeviceList.UpdateDevices(*agent);
+    DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
 
     return true;
 }
@@ -4686,7 +4686,7 @@ void TDiskRegistryState::ApplyAgentStateChange(
     TVector<TDiskId>& affectedDisks)
 {
     UpdateAgent(db, agent);
-    DeviceList.UpdateDevices(agent);
+    DeviceList.UpdateDevices(agent, DevicePoolConfigs);
 
     THashSet<TString> diskIds;
 
@@ -5580,7 +5580,7 @@ void TDiskRegistryState::ApplyDeviceStateChange(
     TDiskId& affectedDisk)
 {
     UpdateAgent(db, agent);
-    DeviceList.UpdateDevices(agent);
+    DeviceList.UpdateDevices(agent, DevicePoolConfigs);
 
     const auto& uuid = device.GetDeviceUUID();
     auto diskId = DeviceList.FindDiskId(uuid);
@@ -6967,7 +6967,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         TStringBuilder()
             << "target device " << targetDeviceId.Quote() << " not found");
     SetDeviceErrorState(*targetDevice, now, "replaced by private api");
-    DeviceList.UpdateDevices(*targetAgent);
+    DeviceList.UpdateDevices(*targetAgent, DevicePoolConfigs);
     UpdateAgent(db, *targetAgent);
 
     auto [sourceAgent, sourceDevice] = FindDeviceLocation(sourceDeviceId);
@@ -6978,7 +6978,7 @@ NProto::TError TDiskRegistryState::ChangeDiskDevice(
         TStringBuilder()
             << "source device " << sourceDeviceId.Quote() << " not found");
     SetDeviceErrorState(*sourceDevice, now, "replaced by private api");
-    DeviceList.UpdateDevices(*sourceAgent);
+    DeviceList.UpdateDevices(*sourceAgent, DevicePoolConfigs);
     UpdateAgent(db, *sourceAgent);
 
     diskState->State = CalculateDiskState(*diskState);
