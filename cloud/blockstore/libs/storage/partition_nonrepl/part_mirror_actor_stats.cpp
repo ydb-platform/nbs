@@ -63,8 +63,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
     }
 
     stats->Simple.ScrubbingProgress.Value =
-        100 * RangeId2BlockRange(ScrubbingRangeId, State.GetBlockSize()).Start
-        / State.GetBlockCount();
+        100 * GetScrubbingRange().Start / State.GetBlockCount();
     stats->Cumulative.ScrubbingThroughput.Value = ScrubbingThroughput;
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(

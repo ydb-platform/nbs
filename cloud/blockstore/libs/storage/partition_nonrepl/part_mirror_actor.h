@@ -93,6 +93,10 @@ private:
     void SendStats(const NActors::TActorContext& ctx);
     void CompareChecksums(const NActors::TActorContext& ctx);
     void ReplyAndDie(const NActors::TActorContext& ctx);
+    TBlockRange64 GetScrubbingRange() const;
+    void StartScrubbingRange(
+        const NActors::TActorContext& ctx,
+        ui64 scrubbingRangeId);
 
 private:
     STFUNC(StateWork);
