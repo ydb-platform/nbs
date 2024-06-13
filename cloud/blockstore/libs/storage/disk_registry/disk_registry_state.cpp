@@ -3400,7 +3400,7 @@ NProto::TError TDiskRegistryState::UpdateConfig(
             db.UpdateDirtyDevice(uuid, {});
         }
 
-        DeviceList.UpdateDevices(*agent);
+        DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
         UpdateAgent(db, *agent);
     }
 
