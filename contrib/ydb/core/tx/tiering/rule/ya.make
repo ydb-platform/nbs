@@ -14,6 +14,7 @@ PEERDIR(
     contrib/ydb/services/metadata/abstract
     contrib/ydb/services/metadata/common
     contrib/ydb/services/metadata/initializer
+    contrib/ydb/services/metadata/manager
     contrib/ydb/services/bg_tasks/abstract
     contrib/ydb/core/tx/schemeshard
 )

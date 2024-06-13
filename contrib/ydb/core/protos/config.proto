@@ -53,7 +53,7 @@ message TActorSystemConfig {
 
     enum EActorSystemProfile {
         DEFAULT = 1;
-        LOW_CPU_CONSUMPTION = 2;   
+        LOW_CPU_CONSUMPTION = 2;
         LOW_LATENCY = 3;
     }
 
@@ -465,10 +465,6 @@ message TInterconnectConfig {
     optional NKikimrConfigUnits.TDuration ForceConfirmPeriodDuration = 27;
     optional NKikimrConfigUnits.TDuration LostConnectionDuration = 28;
     optional NKikimrConfigUnits.TDuration BatchPeriodDuration = 29;
-
-    optional NKikimrConfigUnits.TDuration FirstErrorSleep = 46;
-    optional NKikimrConfigUnits.TDuration MaxErrorSleep = 47;
-    optional double ErrorSleepRetryMultiplier = 48;
 
     optional uint32 OutgoingHandshakeInflightLimit = 43;
 }
@@ -1116,13 +1112,14 @@ message TImmediateControlsConfig {
             MaxValue: 134217728,
             DefaultValue: 0 }];
 
+        // Note: these settings are deprecated (always enabled)
         optional uint64 PrioritizedMvccSnapshotReads = 8 [(ControlOptions) = {
-            Description: "Enables prioritized mvcc snapshot reads over immediate writes",
+            Description: "Enables prioritized mvcc snapshot reads over immediate writes (deprecated, always enabled)",
             MinValue: 0,
             MaxValue: 1,
             DefaultValue: 1 }];
         optional uint64 UnprotectedMvccSnapshotReads = 9 [(ControlOptions) = {
-            Description: "Enables unprotected (fully readonly) mvcc snapshot reads",
+            Description: "Enables unprotected (fully readonly) mvcc snapshot reads (deprecated, always enabled)",
             MinValue: 0,
             MaxValue: 1,
             DefaultValue: 1 }];
@@ -1248,11 +1245,70 @@ message TImmediateControlsConfig {
             DefaultValue: 8388608 }];
     }
 
+    message TTracingControls {
+        message TSamplingThrottlingOptions {
+            message TThrottlingOptions {
+                optional uint64 MaxRatePerMinute = 1 [(ControlOptions) = {
+                    Description: "Maximum amount of traced requests per minute",
+                    MinValue: 0,
+                    MaxValue: 300,
+                    DefaultValue: 0,
+                }];
+                optional uint64 MaxBurst = 2 [(ControlOptions) = {
+                    Description: "Maximum burst of traced events",
+                    MinValue: 0,
+                    MaxValue: 300, 
+                    DefaultValue: 0,
+                }];
+            }
+
+            message TSamplingOptions {
+                optional uint64 PPM = 1 [(ControlOptions) = {
+                    Description: "Average amount of sampled requests per one million",
+                    MinValue: 0,
+                    MaxValue: 1000000,
+                    DefaultValue: 0,
+                }];
+                optional uint64 Level = 2 [(ControlOptions) = {
+                    Description: "Tracing level of sampled requests",
+                    MinValue: 1,
+                    MaxValue: 15,
+                    DefaultValue: 15,
+                }];
+            }
+
+            optional TSamplingOptions Sampling = 1;
+            optional TThrottlingOptions SampledThrottling = 2;
+            optional TThrottlingOptions ExternalThrottling = 3;
+        }
+
+        message TKeyValue {
+            optional TSamplingThrottlingOptions AcquireLock = 1;
+            optional TSamplingThrottlingOptions ExecuteTransaction = 2;
+            optional TSamplingThrottlingOptions Read = 3;
+            optional TSamplingThrottlingOptions ReadRange = 4;
+            optional TSamplingThrottlingOptions ListRange = 5;
+            optional TSamplingThrottlingOptions GetStorageChannelStatus = 6;
+        }
+
+        optional TKeyValue KeyValue = 1;
+    }
+
+    message TTabletControls {
+        optional uint64 MaxCommitRedoMB = 1 [(ControlOptions) = {
+            Description: "Maximum redo size per commit in megabytes",
+            MinValue: 8,
+            MaxValue: 4096,
+            DefaultValue: 256 }];
+    }
+
     optional TDataShardControls DataShardControls = 1;
     optional TTxLimitControls TxLimitControls = 2;
     optional TCoordinatorControls CoordinatorControls = 3;
     optional TSchemeShardControls SchemeShardControls = 4;
     optional TTCMallocControls TCMallocControls = 5;
+    optional TTracingControls TracingControls = 6;
+    optional TTabletControls TabletControls = 8;
 };
 
 message TMeteringConfig {
@@ -1325,6 +1381,12 @@ message THiveConfig {
         HIVE_TABLET_BALANCE_STRATEGY_HEAVIEST = 1;
         HIVE_TABLET_BALANCE_STRATEGY_RANDOM = 2;
         HIVE_TABLET_BALANCE_STRATEGY_WEIGHTED_RANDOM = 3;
+    }
+
+    enum EHiveChannelBalanceStrategy {
+        HIVE_CHANNEL_BALANCE_STRATEGY_HEAVIEST = 0;
+        HIVE_CHANNEL_BALANCE_STRATEGY_RANDOM = 1;
+        HIVE_CHANNEL_BALANCE_STRATEGY_WEIGHTED_RANDOM = 2;
     }
 
     enum EHiveNodeSelectStrategy {
@@ -1404,6 +1466,12 @@ message THiveConfig {
     optional double MinCounterScatterToBalance = 65 [default = 0.02];
     reserved 66;
     optional double ObjectImbalanceToBalance = 67 [default = 0.02];
+    optional EHiveChannelBalanceStrategy ChannelBalanceStrategy = 68 [default = HIVE_CHANNEL_BALANCE_STRATEGY_WEIGHTED_RANDOM];
+    optional uint64 MaxChannelHistorySize = 69 [default = 200];
+    optional uint64 StorageInfoRefreshFrequency = 70 [default = 600000]; // send a query to BSC every x milliseconds
+    optional double MinStorageScatterToBalance = 71 [default = 999]; // storage balancer trigger is disabled by default
+    optional double MinGroupUsageToBalance = 72 [default = 0.1];
+    optional uint64 StorageBalancerInflight = 73 [default = 1];
 }
 
 message TColumnShardConfig {
@@ -1428,6 +1496,9 @@ message TColumnShardConfig {
     optional bool TTLEnabled = 6 [default = true];
     optional bool WritingEnabled = 7 [default = true];
     optional uint32 WritingBufferDurationMs = 8 [default = 0];
+    optional bool UseChunkedMergeOnCompaction = 9 [default = true];
+    optional uint64 CompactionMemoryLimit = 10 [default = 536870912];
+    optional uint64 TieringsMemoryLimit = 11 [default = 536870912];
 }
 
 message TSchemeShardConfig {
@@ -1520,11 +1591,56 @@ message TCompactionConfig {
     optional TBorrowedCompactionConfig BorrowedCompactionConfig = 2;
 }
 
+message TBackgroundCleaningConfig {
+    optional double MaxRate = 1 [default = 0]; // unlimitted
+    optional uint64 InflightLimit = 2 [default = 10]; // TODO: consider more?
+
+    // After this interval we will try to restart
+    optional uint64 TimeoutSeconds = 3 [default = 15];
+
+    // Do not wakeup earlier, than this interval
+    optional uint64 MinWakeupIntervalMs = 4 [default = 10];
+
+    message TRetrySettings {
+        optional uint32 StartDelayMs = 1 [default = 1000];
+        optional uint32 MaxDelayMs = 2 [default = 256000];
+        optional uint32 MaxRetryNumber = 3 [default = 8];
+    }
+
+    // after MaxRetryNumber retries to connect to the node, we will send the table to the BackgroundCleaningQueue,
+    // that is, after 2^(MaxRetryNumber + 1) - 1 = 511 seconds
+
+    optional TRetrySettings RetrySettings = 5;
+}
+
 message TTracingConfig {
+    message TAuthConfig {
+        message TTvm {
+            optional string Host = 1;
+            optional uint32 Port = 2;
+
+            required uint32 SelfTvmId = 3;
+            required uint32 TracingTvmId = 4;
+
+            optional string DiskCacheDir = 5;
+
+            oneof Secret {
+                string PlainTextSecret = 6;
+                string SecretFile = 7;
+                string SecretEnvironmentVariable = 8;
+            }
+        }
+
+        oneof Method {
+            TTvm Tvm = 1;
+        }
+    }
+
     optional string Host = 1;
     optional uint32 Port = 2;
     optional string RootCA = 3;
     optional string ServiceName = 4;
+    optional TAuthConfig AuthConfig = 5;
 }
 
 message TFailureInjectionConfig {
@@ -1594,6 +1710,7 @@ message TKafkaProxyConfig {
     }
 
     optional TProxy Proxy = 7;
+    optional bool MeteringV2Enabled = 10 [default = false];
 }
 
 message TAwsCompatibilityConfig {
@@ -1675,6 +1792,7 @@ message TAppConfig {
     optional TConveyorConfig InsertConveyorConfig = 74;
     optional bool AllowEditYamlInUi = 75;
     optional TS3ProxyResolverConfig S3ProxyResolverConfig = 76;
+    optional TBackgroundCleaningConfig BackgroundCleaningConfig = 77;
 
     repeated TNamedConfig NamedConfigs = 100;
     optional string ClusterYamlConfig = 101;

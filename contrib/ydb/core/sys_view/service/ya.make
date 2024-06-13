@@ -16,6 +16,8 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/core/base
     contrib/ydb/core/protos
+    contrib/ydb/core/graph/api
+    contrib/ydb/core/graph/service
     contrib/ydb/library/aclib/protos
 )
 

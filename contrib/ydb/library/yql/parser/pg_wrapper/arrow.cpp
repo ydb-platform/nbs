@@ -1,4 +1,5 @@
 #include "arrow.h"
+#include "arrow_impl.h"
 #include <contrib/ydb/library/yql/parser/pg_wrapper/interface/arrow.h>
 #include <contrib/ydb/library/yql/parser/pg_wrapper/interface/utils.h>
 #include <contrib/ydb/library/yql/minikql/mkql_node_cast.h>
@@ -18,7 +19,10 @@ extern "C" {
 namespace NYql {
 
 extern "C" {
+Y_PRAGMA_DIAGNOSTIC_PUSH
+Y_PRAGMA("GCC diagnostic ignored \"-Wreturn-type-c-linkage\"")
 #include "pg_kernels_fwd.inc"
+Y_PRAGMA_DIAGNOSTIC_POP
 }
 
 struct TExecs {
@@ -113,7 +117,7 @@ std::shared_ptr<arrow::Array> PgConvertString(const std::shared_ptr<arrow::Array
     for (size_t i = 0; i < length; ++i) {
         auto item = reader.GetItem(*data, i);
         if (!item) {
-            builder.AppendNull();
+            ARROW_OK(builder.AppendNull());
             continue;
         }
 
@@ -149,6 +153,55 @@ std::shared_ptr<arrow::Array> PgConvertString(const std::shared_ptr<arrow::Array
     std::shared_ptr<arrow::BinaryArray> ret;
     ARROW_OK(builder.Finish(&ret));
     return ret;
+}
+
+Numeric PgFloatToNumeric(double item, ui64 scale, int digits) {
+    double intPart, fracPart;
+    bool error;
+    fracPart = modf(item, &intPart);
+    i64 fracInt = round(fracPart * scale);
+
+    // scale compaction: represent 711.56000 as 711.56
+    while (digits > 0 && fracInt % 10 == 0) {
+        fracInt /= 10;
+        digits -= 1;
+    }
+
+    if (digits == 0) {
+        return int64_to_numeric(intPart);
+    } else {
+        return numeric_add_opt_error(
+            int64_to_numeric(intPart),
+            int64_div_fast_to_numeric(fracInt, digits),
+            &error);
+    }
+}
+
+TColumnConverter BuildPgNumericColumnConverter(const std::shared_ptr<arrow::DataType>& originalType) {
+    switch (originalType->id()) {
+    case arrow::Type::INT16:
+        return [](const std::shared_ptr<arrow::Array>& value) {
+            return PgConvertNumeric<i16>(value);
+        };
+    case arrow::Type::INT32:
+        return [](const std::shared_ptr<arrow::Array>& value) {
+            return PgConvertNumeric<i32>(value);
+        };
+    case arrow::Type::INT64:
+        return [](const std::shared_ptr<arrow::Array>& value) {
+            return PgConvertNumeric<i64>(value);
+        };
+    case arrow::Type::FLOAT:
+        return [](const std::shared_ptr<arrow::Array>& value) {
+            return PgConvertNumeric<float>(value);
+        };
+    case arrow::Type::DOUBLE:
+        return [](const std::shared_ptr<arrow::Array>& value) {
+            return PgConvertNumeric<double>(value);
+        };
+    default:
+        return {};
+    }
 }
 
 template <typename T, typename F>
@@ -200,6 +253,9 @@ TColumnConverter BuildPgColumnConverter(const std::shared_ptr<arrow::DataType>& 
     case FLOAT8OID: {
         return BuildPgFixedColumnConverter<double>(originalType, [](auto value){ return Float8GetDatum(value); });
     }
+    case NUMERICOID: {
+        return BuildPgNumericColumnConverter(originalType);
+    }
     case BYTEAOID:
     case VARCHAROID:
     case TEXTOID:
@@ -222,6 +278,10 @@ TColumnConverter BuildPgColumnConverter(const std::shared_ptr<arrow::DataType>& 
         if (originalType->Equals(arrow::uint16())) {
             return [](const std::shared_ptr<arrow::Array>& value) {
                 return PgConvertFixed<ui16>(value, [](auto value){ return MakePgDateFromUint16(value); });
+            };
+        } else if (originalType->Equals(arrow::date32())) {
+            return [](const std::shared_ptr<arrow::Array>& value) {
+                return PgConvertFixed<i32>(value, [](auto value){ return MakePgDateFromUint16(value); });
             };
         } else {
             return {};

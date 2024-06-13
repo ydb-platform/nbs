@@ -1,6 +1,9 @@
 LIBRARY()
 
-NO_COMPILER_WARNINGS()
+OWNER(
+    g:yql
+    g:yql_ydb_core
+)
 
 PEERDIR(
     contrib/ydb/library/yql/minikql/codegen/llvm14

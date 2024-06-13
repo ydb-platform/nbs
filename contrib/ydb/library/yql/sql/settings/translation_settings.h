@@ -1,5 +1,7 @@
 #pragma once
 
+#include <contrib/ydb/library/yql/core/pg_settings/guc_settings.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/map.h>
@@ -25,7 +27,7 @@ namespace NSQLTranslation {
     };
 
     enum class EBindingsMode {
-        // raise error 
+        // raise error
         DISABLED,
         // classic support for bindings
         ENABLED,
@@ -109,7 +111,8 @@ namespace NSQLTranslation {
         TVector<ui32> PgParameterTypeOids;
         bool AutoParametrizeEnabled = false;
         bool AutoParametrizeValuesStmt = false;
-        THashSet<TString> AutoParametrizeExprDisabledScopes = {};
+
+        TGUCSettings::TPtr GUCSettings = std::make_shared<TGUCSettings>();
     };
 
     bool ParseTranslationSettings(const TString& query, NSQLTranslation::TTranslationSettings& settings, NYql::TIssues& issues);

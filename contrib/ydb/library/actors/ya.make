@@ -1,0 +1,16 @@
+RECURSE(
+    log_backend
+    core
+    cppcoro
+    dnsresolver
+    examples
+    interconnect
+    memory_log
+    helpers
+    prof
+    protos
+    util
+    wilson
+    testlib
+    http
+)

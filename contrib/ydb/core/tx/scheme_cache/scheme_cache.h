@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/events.h>
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/base/tx_processing.h>
+#include <contrib/ydb/core/base/subdomain.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/subdomains.pb.h>
@@ -55,12 +56,15 @@ struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
         : DomainKey(GetDomainKey(descr.GetDomainKey()))
         , Params(descr.GetProcessingParams())
         , Coordinators(descr.GetProcessingParams())
-        , ServerlessComputeResourcesMode(descr.GetServerlessComputeResourcesMode())
     {
         if (descr.HasResourcesDomainKey()) {
             ResourcesDomainKey = GetDomainKey(descr.GetResourcesDomainKey());
         } else {
             ResourcesDomainKey = DomainKey;
+        }
+
+        if (descr.HasServerlessComputeResourcesMode()) {
+            ServerlessComputeResourcesMode = descr.GetServerlessComputeResourcesMode();
         }
     }
 
@@ -84,8 +88,7 @@ struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
     TPathId ResourcesDomainKey;
     NKikimrSubDomains::TProcessingParams Params;
     TCoordinators Coordinators;
-    NKikimrSubDomains::EServerlessComputeResourcesMode ServerlessComputeResourcesMode =
-        NKikimrSubDomains::SERVERLESS_COMPUTE_RESOURCES_MODE_UNSPECIFIED;
+    TMaybeServerlessComputeResourcesMode ServerlessComputeResourcesMode;
 
     TString ToString() const;
 
@@ -255,6 +258,7 @@ struct TSchemeCacheNavigate {
 
         // in
         TVector<TString> Path;
+        ui32 Access = NACLib::DescribeSchema;
         TTableId TableId;
         ERequestType RequestType = ERequestType::ByPath;
         EOp Operation = OpUnknown;

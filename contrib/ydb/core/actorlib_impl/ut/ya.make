@@ -13,13 +13,14 @@ ELSE()
 ENDIF()
 
 PEERDIR(
+    contrib/ydb/apps/version
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     library/cpp/getopt
     library/cpp/svnversion
     contrib/ydb/core/testlib/actors
     contrib/ydb/core/testlib/basics/default
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
 )
 
 SRCS(

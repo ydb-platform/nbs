@@ -13,6 +13,8 @@ ENDIF()
 
 REQUIREMENTS(ram:32)
 
+OWNER(g:yql)
+
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/library/yql/minikql/computation/header.ya.make.inc)
 INCLUDE(${ARCADIA_ROOT}/contrib/ydb/library/yql/minikql/invoke_builtins/header.ya.make.inc)
 

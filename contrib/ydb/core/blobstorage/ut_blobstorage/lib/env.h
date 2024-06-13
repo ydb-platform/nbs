@@ -37,6 +37,7 @@ struct TEnvironmentSetup {
         const std::function<TNodeLocation(ui32)> LocationGenerator;
         const bool SetupHive = false;
         const bool SuppressCompatibilityCheck = false;
+        const TFeatureFlags FeatureFlags;
     };
 
     const TSettings Settings;
@@ -125,22 +126,27 @@ struct TEnvironmentSetup {
             Settings.Erasure.GetErasure() == TBlobStorageGroupType::ErasureMirror3dc ? 3 : 1;
     }
 
+    std::unique_ptr<TTestActorSystem> MakeRuntime() {
+        TFeatureFlags featureFlags;
+        featureFlags.SetSuppressCompatibilityCheck(Settings.SuppressCompatibilityCheck);
+
+        auto domainsInfo = MakeIntrusive<TDomainsInfo>();
+        auto domain = TDomainsInfo::TDomain::ConstructEmptyDomain(DomainName, DomainId);
+        domainsInfo->AddDomain(domain.Get());
+        if (Settings.SetupHive) {
+            domainsInfo->AddHive(domain->DefaultHiveUid, MakeDefaultHiveID(domain->DefaultStateStorageGroup));
+        }
+
+        return std::make_unique<TTestActorSystem>(Settings.NodeCount, NLog::PRI_ERROR, domainsInfo, featureFlags);
+    }
+
     void Initialize() {
-        Runtime = std::make_unique<TTestActorSystem>(Settings.NodeCount, NLog::PRI_ERROR);
+        Runtime = MakeRuntime();
         if (Settings.PrepareRuntime) {
             Settings.PrepareRuntime(*Runtime);
         }
         SetupLogging();
         Runtime->Start();
-        auto *appData = Runtime->GetAppData();
-
-        appData->FeatureFlags.SetSuppressCompatibilityCheck(Settings.SuppressCompatibilityCheck);
-
-        auto domain = TDomainsInfo::TDomain::ConstructEmptyDomain(DomainName, DomainId);
-        appData->DomainsInfo->AddDomain(domain.Get());
-        if (Settings.SetupHive) {
-            appData->DomainsInfo->AddHive(domain->DefaultHiveUid, MakeDefaultHiveID(domain->DefaultStateStorageGroup));
-        }
 
         if (Settings.LocationGenerator) {
             Runtime->SetupTabletRuntime(Settings.LocationGenerator, Settings.ControllerNodeId);
@@ -314,6 +320,7 @@ struct TEnvironmentSetup {
                     };
                     config->CacheAccessor = std::make_unique<TAccessor>(Cache[nodeId]);
                 }
+                config->FeatureFlags = Settings.FeatureFlags;
                 warden.reset(CreateBSNodeWarden(config));
             }
 
@@ -333,9 +340,8 @@ struct TEnvironmentSetup {
             {MakeBSControllerID(DomainId), TTabletTypes::BSController, &CreateFlatBsController},
         };
 
-        auto *appData = Runtime->GetAppData();
 
-        for (const auto& [uid, tabletId] : appData->DomainsInfo->HivesByHiveUid) {
+        for (const auto& [uid, tabletId] : Runtime->GetDomainsInfo()->HivesByHiveUid) {
             tablets.push_back(TTabletInfo{tabletId, TTabletTypes::Hive, &CreateDefaultHive});
         }
 
@@ -351,8 +357,8 @@ struct TEnvironmentSetup {
         auto localConfig = MakeIntrusive<TLocalConfig>();
 
         localConfig->TabletClassInfo[TTabletTypes::BlobDepot] = TLocalConfig::TTabletClassInfo(new TTabletSetupInfo(
-            &NBlobDepot::CreateBlobDepot, TMailboxType::ReadAsFilled, appData->SystemPoolId, TMailboxType::ReadAsFilled,
-            appData->SystemPoolId));
+            &NBlobDepot::CreateBlobDepot, TMailboxType::ReadAsFilled, Runtime->SYSTEM_POOL_ID, TMailboxType::ReadAsFilled,
+            Runtime->SYSTEM_POOL_ID));
 
         auto tenantPoolConfig = MakeIntrusive<TTenantPoolConfig>(localConfig);
         tenantPoolConfig->AddStaticSlot(DomainName);
@@ -745,17 +751,20 @@ struct TEnvironmentSetup {
         Sim(TDuration::Seconds(15));
     }
 
-    void Wipe(ui32 nodeId, ui32 pdiskId, ui32 vslotId) {
-        const TActorId self = Runtime->AllocateEdgeActor(Settings.ControllerNodeId, __FILE__, __LINE__);
-        auto ev = std::make_unique<TEvBlobStorage::TEvControllerGroupReconfigureWipe>();
-        auto& record = ev->Record;
-        auto *vslot = record.MutableVSlotId();
+    void Wipe(ui32 nodeId, ui32 pdiskId, ui32 vslotId, const TVDiskID& vdiskId) {
+        NKikimrBlobStorage::TConfigRequest request;
+        request.SetIgnoreGroupFailModelChecks(true);
+        request.SetIgnoreDegradedGroupsChecks(true);
+        request.SetIgnoreDisintegratedGroupsChecks(true);
+        auto *cmd = request.AddCommand();
+        auto *wipe = cmd->MutableWipeVDisk();
+        auto *vslot = wipe->MutableVSlotId();
         vslot->SetNodeId(nodeId);
         vslot->SetPDiskId(pdiskId);
         vslot->SetVSlotId(vslotId);
-        Runtime->SendToPipe(TabletId, self, ev.release(), 0, TTestActorSystem::GetPipeConfigWithRetries());
-        auto response = WaitForEdgeActorEvent<TEvBlobStorage::TEvControllerGroupReconfigureWipeResult>(self);
-        UNIT_ASSERT_VALUES_EQUAL(response->Get()->Record.GetStatus(), NKikimrProto::OK);
+        VDiskIDFromVDiskID(vdiskId, wipe->MutableVDiskId());
+        auto response = Invoke(request);
+        UNIT_ASSERT_C(response.GetSuccess(), response.GetErrorDescription());
     }
 
     void WaitForVDiskToGetRunning(const TVDiskID& vdiskId, TActorId actorId) {

@@ -1,5 +1,10 @@
 UNITTEST_FOR(contrib/ydb/core/statistics)
 
+OWNER(
+    monster
+    g:kikimr
+)
+
 FORK_SUBTESTS()
 
 IF (WITH_VALGRIND)

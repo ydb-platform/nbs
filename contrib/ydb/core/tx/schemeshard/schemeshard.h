@@ -93,6 +93,8 @@ struct TEvSchemeShard {
         EvProcessingRequest,
         EvProcessingResponse,
 
+        EvOwnerActorAck,
+
         EvEnd
     };
 
@@ -329,10 +331,9 @@ struct TEvSchemeShard {
                                                                   EvDescribeSchemeResult> {
         TEvDescribeSchemeResult() = default;
 
-        TEvDescribeSchemeResult(const TString& path, ui64 pathOwner, TPathId pathId)
+        TEvDescribeSchemeResult(const TString& path, TPathId pathId)
         {
             Record.SetPath(path);
-            Record.SetPathOwner(pathOwner);
             Record.SetPathId(pathId.LocalPathId);
             Record.SetPathOwnerId(pathId.OwnerId);
         }
@@ -343,8 +344,8 @@ struct TEvSchemeShard {
 
         TEvDescribeSchemeResultBuilder() = default;
 
-        TEvDescribeSchemeResultBuilder(const TString& path, ui64 pathOwner, TPathId pathId)
-            : TEvDescribeSchemeResult(path, pathOwner, pathId)
+        TEvDescribeSchemeResultBuilder(const TString& path, TPathId pathId)
+            : TEvDescribeSchemeResult(path, pathId)
         {
         }
     };
@@ -497,32 +498,38 @@ struct TEvSchemeShard {
                                                       EvSyncTenantSchemeShard> {
         TEvSyncTenantSchemeShard() = default;
 
-        TEvSyncTenantSchemeShard(const TPathId& domainKey,
-                                 ui64 tabletId,
-                                 ui64 generation,
-                                 ui64 effectiveACLVersion,
-                                 ui64 subdomainVersion,
-                                 ui64 userAttrsVersion,
-                                 ui64 tenantHive,
-                                 ui64 tenantSysViewProcessor,
-                                 ui64 tenantStatisticsAggregator,
-                                 const TString& rootACL)
+        struct TEvSyncTenantSchemeShardInitializer {
+            TPathId DomainKey;
+            ui64 TabletId;
+            ui64 Generation;
+            ui64 EffectiveACLVersion;
+            ui64 SubdomainVersion;
+            ui64 UserAttrsVersion;
+            ui64 TenantHive;
+            ui64 TenantSysViewProcessor;
+            ui64 TenantStatisticsAggregator;
+            ui64 TenantGraphShard;
+            TString RootACL;
+        };
+
+        TEvSyncTenantSchemeShard(const TEvSyncTenantSchemeShardInitializer& _)
         {
-            Record.SetDomainSchemeShard(domainKey.OwnerId);
-            Record.SetDomainPathId(domainKey.LocalPathId);
+            Record.SetDomainSchemeShard(_.DomainKey.OwnerId);
+            Record.SetDomainPathId(_.DomainKey.LocalPathId);
 
-            Record.SetTabletID(tabletId);
-            Record.SetGeneration(generation);
+            Record.SetTabletID(_.TabletId);
+            Record.SetGeneration(_.Generation);
 
-            Record.SetEffectiveACLVersion(effectiveACLVersion);
-            Record.SetSubdomainVersion(subdomainVersion);
-            Record.SetUserAttributesVersion(userAttrsVersion);
+            Record.SetEffectiveACLVersion(_.EffectiveACLVersion);
+            Record.SetSubdomainVersion(_.SubdomainVersion);
+            Record.SetUserAttributesVersion(_.UserAttrsVersion);
 
-            Record.SetTenantHive(tenantHive);
-            Record.SetTenantSysViewProcessor(tenantSysViewProcessor);
-            Record.SetTenantStatisticsAggregator(tenantStatisticsAggregator);
+            Record.SetTenantHive(_.TenantHive);
+            Record.SetTenantSysViewProcessor(_.TenantSysViewProcessor);
+            Record.SetTenantStatisticsAggregator(_.TenantStatisticsAggregator);
+            Record.SetTenantGraphShard(_.TenantGraphShard);
 
-            Record.SetTenantRootACL(rootACL);
+            Record.SetTenantRootACL(_.RootACL);
         }
 
     };
@@ -574,6 +581,10 @@ struct TEvSchemeShard {
 
         void SetUpdateTenantRootACL(const TString& acl) {
             Record.SetUpdateTenantRootACL(acl);
+        }
+
+        void SetTenantGraphShard(ui64 gs) {
+            Record.SetTenantGraphShard(gs);
         }
     };
 
@@ -631,6 +642,10 @@ struct TEvSchemeShard {
 
     struct TEvLoginResult : TEventPB<TEvLoginResult, NKikimrScheme::TEvLoginResult, EvLoginResult> {
         TEvLoginResult() = default;
+    };
+
+    struct TEvOwnerActorAck : TEventPB<TEvOwnerActorAck, NKikimrScheme::TEvOwnerActorAck, EvOwnerActorAck> {
+        TEvOwnerActorAck() = default;
     };
 };
 

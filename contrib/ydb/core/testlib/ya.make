@@ -82,12 +82,13 @@ PEERDIR(
     contrib/ydb/library/mkql_proto/protos
     contrib/ydb/library/persqueue/topic_parser
     contrib/ydb/library/security
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm
+    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     contrib/ydb/library/yql/public/udf/service/exception_policy
     contrib/ydb/public/lib/base
     contrib/ydb/public/lib/deprecated/kicli
     contrib/ydb/public/sdk/cpp/client/ydb_driver
     contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/codecs
+    contrib/ydb/public/sdk/cpp/client/ydb_query
     contrib/ydb/public/sdk/cpp/client/ydb_table
     contrib/ydb/services/auth
     contrib/ydb/services/cms

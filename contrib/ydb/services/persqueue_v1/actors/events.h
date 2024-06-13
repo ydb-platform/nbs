@@ -3,7 +3,7 @@
 #include "partition_id.h"
 
 #include <contrib/ydb/core/base/events.h>
-#include <contrib/ydb/core/grpc_services/rpc_calls.h>
+#include <contrib/ydb/core/grpc_services/rpc_calls_topic.h>
 #include <contrib/ydb/core/protos/pqconfig.pb.h>
 #include <contrib/ydb/core/persqueue/key.h>
 #include <contrib/ydb/core/persqueue/percentile_counter.h>
@@ -14,7 +14,6 @@
 #include <contrib/ydb/services/lib/actors/type_definitions.h>
 
 #include <util/generic/guid.h>
-
 
 namespace NKikimr::NGRpcProxy::V1 {
 

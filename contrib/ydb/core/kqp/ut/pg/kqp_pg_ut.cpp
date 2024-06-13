@@ -1232,13 +1232,13 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             auto result = db.ExecuteQuery(R"(
                 INSERT INTO t SELECT 1 as columnC, 2 as columnA;
             )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());    
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
         {
             auto result = db.ExecuteQuery(R"(
                 INSERT INTO t (columnA, columnB) SELECT 2 as columnB, 4 as columnA;
             )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());    
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
         {
             auto result = db.ExecuteQuery(R"(
@@ -1256,6 +1256,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertFromSelect_Serial) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -1283,7 +1284,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             auto result = db.ExecuteQuery(R"(
                 INSERT INTO movies (id, title) VALUES (1, 'movie1'), (4, 'movie4');
             )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());    
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
         {
             auto result = db.ExecuteQuery(R"(
@@ -1438,8 +1439,13 @@ Y_UNIT_TEST_SUITE(KqpPg) {
         }
     }
 
-    Y_UNIT_TEST(ReturningTypeAnn) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+    Y_UNIT_TEST(Returning) {
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
+        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
+
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appConfig)
+            .SetWithSampleTables(false));
 
         auto client = kikimr.GetTableClient();
         auto session = client.CreateSession().GetValueSync().GetSession();
@@ -1448,7 +1454,13 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             --!syntax_pg
             CREATE TABLE ReturningTable (
             key serial PRIMARY KEY,
-            value int4))");
+            value int4);
+
+            CREATE TABLE ReturningTableExtraValue (
+            key serial PRIMARY KEY,
+            value int4,
+            value2 int4 default 2);
+            )");
 
         auto resultCreate = session.ExecuteSchemeQuery(queryCreate).GetValueSync();
         UNIT_ASSERT_C(resultCreate.IsSuccess(), resultCreate.GetIssues().ToString());
@@ -1460,30 +1472,35 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             )");
 
             auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
-            UNIT_ASSERT(!result.IsSuccess());
-            UNIT_ASSERT(result.GetIssues().ToString(true) == "{ <main>: Error: Type annotation, code: 1030 subissue: { <main>:1:1: Error: At function: KiWriteTable! subissue: { <main>:1:1: Error: It is not allowed to use returning } } }");
+            UNIT_ASSERT(result.IsSuccess());
+
+            CompareYson(R"([["1"]])", FormatResultSetYson(result.GetResultSet(0)));
         }
 
         {
             const auto query = Q_(R"(
                 --!syntax_pg
                 INSERT INTO ReturningTable (value) VALUES(2) RETURNING key, value;
+                INSERT INTO ReturningTableExtraValue (value) VALUES(3) RETURNING key, value;
             )");
 
             auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
-            UNIT_ASSERT(!result.IsSuccess());
-            UNIT_ASSERT(result.GetIssues().ToString(true) == "{ <main>: Error: Type annotation, code: 1030 subissue: { <main>:1:1: Error: At function: KiWriteTable! subissue: { <main>:1:1: Error: It is not allowed to use returning } } }");
+            UNIT_ASSERT(result.IsSuccess());
+            CompareYson(R"([["2";"2"]])", FormatResultSetYson(result.GetResultSet(0)));
+            CompareYson(R"([["1";"3"]])", FormatResultSetYson(result.GetResultSet(1)));
         }
 
         {
             const auto query = Q_(R"(
                 --!syntax_pg
                 INSERT INTO ReturningTable (value) VALUES(2) RETURNING *;
+                INSERT INTO ReturningTableExtraValue (value) VALUES(4) RETURNING *;
             )");
 
             auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
-            UNIT_ASSERT(!result.IsSuccess());
-            UNIT_ASSERT(result.GetIssues().ToString(true) == "{ <main>: Error: Type annotation, code: 1030 subissue: { <main>:1:1: Error: At function: KiWriteTable! subissue: { <main>:1:1: Error: It is not allowed to use returning } } }");
+            UNIT_ASSERT(result.IsSuccess());
+            CompareYson(R"([["3";"2"]])", FormatResultSetYson(result.GetResultSet(0)));
+            CompareYson(R"([["2";"4";"2"]])", FormatResultSetYson(result.GetResultSet(1)));
         }
 
         {
@@ -1494,7 +1511,41 @@ Y_UNIT_TEST_SUITE(KqpPg) {
 
             auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
             UNIT_ASSERT(!result.IsSuccess());
-            UNIT_ASSERT(result.GetIssues().ToString(true) == "{ <main>: Error: Type annotation, code: 1030 subissue: { <main>:1:1: Error: At function: KiWriteTable! subissue: { <main>:1:1: Error: Column not found: fake } } }");
+            Cerr << result.GetIssues().ToString(true) << Endl;
+            UNIT_ASSERT(result.GetIssues().ToString(true) == "{ <main>: Error: Type annotation, code: 1030 subissue: { <main>:1:1: Error: At function: DataQueryBlocks, At function: TKiDataQueryBlock, At function: KiReturningList! subissue: { <main>:1:1: Error: Column not found: fake } } }");
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE ReturningTable SET  value = 3 where key = 1 RETURNING *;
+            )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
+            UNIT_ASSERT(result.IsSuccess());
+            CompareYson(R"([["1";"3"]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE ReturningTableExtraValue SET  value2 = 3 where key = 2 RETURNING *;
+            )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
+            UNIT_ASSERT(result.IsSuccess());
+            CompareYson(R"([["2";"4";"3"]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE ReturningTableExtraValue SET  value2 = 3 where key = 2 RETURNING *;
+            )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).GetValueSync();
+            UNIT_ASSERT(result.IsSuccess());
+            CompareYson(R"([["2";"4";"3"]])", FormatResultSetYson(result.GetResultSet(0)));
         }
     }
 
@@ -1553,7 +1604,11 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     }
 
     Y_UNIT_TEST(CreateTableSerialColumns) {
-        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false).SetEnableNotNullDataColumns(true));
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
+
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetAppConfig(appConfig)
+            .SetWithSampleTables(false).SetEnableNotNullDataColumns(true));
         auto client = kikimr.GetTableClient();
         auto session = client.CreateSession().GetValueSync().GetSession();
         {
@@ -1806,11 +1861,144 @@ Y_UNIT_TEST_SUITE(KqpPg) {
         {
             const auto query = Q_(R"(
                 --!syntax_pg
+                INSERT INTO Pg (key, value) VALUES (120, 120), (121, 121);
+                )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE Pg SET value = 120 WHERE key = 121;
+                )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::PRECONDITION_FAILED, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120"];["121";"121"]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
                 INSERT INTO Pg1 (key, value) VALUES (120, 120), (121, 120);
                 )");
 
             auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg1;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120"];["121";"120"]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE Pg1 SET value = 121 WHERE key = 121;
+                )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg1;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120"];["121";"121"]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+    }
+
+    Y_UNIT_TEST(CreateUniqComplexPgColumn) {
+        TKikimrRunner kikimr(NKqp::TKikimrSettings().SetWithSampleTables(false));
+        auto client = kikimr.GetTableClient();
+        auto session = client.CreateSession().GetValueSync().GetSession();
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                CREATE TABLE Pg (
+                key int4 PRIMARY KEY,
+                value1 int4,
+                value2 int4,
+                UNIQUE(value1, value2)
+                ))");
+
+            auto result = session.ExecuteSchemeQuery(query).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                INSERT INTO Pg (key, value1) VALUES (120, 120), (121, 120);
+                )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120";#];["121";"120";#]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE Pg SET value2 = 111 WHERE key = 120;
+            )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120";"111"];["121";"120";#]])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            const auto query = Q_(R"(
+                --!syntax_pg
+                UPDATE Pg SET value2 = 111 WHERE key = 121;
+            )");
+
+            auto result = session.ExecuteDataQuery(query, TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::PRECONDITION_FAILED, result.GetIssues().ToString());
+        }
+
+        {
+            auto result = session.ExecuteDataQuery(R"(
+                --!syntax_pg
+                SELECT * FROM Pg;
+            )", TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([["120";"120";"111"];["121";"120";#]])", FormatResultSetYson(result.GetResultSet(0)));
         }
     }
 
@@ -1896,7 +2084,8 @@ Y_UNIT_TEST_SUITE(KqpPg) {
 
     Y_UNIT_TEST(CreateTempTableSerial) {
         NKikimrConfig::TAppConfig appConfig;
-        appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);;
+        appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -2068,6 +2257,224 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             )");
 
             auto resultSelect = sessionAnother.ExecuteQuery(
+                querySelect, NYdb::NQuery::TTxControl::BeginTx().CommitTx()).ExtractValueSync();
+            UNIT_ASSERT(!resultSelect.IsSuccess());
+        }
+    }
+
+    Y_UNIT_TEST(TempTablesWithCache) {
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        auto setting = NKikimrKqp::TKqpSetting();
+        auto serverSettings = TKikimrSettings()
+            .SetAppConfig(appConfig)
+            .SetKqpSettings({setting});
+        TKikimrRunner kikimr(
+            serverSettings.SetWithSampleTables(false).SetEnableTempTables(true));
+        auto clientConfig = NGRpcProxy::TGRpcClientConfig(kikimr.GetEndpoint());
+        auto client = kikimr.GetQueryClient();
+
+        auto settings = NYdb::NQuery::TExecuteQuerySettings()
+            .Syntax(NYdb::NQuery::ESyntax::Pg)
+            .StatsMode(NYdb::NQuery::EStatsMode::Basic);
+        {
+            auto session = client.GetSession().GetValueSync().GetSession();
+            auto id = session.GetId();
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    CREATE TABLE PgTemp (
+                    key int2 PRIMARY KEY,
+                    value int2))");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    DROP TABLE PgTemp;
+                )");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    CREATE TABLE PgTemp (
+                    key int2 PRIMARY KEY,
+                    value int2))");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+
+                auto resultInsert = session.ExecuteQuery(R"(
+                    INSERT INTO PgTemp VALUES(1, 1);
+                )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    resultInsert.GetStatus(), EStatus::SUCCESS, resultInsert.GetIssues().ToString());
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    CREATE TABLE SimpleTable (
+                    key int2 PRIMARY KEY,
+                    value int2))");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    SELECT * FROM PgTemp;
+                )");
+
+                auto result = session.ExecuteQuery(
+                    query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    SELECT * FROM SimpleTable;
+                )");
+
+                auto result = session.ExecuteQuery(
+                    query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    CREATE TEMP TABLE PgTemp (
+                    key int2 PRIMARY KEY,
+                    value int2))");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+
+                auto resultInsert = session.ExecuteQuery(R"(
+                    INSERT INTO PgTemp VALUES(2, 2);
+                )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    resultInsert.GetStatus(), EStatus::SUCCESS, resultInsert.GetIssues().ToString());
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    SELECT * FROM PgTemp;
+                )");
+
+                auto result = session.ExecuteQuery(
+                    query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+
+                UNIT_ASSERT_C(!result.GetResultSets().empty(), "results are empty");
+                CompareYson(R"(
+                    [["2";"2"]]
+                )", FormatResultSetYson(result.GetResultSet(0)));
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    SELECT * FROM SimpleTable;
+                )");
+
+                auto result = session.ExecuteQuery(
+                    query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), true);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    DROP TABLE PgTemp;
+                )");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    SELECT * FROM PgTemp;
+                )");
+
+                auto result = session.ExecuteQuery(
+                    query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), true);
+
+                UNIT_ASSERT_C(!result.GetResultSets().empty(), "results are empty");
+                CompareYson(R"(
+                    [["1";"1"]]
+                )", FormatResultSetYson(result.GetResultSet(0)));
+            }
+
+            {
+                const auto query = Q_(R"(
+                    --!syntax_pg
+                    DROP TABLE PgTemp;
+                )");
+
+                auto result =
+                    session.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                auto stats = NYdb::TProtoAccessor::GetProto(*result.GetStats());
+                UNIT_ASSERT_VALUES_EQUAL(stats.compilation().from_cache(), false);
+            }
+
+            bool allDoneOk = true;
+            NTestHelpers::CheckDelete(clientConfig, id, Ydb::StatusIds::SUCCESS, allDoneOk);
+
+            UNIT_ASSERT(allDoneOk);
+        }
+
+        {
+            const auto querySelect = Q_(R"(
+                --!syntax_pg
+                SELECT * FROM PgTemp;
+            )");
+
+            auto resultSelect = client.ExecuteQuery(
                 querySelect, NYdb::NQuery::TTxControl::BeginTx().CommitTx()).ExtractValueSync();
             UNIT_ASSERT(!resultSelect.IsSuccess());
         }
@@ -2667,7 +3074,9 @@ Y_UNIT_TEST_SUITE(KqpPg) {
 
         {
             auto result = db.ExecuteQuery(R"(
-                SELECT left_table.*, right_table.val2 FROM left_table, right_table WHERE left_table.id=right_table.id
+                SELECT left_table.*, right_table.val2 FROM left_table, right_table
+                WHERE left_table.id=right_table.id
+                ORDER BY left_table.id
             )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
@@ -2889,6 +3298,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(Insert_Serial) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -2908,7 +3318,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             auto result = db.ExecuteQuery(R"(
                 INSERT INTO movies VALUES (1, 'movie1'), (4, 'movie4');
             )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
-            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());    
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
         {
             auto result = db.ExecuteQuery(R"(
@@ -2925,6 +3335,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertNoTargetColumns_Serial) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -2960,6 +3371,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertValuesFromTableWithDefault) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -2991,10 +3403,55 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             )", FormatResultSetYson(result.GetResultSet(0)));
         }
     }
+/*
+    Y_UNIT_TEST(InsertValuesFromTableWithDefaultAndCast) {
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        auto setting = NKikimrKqp::TKqpSetting();
+        auto serverSettings = TKikimrSettings()
+            .SetAppConfig(appConfig)
+            .SetKqpSettings({setting});
+        TKikimrRunner kikimr(serverSettings.SetWithSampleTables(false));
+        auto db = kikimr.GetQueryClient();
+        auto settings = NYdb::NQuery::TExecuteQuerySettings().Syntax(NYdb::NQuery::ESyntax::Pg);
+        {
+            auto result = db.ExecuteQuery(R"(
+                CREATE TABLE t (
+                    a INT,
+                    b int DEFAULT 5::int4,
+                    c int DEFAULT '7'::int4,
+                    d varchar(20) DEFAULT 'foo'::varchar(2),
+                    e int DEFAULT NULL,
+                    f bit varying(5) DEFAULT '1001',
+                    g bigint DEFAULT 0 NOT NULL,
+                    PRIMARY KEY(a)
+                );
+            )", NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+        }
+        {
+            auto result = db.ExecuteQuery(R"(
+                INSERT INTO t VALUES(1);
+            )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+        {
+            auto result = db.ExecuteQuery(R"(
+                SELECT * FROM t;
+            )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
 
+            UNIT_ASSERT_C(!result.GetResultSets().empty(), "results are empty");
+            CompareYson(R"(
+                [["1";"5";"7";"fo";#;"1001";"0"]]
+            )", FormatResultSetYson(result.GetResultSet(0)));
+        }
+    }
+*/
     Y_UNIT_TEST(InsertValuesFromTableWithDefaultBool) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -3030,6 +3487,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertValuesFromTableWithDefaultText) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -3065,6 +3523,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertValuesFromTableWithDefaultTextNotNull) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableColumnsWithDefault(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -3138,6 +3597,7 @@ Y_UNIT_TEST_SUITE(KqpPg) {
     Y_UNIT_TEST(InsertNoTargetColumns_SerialNotNull) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        appConfig.MutableTableServiceConfig()->SetEnableSequences(true);
         auto setting = NKikimrKqp::TKqpSetting();
         auto serverSettings = TKikimrSettings()
             .SetAppConfig(appConfig)
@@ -3349,7 +3809,8 @@ Y_UNIT_TEST_SUITE(KqpPg) {
                     SELECT * FROM PgTable WHERE key = 'a';
                 )");
                 auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
-                UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::PRECONDITION_FAILED, result.GetIssues().ToString());
+                UNIT_ASSERT(result.GetIssues().ToString().Contains("invalid input syntax for type integer: \"a\""));
             }
         }
 
@@ -3428,6 +3889,130 @@ Y_UNIT_TEST_SUITE(KqpPg) {
             UNIT_ASSERT(result.GetIssues().ToString().Contains("invalid byte sequence for encoding \"UTF8\": 0x00"));
         }
     }
+
+    Y_UNIT_TEST(NoSelectFullScan) {
+        NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnablePreparedDdl(true);
+        auto setting = NKikimrKqp::TKqpSetting();
+        auto serverSettings = TKikimrSettings()
+            .SetAppConfig(appConfig)
+            .SetKqpSettings({setting});
+        TKikimrRunner kikimr(serverSettings.SetWithSampleTables(false));
+        auto db = kikimr.GetQueryClient();
+        auto settings = NYdb::NQuery::TExecuteQuerySettings().Syntax(NYdb::NQuery::ESyntax::Pg);
+        {
+            auto result = db.ExecuteQuery(R"(
+                CREATE TABLE pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84), primary key (aid))
+            )", NYdb::NQuery::TTxControl::NoTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+        {
+            auto result = db.ExecuteQuery(R"(
+                INSERT INTO pgbench_accounts (aid, bid, abalance, filler) VALUES
+                    (1, 1, 10, '                                                                                    '::char),
+                    (2, 1, 20, '                                                                                    '::char),
+                    (3, 1, 30, '                                                                                    '::char),
+                    (4, 1, 40, '
+                                               '::char),
+                    (5, 1, 50, '                                                                                    '::char),
+                    (6, 1, 60, '                                                                                    '::char),
+                    (7, 1, 70, '                                                                                    '::char),
+                    (8, 1, 80, '                                                                                    '::char),
+                    (9, 1, 90, '                                                                                    '::char),
+                    (10, 1, 100, '                                                                                    '::char)
+            )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+        }
+        {
+            auto tc = kikimr.GetTableClient();
+            TStreamExecScanQuerySettings settings;
+            settings.Explain(true);
+            auto it = tc.StreamExecuteScanQuery(R"(
+                --!syntax_pg
+                SELECT abalance FROM pgbench_accounts WHERE aid = 7 OR aid = 3 ORDER BY abalance;
+            )", settings).GetValueSync();
+
+            UNIT_ASSERT_C(it.IsSuccess(), it.GetIssues().ToString());
+
+            auto res = CollectStreamResult(it);
+            UNIT_ASSERT(res.PlanJson);
+
+            NJson::TJsonValue plan;
+            NJson::ReadJsonTree(*res.PlanJson, &plan, true);
+            UNIT_ASSERT(ValidatePlanNodeIds(plan));
+
+            auto fullScan = FindPlanNodeByKv(plan, "Node Type", "Filter-TableFullScan");
+            UNIT_ASSERT_C(!fullScan.IsDefined(), "got fullscan, expected lookup");
+            auto lookup = FindPlanNodeByKv(plan, "Node Type", "TableLookup");
+            if (!lookup.IsDefined()) {
+                lookup = FindPlanNodeByKv(plan, "Node Type", "TableRangeScan");
+            }
+            UNIT_ASSERT_C(lookup.IsDefined(), "no Table Lookup in plan");
+        }
+        {
+            auto result = db.ExecuteQuery(R"(
+                SELECT abalance FROM pgbench_accounts WHERE aid = 7 OR aid = 3 ORDER BY abalance;
+            )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([
+                ["30"];["70"]
+            ])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+        {
+            auto tc = kikimr.GetTableClient();
+            TStreamExecScanQuerySettings settings;
+            settings.Explain(true);
+            auto it = tc.StreamExecuteScanQuery(R"(
+                --!syntax_pg
+                SELECT abalance FROM pgbench_accounts WHERE aid = 7 OR aid < 3 ORDER BY abalance;
+            )", settings).GetValueSync();
+
+            UNIT_ASSERT_C(it.IsSuccess(), it.GetIssues().ToString());
+
+            auto res = CollectStreamResult(it);
+            UNIT_ASSERT(res.PlanJson);
+            Cerr << res.PlanJson << Endl;
+
+            NJson::TJsonValue plan;
+            NJson::ReadJsonTree(*res.PlanJson, &plan, true);
+            UNIT_ASSERT(ValidatePlanNodeIds(plan));
+
+            auto fullScan = FindPlanNodeByKv(plan, "Node Type", "Filter-TableFullScan");
+            UNIT_ASSERT_C(!fullScan.IsDefined(), "got fullscan, expected lookup");
+            auto lookup = FindPlanNodeByKv(plan, "Node Type", "TableRangeScan");
+            UNIT_ASSERT_C(lookup.IsDefined(), "no Table Range Scan in plan");
+        }
+        {
+            auto tc = kikimr.GetTableClient();
+            TStreamExecScanQuerySettings settings;
+            settings.Explain(true);
+            auto it = tc.StreamExecuteScanQuery(R"(
+                --!syntax_pg
+                SELECT abalance FROM pgbench_accounts WHERE aid > 4 AND aid < 3;
+            )", settings).GetValueSync();
+
+            UNIT_ASSERT_C(it.IsSuccess(), it.GetIssues().ToString());
+
+            auto res = CollectStreamResult(it);
+            UNIT_ASSERT(res.PlanJson);
+            Cerr << res.PlanJson << Endl;
+            NJson::TJsonValue plan;
+            NJson::ReadJsonTree(*res.PlanJson, &plan, true);
+            UNIT_ASSERT(ValidatePlanNodeIds(plan));
+
+            auto fullScan = FindPlanNodeByKv(plan, "Node Type", "Filter-TableFullScan");
+            UNIT_ASSERT_C(!fullScan.IsDefined(), "got fullscan, expected lookup");
+            auto lookup = FindPlanNodeByKv(plan, "Node Type", "TableRangeScan");
+            UNIT_ASSERT_C(lookup.IsDefined(), "no Table Range Scan in plan");
+        }
+        {
+            auto result = db.ExecuteQuery(R"(
+                SELECT abalance FROM pgbench_accounts WHERE aid > 4 AND aid < 3;
+            )", NYdb::NQuery::TTxControl::BeginTx().CommitTx(), settings).ExtractValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([])", FormatResultSetYson(result.GetResultSet(0)));
+        }
+   }
 }
 
 } // namespace NKqp

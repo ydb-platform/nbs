@@ -24,7 +24,6 @@
 #include <contrib/ydb/services/ydb/ydb_scheme.h>
 #include <contrib/ydb/services/ydb/ydb_scripting.h>
 #include <contrib/ydb/services/ydb/ydb_table.h>
-#include <contrib/ydb/services/ydb/ydb_long_tx.h>
 #include <contrib/ydb/services/ydb/ydb_logstore.h>
 #include <contrib/ydb/services/discovery/grpc_service.h>
 #include <contrib/ydb/services/rate_limiter/grpc_service.h>
@@ -114,7 +113,6 @@
 #include <contrib/ydb/core/tx/conveyor/usage/service.h>
 #include <contrib/ydb/library/folder_service/mock/mock_folder_service_adapter.h>
 
-#include <contrib/ydb/core/client/server/msgbus_server_tracer.h>
 #include <contrib/ydb/core/client/server/ic_nodes_cache_service.h>
 
 #include <contrib/ydb/library/actors/http/http_proxy.h>
@@ -216,7 +214,7 @@ namespace Tests {
 
         SetupLogging();
 
-        SetupMessageBus(Settings->Port, Settings->TracePath);
+        SetupMessageBus(Settings->Port);
         SetupDomains(app);
 
         app.AddHive(Settings->Domain, ChangeStateStorage(Hive, Settings->Domain));
@@ -287,23 +285,14 @@ namespace Tests {
         SetupStorage();
     }
 
-    void TServer::SetupMessageBus(ui16 port, const TString &tracePath) {
+    void TServer::SetupMessageBus(ui16 port) {
         if (port) {
             Bus = NBus::CreateMessageQueue(NBus::TBusQueueConfig());
-            if (tracePath) {
-                BusServer.Reset(NMsgBusProxy::CreateMsgBusTracingServer(
-                    Bus.Get(),
-                    BusServerSessionConfig,
-                    tracePath,
-                    port
-                ));
-            } else {
-                BusServer.Reset(NMsgBusProxy::CreateMsgBusServer(
-                    Bus.Get(),
-                    BusServerSessionConfig,
-                    port
-                ));
-            }
+            BusServer.Reset(NMsgBusProxy::CreateMsgBusServer(
+                Bus.Get(),
+                BusServerSessionConfig,
+                port
+            ));
         }
     }
 
@@ -318,8 +307,11 @@ namespace Tests {
         const size_t proxyCount = Max(ui32{1}, Settings->AppConfig->GetGRpcConfig().GetGRpcProxyCount());
         TVector<TActorId> grpcRequestProxies;
         grpcRequestProxies.reserve(proxyCount);
+
+        auto& appData = Runtime->GetAppData();
+
         for (size_t i = 0; i < proxyCount; ++i) {
-            auto grpcRequestProxy = NGRpcService::CreateGRpcRequestProxy(*Settings->AppConfig);
+            auto grpcRequestProxy = NGRpcService::CreateGRpcRequestProxy(*Settings->AppConfig, appData.Icb);
             auto grpcRequestProxyId = system->Register(grpcRequestProxy, TMailboxType::ReadAsFilled);
             system->RegisterLocalService(NGRpcService::CreateGRpcRequestProxyId(), grpcRequestProxyId);
             grpcRequestProxies.push_back(grpcRequestProxyId);
@@ -330,8 +322,6 @@ namespace Tests {
 
         GRpcServerRootCounters = MakeIntrusive<::NMonitoring::TDynamicCounters>();
         auto& counters = GRpcServerRootCounters;
-
-        auto& appData = Runtime->GetAppData();
 
         // Setup discovery for typically used services on the node
         {
@@ -395,10 +385,9 @@ namespace Tests {
         GRpcServer->AddService(discoveryService);
         GRpcServer->AddService(new NGRpcService::TGRpcYdbClickhouseInternalService(system, counters, appData.InFlightLimiterRegistry, grpcRequestProxies[0], true));
         GRpcServer->AddService(new NQuoter::TRateLimiterGRpcService(system, counters, grpcRequestProxies[0]));
-        GRpcServer->AddService(new NGRpcService::TGRpcYdbLongTxService(system, counters, grpcRequestProxies[0], true));
         GRpcServer->AddService(new NGRpcService::TGRpcDataStreamsService(system, counters, grpcRequestProxies[0], true));
         GRpcServer->AddService(new NGRpcService::TGRpcMonitoringService(system, counters, grpcRequestProxies[0], true));
-        GRpcServer->AddService(new NGRpcService::TGRpcYdbQueryService(system, counters, grpcRequestProxies[0], true));
+        GRpcServer->AddService(new NGRpcService::TGRpcYdbQueryService(system, counters, grpcRequestProxies, true, 1));
         if (Settings->EnableYq) {
             GRpcServer->AddService(new NGRpcService::TGRpcFederatedQueryService(system, counters, grpcRequestProxies[0]));
             GRpcServer->AddService(new NGRpcService::TGRpcFqPrivateTaskService(system, counters, grpcRequestProxies[0]));
@@ -750,7 +739,10 @@ namespace Tests {
             if (!initial.HasImmediateControlsConfig()) {
                 initial.MutableImmediateControlsConfig()->CopyFrom(Settings->Controls);
             }
-            auto *dispatcher = NConsole::CreateConfigsDispatcher(initial, {});
+            auto *dispatcher = NConsole::CreateConfigsDispatcher(
+                    NKikimr::NConsole::TConfigsDispatcherInitInfo {
+                        .InitialConfig = initial,
+                    });
             auto aid = Runtime->Register(dispatcher, nodeIdx, appData.SystemPoolId, TMailboxType::Revolving, 0);
             Runtime->RegisterService(NConsole::MakeConfigsDispatcherID(Runtime->GetNodeId(nodeIdx)), aid, nodeIdx);
         }
@@ -831,7 +823,7 @@ namespace Tests {
         }
         {
             const auto& appData = Runtime->GetAppData(nodeIdx);
-            IActor* metadataCache = CreateDatabaseMetadataCache(appData.TenantName).release();
+            IActor* metadataCache = CreateDatabaseMetadataCache(appData.TenantName, appData.Counters).release();
             TActorId metadataCacheId = Runtime->Register(metadataCache, nodeIdx);
             Runtime->RegisterService(MakeDatabaseMetadataCacheId(Runtime->GetNodeId(nodeIdx)), metadataCacheId, nodeIdx);
         }
@@ -934,14 +926,6 @@ namespace Tests {
                 Runtime->RegisterService(NMsgBusProxy::CreateMsgBusProxyId(), proxyId, nodeIdx);
 
                 Cerr << "NMsgBusProxy registered on Port " << Settings->Port << " GrpsPort " << Settings->GrpcPort << Endl;
-            }
-
-            {
-                IActor* traceService = BusServer->CreateMessageBusTraceService();
-                if (traceService) {
-                    TActorId traceServiceId = Runtime->Register(traceService, nodeIdx, Runtime->GetAppData(nodeIdx).IOPoolId, TMailboxType::Simple, 0);
-                    Runtime->RegisterService(NMessageBusTracer::MakeMessageBusTraceServiceID(), traceServiceId, nodeIdx);
-                }
             }
         }
         {
@@ -1389,37 +1373,6 @@ namespace Tests {
         UNIT_ASSERT_VALUES_EQUAL(resp->Record.GetStatus(), NMsgBusProxy::MSTATUS_OK);
     }
 
-
-    void TClient::ExecuteTraceCommand(NKikimrClient::TMessageBusTraceRequest::ECommand command, const TString &path) {
-        TAutoPtr<NMsgBusProxy::TBusMessageBusTraceRequest> request(new NMsgBusProxy::TBusMessageBusTraceRequest());
-        request->Record.SetCommand(command);
-        if (path)
-            request->Record.SetPath(path);
-        TAutoPtr<NBus::TBusMessage> reply;
-        UNIT_ASSERT_VALUES_EQUAL(SyncCall(request, reply), NBus::MESSAGE_OK);
-    }
-
-    TString TClient::StartTrace(const TString &path) {
-        TAutoPtr<NMsgBusProxy::TBusMessageBusTraceRequest> request(new NMsgBusProxy::TBusMessageBusTraceRequest());
-        request->Record.SetCommand(NKikimrClient::TMessageBusTraceRequest::START);
-        if (path)
-            request->Record.SetPath(path);
-        TAutoPtr<NBus::TBusMessage> reply;
-        UNIT_ASSERT_VALUES_EQUAL(SyncCall(request, reply), NBus::MESSAGE_OK);
-        if (reply.Get()->GetHeader()->Type == NMsgBusProxy::MTYPE_CLIENT_MESSAGE_BUS_TRACE_STATUS) {
-            const NKikimrClient::TMessageBusTraceStatus &response = static_cast<NMsgBusProxy::TBusMessageBusTraceStatus *>(reply.Get())->Record;
-            return response.GetPath();
-        } else {
-            ythrow yexception() << "MessageBus trace not enabled on the server (see mbus/--trace-path option)";
-        }
-    }
-
-    void TClient::StopTrace() {
-        TAutoPtr<NMsgBusProxy::TBusMessageBusTraceRequest> request(new NMsgBusProxy::TBusMessageBusTraceRequest());
-        request->Record.SetCommand(NKikimrClient::TMessageBusTraceRequest::STOP);
-        TAutoPtr<NBus::TBusMessage> reply;
-        UNIT_ASSERT_VALUES_EQUAL(SyncCall(request, reply), NBus::MESSAGE_OK);
-    }
 
     NBus::EMessageStatus TClient::WaitCompletion(ui64 txId, ui64 schemeshard, ui64 pathId,
                                         TAutoPtr<NBus::TBusMessage>& reply,

@@ -104,7 +104,7 @@ PEERDIR(
     contrib/ydb/core/grpc_services/cancelation
     contrib/ydb/core/grpc_services/auth_processor
     contrib/ydb/core/health_check
-    contrib/ydb/core/io_formats
+    contrib/ydb/core/io_formats/ydb_dump
     contrib/ydb/core/kesus/tablet
     contrib/ydb/core/kqp/common
     contrib/ydb/core/protos

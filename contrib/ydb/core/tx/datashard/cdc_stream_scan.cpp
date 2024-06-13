@@ -213,7 +213,7 @@ public:
     TTxType GetTxType() const override { return TXTYPE_CDC_STREAM_SCAN_PROGRESS; }
 
     bool Execute(TTransactionContext& txc, const TActorContext& ctx) override {
-        const auto& ev = *Request->Get();
+        auto& ev = *Request->Get();
         const auto& tablePathId = ev.TablePathId;
         const auto& streamPathId = ev.StreamPathId;
         const auto& readVersion = ev.ReadVersion;
@@ -238,7 +238,25 @@ public:
         }
 
         ChangeRecords.clear();
-        if (Self->CheckChangesQueueOverflow()) {
+
+        if (!ev.ReservationCookie) {
+            ev.ReservationCookie = Self->ReserveChangeQueueCapacity(ev.Rows.size());
+        }
+
+        if (!ev.ReservationCookie) {
+            LOG_I("Cannot reserve change queue capacity");
+            Reschedule = true;
+            return true;
+        }
+
+        if (Self->GetFreeChangeQueueCapacity(ev.ReservationCookie) < ev.Rows.size()) {
+            LOG_I("Not enough change queue capacity");
+            Reschedule = true;
+            return true;
+        }
+
+        if (Self->CheckChangesQueueOverflow(ev.ReservationCookie)) {
+            LOG_I("Change queue overflow");
             Reschedule = true;
             return true;
         }
@@ -284,7 +302,7 @@ public:
                     Y_FAIL_S("Invalid stream mode: " << static_cast<ui32>(it->second.Mode));
             }
 
-            auto record = TChangeRecordBuilder(TChangeRecord::EKind::CdcDataChange)
+            auto recordPtr = TChangeRecordBuilder(TChangeRecord::EKind::CdcDataChange)
                 .WithOrder(Self->AllocateChangeRecordOrder(db))
                 .WithGroup(0)
                 .WithStep(readVersion.Step)
@@ -296,6 +314,9 @@ public:
                 .WithSource(TChangeRecord::ESource::InitialScan)
                 .Build();
 
+            const auto& record = *recordPtr->Get<TChangeRecord>();
+            Self->PersistChangeRecord(db, record);
+
             ChangeRecords.push_back(IDataShardChangeCollector::TChange{
                 .Order = record.GetOrder(),
                 .Group = record.GetGroup(),
@@ -306,8 +327,6 @@ public:
                 .TableId = record.GetTableId(),
                 .SchemaVersion = record.GetSchemaVersion(),
             });
-
-            Self->PersistChangeRecord(db, record);
         }
 
         if (pageFault) {
@@ -334,7 +353,7 @@ public:
             LOG_I("Enqueue " << ChangeRecords.size() << " change record(s)"
                 << ": streamPathId# " << Request->Get()->StreamPathId);
 
-            Self->EnqueueChangeRecords(std::move(ChangeRecords));
+            Self->EnqueueChangeRecords(std::move(ChangeRecords), Request->Get()->ReservationCookie);
             ctx.Send(Request->Sender, Response.Release());
         } else if (Reschedule) {
             LOG_I("Re-schedule progress tx"

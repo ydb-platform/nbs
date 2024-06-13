@@ -18,7 +18,13 @@ namespace {
         {"Inner",EJoinKind::InnerJoin}, 
         {"Left",EJoinKind::LeftJoin}, 
         {"Right",EJoinKind::RightJoin}, 
-        {"Outer",EJoinKind::OuterJoin}};
+        {"Full",EJoinKind::OuterJoin},
+        {"LeftOnly",EJoinKind::LeftOnly},
+        {"RightOnly",EJoinKind::RightOnly},
+        {"Exclusion",EJoinKind::Exclusion},
+        {"LeftSemi",EJoinKind::LeftSemi},
+        {"RightSemi",EJoinKind::RightSemi},
+        {"Cross",EJoinKind::Cross}};
 }
 
 EJoinKind ConvertToJoinKind(const TString& joinString) {
@@ -57,12 +63,13 @@ void TRelOptimizerNode::Print(std::stringstream& stream, int ntabs) {
 }
 
 TJoinOptimizerNode::TJoinOptimizerNode(const std::shared_ptr<IBaseOptimizerNode>& left, const std::shared_ptr<IBaseOptimizerNode>& right, 
-        const std::set<std::pair<TJoinColumn, TJoinColumn>>& joinConditions, const EJoinKind joinType, bool nonReorderable) :
+        const std::set<std::pair<TJoinColumn, TJoinColumn>>& joinConditions, const EJoinKind joinType, const EJoinAlgoType joinAlgo, bool nonReorderable) :
     IBaseOptimizerNode(JoinNodeType), 
     LeftArg(left), 
     RightArg(right), 
     JoinConditions(joinConditions), 
-    JoinType(joinType) {
+    JoinType(joinType),
+    JoinAlgo(joinAlgo) {
         IsReorderable = (JoinType==EJoinKind::InnerJoin) && (nonReorderable==false);
     }
 

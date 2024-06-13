@@ -1,5 +1,7 @@
 LIBRARY()
 
+OWNER(g:kikimr)
+
 SRCS(
     manager.cpp
     GLOBAL behaviour.cpp

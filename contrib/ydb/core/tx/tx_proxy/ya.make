@@ -29,7 +29,7 @@ PEERDIR(
     contrib/ydb/core/engine
     contrib/ydb/core/formats
     contrib/ydb/core/grpc_services
-    contrib/ydb/core/io_formats
+    contrib/ydb/core/io_formats/arrow
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
     contrib/ydb/core/sys_view/common

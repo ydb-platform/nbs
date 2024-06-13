@@ -97,6 +97,32 @@ TTableSnapshotContext::~TTableSnapshotContext() = default;
 
 using namespace NResourceBroker;
 
+class TExecutor::TActiveTransactionZone {
+public:
+    explicit TActiveTransactionZone(TExecutor* self) noexcept
+        : Self(self)
+    {
+        Y_DEBUG_ABORT_UNLESS(!Self->ActiveTransaction);
+        Self->ActiveTransaction = true;
+        Active = true;
+    }
+
+    ~TActiveTransactionZone() noexcept {
+        Done();
+    }
+
+    void Done() noexcept {
+        if (Active) {
+            Self->ActiveTransaction = false;
+            Active = false;
+        }
+    }
+
+private:
+    TExecutor* Self;
+    bool Active = false;
+};
+
 TExecutor::TExecutor(
         NFlatExecutorSetup::ITablet* owner,
         const TActorId& ownerActorId)
@@ -110,6 +136,7 @@ TExecutor::TExecutor(
     , CounterEventsInFlight(new TEvTabletCounters::TInFlightCookie)
     , Stats(new TExecutorStatsImpl())
     , LogFlushDelayOverrideUsec(-1, -1, 60*1000*1000)
+    , MaxCommitRedoMB(256, 1, 4096)
 {}
 
 TExecutor::~TExecutor() {
@@ -133,6 +160,7 @@ void TExecutor::Registered(TActorSystem *sys, const TActorId&)
     Memory = new TMemory(Logger.Get(), this, Emitter, Sprintf(" at tablet %" PRIu64, Owner->TabletID()));
     TString myTabletType = TTabletTypes::TypeToStr(Owner->TabletType());
     AppData()->Icb->RegisterSharedControl(LogFlushDelayOverrideUsec, myTabletType + "_LogFlushDelayOverrideUsec");
+    AppData()->Icb->RegisterSharedControl(MaxCommitRedoMB, "TabletControls.MaxCommitRedoMB");
 
     // instantiate alert counters so even never reported alerts are created
     GetServiceCounters(AppData()->Counters, "tablets")->GetCounter("alerts_pending_nodata", true);
@@ -876,6 +904,9 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
     if (update->IsSnapshot) // do nothing over snapshot after initial one
         return;
 
+    // Protect against recursive transactions in callbacks
+    TActiveTransactionZone activeTransaction(this);
+
     TString schemeUpdate;
     TString dataUpdate;
     TStackVec<TString> partSwitches;
@@ -940,6 +971,11 @@ void TExecutor::ApplyFollowerUpdate(THolder<TEvTablet::TFUpdateBody> update) {
         if (schemeUpdate) {
             ReadResourceProfile();
             ReflectSchemeSettings();
+            Owner->OnFollowerSchemaUpdated();
+        }
+
+        if (dataUpdate) {
+            Owner->OnFollowerDataUpdated();
         }
     }
 
@@ -1006,8 +1042,10 @@ void TExecutor::ApplyFollowerAuxUpdate(const TString &auxBody) {
     const TString aux = NPageCollection::TSlicer::Lz4()->Decode(auxBody);
     TProtoBox<NKikimrExecutorFlat::TFollowerAux> proto(aux);
 
-    if (proto.HasUserAuxUpdate())
+    if (proto.HasUserAuxUpdate()) {
+        TActiveTransactionZone activeTransaction(this);
         Owner->OnLeaderUserAuxUpdate(std::move(proto.GetUserAuxUpdate()));
+    }
 }
 
 void TExecutor::RequestFromSharedCache(TAutoPtr<NPageCollection::TFetch> fetch,
@@ -1580,6 +1618,7 @@ void TExecutor::DoExecute(TAutoPtr<ITransaction> self, bool allowImmediate, cons
     Y_ABORT_UNLESS(ActivationQueue, "attempt to execute transaction before activation");
 
     TAutoPtr<TSeat> seat = new TSeat(++TransactionUniqCounter, self);
+    seat->Self->SetupTxSpanName();
 
     LWTRACK(TransactionBegin, seat->Self->Orbit, seat->UniqID, Owner->TabletID(), TypeName(*seat->Self));
 
@@ -1643,9 +1682,7 @@ void TExecutor::Enqueue(TAutoPtr<ITransaction> self, const TActorContext &ctx) {
 }
 
 void TExecutor::ExecuteTransaction(TAutoPtr<TSeat> seat, const TActorContext &ctx) {
-    Y_DEBUG_ABORT_UNLESS(!ActiveTransaction);
-
-    ActiveTransaction = true;
+    TActiveTransactionZone activeTransaction(this);
     ++seat->Retries;
 
     THPTimer cpuTimer;
@@ -1653,16 +1690,16 @@ void TExecutor::ExecuteTransaction(TAutoPtr<TSeat> seat, const TActorContext &ct
     PrivatePageCache->ResetTouchesAndToLoad(true);
     TPageCollectionTxEnv env(*Database, *PrivatePageCache);
 
-    TTransactionContext txc(*seat, Owner->TabletID(), Generation(), Step(), *Database, env, seat->CurrentTxDataLimit, seat->TaskId);
+    TTransactionContext txc(Owner->TabletID(), Generation(), Step(), *Database, env, seat->CurrentTxDataLimit, seat->TaskId, seat->Self->TxSpan);
     txc.NotEnoughMemory(seat->NotEnoughMemoryCount);
 
     Database->Begin(Stamp(), env);
 
     LWTRACK(TransactionExecuteBegin, seat->Self->Orbit, seat->UniqID);
     
-    NWilson::TSpan txExecuteSpan = seat->CreateExecutionSpan();
+    txc.StartExecutionSpan();
     const bool done = seat->Self->Execute(txc, ctx.MakeFor(OwnerActorId));
-    txExecuteSpan.EndOk();
+    txc.FinishExecutionSpan();
 
     LWTRACK(TransactionExecuteEnd, seat->Self->Orbit, seat->UniqID, done);
 
@@ -1673,12 +1710,17 @@ void TExecutor::ExecuteTransaction(TAutoPtr<TSeat> seat, const TActorContext &ct
     }
 
     bool failed = false;
-    TString failureReason;
-    if (done && (failed = !Database->ValidateCommit(failureReason))) {
-        if (auto logl = Logger->Log(ELnLev::Crit)) {
-            logl
-                << NFmt::Do(*this) << " " << NFmt::Do(*seat)
-                << " fatal commit failure: " << failureReason;
+    if (done) {
+        ui64 commitRedoBytes = Database->GetCommitRedoBytes();
+        ui64 maxCommitRedoBytes = ui64(MaxCommitRedoMB) << 20; // MB to bytes
+        if (commitRedoBytes > maxCommitRedoBytes) {
+            if (auto logl = Logger->Log(ELnLev::Crit)) {
+                logl
+                    << NFmt::Do(*this) << " " << NFmt::Do(*seat)
+                    << " fatal commit failure: Redo commit of " << commitRedoBytes
+                    << " bytes is more than the allowed limit";
+            }
+            failed = true;
         }
     }
 
@@ -1735,7 +1777,7 @@ void TExecutor::ExecuteTransaction(TAutoPtr<TSeat> seat, const TActorContext &ct
     }
     PrivatePageCache->ResetTouchesAndToLoad(false);
 
-    ActiveTransaction = false;
+    activeTransaction.Done();
     PlanTransactionActivation();
 }
 
@@ -2812,7 +2854,7 @@ void TExecutor::Handle(TEvTablet::TEvCommitResult::TPtr &ev, const TActorContext
     Y_ABORT_UNLESS(msg->Generation == Generation());
     const ui32 step = msg->Step;
 
-    ActiveTransaction = true;
+    TActiveTransactionZone activeTransaction(this);
 
     GcLogic->OnCommitLog(step, msg->ConfirmedOnSend, ctx);
     CommitManager->Confirm(step);
@@ -2906,7 +2948,7 @@ void TExecutor::Handle(TEvTablet::TEvCommitResult::TPtr &ev, const TActorContext
         std::move(msg->GroupWrittenOps),
         ctx);
 
-    ActiveTransaction = false;
+    activeTransaction.Done();
     PlanTransactionActivation();
 
     MaybeRelaxRejectProbability();
@@ -3235,7 +3277,7 @@ void TExecutor::Handle(NOps::TEvResult *ops, TProdCompact *msg, bool cancelled) 
         return Broken();
     }
 
-    ActiveTransaction = true;
+    TActiveTransactionZone activeTransaction(this);
 
     const ui64 snapStamp = msg->Params->Edge.TxStamp ? msg->Params->Edge.TxStamp
         : MakeGenStepPair(Generation(), msg->Step);
@@ -3468,7 +3510,7 @@ void TExecutor::Handle(NOps::TEvResult *ops, TProdCompact *msg, bool cancelled) 
     Owner->CompactionComplete(tableId, OwnerCtx());
     MaybeRelaxRejectProbability();
 
-    ActiveTransaction = false;
+    activeTransaction.Done();
 
     if (LogicSnap->MayFlush(false)) {
         MakeLogSnapshot();
@@ -4189,6 +4231,10 @@ TString TExecutor::CheckBorrowConsistency() {
             [&](const TIntrusiveConstPtr<NTable::TColdPart>& part) {
                 knownBundles.insert(part->Label);
             });
+        Database->EnumerateTableTxStatusParts(tableId,
+            [&](const TIntrusiveConstPtr<NTable::TTxStatusPart>& part) {
+                knownBundles.insert(part->Label);
+            });
     }
     return BorrowLogic->DebugCheckBorrowConsistency(knownBundles);
 }
@@ -4275,7 +4321,7 @@ ui64 TExecutor::BeginCompaction(THolder<NTable::TCompactionParams> params)
 
     comp->Epoch = snapshot->Subset->Epoch(); /* narrows requested to actual */
     comp->Layout.Final = comp->Params->IsFinal;
-    comp->Layout.WriteBTreeIndex = AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex();
+    comp->Layout.WriteBTreeIndex = false; // will be in 24-2: AppData()->FeatureFlags.GetEnableLocalDBBtreeIndex();
     comp->Writer.StickyFlatIndex = !comp->Layout.WriteBTreeIndex;
     comp->Layout.MaxRows = snapshot->Subset->MaxRows();
     comp->Layout.ByKeyFilter = tableInfo->ByKeyFilter;

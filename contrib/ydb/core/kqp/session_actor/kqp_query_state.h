@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kqp_query_stats.h"
 #include "kqp_worker_common.h"
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -35,7 +36,7 @@ public:
     TKqpQueryState(TEvKqp::TEvQueryRequest::TPtr& ev, ui64 queryId, const TString& database,
         const TString& cluster, TKqpDbCountersPtr dbCounters, bool longSession,
         const NKikimrConfig::TTableServiceConfig& tableServiceConfig, const NKikimrConfig::TQueryServiceConfig& queryServiceConfig,
-        NWilson::TTraceId&& traceId, const TString& sessionId, TMonotonic startedAt)
+        const TString& sessionId, TMonotonic startedAt)
         : QueryId(queryId)
         , Database(database)
         , Cluster(cluster)
@@ -62,7 +63,7 @@ public:
         SetQueryDeadlines(tableServiceConfig, queryServiceConfig);
         auto action = GetAction();
         KqpSessionSpan = NWilson::TSpan(
-            TWilsonKqp::KqpSession, std::move(traceId),
+            TWilsonKqp::KqpSession, std::move(RequestEv->GetWilsonTraceId()),
             "Session.query." + NKikimrKqp::EQueryAction_Name(action), NWilson::EFlags::AUTO_END);
         if (RequestEv->GetUserRequestContext()) {
             UserRequestContext = RequestEv->GetUserRequestContext();
@@ -85,7 +86,7 @@ public:
     ui64 ParametersSize = 0;
     TPreparedQueryHolder::TConstPtr PreparedQuery;
     TKqpCompileResult::TConstPtr CompileResult;
-    NKqpProto::TKqpStatsCompile CompileStats;
+    TKqpStatsCompile CompileStats;
     TIntrusivePtr<TKqpTransactionContext> TxCtx;
     TQueryData::TPtr QueryData;
 
@@ -97,8 +98,7 @@ public:
 
     TInstant StartTime;
     NYql::TKikimrQueryDeadlines QueryDeadlines;
-
-    NKqpProto::TKqpStatsQuery Stats;
+    TKqpQueryStats QueryStats;
     bool KeepSession = false;
     TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
     NActors::TMonotonic StartedAt;
@@ -234,8 +234,10 @@ public:
         }
     }
 
+    void FillViews(const google::protobuf::RepeatedPtrField< ::NKqpProto::TKqpTableInfo>& views);
+
     bool NeedCheckTableVersions() const {
-        return CompileStats.GetFromCache();
+        return CompileStats.FromCache;
     }
 
     TString ExtractQueryText() const {
@@ -256,7 +258,7 @@ public:
         auto type = GetType();
         if (type == NKikimrKqp::QUERY_TYPE_SQL_GENERIC_CONCURRENT_QUERY ||
             type == NKikimrKqp::QUERY_TYPE_SQL_GENERIC_QUERY) {
-            return ::NKikimr::NKqp::HasOlapTableInTx(PreparedQuery->GetPhysicalQuery());
+            return ::NKikimr::NKqp::HasOlapTableReadInTx(PreparedQuery->GetPhysicalQuery());
         }
         return (
             type == NKikimrKqp::QUERY_TYPE_SQL_SCAN ||
@@ -361,6 +363,8 @@ public:
     bool HasTxControl() const {
         return RequestEv->HasTxControl();
     }
+
+    bool HasImpliedTx() const; // (only for QueryService API) user has not specified TxControl in the request. In this case we behave like Begin/Commit was specified.
 
     const ::Ydb::Table::TransactionControl& GetTxControl() const {
         return RequestEv->GetTxControl();

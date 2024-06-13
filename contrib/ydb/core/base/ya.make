@@ -88,9 +88,9 @@ PEERDIR(
     contrib/ydb/core/base/services
     contrib/ydb/core/debug
     contrib/ydb/core/erasure
+    contrib/ydb/core/graph/api
     contrib/ydb/core/protos
     contrib/ydb/core/protos/out
-    contrib/ydb/core/scheme
     contrib/ydb/library/aclib
     contrib/ydb/library/login
     contrib/ydb/library/pdisk_io

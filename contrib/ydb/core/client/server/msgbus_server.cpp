@@ -2,7 +2,6 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include "msgbus_server.h"
-#include "msgbus_server_tracer.h"
 #include "msgbus_http_server.h"
 #include "grpc_server.h"
 
@@ -104,8 +103,6 @@ public:
             MTYPE(TBusOldKeyValue)
             MTYPE(TBusKeyValueResponse)
             MTYPE(TBusPersQueue)
-            MTYPE(TBusMessageBusTraceRequest)
-            MTYPE(TBusMessageBusTraceStatus)
             MTYPE(TBusTabletKillRequest)
             MTYPE(TBusTabletStateRequest)
             MTYPE(TBusTabletCountersRequest)

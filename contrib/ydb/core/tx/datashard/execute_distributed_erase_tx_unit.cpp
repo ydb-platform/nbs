@@ -45,7 +45,8 @@ public:
         auto [readVersion, writeVersion] = DataShard.GetReadWriteVersions(op.Get());
 
         if (eraseTx->HasDependents()) {
-            TDataShardUserDb userDb(DataShard, txc.DB, readVersion);
+            NMiniKQL::TEngineHostCounters engineHostCounters;
+            TDataShardUserDb userDb(DataShard, txc.DB, op->GetGlobalTxId(), readVersion, writeVersion, engineHostCounters, TAppData::TimeProvider->Now());
             TDataShardChangeGroupProvider groupProvider(DataShard, txc.DB, /* distributed tx group */ 0);
             THolder<IDataShardChangeCollector> changeCollector{CreateChangeCollector(DataShard, userDb, groupProvider, txc.DB, request.GetTableId())};
 
@@ -90,11 +91,12 @@ public:
                 for (const auto& rs : readSets) {
                     NKikimrTxDataShard::TDistributedEraseRS body;
                     Y_ABORT_UNLESS(body.ParseFromArray(rs.Body.data(), rs.Body.size()));
-
                     Y_ABORT_UNLESS(presentRows.contains(rs.Origin));
-                    const bool ok = Execute(txc, request, presentRows.at(rs.Origin),
-                        DeserializeBitMap<TDynBitMap>(body.GetConfirmedRows()), writeVersion, op->GetGlobalTxId());
-                    Y_ABORT_UNLESS(ok);
+
+                    auto confirmedRows = DeserializeBitMap<TDynBitMap>(body.GetConfirmedRows());
+                    if (!Execute(txc, request, presentRows.at(rs.Origin), confirmedRows, writeVersion, op->GetGlobalTxId())) {
+                        return EExecutionStatus::Restart;
+                    }
                 }
             }
 
@@ -191,7 +193,7 @@ public:
                 DataShard.GetConflictsCache().GetTableCache(tableInfo.LocalTid).AddUncommittedWrite(keyCells.GetCells(), globalTxId, txc.DB);
                 if (!commitAdded && userDb) {
                     // Make sure we see our own changes on further iterations
-                    userDb->AddCommitTxId(globalTxId, writeVersion);
+                    userDb->AddCommitTxId(fullTableId, globalTxId, writeVersion);
                     commitAdded = true;
                 }
             } else {
@@ -213,6 +215,7 @@ public:
                 /* participants */ { },
                 groupProvider ? groupProvider->GetCurrentChangeGroup() : std::nullopt,
                 volatileOrdered,
+                /* arbiter */ false,
                 txc);
             // Note: transaction is already committed, no additional waiting needed
         }

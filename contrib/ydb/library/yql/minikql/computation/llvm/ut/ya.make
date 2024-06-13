@@ -1,7 +1,5 @@
 UNITTEST()
 
-NO_COMPILER_WARNINGS()
-
 PEERDIR(
     contrib/ydb/library/yql/minikql/codegen/llvm
     contrib/ydb/library/yql/minikql/computation/llvm

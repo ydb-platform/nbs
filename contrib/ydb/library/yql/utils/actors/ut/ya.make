@@ -9,7 +9,7 @@ IF (OS_LINUX OR OS_DARWIN)
 
     PEERDIR(
         contrib/ydb/core/testlib/basics/default
-        contrib/ydb/library/yql/minikql/comp_nodes/llvm
+        contrib/ydb/library/yql/minikql/comp_nodes/llvm14
     )
 
     END()

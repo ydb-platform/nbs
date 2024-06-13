@@ -10,6 +10,7 @@ SRCS(
 
 PEERDIR(
     contrib/ydb/library/yql/core/services
+    contrib/ydb/library/yql/core/type_ann
 )
 
 YQL_LAST_ABI_VERSION()

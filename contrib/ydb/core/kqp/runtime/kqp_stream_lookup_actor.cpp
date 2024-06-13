@@ -1,19 +1,20 @@
 #include "kqp_stream_lookup_actor.h"
 
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
-
 #include <contrib/ydb/core/actorlib_impl/long_timer.h>
 #include <contrib/ydb/core/base/tablet_pipecache.h>
 #include <contrib/ydb/core/engine/minikql/minikql_engine_host.h>
 #include <contrib/ydb/core/kqp/common/kqp_resolve.h>
-#include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
-#include <contrib/ydb/core/protos/kqp_stats.pb.h>
-#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
 #include <contrib/ydb/core/kqp/common/kqp_event_ids.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <contrib/ydb/core/kqp/gateway/kqp_gateway.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_scan_data.h>
 #include <contrib/ydb/core/kqp/runtime/kqp_stream_lookup_worker.h>
+#include <contrib/ydb/core/protos/kqp_stats.pb.h>
+#include <contrib/ydb/core/tx/scheme_cache/scheme_cache.h>
+
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_impl.h>
+#include <contrib/ydb/library/wilson_ids/wilson.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -25,24 +26,22 @@ static constexpr ui64 MAX_SHARD_RETRIES = 10;
 
 class TKqpStreamLookupActor : public NActors::TActorBootstrapped<TKqpStreamLookupActor>, public NYql::NDq::IDqComputeActorAsyncInput {
 public:
-    TKqpStreamLookupActor(ui64 inputIndex, NYql::NDq::TCollectStatsLevel statsLevel, const NUdf::TUnboxedValue& input,
-        const NActors::TActorId& computeActorId, const NMiniKQL::TTypeEnvironment& typeEnv,
-        const NMiniKQL::THolderFactory& holderFactory, std::shared_ptr<NMiniKQL::TScopedAlloc>& alloc,
-        const NYql::NDqProto::TTaskInput& inputDesc, NKikimrKqp::TKqpStreamLookupSettings&& settings,
+    TKqpStreamLookupActor(NYql::NDq::IDqAsyncIoFactory::TInputTransformArguments&& args, NKikimrKqp::TKqpStreamLookupSettings&& settings,
         TIntrusivePtr<TKqpCounters> counters)
-        : LogPrefix(TStringBuilder() << "StreamLookupActor, inputIndex: " << inputIndex << ", CA Id " << computeActorId)
-        , InputIndex(inputIndex)
-        , Input(input)
-        , ComputeActorId(computeActorId)
-        , TypeEnv(typeEnv)
-        , Alloc(alloc)
+        : LogPrefix(TStringBuilder() << "StreamLookupActor, inputIndex: " << args.InputIndex << ", CA Id " << args.ComputeActorId)
+        , InputIndex(args.InputIndex)
+        , Input(args.TransformInput)
+        , ComputeActorId(args.ComputeActorId)
+        , TypeEnv(args.TypeEnv)
+        , Alloc(args.Alloc)
         , Snapshot(settings.GetSnapshot().GetStep(), settings.GetSnapshot().GetTxId())
         , LockTxId(settings.HasLockTxId() ? settings.GetLockTxId() : TMaybe<ui64>())
         , SchemeCacheRequestTimeout(SCHEME_CACHE_REQUEST_TIMEOUT)
-        , StreamLookupWorker(CreateStreamLookupWorker(std::move(settings), typeEnv, holderFactory, inputDesc))
+        , StreamLookupWorker(CreateStreamLookupWorker(std::move(settings), args.TypeEnv, args.HolderFactory, args.InputDesc))
         , Counters(counters)
+        , LookupActorSpan(TWilsonKqp::LookupActor, std::move(args.TraceId), "LookupActor")
     {
-        IngressStats.Level = statsLevel;
+        IngressStats.Level = args.StatsLevel;
     }
 
     virtual ~TKqpStreamLookupActor() {
@@ -55,8 +54,13 @@ public:
 
     void Bootstrap() {
         CA_LOG_D("Start stream lookup actor");
-
         Counters->StreamLookupActorsCount->Inc();
+
+        if (!StreamLookupWorker) {
+            return RuntimeError(TStringBuilder() << "Uninitialized StreamLookupWorker",
+                NYql::NDqProto::StatusIds::INTERNAL_ERROR);
+        }
+
         ResolveTableShards();
         Become(&TKqpStreamLookupActor::StateFunc);
     }
@@ -174,6 +178,8 @@ private:
 
         Send(MakePipePeNodeCacheID(false), new TEvPipeCache::TEvUnlink(0));
         TActorBootstrapped<TKqpStreamLookupActor>::PassAway();
+
+        LookupActorSpan.End();
     }
 
     i64 GetAsyncInputData(NKikimr::NMiniKQL::TUnboxedValueBatch& batch, TMaybe<TInstant>&, bool& finished, i64 freeSpace) final {
@@ -234,9 +240,14 @@ private:
     void Handle(TEvTxProxySchemeCache::TEvResolveKeySetResult::TPtr& ev) {
         CA_LOG_D("TEvResolveKeySetResult was received for table: " << StreamLookupWorker->GetTablePath());
         if (ev->Get()->Request->ErrorCount > 0) {
-            return RuntimeError(TStringBuilder() << "Failed to get partitioning for table: "
-                << StreamLookupWorker->GetTablePath(), NYql::NDqProto::StatusIds::SCHEME_ERROR);
+            TString errorMsg = TStringBuilder() << "Failed to get partitioning for table: " 
+                << StreamLookupWorker->GetTablePath();
+            LookupActorStateSpan.EndError(errorMsg);
+
+            return RuntimeError(errorMsg, NYql::NDqProto::StatusIds::SCHEME_ERROR);
         }
+
+        LookupActorStateSpan.EndOk();
 
         auto& resultSet = ev->Get()->Request->ResultSet;
         YQL_ENSURE(resultSet.size() == 1, "Expected one result for range [NULL, +inf)");
@@ -342,8 +353,11 @@ private:
             << " was resolved: " << !!Partitioning);
 
         if (!Partitioning) {
-            RuntimeError(TStringBuilder() << "Failed to resolve shards for table: " << StreamLookupWorker->GetTablePath()
-                << " (request timeout exceeded)", NYql::NDqProto::StatusIds::TIMEOUT);
+            TString errorMsg = TStringBuilder() << "Failed to resolve shards for table: " << StreamLookupWorker->GetTablePath()
+                << " (request timeout exceeded)";
+            LookupActorStateSpan.EndError(errorMsg);
+
+            RuntimeError(errorMsg, NYql::NDqProto::StatusIds::TIMEOUT);
         }
     }
 
@@ -392,7 +406,7 @@ private:
         record.SetResultFormat(NKikimrDataEvents::FORMAT_CELLVEC);
 
         Send(MakePipePeNodeCacheID(false), new TEvPipeCache::TEvForward(request.Release(), shardId, true),
-            IEventHandle::FlagTrackDelivery);
+            IEventHandle::FlagTrackDelivery, 0, LookupActorSpan.GetTraceId());
 
         read.State = EReadState::Running;
 
@@ -438,6 +452,9 @@ private:
             keyColumnTypes, TVector<TKeyDesc::TColumnOp>{}));
 
         Counters->IteratorsShardResolve->Inc();
+        LookupActorStateSpan = NWilson::TSpan(TWilsonKqp::LookupActorShardsResolve, LookupActorSpan.GetTraceId(), 
+            "WaitForShardsResolve", NWilson::EFlags::AUTO_END);
+
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvInvalidateTable(StreamLookupWorker->GetTableId(), {}));
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvResolveKeySet(request));
 
@@ -467,6 +484,11 @@ private:
 
         NYql::TIssues issues;
         issues.AddIssue(std::move(issue));
+
+        if (LookupActorSpan) {
+            LookupActorSpan.EndError(issues.ToOneLineString());
+        }
+
         Send(ComputeActorId, new TEvAsyncInputError(InputIndex, std::move(issues), statusCode));
     }
 
@@ -495,17 +517,15 @@ private:
     ui64 ReadBytesCount = 0;
 
     TIntrusivePtr<TKqpCounters> Counters;
+    NWilson::TSpan LookupActorSpan;
+    NWilson::TSpan LookupActorStateSpan;
 };
 
 } // namespace
 
-std::pair<NYql::NDq::IDqComputeActorAsyncInput*, NActors::IActor*> CreateStreamLookupActor(ui64 inputIndex,
-    NYql::NDq::TCollectStatsLevel statsLevel, const NUdf::TUnboxedValue& input, const NActors::TActorId& computeActorId,
-    const NMiniKQL::TTypeEnvironment& typeEnv, const NMiniKQL::THolderFactory& holderFactory,
-    std::shared_ptr<NMiniKQL::TScopedAlloc>& alloc, const NYql::NDqProto::TTaskInput& inputDesc,
+std::pair<NYql::NDq::IDqComputeActorAsyncInput*, NActors::IActor*> CreateStreamLookupActor(NYql::NDq::IDqAsyncIoFactory::TInputTransformArguments&& args,
     NKikimrKqp::TKqpStreamLookupSettings&& settings, TIntrusivePtr<TKqpCounters> counters) {
-    auto actor = new TKqpStreamLookupActor(inputIndex, statsLevel, input, computeActorId, typeEnv, holderFactory,
-        alloc, inputDesc, std::move(settings), counters);
+    auto actor = new TKqpStreamLookupActor(std::move(args), std::move(settings), counters);
     return {actor, actor};
 }
 

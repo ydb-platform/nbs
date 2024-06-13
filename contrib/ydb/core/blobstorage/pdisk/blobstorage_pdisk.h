@@ -357,7 +357,8 @@ struct TEvMultiLog : public TEventLocal<TEvMultiLog, TEvBlobStorage::EvMultiLog>
         TItem(THolder<TEvLog>&& event, NWilson::TTraceId&& traceId)
             : Event(std::move(event))
             , TraceId(std::move(traceId))
-        { }
+        {}
+
         THolder<TEvLog> Event;
         NWilson::TTraceId TraceId;
     };

@@ -4,6 +4,7 @@
 #include "event.h"
 #include "callstack.h"
 #include "probes.h"
+#include "thread_context.h"
 #include "worker_context.h"
 #include "log_settings.h"
 
@@ -15,14 +16,11 @@ namespace NActors {
     class IActor;
     class TActorSystem;
     struct TExecutorThreadCtx;
+    struct TSharedExecutorThreadCtx;
     class TExecutorPoolBaseMailboxed;
 
-    class TExecutorThread: public ISimpleThread {
-        enum class EState : ui64 {
-            Running = 0,
-            NeedToReloadPools,
-        };
-
+    class TGenericExecutorThread: public ISimpleThread {
+    protected:
         struct TProcessingResult {
             bool IsPreempted = false;
             bool WasWorking = false;
@@ -33,60 +31,25 @@ namespace NActors {
             TDuration::MilliSeconds(10);
         static constexpr ui32 DEFAULT_EVENTS_PER_MAILBOX = 100;
 
-        TExecutorThread(TWorkerId workerId,
+        TGenericExecutorThread(TWorkerId workerId,
                         TWorkerId cpuId,
                         TActorSystem* actorSystem,
                         IExecutorPool* executorPool,
                         TMailboxTable* mailboxTable,
-                        TExecutorThreadCtx *threadCtx,
                         const TString& threadName,
                         TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
                         ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX);
 
-        TExecutorThread(TWorkerId workerId,
-                        TWorkerId cpuId,
-                        TActorSystem* actorSystem,
-                        IExecutorPool* executorPool,
-                        TMailboxTable* mailboxTable,
-                        const TString& threadName,
-                        TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
-                        ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX)
-            : TExecutorThread(workerId, cpuId, actorSystem, executorPool, mailboxTable, nullptr, threadName, timePerMailbox, eventsPerMailbox)
-        {}
-
-        TExecutorThread(TWorkerId workerId,
-                        TActorSystem* actorSystem,
-                        IExecutorPool* executorPool,
-                        TMailboxTable* mailboxTable,
-                        TExecutorThreadCtx *threadCtx,
-                        const TString& threadName,
-                        TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
-                        ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX)
-            : TExecutorThread(workerId, 0, actorSystem, executorPool, mailboxTable, threadCtx, threadName, timePerMailbox, eventsPerMailbox)
-        {}
-
-        TExecutorThread(TWorkerId workerId,
-                        TActorSystem* actorSystem,
-                        IExecutorPool* executorPool,
-                        TMailboxTable* mailboxTable,
-                        const TString& threadName,
-                        TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
-                        ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX)
-            : TExecutorThread(workerId, 0, actorSystem, executorPool, mailboxTable, nullptr, threadName, timePerMailbox, eventsPerMailbox)
-        {}
-
-        TExecutorThread(TWorkerId workerId,
+        TGenericExecutorThread(TWorkerId workerId,
                     TActorSystem* actorSystem,
-                    TExecutorThreadCtx *threadCtx,
+                    IExecutorPool* executorPool,
                     i16 poolCount,
                     const TString& threadName,
                     ui64 softProcessingDurationTs,
                     TDuration timePerMailbox,
                     ui32 eventsPerMailbox);
 
-        virtual ~TExecutorThread();
-
-        void UpdatePools();
+        virtual ~TGenericExecutorThread();
 
         template <ESendingType SendingType = ESendingType::Common>
         TActorId RegisterActor(IActor* actor, TMailboxType::EType mailboxType = TMailboxType::HTSwap, ui32 poolId = Max<ui32>(),
@@ -104,29 +67,27 @@ namespace NActors {
         template <ESendingType SendingType = ESendingType::Common>
         bool Send(TAutoPtr<IEventHandle> ev);
 
-        void GetCurrentStats(TExecutorThreadStats& statsCopy) const;
-        void GetSharedStats(i16 poolId, TExecutorThreadStats &stats) const;
+        void GetCurrentStats(TExecutorThreadStats& statsCopy);
+        void GetSharedStats(i16 poolId, TExecutorThreadStats &stats);
 
         TThreadId GetThreadId() const; // blocks, must be called after Start()
         TWorkerId GetWorkerId() const;
 
-    private:
-        void* ThreadProc();
-
+    protected:
         TProcessingResult ProcessExecutorPool(IExecutorPool *pool);
-        TProcessingResult ProcessSharedExecutorPool(TExecutorPoolBaseMailboxed *pool);
 
         template <typename TMailbox>
         TProcessingResult Execute(TMailbox* mailbox, ui32 hint, bool isTailExecution);
+
+        void UpdateThreadStats();
 
     public:
         TActorSystem* const ActorSystem;
         std::atomic<bool> StopFlag = false;
 
-    private:
+    protected:
         // Pool-specific
         IExecutorPool* ExecutorPool;
-        TExecutorThreadCtx *ThreadCtx;
 
         // Event-specific (currently executing)
         TVector<THolder<IActor>> DyingActors;
@@ -134,7 +95,8 @@ namespace NActors {
         ui64 CurrentActorScheduledEventsCounter = 0;
 
         // Thread-specific
-        TWorkerContext Ctx;
+        mutable TThreadContext TlsThreadCtx;
+        mutable TWorkerContext Ctx;
         ui64 RevolvingReadCounter = 0;
         ui64 RevolvingWriteCounter = 0;
         const TString ThreadName;
@@ -145,8 +107,60 @@ namespace NActors {
         ui32 EventsPerMailbox;
         ui64 SoftProcessingDurationTs;
 
-        std::atomic<EState> NeedToReloadPools = EState::NeedToReloadPools;
         std::vector<TExecutorThreadStats> SharedStats;
+        const ui32 ActorSystemIndex;
+    };
+
+    class TExecutorThread: public TGenericExecutorThread {
+    public:
+        TExecutorThread(TWorkerId workerId,
+                        TWorkerId cpuId,
+                        TActorSystem* actorSystem,
+                        IExecutorPool* executorPool,
+                        TMailboxTable* mailboxTable,
+                        const TString& threadName,
+                        TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
+                        ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX)
+            : TGenericExecutorThread(workerId, cpuId, actorSystem, executorPool, mailboxTable, threadName, timePerMailbox, eventsPerMailbox)
+        {}
+
+        TExecutorThread(TWorkerId workerId,
+                        TActorSystem* actorSystem,
+                        IExecutorPool* executorPool,
+                        TMailboxTable* mailboxTable,
+                        const TString& threadName,
+                        TDuration timePerMailbox = DEFAULT_TIME_PER_MAILBOX,
+                        ui32 eventsPerMailbox = DEFAULT_EVENTS_PER_MAILBOX)
+            : TGenericExecutorThread(workerId, 0, actorSystem, executorPool, mailboxTable, threadName, timePerMailbox, eventsPerMailbox)
+        {}
+
+        virtual ~TExecutorThread()
+        {}
+
+    private:
+        void* ThreadProc();
+    };
+
+    class TSharedExecutorThread: public TGenericExecutorThread {
+    public:
+        TSharedExecutorThread(TWorkerId workerId,
+                    TActorSystem* actorSystem,
+                    TSharedExecutorThreadCtx *threadCtx,
+                    i16 poolCount,
+                    const TString& threadName,
+                    ui64 softProcessingDurationTs,
+                    TDuration timePerMailbox,
+                    ui32 eventsPerMailbox);
+
+        virtual ~TSharedExecutorThread()
+        {}
+
+    private:
+        TProcessingResult ProcessSharedExecutorPool(TExecutorPoolBaseMailboxed *pool);
+
+        void* ThreadProc();
+
+        TSharedExecutorThreadCtx *ThreadCtx;
     };
 
     template <typename TMailbox>

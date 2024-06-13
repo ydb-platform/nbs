@@ -18,6 +18,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/apps/version
     contrib/ydb/library/actors/protos
     library/cpp/codecs
     contrib/ydb/core/base

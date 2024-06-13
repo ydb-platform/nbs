@@ -3,7 +3,6 @@
 #include <contrib/ydb/core/base/defs.h>
 #include <contrib/ydb/core/base/logoblob.h>
 #include <contrib/ydb/core/tx/ctor_logger.h>
-#include <contrib/ydb/core/tx/columnshard/common/snapshot.h>
 
 namespace NKikimr::NOlap {
 

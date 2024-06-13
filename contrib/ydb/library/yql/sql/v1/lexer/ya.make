@@ -5,7 +5,7 @@ PEERDIR(
     contrib/ydb/library/yql/parser/proto_ast
     contrib/ydb/library/yql/parser/proto_ast/gen/v1
     contrib/ydb/library/yql/parser/proto_ast/gen/v1_ansi
-    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto
+    contrib/ydb/library/yql/parser/proto_ast/gen/v1_proto_split
 )
 
 SRCS(

@@ -20,6 +20,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/libs/fmt
     library/cpp/threading/local_executor
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/ut/common

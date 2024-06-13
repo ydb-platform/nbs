@@ -1,5 +1,6 @@
 #pragma once
 
+#include <contrib/ydb/core/tx/columnshard/common/snapshot.h>
 #include <contrib/ydb/core/tx/columnshard/engines/defs.h>
 #include <contrib/ydb/core/tx/columnshard/engines/column_features.h>
 
@@ -51,12 +52,8 @@ public:
 
     ui32 GetColumnId(const std::string& columnName) const;
     std::shared_ptr<arrow::Field> GetFieldByIndex(const int index) const;
-    std::shared_ptr<arrow::Field> GetFieldByColumnId(const ui32 columnId) const;
-    std::shared_ptr<arrow::Field> GetFieldByColumnIdVerified(const ui32 columnId) const {
-        auto result = GetFieldByColumnId(columnId);
-        Y_ABORT_UNLESS(result);
-        return result;
-    }
+    std::shared_ptr<arrow::Field> GetFieldByColumnIdOptional(const ui32 columnId) const;
+    std::shared_ptr<arrow::Field> GetFieldByColumnIdVerified(const ui32 columnId) const;
 
     TString DebugString() const {
         return DoDebugString();

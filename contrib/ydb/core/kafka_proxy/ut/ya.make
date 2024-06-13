@@ -1,6 +1,6 @@
 UNITTEST_FOR(contrib/ydb/core/kafka_proxy)
 
-#SIZE(medium)
+SIZE(medium)
 
 SRCS(
     ut_kafka_functions.cpp

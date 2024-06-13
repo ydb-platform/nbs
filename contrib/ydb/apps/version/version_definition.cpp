@@ -7,4 +7,3 @@ NKikimrConfig::TCurrentCompatibilityInfo NKikimr::TCompatibilityInfo::MakeCurren
         .Application = "ydb",
     }.ToPB();
 }
-

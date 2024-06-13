@@ -25,7 +25,7 @@ NYql::NNodes::TExprBase KqpPushExtractedPredicateToReadTable(NYql::NNodes::TExpr
     const TKqpOptimizeContext& kqpCtx, NYql::TTypeAnnotationContext& typesCtx);
 
 NYql::NNodes::TExprBase KqpJoinToIndexLookup(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx,
-    const TKqpOptimizeContext& kqpCtx, const NYql::TKikimrConfiguration::TPtr& config);
+    const TKqpOptimizeContext& kqpCtx);
 
 NYql::NNodes::TExprBase KqpRewriteSqlInToEquiJoin(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx,
     const TKqpOptimizeContext& kqpCtx, const NYql::TKikimrConfiguration::TPtr& config);
@@ -53,7 +53,7 @@ NYql::NNodes::TExprBase KqpRewriteTakeOverIndexRead(const NYql::NNodes::TExprBas
     const TKqpOptimizeContext& kqpCtx, const NYql::TParentsMap& parentsMap);
 
 NYql::NNodes::TExprBase KqpDeleteOverLookup(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx,
-    const TKqpOptimizeContext &kqpCtx);
+    const TKqpOptimizeContext &kqpCtx, const NYql::TParentsMap& parentsMap);
 
 NYql::NNodes::TExprBase KqpExcessUpsertInputColumns(const NYql::NNodes::TExprBase& node, NYql::TExprContext& ctx);
 

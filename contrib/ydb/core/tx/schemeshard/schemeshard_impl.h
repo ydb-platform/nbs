@@ -134,6 +134,31 @@ private:
         TSchemeShard* Self;
     };
 
+    using TBackgroundCleaningQueue = NOperationQueue::TOperationQueueWithTimer<
+        TPathId,
+        TFifoQueue<TPathId>,
+        TEvPrivate::EvRunBackgroundCleaning,
+        NKikimrServices::FLAT_TX_SCHEMESHARD,
+        NKikimrServices::TActivity::SCHEMESHARD_BACKGROUND_CLEANING>;
+
+    class TBackgroundCleaningStarter : public TBackgroundCleaningQueue::IStarter {
+    public:
+        TBackgroundCleaningStarter(TSchemeShard* self)
+            : Self(self)
+        { }
+
+        NOperationQueue::EStartStatus StartOperation(const TPathId& pathId) override {
+            return Self->StartBackgroundCleaning(pathId);
+        }
+
+        void OnTimeout(const TPathId& pathId) override {
+            Self->OnBackgroundCleaningTimeout(pathId);
+        }
+
+    private:
+        TSchemeShard* Self;
+    };
+
 public:
     static constexpr ui32 DefaultPQTabletPartitionsCount = 1;
     static constexpr ui32 MaxPQTabletPartitionsCount = 1000;
@@ -219,6 +244,8 @@ public:
     THashMap<TPathId, TExternalDataSourceInfo::TPtr> ExternalDataSources;
     THashMap<TPathId, TViewInfo::TPtr> Views;
 
+    TTempTablesState TempTablesState;
+
     TTablesStorage ColumnTables;
 
     // it is only because we need to manage undo of upgrade subdomain, finally remove it
@@ -257,6 +284,11 @@ public:
     TBorrowedCompactionStarter BorrowedCompactionStarter;
     TBorrowedCompactionQueue* BorrowedCompactionQueue = nullptr;
 
+    TBackgroundCleaningStarter BackgroundCleaningStarter;
+    TBackgroundCleaningQueue* BackgroundCleaningQueue = nullptr;
+    THashMap<TTxId, TPathId> BackgroundCleaningTxs;
+    NKikimrConfig::TBackgroundCleaningConfig::TRetrySettings BackgroundCleaningRetrySettings;
+
     // shardIdx -> clientId
     THashMap<TShardIdx, TActorId> RunningBorrowedCompactions;
 
@@ -270,6 +302,10 @@ public:
     bool EnablePQConfigTransactionsAtSchemeShard = false;
     bool EnableStatistics = false;
     bool EnableTablePgTypes = false;
+    bool EnableServerlessExclusiveDynamicNodes = false;
+    bool EnableAddColumsWithDefaults = false;
+    bool EnableReplaceIfExistsForExternalEntities = false;
+    bool EnableTempTables = false;
 
     TShardDeleter ShardDeleter;
 
@@ -281,7 +317,7 @@ public:
 
     TActorId SysPartitionStatsCollector;
 
-    TActorId SVPMigrator;
+    TActorId TabletMigrator;
     TActorId CdcStreamScanFinalizer;
 
     TDuration StatsMaxExecuteTime;
@@ -332,6 +368,11 @@ public:
         return IsServerlessDomain(domain.DomainInfo());
     }
 
+    bool IsServerlessDomainGlobal(TPathId domainPathId, TSubDomainInfo::TConstPtr domainInfo) const {
+        const auto& resourcesDomainId = domainInfo->GetResourcesDomainId();
+        return IsDomainSchemeShard && resourcesDomainId && resourcesDomainId != domainPathId;
+    }
+
     TPathId MakeLocalId(const TLocalPathId& localPathId) const {
         return TPathId(TabletID(), localPathId);
     }
@@ -378,6 +419,8 @@ public:
 
     bool IsSchemeShardConfigured() const;
 
+    void InitializeTabletMigrations();
+
     ui64 Generation() const;
 
     void SubscribeConsoleConfigs(const TActorContext& ctx);
@@ -403,6 +446,10 @@ public:
 
     void ConfigureBorrowedCompactionQueue(
         const NKikimrConfig::TCompactionConfig::TBorrowedCompactionConfig& config,
+        const TActorContext &ctx);
+
+    void ConfigureBackgroundCleaningQueue(
+        const NKikimrConfig::TBackgroundCleaningConfig& config,
         const TActorContext &ctx);
 
     void StartStopCompactionQueues();
@@ -602,6 +649,7 @@ public:
     void PersistTablePartitionStats(NIceDb::TNiceDb& db, const TPathId& tableId, const TTableInfo::TPtr tableInfo);
     void PersistTableCreated(NIceDb::TNiceDb& db, const TPathId tableId);
     void PersistTableAlterVersion(NIceDb::TNiceDb &db, const TPathId pathId, const TTableInfo::TPtr tableInfo);
+    void PersistTableFinishColumnBuilding(NIceDb::TNiceDb& db, const TPathId pathId, const TTableInfo::TPtr tableInfo, ui64 colId);
     void PersistTableAltered(NIceDb::TNiceDb &db, const TPathId pathId, const TTableInfo::TPtr tableInfo);
     void PersistAddAlterTable(NIceDb::TNiceDb& db, TPathId pathId, const TTableInfo::TAlterDataPtr alter);
     void PersistPersQueueGroup(NIceDb::TNiceDb &db, TPathId pathId, const TTopicInfo::TPtr);
@@ -777,6 +825,9 @@ public:
         TVector<TPathId> TablesToClean;
         TDeque<TPathId> BlockStoreVolumesToClean;
     };
+
+    void SubscribeToTempTableOwners();
+
     void ActivateAfterInitialization(const TActorContext& ctx, TActivationOpts&& opts);
 
     struct TTxInitPopulator;
@@ -802,10 +853,14 @@ public:
 
     void EnqueueBackgroundCompaction(const TShardIdx& shardIdx, const TPartitionStats& stats);
     void UpdateBackgroundCompaction(const TShardIdx& shardIdx, const TPartitionStats& stats);
-    void RemoveBackgroundCompaction(const TShardIdx& shardIdx);
+    bool RemoveBackgroundCompaction(const TShardIdx& shardIdx);
 
     void EnqueueBorrowedCompaction(const TShardIdx& shardIdx);
     void RemoveBorrowedCompaction(const TShardIdx& shardIdx);
+
+    void EnqueueBackgroundCleaning(const TPathId& pathId);
+    void RemoveBackgroundCleaning(const TPathId& pathId);
+    std::optional<TTempTableInfo> ResolveTempTableInfo(const TPathId& pathId);
 
     void UpdateShardMetrics(const TShardIdx& shardIdx, const TPartitionStats& newStats);
     void RemoveShardMetrics(const TShardIdx& shardIdx);
@@ -820,6 +875,17 @@ public:
     void OnBorrowedCompactionTimeout(const TShardIdx& shardIdx);
     void BorrowedCompactionHandleDisconnect(TTabletId tabletId, const TActorId& clientId);
     void UpdateBorrowedCompactionQueueMetrics();
+
+    NOperationQueue::EStartStatus StartBackgroundCleaning(const TPathId& pathId);
+    void OnBackgroundCleaningTimeout(const TPathId& pathId);
+    void Handle(TEvInterconnect::TEvNodeDisconnected::TPtr& ev, const TActorContext& ctx);
+    bool CheckOwnerUndelivered(TEvents::TEvUndelivered::TPtr& ev);
+    void RetryNodeSubscribe(ui32 nodeId);
+    void Handle(TEvPrivate::TEvRetryNodeSubscribe::TPtr& ev, const TActorContext& ctx);
+    void HandleBackgroundCleaningTransactionResult(
+        TEvSchemeShard::TEvModifySchemeTransactionResult::TPtr& result);
+    void HandleBackgroundCleaningCompletionResult(const TTxId& txId);
+    void ClearTempTablesState();
 
     struct TTxCleanDroppedSubDomains;
     NTabletFlatExecutor::ITransaction* CreateTxCleanDroppedSubDomains();
@@ -1276,6 +1342,8 @@ public:
     void ResolveSA();
     void ConnectToSA();
     void SendBaseStatsToSA();
+
+
 
 public:
     void ChangeStreamShardsCount(i64 delta) override;

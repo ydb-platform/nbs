@@ -102,16 +102,16 @@ void TTxWrite::Complete(const TActorContext& ctx) {
     const auto now = TMonotonic::Now();
     const NOlap::TWritingBuffer& buffer = PutBlobResult->Get()->MutableWritesBuffer();
     for (auto&& i : buffer.GetAddActions()) {
-        i->OnCompleteTxAfterWrite(*Self);
+        i->OnCompleteTxAfterWrite(*Self, true);
     }
     for (auto&& i : buffer.GetRemoveActions()) {
-        i->OnCompleteTxAfterRemoving(*Self);
+        i->OnCompleteTxAfterRemoving(*Self, true);
     }
     AFL_VERIFY(buffer.GetAggregations().size() == Results.size());
     for (ui32 i = 0; i < buffer.GetAggregations().size(); ++i) {
         const auto& writeMeta = buffer.GetAggregations()[i]->GetWriteData()->GetWriteMeta();
         ctx.Send(writeMeta.GetSource(), Results[i].release());
-        Self->CSCounters.OnWriteTxComplete((now - writeMeta.GetWriteStartInstant()).MilliSeconds());
+        Self->CSCounters.OnWriteTxComplete(now - writeMeta.GetWriteStartInstant());
         Self->CSCounters.OnSuccessWriteResponse();
     }
 

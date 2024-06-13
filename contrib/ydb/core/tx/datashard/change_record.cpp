@@ -79,13 +79,6 @@ bool TChangeRecord::IsBroadcast() const {
     }
 }
 
-TString TChangeRecord::ToString() const {
-    TString result;
-    TStringOutput out(result);
-    Out(out);
-    return result;
-}
-
 void TChangeRecord::Out(IOutputStream& out) const {
     out << "{"
         << " Order: " << Order

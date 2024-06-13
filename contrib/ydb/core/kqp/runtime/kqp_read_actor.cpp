@@ -17,6 +17,7 @@
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/actorsystem.h>
+#include <contrib/ydb/library/wilson_ids/wilson.h>
 
 #include <util/generic/intrlist.h>
 
@@ -399,6 +400,7 @@ public:
         , Counters(counters)
         , UseFollowers(false)
         , PipeCacheId(MainPipeCacheId)
+        , ReadActorSpan(TWilsonKqp::ReadActor,  NWilson::TTraceId(args.TraceId), "ReadActor")
     {
         Y_ABORT_UNLESS(Arena);
         Y_ABORT_UNLESS(settings->GetArena() == Arena->Get());
@@ -569,6 +571,9 @@ public:
         ResolveShards[ResolveShardId] = state;
         ResolveShardId += 1;
 
+        ReadActorStateSpan = NWilson::TSpan(TWilsonKqp::ReadActorShardsResolve, ReadActorSpan.GetTraceId(),
+            "WaitForShardsResolve", NWilson::EFlags::AUTO_END);
+
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvInvalidateTable(TableId, {}));
         Send(MakeSchemeCacheID(), new TEvTxProxySchemeCache::TEvResolveKeySet(request));
     }
@@ -617,8 +622,12 @@ public:
                 }
             }
 
+            ReadActorStateSpan.EndError(error);
+
             return RuntimeError(error, statusCode);
         }
+
+        ReadActorStateSpan.EndOk();
 
         auto keyDesc = std::move(request->ResultSet[0].KeyDescription);
 
@@ -719,8 +728,8 @@ public:
                     if (intersection == 0) {
                         newShard->AddPoint(std::move(points[pointIndex]));
                         CA_LOG_D("Add point to new shardId: " << partition.ShardId);
-                    }
-                    if (intersection < 0) {
+                    } else {
+                        YQL_ENSURE(intersection > 0, "Missed intersection of point and partition ranges.");
                         break;
                     }
                     pointIndex += 1;
@@ -896,10 +905,8 @@ public:
         Counters->CreatedIterators->Inc();
         ReadIdByTabletId[state->TabletId].push_back(id);
 
-        NWilson::TTraceId traceId; // TODO: get traceId from kqp.        
-
         Send(PipeCacheId, new TEvPipeCache::TEvForward(ev.Release(), state->TabletId, true),
-            IEventHandle::FlagTrackDelivery, 0, std::move(traceId));
+            IEventHandle::FlagTrackDelivery, 0, ReadActorSpan.GetTraceId());
 
         if (!FirstShardStarted) {
             state->IsFirst = true;
@@ -1129,7 +1136,7 @@ public:
                         NMiniKQL::WriteColumnValuesFromArrow(editAccessors, NMiniKQL::TBatchDataAccessor(result->Get()->GetArrowBatch()), columnIndex, resultColumnIndex, column.TypeInfo)
                     );
                     if (column.NotNull) {
-                        std::shared_ptr<arrow::Array> columnSharedPtr = result->Get()->GetArrowBatch()->column(columnIndex);       
+                        std::shared_ptr<arrow::Array> columnSharedPtr = result->Get()->GetArrowBatch()->column(columnIndex);
                         bool gotNullValue = false;
                         for (ui64 rowIndex = 0; rowIndex < result->Get()->GetRowsCount(); ++rowIndex) {
                             if (columnSharedPtr->IsNull(rowIndex)) {
@@ -1174,9 +1181,14 @@ public:
     }
 
     NMiniKQL::TBytesStatistics PackCells(TResult& handle, i64& freeSpace) {
-        auto& [shardId, result, batch, _, packed] = handle;
+        auto& [shardId, result, batch, processedRows, packed] = handle;
         NMiniKQL::TBytesStatistics stats;
         batch->reserve(batch->size());
+        CA_LOG_D(TStringBuilder() << "enter pack cells method "
+            << " shardId: " << shardId
+            << " processedRows: " << processedRows
+            << " packed rows: " << packed
+            << " freeSpace: " << freeSpace);
 
         for (size_t rowIndex = packed; rowIndex < result->Get()->GetRowsCount(); ++rowIndex) {
             const auto& row = result->Get()->GetCells(rowIndex);
@@ -1218,6 +1230,12 @@ public:
                 break;
             }
         }
+
+        CA_LOG_D(TStringBuilder() << "exit pack cells method "
+            << " shardId: " << shardId
+            << " processedRows: " << processedRows
+            << " packed rows: " << packed
+            << " freeSpace: " << freeSpace);
         return stats;
     }
 
@@ -1239,7 +1257,9 @@ public:
 
         YQL_ENSURE(!resultBatch.IsWide(), "Wide stream is not supported");
 
-        CA_LOG_D(TStringBuilder() << " enter getasyncinputdata results size " << Results.size());
+        CA_LOG_D(TStringBuilder() << " enter getasyncinputdata results size " << Results.size()
+            << ", freeSpace " << freeSpace);
+
         ui64 bytes = 0;
         while (!Results.empty()) {
             auto& result = Results.front();
@@ -1248,14 +1268,15 @@ public:
             auto& msg = *result.ReadResult->Get();
             if (!batch.Defined()) {
                 batch.ConstructInPlace();
-                switch (msg.Record.GetResultFormat()) {
-                    case NKikimrDataEvents::FORMAT_ARROW:
-                        BytesStats.AddStatistics(PackArrow(result, freeSpace));
-                        break;
-                    case NKikimrDataEvents::FORMAT_UNSPECIFIED:
-                    case NKikimrDataEvents::FORMAT_CELLVEC:
-                        BytesStats.AddStatistics(PackCells(result, freeSpace));
-                }
+            }
+
+            switch (msg.Record.GetResultFormat()) {
+                case NKikimrDataEvents::FORMAT_ARROW:
+                    BytesStats.AddStatistics(PackArrow(result, freeSpace));
+                    break;
+                case NKikimrDataEvents::FORMAT_UNSPECIFIED:
+                case NKikimrDataEvents::FORMAT_CELLVEC:
+                    BytesStats.AddStatistics(PackCells(result, freeSpace));
             }
 
             auto id = result.ReadResult->Get()->Record.GetReadId();
@@ -1327,6 +1348,7 @@ public:
 
         CA_LOG_D(TStringBuilder() << "returned async data"
             << " processed rows " << ProcessedRowCount
+            << " left freeSpace " << freeSpace
             << " received rows " << ReceivedRowCount
             << " running reads " << RunningReads()
             << " pending shards " << PendingShards.Size()
@@ -1385,6 +1407,8 @@ public:
             }
         }
         TBase::PassAway();
+
+        ReadActorSpan.End();
     }
 
     void RuntimeError(const TString& message, NYql::NDqProto::StatusIds::StatusCode statusCode, const NYql::TIssues& subIssues = {}) {
@@ -1395,6 +1419,11 @@ public:
 
         NYql::TIssues issues;
         issues.AddIssue(std::move(issue));
+
+        if (ReadActorSpan) {
+            ReadActorSpan.EndError(issues.ToOneLineString());
+        }
+
         Send(ComputeActorId, new TEvAsyncInputError(InputIndex, std::move(issues), statusCode));
     }
 
@@ -1491,6 +1520,9 @@ private:
     size_t TotalRetries = 0;
 
     bool FirstShardStarted = false;
+
+    NWilson::TSpan ReadActorSpan;
+    NWilson::TSpan ReadActorStateSpan;
 };
 
 

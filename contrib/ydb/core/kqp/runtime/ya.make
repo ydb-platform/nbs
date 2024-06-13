@@ -20,6 +20,7 @@ SRCS(
     kqp_stream_lookup_worker.h
     kqp_tasks_runner.cpp
     kqp_transport.cpp
+    kqp_write_actor.cpp
 )
 
 PEERDIR(
@@ -33,7 +34,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/scheme
     contrib/ydb/core/ydb_convert
-    contrib/ydb/library/yql/minikql/computation/llvm
+    contrib/ydb/library/yql/minikql/computation/llvm14
     contrib/ydb/library/yql/minikql/comp_nodes
     contrib/ydb/library/yql/utils
     contrib/ydb/library/yql/dq/actors/protos

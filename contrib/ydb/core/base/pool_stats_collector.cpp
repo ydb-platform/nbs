@@ -9,6 +9,9 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/helpers/pool_stats_collector.h>
 
+#include <contrib/ydb/core/graph/api/service.h>
+#include <contrib/ydb/core/graph/api/events.h>
+
 namespace NKikimr {
 
 // Periodically collects stats from executor threads and exposes them as mon counters

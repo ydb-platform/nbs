@@ -351,6 +351,7 @@ Y_UNIT_TEST_SUITE(KqpQuery) {
     Y_UNIT_TEST(QueryTimeoutImmediate) {
         NKikimrConfig::TAppConfig appConfig;
         appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(false);
+        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(false);
         auto settings = TKikimrSettings()
             .SetAppConfig(appConfig);
         TKikimrRunner kikimr{settings};
@@ -490,6 +491,7 @@ Y_UNIT_TEST_SUITE(KqpQuery) {
 
     Y_UNIT_TEST(QueryCancelImmediate) {
         NKikimrConfig::TAppConfig appConfig;
+        appConfig.MutableTableServiceConfig()->SetEnableKqpDataQueryStreamLookup(false);
         appConfig.MutableTableServiceConfig()->SetEnableKqpDataQuerySourceRead(false);
         auto settings = TKikimrSettings()
             .SetAppConfig(appConfig);
@@ -786,18 +788,51 @@ Y_UNIT_TEST_SUITE(KqpQuery) {
         auto db = kikimr.GetTableClient();
         auto session = db.CreateSession().GetValueSync().GetSession();
 
-        auto query = Q_(R"(
-            SELECT 1 + 1;
-        )");
+        {
+            auto query = Q_(R"(
+                SELECT 1 + 1;
+            )");
 
-        auto result = session.ExecuteDataQuery(
-            query,
-            TTxControl::BeginTx().CommitTx()
-        ).ExtractValueSync();
+            auto result = session.ExecuteDataQuery(
+                query,
+                TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
 
-        UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
-        CompareYson(R"([[2]])",
-            FormatResultSetYson(result.GetResultSet(0)));
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([[2]])",
+                FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            auto query = Q_(R"(
+                SELECT Int8("-1");
+            )");
+
+            auto result = session.ExecuteDataQuery(
+                query,
+                TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([[-1]])",
+                FormatResultSetYson(result.GetResultSet(0)));
+        }
+
+        {
+            auto query = Q_(R"(
+                SELECT Int8("-1") + Int8("-1");
+            )");
+
+            auto result = session.ExecuteDataQuery(
+                query,
+                TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+            CompareYson(R"([[-2]])",
+                FormatResultSetYson(result.GetResultSet(0)));
+        }
+
     }
 
     Y_UNIT_TEST(Now) {
@@ -1555,6 +1590,31 @@ Y_UNIT_TEST_SUITE(KqpQuery) {
             UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
             UNIT_ASSERT(!result.GetResultSet(0).Truncated());
             UNIT_ASSERT_VALUES_EQUAL(result.GetResultSet(0).RowsCount(), 1);
+        }
+    }
+
+    Y_UNIT_TEST(DictJoin) {
+        TKikimrRunner kikimr;
+        auto client = kikimr.GetQueryClient();
+
+        {
+            const TString sql = R"(
+                --!syntax_v1
+
+                $lsource = SELECT 'test' AS ldata;
+                $rsource = SELECT 'test' AS rdata;
+
+                $left = SELECT ROW_NUMBER() OVER w AS r, ldata FROM $lsource WINDOW w AS ();
+                $right = SELECT ROW_NUMBER() OVER w AS r, rdata FROM $rsource WINDOW w AS ();
+
+                $result  = SELECT ldata, rdata FROM $left AS tl INNER JOIN $right AS tr ON tl.r = tr.r;
+
+                SELECT * FROM $result;
+            )";
+            auto result = client.ExecuteQuery(
+                sql,
+                NYdb::NQuery::TTxControl::BeginTx().CommitTx()).GetValueSync();
+            UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
         }
     }
 }

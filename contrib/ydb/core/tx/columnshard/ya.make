@@ -11,7 +11,6 @@ SRCS(
     columnshard__progress_tx.cpp
     columnshard__propose_cancel.cpp
     columnshard__propose_transaction.cpp
-    columnshard__read.cpp
     columnshard__read_base.cpp
     columnshard__scan.cpp
     columnshard__index_scan.cpp
@@ -26,10 +25,8 @@ SRCS(
     columnshard_view.cpp
     counters.cpp
     defs.cpp
-    read_actor.cpp
     write_actor.cpp
     tables_manager.cpp
-    tx_controller.cpp
 )
 
 GENERATE_ENUM_SERIALIZATION(columnshard.h)
@@ -45,12 +42,15 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/tablet
     contrib/ydb/core/tablet_flat
+    contrib/ydb/core/tx/time_cast
     contrib/ydb/core/tx/columnshard/engines
     contrib/ydb/core/tx/columnshard/engines/writer
     contrib/ydb/core/tx/columnshard/counters
     contrib/ydb/core/tx/columnshard/common
     contrib/ydb/core/tx/columnshard/splitter
     contrib/ydb/core/tx/columnshard/operations
+    contrib/ydb/core/tx/columnshard/transactions
+    contrib/ydb/core/tx/columnshard/transactions/operators
     contrib/ydb/core/tx/columnshard/blobs_reader
     contrib/ydb/core/tx/columnshard/blobs_action
     contrib/ydb/core/tx/columnshard/resource_subscriber

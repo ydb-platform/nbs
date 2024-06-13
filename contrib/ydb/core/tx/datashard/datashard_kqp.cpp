@@ -344,11 +344,11 @@ TVector<NTable::TColumn> GetColumns(const TReadOpMeta& readMeta) {
     return columns;
 }
 
-TVector<TEngineBay::TColumnWriteMeta> GetColumnWrites(const TWriteOpMeta& writeMeta) {
-    TVector<TEngineBay::TColumnWriteMeta> writeColumns;
+TVector<TKeyValidator::TColumnWriteMeta> GetColumnWrites(const TWriteOpMeta& writeMeta) {
+    TVector<TKeyValidator::TColumnWriteMeta> writeColumns;
     writeColumns.reserve(writeMeta.ColumnsSize());
     for (const auto& columnMeta : writeMeta.GetColumns()) {
-        TEngineBay::TColumnWriteMeta writeColumn;
+        TKeyValidator::TColumnWriteMeta writeColumn;
         writeColumn.Column = GetColumn(columnMeta.GetColumn());
         writeColumn.MaxValueSizeBytes = columnMeta.GetMaxValueSizeBytes();
 
@@ -362,7 +362,7 @@ template <bool Read>
 void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const TUserTable* tableInfo,
     const NKikimrTxDataShard::TKqpTransaction_TDataTaskMeta_TKeyRange& rangeKind,
     const TReadOpMeta* readMeta, const TWriteOpMeta* writeMeta, const NScheme::TTypeRegistry& typeRegistry,
-    const TActorContext& ctx, TEngineBay& engineBay)
+    const TActorContext& ctx, TKeyValidator& keyValidator)
 {
     if (Read) {
         Y_ABORT_UNLESS(readMeta);
@@ -387,10 +387,10 @@ void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const
                 Y_DEBUG_ABORT_UNLESS(!(tableRange.To.GetCells().empty() && tableRange.ToInclusive));
 
                 if constexpr (Read) {
-                    engineBay.AddReadRange(tableId, GetColumns(*readMeta), tableRange.ToTableRange(),
+                    keyValidator.AddReadRange(tableId, GetColumns(*readMeta), tableRange.ToTableRange(),
                         tableInfo->KeyColumnTypes, readMeta->GetItemsLimit(), readMeta->GetReverse());
                 } else {
-                    engineBay.AddWriteRange(tableId, tableRange.ToTableRange(), tableInfo->KeyColumnTypes,
+                    keyValidator.AddWriteRange(tableId, tableRange.ToTableRange(), tableInfo->KeyColumnTypes,
                         GetColumnWrites(*writeMeta), writeMeta->GetIsPureEraseOp());
                 }
             }
@@ -405,11 +405,9 @@ void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const
                     << DebugPrintPoint(tableInfo->KeyColumnTypes, tablePoint.From.GetCells(), typeRegistry));
 
                 if constexpr (Read) {
-                    engineBay.AddReadRange(tableId,  GetColumns(*readMeta), tablePoint.ToTableRange(),
-                        tableInfo->KeyColumnTypes, readMeta->GetItemsLimit(), readMeta->GetReverse());
+                    keyValidator.AddReadRange(tableId, GetColumns(*readMeta), tablePoint.ToTableRange(), tableInfo->KeyColumnTypes, readMeta->GetItemsLimit(), readMeta->GetReverse());
                 } else {
-                    engineBay.AddWriteRange(tableId, tablePoint.ToTableRange(), tableInfo->KeyColumnTypes,
-                        GetColumnWrites(*writeMeta), writeMeta->GetIsPureEraseOp());
+                    keyValidator.AddWriteRange(tableId, tablePoint.ToTableRange(), tableInfo->KeyColumnTypes, GetColumnWrites(*writeMeta), writeMeta->GetIsPureEraseOp());
                 }
             }
 
@@ -426,10 +424,10 @@ void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const
                 << DebugPrintRange(tableInfo->KeyColumnTypes, tableRange.ToTableRange(), typeRegistry));
 
             if constexpr (Read) {
-                engineBay.AddReadRange(tableId,  GetColumns(*readMeta), tableRange.ToTableRange(),
+                keyValidator.AddReadRange(tableId,  GetColumns(*readMeta), tableRange.ToTableRange(),
                     tableInfo->KeyColumnTypes, readMeta->GetItemsLimit(), readMeta->GetReverse());
             } else {
-                engineBay.AddWriteRange(tableId, tableRange.ToTableRange(), tableInfo->KeyColumnTypes,
+                keyValidator.AddWriteRange(tableId, tableRange.ToTableRange(), tableInfo->KeyColumnTypes,
                     GetColumnWrites(*writeMeta), writeMeta->GetIsPureEraseOp());
             }
 
@@ -442,10 +440,10 @@ void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const
                 << ", task: " << taskId << ", " << (Read ? "read range: UNSPECIFIED" : "write range: UNSPECIFIED"));
 
             if constexpr (Read) {
-                engineBay.AddReadRange(tableId,  GetColumns(*readMeta), tableInfo->Range.ToTableRange(),
+                keyValidator.AddReadRange(tableId,  GetColumns(*readMeta), tableInfo->Range.ToTableRange(),
                     tableInfo->KeyColumnTypes, readMeta->GetItemsLimit(), readMeta->GetReverse());
             } else {
-                engineBay.AddWriteRange(tableId, tableInfo->Range.ToTableRange(), tableInfo->KeyColumnTypes,
+                keyValidator.AddWriteRange(tableId, tableInfo->Range.ToTableRange(), tableInfo->KeyColumnTypes,
                     GetColumnWrites(*writeMeta), writeMeta->GetIsPureEraseOp());
             }
 
@@ -458,7 +456,7 @@ void KqpSetTxKeysImpl(ui64 tabletId, ui64 taskId, const TTableId& tableId, const
 
 void KqpSetTxKeys(ui64 tabletId, ui64 taskId, const TUserTable* tableInfo,
     const NKikimrTxDataShard::TKqpTransaction_TDataTaskMeta& meta, const NScheme::TTypeRegistry& typeRegistry,
-    const TActorContext& ctx, TEngineBay& engineBay)
+    const TActorContext& ctx, TKeyValidator& keyValidator)
 {
     auto& tableMeta = meta.GetTable();
     auto tableId = TTableId(tableMeta.GetTableId().GetOwnerId(), tableMeta.GetTableId().GetTableId(),
@@ -466,16 +464,16 @@ void KqpSetTxKeys(ui64 tabletId, ui64 taskId, const TUserTable* tableInfo,
 
     for (auto& read : meta.GetReads()) {
         KqpSetTxKeysImpl<true>(tabletId, taskId, tableId, tableInfo, read.GetRange(), &read, nullptr,
-            typeRegistry, ctx, engineBay);
+            typeRegistry, ctx, keyValidator);
     }
 
     if (meta.HasWrites()) {
         KqpSetTxKeysImpl<false>(tabletId, taskId, tableId, tableInfo, meta.GetWrites().GetRange(), nullptr,
-            &meta.GetWrites(), typeRegistry, ctx, engineBay);
+            &meta.GetWrites(), typeRegistry, ctx, keyValidator);
     }
 }
 
-void KqpSetTxLocksKeys(const NKikimrDataEvents::TKqpLocks& locks, const TSysLocks& sysLocks, TEngineBay& engineBay) {
+void KqpSetTxLocksKeys(const NKikimrDataEvents::TKqpLocks& locks, const TSysLocks& sysLocks, TKeyValidator& keyValidator) {
     if (locks.LocksSize() == 0) {
         return;
     }
@@ -493,10 +491,10 @@ void KqpSetTxLocksKeys(const NKikimrDataEvents::TKqpLocks& locks, const TSysLock
         if (sysLocks.IsMyKey(lockKey)) {
             auto point = TTableRange(lockKey, true, {}, true, /* point */ true);
             if (NeedValidateLocks(locks.GetOp())) {
-                engineBay.AddReadRange(sysLocksTableId, {}, point, lockRowType);
+                keyValidator.AddReadRange(sysLocksTableId, {}, point, lockRowType);
             }
             if (NeedEraseLocks(locks.GetOp())) {
-                engineBay.AddWriteRange(sysLocksTableId, point, lockRowType, {}, /* isPureEraseOp */ true);
+                keyValidator.AddWriteRange(sysLocksTableId, point, lockRowType, {}, /* isPureEraseOp */ true);
             }
         }
     }
@@ -766,6 +764,14 @@ bool KqpValidateLocks(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLocks) 
     return true;
 }
 
+bool KqpLocksHasArbiter(const NKikimrDataEvents::TKqpLocks* kqpLocks) {
+    return kqpLocks && kqpLocks->GetArbiterShard() != 0;
+}
+
+bool KqpLocksIsArbiter(ui64 tabletId, const NKikimrDataEvents::TKqpLocks* kqpLocks) {
+    return KqpLocksHasArbiter(kqpLocks) && kqpLocks->GetArbiterShard() == tabletId;
+}
+
 bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLocks) {
     auto& kqpLocks = tx->GetDataTx()->GetKqpLocks();
 
@@ -780,6 +786,9 @@ bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLo
     // We expect all stale data to be cleared on restarts
     Y_ABORT_UNLESS(tx->OutReadSets().empty());
     Y_ABORT_UNLESS(tx->AwaitingDecisions().empty());
+
+    const bool hasArbiter = KqpLocksHasArbiter(&kqpLocks);
+    const bool isArbiter = KqpLocksIsArbiter(origin, &kqpLocks);
 
     // Note: usually all shards send locks, since they either have side effects or need to validate locks
     // However it is technically possible to have pure-read shards, that don't contribute to the final decision
@@ -810,6 +819,11 @@ bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLo
                 continue;
             }
 
+            if (hasArbiter && !isArbiter && dstTabletId != kqpLocks.GetArbiterShard()) {
+                // Non-arbiter shards only send locks to the arbiter
+                continue;
+            }
+
             LOG_TRACE_S(*TlsActivationContext, NKikimrServices::TX_DATASHARD, "Send commit decision from "
                 << origin << " to " << dstTabletId);
 
@@ -823,6 +837,8 @@ bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLo
 
             tx->OutReadSets()[key] = std::move(bodyStr);
         }
+    } else {
+        Y_ABORT_UNLESS(!isArbiter, "Arbiter is not in the sending shards set");
     }
 
     bool receiveLocks = ReceiveLocks(kqpLocks, origin);
@@ -832,6 +848,11 @@ bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLo
         for (ui64 srcTabletId : kqpLocks.GetSendingShards()) {
             if (srcTabletId == origin) {
                 // Don't await decision from ourselves
+                continue;
+            }
+
+            if (hasArbiter && !isArbiter && srcTabletId != kqpLocks.GetArbiterShard()) {
+                // Non-arbiter shards only await decision from the arbiter
                 continue;
             }
 
@@ -893,6 +914,8 @@ bool KqpValidateVolatileTx(ui64 origin, TActiveTransaction* tx, TSysLocks& sysLo
 
             return false;
         }
+    } else {
+        Y_ABORT_UNLESS(!isArbiter, "Arbiter is not in the receiving shards set");
     }
 
     return true;
@@ -1107,11 +1130,11 @@ public:
         return NKqp::KqpBuildOutputConsumer(outputDesc, type, applyCtx, typeEnv, holderFactory, std::move(outputs));
     }
 
-    NDq::IDqChannelStorage::TPtr CreateChannelStorage(ui64 /* channelId */) const override {
+    NDq::IDqChannelStorage::TPtr CreateChannelStorage(ui64 /* channelId */, bool /* withSpilling */) const override {
         return {};
     }
 
-    NDq::IDqChannelStorage::TPtr CreateChannelStorage(ui64 /* channelId */, TActorSystem* /* actorSystem */, bool /*isConcurrent*/) const override {
+    NDq::IDqChannelStorage::TPtr CreateChannelStorage(ui64 /* channelId */, bool /* withSpilling */, TActorSystem* /* actorSystem */, bool /*isConcurrent*/) const override {
         return {};
     }
 };

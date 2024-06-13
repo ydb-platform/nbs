@@ -5,8 +5,9 @@
 #include "schemeshard_tx_infly.h"
 #include "schemeshard_path_element.h"
 #include "schemeshard_identificators.h"
-#include "schemeshard_olap_types.h"
 #include "schemeshard_schema.h"
+#include "olap/schema/schema.h"
+#include "olap/schema/update.h"
 
 #include <contrib/ydb/core/tx/message_seqno.h>
 #include <contrib/ydb/core/tx/datashard/datashard.h>
@@ -302,9 +303,11 @@ private:
 struct TAggregatedStats {
     TPartitionStats Aggregated;
     THashMap<TShardIdx, TPartitionStats> PartitionStats;
+    THashMap<TPathId, TPartitionStats> TableStats;
     size_t PartitionStatsUpdated = 0;
 
     void UpdateShardStats(TShardIdx datashardIdx, const TPartitionStats& newStats);
+    void UpdateTableStats(const TPathId& pathId, const TPartitionStats& newStats);
 };
 
 struct TSubDomainInfo;
@@ -318,6 +321,7 @@ struct TTableInfo : public TSimpleRefCount<TTableInfo> {
         ui64 DeleteVersion;
         ETableColumnDefaultKind DefaultKind = ETableColumnDefaultKind::None;
         TString DefaultValue;
+        bool IsBuildInProgress = false;
 
         TColumn(const TString& name, ui32 id, NScheme::TTypeInfo type, const TString& typeMod, bool notNull)
             : NTable::TScheme::TColumn(name, id, type, typeMod, notNull)
@@ -400,6 +404,8 @@ struct TTableInfo : public TSimpleRefCount<TTableInfo> {
     THashMap<ui32, TColumn> Columns;
     TVector<ui32> KeyColumnIds;
     bool IsBackup = false;
+    bool IsTemporary = false;
+    TActorId OwnerActorId;
 
     TAlterTableInfo::TPtr AlterData;
 
@@ -1001,10 +1007,14 @@ struct TColumnTableInfo : TSimpleRefCount<TColumnTableInfo> {
         return Stats;
     }
 
-    void UpdateShardStats(TShardIdx shardIdx, const TPartitionStats& newStats) {
+    void UpdateShardStats(const TShardIdx shardIdx, const TPartitionStats& newStats) {
         Stats.Aggregated.PartCount = ColumnShards.size();
         Stats.PartitionStats[shardIdx]; // insert if none
         Stats.UpdateShardStats(shardIdx, newStats);
+    }
+
+    void UpdateTableStats(const TPathId& pathId, const TPartitionStats& newStats) {
+        Stats.UpdateTableStats(pathId, newStats);
     }
 };
 
@@ -1576,6 +1586,13 @@ struct TSubDomainInfo: TSimpleRefCount<TSubDomainInfo> {
         return TTabletId(ProcessingParams.GetStatisticsAggregator());
     }
 
+    TTabletId GetTenantGraphShardID() const {
+        if (!ProcessingParams.HasGraphShard()) {
+            return InvalidTabletId;
+        }
+        return TTabletId(ProcessingParams.GetGraphShard());
+    }
+
     ui64 GetPathsInside() const {
         return PathsInsideCount;
     }
@@ -1953,6 +1970,13 @@ struct TSubDomainInfo: TSimpleRefCount<TSubDomainInfo> {
         if (statisticsAggregators.size()) {
             ProcessingParams.SetStatisticsAggregator(ui64(statisticsAggregators.front()));
         }
+
+        ProcessingParams.ClearGraphShard();
+        TVector<TTabletId> graphs = FilterPrivateTablets(ETabletType::GraphShard, allShards);
+        Y_VERIFY_S(graphs.size() <= 1, "size was: " << graphs.size());
+        if (graphs.size()) {
+            ProcessingParams.SetGraphShard(ui64(graphs.front()));
+        }
     }
 
     void InitializeAsGlobal(NKikimrSubDomains::TProcessingParams&& processingParams) {
@@ -2173,7 +2197,7 @@ private:
     TPathId ResourcesDomainId;
     TTabletId SharedHive = InvalidTabletId;
     TMaybeServerlessComputeResourcesMode ServerlessComputeResourcesMode;
-    
+
     NLoginProto::TSecurityState SecurityState;
     ui64 SecurityStateVersion = 0;
 
@@ -2986,22 +3010,30 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
     struct TColumnBuildInfo {
         TString ColumnName;
         Ydb::TypedValue DefaultFromLiteral;
+        bool NotNull = false;
+        TString FamilyName;
 
-        TColumnBuildInfo(const TString& name, const TString& serializedLiteral)
+        TColumnBuildInfo(const TString& name, const TString& serializedLiteral, bool notNull, const TString& familyName)
             : ColumnName(name)
+            , NotNull(notNull)
+            , FamilyName(familyName)
         {
             Y_ABORT_UNLESS(DefaultFromLiteral.ParseFromString(serializedLiteral));
         }
 
-        TColumnBuildInfo(const TString& name, const Ydb::TypedValue& defaultFromLiteral)
+        TColumnBuildInfo(const TString& name, const Ydb::TypedValue& defaultFromLiteral, bool notNull, const TString& familyName)
             : ColumnName(name)
             , DefaultFromLiteral(defaultFromLiteral)
+            , NotNull(notNull)
+            , FamilyName(familyName)
         {
         }
 
         void SerializeToProto(NKikimrIndexBuilder::TColumnBuildSetting* setting) const {
             setting->SetColumnName(ColumnName);
             setting->mutable_default_from_literal()->CopyFrom(DefaultFromLiteral);
+            setting->SetNotNull(NotNull);
+            setting->SetFamily(FamilyName);
         }
     };
 
@@ -3119,7 +3151,9 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
     void AddBuildColumnInfo(const TRow& row){
         TString columnName = row.template GetValue<Schema::BuildColumnOperationSettings::ColumnName>();
         TString defaultFromLiteral = row.template GetValue<Schema::BuildColumnOperationSettings::DefaultFromLiteral>();
-        BuildColumns.push_back(TColumnBuildInfo(columnName, defaultFromLiteral));
+        bool notNull = row.template GetValue<Schema::BuildColumnOperationSettings::NotNull>();
+        TString familyName = row.template GetValue<Schema::BuildColumnOperationSettings::FamilyName>();
+        BuildColumns.push_back(TColumnBuildInfo(columnName, defaultFromLiteral, notNull, familyName));
     }
 
     template<class TRowSetType>

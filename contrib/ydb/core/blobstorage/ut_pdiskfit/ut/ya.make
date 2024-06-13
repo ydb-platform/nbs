@@ -16,6 +16,7 @@ IF (OS_LINUX AND NOT WITH_VALGRIND)
     ENDIF ()
 
     PEERDIR(
+        contrib/ydb/apps/version
         contrib/ydb/core/blobstorage
         contrib/ydb/core/blobstorage/ut_pdiskfit/lib
     )

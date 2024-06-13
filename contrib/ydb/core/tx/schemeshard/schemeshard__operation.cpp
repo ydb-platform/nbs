@@ -12,6 +12,8 @@
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 #include <contrib/ydb/core/tablet_flat/tablet_flat_executor.h>
 
+#include <contrib/ydb/library/protobuf_printer/security_printer.h>
+
 #include <util/generic/algorithm.h>
 
 namespace NKikimr::NSchemeShard {
@@ -83,6 +85,14 @@ NKikimrScheme::TEvModifySchemeTransaction GetRecordForPrint(const NKikimrScheme:
         recordForPrint.SetUserToken("***hide token***");
     }
     return recordForPrint;
+}
+
+TString PrintSecurely(const NKikimrScheme::TEvModifySchemeTransaction& record) {
+    TSecurityTextFormatPrinter<NKikimrScheme::TEvModifySchemeTransaction> printer;
+    printer.SetSingleLineMode(true);
+    TString string;
+    printer.PrintToString(record, &string);
+    return string;
 }
 
 THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request, TOperationContext& context) {
@@ -183,7 +193,7 @@ THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request
                                     << ", already accepted parts: " << operation->Parts.size()
                                     << ", propose result status: " << NKikimrScheme::EStatus_Name(response->Record.GetStatus())
                                     << ", with reason: " << response->Record.GetReason()
-                                    << ", tx message: " << GetRecordForPrint(record).ShortDebugString());
+                                    << ", tx message: " << PrintSecurely(record));
                 }
 
                 Y_VERIFY_S(context.IsUndoChangesSafe(),
@@ -194,7 +204,7 @@ THolder<TProposeResponse> TSchemeShard::IgniteOperation(TProposeRequest& request
                                << ", already accepted parts: " << operation->Parts.size()
                                << ", propose result status: " << NKikimrScheme::EStatus_Name(response->Record.GetStatus())
                                << ", with reason: " << response->Record.GetReason()
-                               << ", tx message: " << GetRecordForPrint(record).ShortDebugString());
+                               << ", tx message: " << PrintSecurely(record));
 
                 context.OnComplete = {}; // recreate
                 context.DbChanges = {};
@@ -237,7 +247,7 @@ struct TSchemeShard::TTxOperationPropose: public NTabletFlatExecutor::TTransacti
 
         LOG_DEBUG_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
                     "TTxOperationPropose Execute"
-                        << ", message: " << GetRecordForPrint(Request->Get()->Record).ShortDebugString()
+                        << ", message: " << PrintSecurely(Request->Get()->Record)
                         << ", at schemeshard: " << selfId);
 
         txc.DB.NoMoreReadsForTx();
@@ -1062,14 +1072,14 @@ ISubOperation::TPtr TOperation::RestorePart(TTxState::ETxType txType, TTxState::
     case TTxState::ETxType::TxDropExternalTable:
         return CreateDropExternalTable(NextPartId(), txState);
     case TTxState::ETxType::TxAlterExternalTable:
-        Y_ABORT("TODO: implement");
+        return CreateAlterExternalTable(NextPartId(), txState);
     case TTxState::ETxType::TxCreateExternalDataSource:
         return CreateNewExternalDataSource(NextPartId(), txState);
     case TTxState::ETxType::TxDropExternalDataSource:
         return CreateDropExternalDataSource(NextPartId(), txState);
     case TTxState::ETxType::TxAlterExternalDataSource:
-        Y_ABORT("TODO: implement");
-    
+        return CreateAlterExternalDataSource(NextPartId(), txState);
+
     // View
     case TTxState::ETxType::TxCreateView:
         return CreateNewView(NextPartId(), txState);
@@ -1282,7 +1292,7 @@ ISubOperation::TPtr TOperation::ConstructPart(NKikimrSchemeOp::EOperationType op
 
     // ExternalTable
     case NKikimrSchemeOp::EOperationType::ESchemeOpCreateExternalTable:
-        return CreateNewExternalTable(NextPartId(), tx);
+        Y_ABORT("operation is handled before");
     case NKikimrSchemeOp::EOperationType::ESchemeOpDropExternalTable:
         return CreateDropExternalTable(NextPartId(), tx);
     case NKikimrSchemeOp::EOperationType::ESchemeOpAlterExternalTable:
@@ -1290,7 +1300,7 @@ ISubOperation::TPtr TOperation::ConstructPart(NKikimrSchemeOp::EOperationType op
 
     // ExternalDataSource
     case NKikimrSchemeOp::EOperationType::ESchemeOpCreateExternalDataSource:
-        return CreateNewExternalDataSource(NextPartId(), tx);
+        Y_ABORT("operation is handled before");
     case NKikimrSchemeOp::EOperationType::ESchemeOpDropExternalDataSource:
         return CreateDropExternalDataSource(NextPartId(), tx);
     case NKikimrSchemeOp::EOperationType::ESchemeOpAlterExternalDataSource:
@@ -1351,6 +1361,10 @@ TVector<ISubOperation::TPtr> TOperation::ConstructParts(const TTxTransaction& tx
         return CreateConsistentMoveIndex(NextPartId(), tx, context);
     case NKikimrSchemeOp::EOperationType::ESchemeOpAlterExtSubDomain:
         return CreateCompatibleAlterExtSubDomain(NextPartId(), tx, context);
+    case NKikimrSchemeOp::EOperationType::ESchemeOpCreateExternalDataSource:
+        return CreateNewExternalDataSource(NextPartId(), tx, context);
+    case NKikimrSchemeOp::EOperationType::ESchemeOpCreateExternalTable:
+        return CreateNewExternalTable(NextPartId(), tx, context);
     default:
         return {ConstructPart(opType, tx)};
     }

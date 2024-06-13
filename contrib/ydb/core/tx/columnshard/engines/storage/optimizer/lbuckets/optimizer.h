@@ -1,11 +1,12 @@
 #pragma once
 #include "counters.h"
 
-#include <contrib/ydb/core/tx/columnshard/engines/storage/optimizer/abstract/optimizer.h>
+#include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/storages_manager.h>
+#include <contrib/ydb/core/tx/columnshard/common/limits.h>
+#include <contrib/ydb/core/tx/columnshard/engines/changes/general_compaction.h>
 #include <contrib/ydb/core/tx/columnshard/engines/changes/abstract/abstract.h>
 #include <contrib/ydb/core/tx/columnshard/engines/portions/portion_info.h>
-#include <contrib/ydb/core/tx/columnshard/blobs_action/abstract/storages_manager.h>
-#include <contrib/ydb/core/tx/columnshard/engines/changes/general_compaction.h>
+#include <contrib/ydb/core/tx/columnshard/engines/storage/optimizer/abstract/optimizer.h>
 #include <contrib/ydb/core/tx/columnshard/hooks/abstract/abstract.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 
@@ -360,13 +361,16 @@ public:
         std::sort(sorted.begin(), sorted.end(), pred);
 
         std::vector<std::shared_ptr<TPortionInfo>> result;
-        ui64 currentSize = 0;
+        std::shared_ptr<NCompaction::TGeneralCompactColumnEngineChanges::IMemoryPredictor> predictor = NCompaction::TGeneralCompactColumnEngineChanges::BuildMemoryPredictor();
+        ui64 txSizeLimit = 0;
         for (auto&& i : sorted) {
-            if (currentSize > sizeLimit && result.size() > 1) {
+            result.emplace_back(i);
+            if (txSizeLimit + i->GetTxVolume() > TGlobalLimits::TxWriteLimitBytes / 2) {
                 break;
             }
-            result.emplace_back(i);
-            currentSize += i->GetBlobBytes();
+            if (predictor->AddPortion(*i) > sizeLimit && result.size() > 1) {
+                break;
+            }
         }
         if (result.size() < sorted.size()) {
             separatePoint = sorted[result.size()]->IndexKeyStart();
@@ -713,7 +717,8 @@ public:
         }
         std::optional<NArrow::TReplaceKey> stopPoint;
         std::optional<TInstant> stopInstant;
-        std::vector<std::shared_ptr<TPortionInfo>> portions = Others.GetOptimizerTaskPortions(512 * 1024 * 1024, stopPoint);
+        const ui64 memLimit = HasAppData() ? AppDataVerified().ColumnShardConfig.GetCompactionMemoryLimit() : 512 * 1024 * 1024;
+        std::vector<std::shared_ptr<TPortionInfo>> portions = Others.GetOptimizerTaskPortions(memLimit, stopPoint);
         if (nextBorder) {
             if (MainPortion) {
                 portions.emplace_back(MainPortion);
@@ -744,10 +749,10 @@ public:
                 return nullptr;
             }
         }
-        AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("stop_instant", stopInstant.value_or(TInstant::Zero()))("size", size)("next", NextBorder ? NextBorder->DebugString() : "")
+        AFL_DEBUG(NKikimrServices::TX_COLUMNSHARD)("stop_instant", stopInstant)("size", size)("next", NextBorder ? NextBorder->DebugString() : "")
             ("count", portions.size())("info", Others.DebugString())("event", "start_optimization")("stop_point", stopPoint ? stopPoint->DebugString() : "");
         TSaverContext saverContext(storagesManager->GetOperator(IStoragesManager::DefaultStorageId), storagesManager);
-        auto result = std::make_shared<NCompaction::TGeneralCompactColumnEngineChanges>(limits, granule, portions, saverContext);
+        auto result = std::make_shared<NCompaction::TGeneralCompactColumnEngineChanges>(limits.GetSplitSettings(), granule, portions, saverContext);
         if (MainPortion) {
             NIndexedReader::TSortableBatchPosition pos(MainPortion->IndexKeyStart().ToBatch(primaryKeysSchema), 0, primaryKeysSchema->field_names(), {}, false);
             result->AddCheckPoint(pos, true, false);
