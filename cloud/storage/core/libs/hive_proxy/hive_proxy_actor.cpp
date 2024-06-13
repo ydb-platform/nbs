@@ -271,8 +271,7 @@ void THiveProxyActor::HandleConnectionError(
 
         // SendNextCreateOrLookupRequest() won't send any requests after the
         // first undelivery. Reject and hope that clients will retry.
-        for (auto& kv: states->CreateRequests) {
-            auto& queue = kv.second;
+        for (auto& [_, queue]: states->CreateRequests) {
             while (!queue.empty()) {
                 TCreateOrLookupRequest request = std::move(queue.front());
                 queue.pop_front();
