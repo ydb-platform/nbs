@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         ui64 bytesCount = 0;
         ui64 vbytesCount = 0;
 
-        auto obs = [&] (TAutoPtr<IEventHandle>& event) {
+        auto obs = [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
             if (event->Recipient == MakeStorageStatsServiceId()
                     && event->GetTypeRewrite()
                         == TEvStatsService::EvVolumePartCounters)
@@ -179,7 +179,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 vbytesCount = msg->VolumeSelfCounters->Simple.VBytesCount.Value;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
         };
 
         runtime->SetObserverFunc(obs);
