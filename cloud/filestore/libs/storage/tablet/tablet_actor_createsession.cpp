@@ -22,8 +22,12 @@ void FillFeatures(const TStorageConfig& config, NProto::TFileStore& fileStore)
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
     features->SetThreeStageWriteEnabled(config.GetThreeStageWriteEnabled());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
-    if (config.GetExtendedBlockSizeEnabled()) {
-        features->SetPreferredBlockSize(BlockGroupSize * fileStore.GetBlockSize());
+
+    auto preferredBlockSizeMultiplier =
+        config.GetPreferredBlockSizeMultiplier();
+    if (preferredBlockSizeMultiplier) {
+        features->SetPreferredBlockSize(
+            fileStore.GetBlockSize() * preferredBlockSizeMultiplier);
     } else {
         features->SetPreferredBlockSize(fileStore.GetBlockSize());
     }

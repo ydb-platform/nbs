@@ -186,7 +186,7 @@ public:
     TDuration GetEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
-    bool GetExtendedBlockSizeEnabled() const;
+    ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
 
