@@ -4862,6 +4862,46 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         UNIT_ASSERT_VALUES_EQUAL(2, expectChangedCount);
     }
 
+    Y_UNIT_TEST(ShouldHandleGetChangedBlocksForNrdCheckpoint)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(false);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        const ui64 expectedBlockCount =
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount / DefaultBlockSize;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            expectedBlockCount);
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        // Create checkpoint c1
+        volume.CreateCheckpoint("c1");
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // Check GetChangedBlocks responses
+        volume.SendGetChangedBlocksRequest(
+            TBlockRange64::WithLength(0, 1024),
+            "",
+            "c1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_IMPLEMENTED,
+            volume.RecvGetChangedBlocksResponse()->GetStatus());
+    }
+
     Y_UNIT_TEST(ShouldRegisterBackgroundBandwidth)
     {
         NProto::TStorageServiceConfig config;
