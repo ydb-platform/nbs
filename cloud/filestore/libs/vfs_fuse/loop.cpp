@@ -758,12 +758,13 @@ private:
                 RequestStats,
                 Log,
                 StorageMediaKind);
+            auto filestoreConfig = MakeFileSystemConfig(filestore);
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
                 Scheduler,
                 Timer,
-                MakeFileSystemConfig(filestore),
+                filestoreConfig,
                 Session,
                 RequestStats,
                 CompletionQueue);
@@ -778,6 +779,14 @@ private:
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 SessionState.empty() ? "new" : "existing");
+
+            TStringStream filestoreConfigDump;
+            filestoreConfig->Dump(filestoreConfigDump);
+            STORAGE_INFO(
+                "[f:%s][c:%s] new session filestore config: %s",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str(),
+                filestoreConfigDump.Str().Quote().c_str());
 
             SessionThread = std::make_unique<TSessionThread>(
                 Log,
