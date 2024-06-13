@@ -18,14 +18,6 @@ struct TDiskRegistryChannelKinds
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS_PRIVATE(xxx, ...)              \
-    xxx(LookupTablet,                                __VA_ARGS__)              \
-    xxx(CreateTablet,                                __VA_ARGS__)              \
-
-// BLOCKSTORE_DISK_REGISTRY_PROXY_REQUESTS_PRIVATE
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TEvDiskRegistryProxyPrivate
 {
     //
