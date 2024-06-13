@@ -50,7 +50,7 @@ struct TMemberWithMeta: public TBase
 template <typename TMemberPtr>
 struct TMemberMeta
 {
-    std::string_view Name;
+    TStringBuf Name;
     TMemberPtr MemberPtr{};
 
     auto& GetValue(auto& object)
