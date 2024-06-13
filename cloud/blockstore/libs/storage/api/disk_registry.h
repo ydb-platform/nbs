@@ -52,6 +52,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
     xxx(GetCheckpointDataState,             __VA_ARGS__)                       \
     xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
+    xxx(GetAgentNodeId,                     __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
@@ -202,6 +203,9 @@ struct TEvDiskRegistry
 
         EvSetCheckpointDataStateRequest = EvBegin + 71,
         EvSetCheckpointDataStateResponse = EvBegin + 72,
+
+        EvGetAgentNodeIdRequest = EvBegin + 73,
+        EvGetAgentNodeIdResponse = EvBegin + 74,
 
         EvEnd
     };

@@ -132,6 +132,8 @@ message TDevice
     TRdmaEndpoint RdmaEndpoint = 7;
     // Physical offset in bytes.
     uint64 PhysicalOffset = 8;
+    // Node that agent is running on.
+    uint32 NodeId = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

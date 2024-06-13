@@ -19,12 +19,41 @@ class NbsClient:
         self.__binary_path = yatest_common.binary_path(
             "cloud/blockstore/apps/client/blockstore-client")
 
-    def __execute_action(self, action, req):
+    def __execute_action(self, action, req, timeout_sec=300):
         p = subprocess.run([
             self.__binary_path,
             "ExecuteAction",
             "--action", action,
             "--input-bytes", json.dumps(req),
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error",
+            "--timeout", str(timeout_sec),
+        ], stdout=PIPE, check=True, text=True)
+
+        return p.stdout
+
+    def __execute_action_async(self, action, req, timeout_sec=300):
+        p = subprocess.Popen([
+            self.__binary_path,
+            "ExecuteAction",
+            "--action", action,
+            "--input-bytes", json.dumps(req),
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "trace",
+            "--timeout", str(timeout_sec),
+        ], stdout=PIPE, stderr=PIPE, text=True)
+
+        return p
+
+    def create_volume(self, disk_id, kind, blocks_count):
+        p = subprocess.run([
+            self.__binary_path,
+            "createvolume",
+            "--disk-id", disk_id,
+            "--blocks-count", blocks_count,
+            "--storage-media-kind", kind,
             "--host", "localhost",
             "--port", str(self.__port),
             "--verbose", "error"
@@ -70,3 +99,18 @@ class NbsClient:
         resp = ProtoParse(p.stdout, TDescribeDiskRegistryConfigResponse())
 
         return MessageToDict(resp)
+
+    def wait_dependent_disks_to_switch_node(self, agentd_id, old_node_id, timeout=300):
+        req = {"AgentId": agentd_id, "OldNodeId": old_node_id}
+
+        return self.__execute_action('WaitDependentDisksToSwitchNode', req, timeout)
+
+    def wait_dependent_disks_to_switch_node_async(self, agentd_id, old_node_id, timeout=300):
+        req = {"AgentId": agentd_id, "OldNodeId": old_node_id}
+
+        return self.__execute_action_async('WaitDependentDisksToSwitchNode', req, timeout)
+
+    def get_disk_agent_node_id(self, agentd_id):
+        req = {"AgentId": agentd_id}
+
+        return self.__execute_action('GetDiskAgentNodeId', req)

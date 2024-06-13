@@ -80,14 +80,15 @@ void ReportPreconditionFailed(
     TStringBuf file,
     int line,
     TStringBuf func,
-    TStringBuf expr)
+    TStringBuf expr,
+    TStringBuf message)
 {
     ReportCriticalEvent(
         "PreconditionFailed",
         TStringBuilder()
             << file << ":" << line
             << " " << func << "(): requirement " << expr
-            << " failed",
+            << " failed. " << message,
         true    // verifyDebug
     );
 }
