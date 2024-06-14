@@ -32,6 +32,8 @@ public:
     ui32 GetHistoryTableLifetimeDays() const;
     ui32 GetStatsTableRotationAfterDays() const;
     bool GetUseSsl() const;
+    TDuration GetStatsTableTtl() const;
+    TDuration GetArchiveStatsTableTtl() const;
 };
 
 }   // namespace NCloud::NBlockStore::NYdbStats
