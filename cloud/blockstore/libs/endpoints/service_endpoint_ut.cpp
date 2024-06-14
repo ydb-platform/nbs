@@ -234,13 +234,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
@@ -322,13 +321,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
@@ -510,13 +508,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
@@ -679,13 +676,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
@@ -754,13 +750,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 
@@ -1030,13 +1025,12 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
+        auto initError = CreateEndpointsDirectory(dirPath);
         UNIT_ASSERT_C(!HasError(initError), initError);
 
         Y_DEFER {
-            auto error = mutableStorage->Remove();
+            auto error = CleanUpEndpointsDirectory(dirPath);
             UNIT_ASSERT_C(!HasError(error), error);
         };
 

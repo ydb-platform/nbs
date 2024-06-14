@@ -4,10 +4,11 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
+#include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud {
 
@@ -30,27 +31,22 @@ const TString& GetProtoMessageId(const TProtoMessage& msg)
     return msg.GetMessage();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TStorages
+struct TFixture: public NUnitTest::TBaseFixture
 {
-    IEndpointStoragePtr EndpointStorage;
-    IMutableEndpointStoragePtr MutableEndpointStorage;
+    const TString DirPath = "./" + CreateGuidAsString();
+
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        const auto ret = CreateEndpointsDirectory(DirPath);
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        const auto ret = CleanUpEndpointsDirectory(DirPath);
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+    }
 };
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-TStorages InitFileStorages()
-{
-    const TString dirPath = "./" + CreateGuidAsString();
-
-    auto endpointStorage = CreateFileEndpointStorage(dirPath);
-
-    auto mutableEndpointStorage = CreateFileMutableEndpointStorage(dirPath);
-
-    return {endpointStorage, mutableEndpointStorage};
-}
 
 }   // namespace
 
@@ -58,19 +54,9 @@ TStorages InitFileStorages()
 
 Y_UNIT_TEST_SUITE(TFileEndpointsTest)
 {
-    void ShouldGetStoredEndpoints(const TStorages& storages)
+    Y_UNIT_TEST_F(ShouldGetStoredEndpointsFromFiles, TFixture)
     {
-        auto endpointStorage = storages.EndpointStorage;
-        auto mutableStorage = storages.MutableEndpointStorage;
-
-        auto error = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(error), error);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
         THashMap<TString, TProtoMessage> loadedEndpoints;
         for (size_t i = 0; i < 3; ++i) {
             TString diskId = "TestDisk" + ToString(i);
@@ -78,10 +64,9 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                diskId,
-                strOrError.GetResult());
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetResult());
+            auto ret =
+                endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
             loadedEndpoints.emplace(diskId, request);
         }
 
@@ -91,11 +76,13 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         auto endpointIds = idsOrError.GetResult();
         UNIT_ASSERT_EQUAL(loadedEndpoints.size(), endpointIds.size());
 
-        for (auto keyringId: endpointIds) {
+        for (const auto& keyringId: endpointIds) {
             auto endpointOrError = endpointStorage->GetEndpoint(keyringId);
-            UNIT_ASSERT_C(!HasError(endpointOrError), endpointOrError.GetError());
-            auto endpoint = DeserializeEndpoint<TProtoMessage>(
-                endpointOrError.GetResult());
+            UNIT_ASSERT_C(
+                !HasError(endpointOrError),
+                endpointOrError.GetError());
+            auto endpoint =
+                DeserializeEndpoint<TProtoMessage>(endpointOrError.GetResult());
             UNIT_ASSERT(endpoint);
 
             auto it = loadedEndpoints.find(GetProtoMessageId(*endpoint));
@@ -106,88 +93,113 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointsFromFiles)
+    Y_UNIT_TEST_F(ShouldGetStoredEndpointByIdFromFiles, TFixture)
     {
-        ShouldGetStoredEndpoints(InitFileStorages());
-    }
-
-    void ShouldGetStoredEndpointById(const TStorages& storages)
-    {
-        auto endpointStorage = storages.EndpointStorage;
-        auto mutableStorage = storages.MutableEndpointStorage;
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
         const TString diskId = "TestDiskId";
 
         auto request = CreateTestProtoMessage(diskId);
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            diskId,
-            strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
 
-        auto requestOrError = endpointStorage->GetEndpoint(
-            ToString(keyOrError.GetResult()));
+        auto requestOrError = endpointStorage->GetEndpoint(diskId);
         UNIT_ASSERT_C(!HasError(requestOrError), requestOrError.GetError());
-        auto storedRequest = DeserializeEndpoint<TProtoMessage>(
-            requestOrError.GetResult());
+        auto storedRequest =
+            DeserializeEndpoint<TProtoMessage>(requestOrError.GetResult());
         UNIT_ASSERT(storedRequest);
 
         google::protobuf::util::MessageDifferencer comparator;
         UNIT_ASSERT(comparator.Equals(*storedRequest, request));
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointByIdFromFiles)
+    Y_UNIT_TEST_F(ShouldNotGetStoredEndpointByWrongIdFromFiles, TFixture)
     {
-        ShouldGetStoredEndpointById(InitFileStorages());
-    }
-
-    void ShouldNotGetStoredEndpointByWrongId(const TStorages& storages)
-    {
-        auto endpointStorage = storages.EndpointStorage;
-        auto mutableStorage = storages.MutableEndpointStorage;
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
         const TString diskId = "TestDiskId";
 
         auto request = CreateTestProtoMessage(diskId);
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            diskId,
-            strOrError.GetResult());
-        UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+        auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
 
-        auto wrongKeyringId = keyOrError.GetResult() + 42;
+        const TString wrongKeyringId = "WrongTestDiskId";
 
-        auto requestOrError = endpointStorage->GetEndpoint(
-            ToString(wrongKeyringId));
+        auto requestOrError = endpointStorage->GetEndpoint(wrongKeyringId);
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             requestOrError.GetError().GetCode(),
             requestOrError.GetError());
     }
 
-    Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromFiles)
+    Y_UNIT_TEST_F(ShouldRemoveEndpoint, TFixture)
     {
-        ShouldNotGetStoredEndpointByWrongId(InitFileStorages());
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
+        const TString diskId = "TestDiskId";
+
+        auto request = CreateTestProtoMessage(diskId);
+        auto strOrError = SerializeEndpoint(request);
+        UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
+        auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+        UNIT_ASSERT_EQUAL(ret.GetCode(), S_OK);
+
+        auto endpointOrError = endpointStorage->GetEndpoint(diskId);
+        UNIT_ASSERT_C(!HasError(endpointOrError), endpointOrError.GetError());
+
+        ret = endpointStorage->RemoveEndpoint(diskId);
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+
+        endpointOrError = endpointStorage->GetEndpoint(diskId);
+        UNIT_ASSERT(HasError(endpointOrError));
+    }
+
+    Y_UNIT_TEST_F(RemoveNonExistentEndpoint, TFixture)
+    {
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
+        const TString diskId = "TestDiskId";
+
+        auto ret = endpointStorage->RemoveEndpoint(diskId);
+        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+    }
+
+    Y_UNIT_TEST_F(AddEndpointTwice, TFixture)
+    {
+        auto endpointStorage = CreateFileEndpointStorage(DirPath);
+        const TString diskId = "TestDiskId";
+        {
+            auto request = CreateTestProtoMessage("request1");
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
+            auto ret =
+                endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        }
+
+        {
+            auto request = CreateTestProtoMessage("request2");
+            auto strOrError = SerializeEndpoint(request);
+            UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
+
+            auto ret =
+                endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
+            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+
+            auto requestOrError = endpointStorage->GetEndpoint(diskId);
+            UNIT_ASSERT_EQUAL_C(
+                requestOrError.GetError().GetCode(),
+                S_OK,
+                requestOrError.GetError().GetMessage());
+
+            UNIT_ASSERT_EQUAL(
+                requestOrError.ExtractResult(),
+                strOrError.GetResult());
+        }
     }
 }
 

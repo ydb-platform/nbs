@@ -9,6 +9,8 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath);
+NProto::TError CreateEndpointsDirectory(const TString& dirPath);
+
+NProto::TError CleanUpEndpointsDirectory(const TString& dirPath);
 
 }   // namespace NCloud

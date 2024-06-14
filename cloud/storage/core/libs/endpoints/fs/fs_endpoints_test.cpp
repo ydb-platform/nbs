@@ -13,64 +13,32 @@
 
 namespace NCloud {
 
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileMutableEndpointStorage final
-    : public IMutableEndpointStorage
+NProto::TError CreateEndpointsDirectory(const TString& dirPath)
 {
-private:
-    const TFsPath DirPath;
+    TFsPath fsPath(dirPath);
+    fsPath.MkDir();
 
-public:
-    TFileMutableEndpointStorage(TString dirPath)
-        : DirPath(std::move(dirPath))
-    {}
-
-    NProto::TError Init() override
-    {
-        DirPath.MkDir();
-
-        if (!DirPath.IsDirectory()) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to create directory " << DirPath.GetPath());
-        }
-
-        return {};
+    if (!fsPath.IsDirectory()) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "Failed to create directory " << fsPath.GetPath());
     }
 
-    NProto::TError Remove() override
-    {
-        DirPath.ForceDelete();
-        return {};
-    }
+    return {};
+}
 
-    TResultOrError<TString> AddEndpoint(
-        const TString& key,
-        const TString& data) override
-    {
-        auto filepath = DirPath.Child(Base64EncodeUrl(key));
-        TFile file(filepath, EOpenModeFlag::CreateAlways);
-        TFileOutput(file).Write(data);
-        return key;
-    }
-
-    NProto::TError RemoveEndpoint(const TString& key) override
-    {
-        DirPath.Child(Base64EncodeUrl(key)).DeleteIfExists();
-        return {};
-    }
-};
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath)
+NProto::TError CleanUpEndpointsDirectory(const TString& dirPath)
 {
-    return std::make_shared<TFileMutableEndpointStorage>(
-        std::move(dirPath));
+    try {
+        TFsPath fsPath(dirPath);
+        fsPath.ForceDelete();
+        return {};
+    } catch (...) {
+        return MakeError(E_IO, CurrentExceptionMessage());
+    }
 }
 
 }   // namespace NCloud

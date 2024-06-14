@@ -270,7 +270,6 @@ struct TBootstrap
     IServerStatsPtr ServerStats = CreateServerStatsStub();
     ISessionManagerPtr SessionManager;
     IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
-    IMutableEndpointStoragePtr MutableStorage = CreateFileMutableEndpointStorage(DirPath);
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     NBD::IDeviceFactoryPtr NbdDeviceFactory;
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
@@ -279,14 +278,14 @@ struct TBootstrap
 
     TBootstrap()
     {
-        MutableStorage->Init();
+        CreateEndpointsDirectory(DirPath);
     }
 
     ~TBootstrap()
     {
         Stop();
 
-        MutableStorage->Remove();
+        CleanUpEndpointsDirectory(DirPath);
     }
 
     void Start()
@@ -1675,10 +1674,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto [str, error] = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(error), error);
 
-            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+            auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
@@ -1754,10 +1753,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto [str, error] = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(error), error);
 
-            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+            auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();

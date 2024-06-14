@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/json/json_writer.h>
@@ -103,7 +104,7 @@ TLoadTestRunner::TLoadTestRunner(
 {
     const auto& endpointStorageDir = ClientFactory.GetEndpointStorageDir();
     if (endpointStorageDir) {
-        EndpointStorage = CreateFileMutableEndpointStorage(endpointStorageDir);
+        EndpointStorage = CreateFileEndpointStorage(endpointStorageDir);
     }
 }
 
@@ -258,7 +259,7 @@ void TLoadTestRunner::SetupTest(
             << ", endpointsDir: " << ClientFactory.GetEndpointStorageDir());
 
         if (EndpointStorage) {
-            auto error = EndpointStorage->Init();
+            auto error = CreateEndpointsDirectory(ClientFactory.GetEndpointStorageDir());
             Y_ABORT_UNLESS(!HasError(error));
 
             auto strOrError = SerializeEndpoint(*request);
@@ -539,6 +540,8 @@ void TLoadTestRunner::TeardownTest(
             auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
             Y_ABORT_UNLESS(!HasError(error));
         }
+
+        CleanUpEndpointsDirectory(ClientFactory.GetEndpointStorageDir());
 
         WaitForCompletion(
             "StopEndpoint",

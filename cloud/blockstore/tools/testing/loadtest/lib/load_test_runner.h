@@ -34,7 +34,7 @@ private:
     IVolumeStatsPtr VolumeStats;
     IClientFactory& ClientFactory;
     TTestContext& TestContext;
-    IMutableEndpointStoragePtr EndpointStorage;
+    IEndpointStoragePtr EndpointStorage;
 
     TString EndpointSocketPath;
 
