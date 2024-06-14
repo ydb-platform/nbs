@@ -4778,7 +4778,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         volume.SendDeleteCheckpointRequest("checkpoint_never_existed");
         UNIT_ASSERT_VALUES_EQUAL(
             S_ALREADY,
-            volume.RecvCreateCheckpointResponse()->GetStatus());
+            volume.RecvDeleteCheckpointResponse()->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldHandleGetChangedBlocksForShadowDiskBasedCheckpoint)
