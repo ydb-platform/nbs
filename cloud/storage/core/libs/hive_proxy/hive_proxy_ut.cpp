@@ -1405,6 +1405,80 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectLookupEventsOnPipeReset)
+    {
+        constexpr ui32 LookupCount = 10;
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, EExternalBootOptions::IGNORE);
+        TActorId sender = runtime.AllocateEdgeActor();
+
+        auto sendReply =
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
+        {
+            const auto* msg = ev->Get<TEvHive::TEvLookupTablet>();
+            runtime.Send(new IEventHandle(
+                ev->Sender,
+                ev->Sender,
+                new TEvHive::TEvCreateTabletReply(
+                    NKikimrProto::OK,
+                    msg->Record.GetOwner(),
+                    msg->Record.GetOwnerIdx(),
+                    FakeTablet2),
+                0,
+                ev->Cookie));
+        };
+
+        ui32 receivedlookupCount = 0;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvHive::EvLookupTablet: {
+                        if (++receivedlookupCount == 2) {
+                            sendReply(runtime, ev);
+                        }
+
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
+        }
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 1);
+
+        runtime.Register(CreateTabletKiller(FakeHiveTablet));
+        runtime.Register(CreateTabletKiller(TenantHiveTablet));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            auto ev =
+                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+                    sender);
+            UNIT_ASSERT(ev);
+            const auto* msg = ev->Get();
+            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), E_REJECTED);
+        }
+
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            env.SendLookupTabletRequestAsync(sender, FakeHiveTablet, 0, 1);
+        }
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 2);
+        for (ui32 i = 0; i < LookupCount; ++i) {
+            auto ev =
+                runtime.GrabEdgeEvent<TEvHiveProxy::TEvLookupTabletResponse>(
+                    sender);
+            UNIT_ASSERT(ev);
+            const auto* msg = ev->Get();
+            UNIT_ASSERT_VALUES_EQUAL(msg->GetStatus(), S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(msg->TabletId, FakeTablet2);
+        }
+    }
+
     Y_UNIT_TEST(ShouldUseTenantHiveIfConfigured)
     {
         TTestBasicRuntime runtime;

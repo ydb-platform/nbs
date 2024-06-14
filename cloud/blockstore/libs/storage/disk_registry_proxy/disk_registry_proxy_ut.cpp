@@ -352,20 +352,21 @@ struct TTestRuntimeBuilder
                 0));
 
         if (initializeDRProxy) {
-            InitializeDiskRegistryProxy(*runtime);
+            InitializeDiskRegistryProxy(*runtime, {});
         }
 
         return runtime;
     }
 
-    void InitializeDiskRegistryProxy(TTestActorRuntime& runtime) {
+    void InitializeDiskRegistryProxy(
+        TTestActorRuntime& runtime,
+        NProto::TDiskRegistryProxyConfig proxyConfigProto)
+    {
         auto storageConfig = std::make_shared<TStorageConfig>(
             StorageConfig,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
-        NProto::TDiskRegistryProxyConfig proxyConfigProto;
         proxyConfigProto.SetOwner(OwnerId);
 
         auto proxyConfig = std::make_shared<TDiskRegistryProxyConfig>(
@@ -646,7 +647,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
             });
 
         UNIT_ASSERT(!lookupResponseEvent);
-        builder.InitializeDiskRegistryProxy(*runtime);
+        builder.InitializeDiskRegistryProxy(*runtime, {});
         // TEvHiveProxy::EvLookupTabletRequest should be sent on the start of
         // the actor.
         UNIT_ASSERT_VALUES_EQUAL(1, lookupSent);
@@ -999,6 +1000,100 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
         client.SendReassignRequest("hdd", "hdd", "hdd");
         auto response = client.RecvReassignResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldHandleDiskRegistryTabletIdInConfig)
+    {
+        auto builder = TTestRuntimeBuilder();
+        auto runtime = builder.Build(false);
+
+        auto baseFilter = runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLookupTabletRequest:
+                        UNIT_ASSERT_C(
+                            false,
+                            "Disk Registry tablet id should be received from "
+                            "config");
+                        break;
+                }
+                return false;
+            });
+
+        NProto::TDiskRegistryProxyConfig proxyConfigProto;
+        proxyConfigProto.SetDiskRegistryTabletId(TestDiskRegistryTabletId);
+        builder.InitializeDiskRegistryProxy(
+            *runtime,
+            std::move(proxyConfigProto));
+
+        TDiskRegistryClient client(*runtime);
+        auto subscriber = runtime->AllocateEdgeActor();
+
+        {
+            auto response = client.Subscribe(subscriber);
+            UNIT_ASSERT(response->Discovered);
+        }
+
+        client.AllocateDisk("disk-1", 10_GB);
+        client.Unsubscribe(subscriber);
+    }
+
+    Y_UNIT_TEST(ShouldHandleRejectFromHive)
+    {
+        auto builder = TTestRuntimeBuilder();
+        auto runtime = builder.Build(false);
+
+        bool successfulLookup = false;
+        auto baseFilter = runtime->SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvHiveProxy::EvLookupTabletRequest: {
+                        static int RequestCount = 0;
+                        if (++RequestCount > 2) {
+                            successfulLookup = true;
+                            return false;
+                        }
+
+                        auto response = std::make_unique<
+                            TEvHiveProxy::TEvLookupTabletResponse>(
+                            MakeError(E_REJECTED));
+                        runtime.Send(new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie));
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        NProto::TDiskRegistryProxyConfig proxyConfigProto;
+        proxyConfigProto.SetRetryLookupTimeout(50);   // 50 ms.
+        builder.InitializeDiskRegistryProxy(
+            *runtime,
+            std::move(proxyConfigProto));
+
+        while (!successfulLookup) {
+            runtime->AdvanceCurrentTime(TDuration::MilliSeconds(100));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        }
+
+        TDiskRegistryClient client(*runtime);
+        auto subscriber = runtime->AllocateEdgeActor();
+
+        {
+            auto response = client.Subscribe(subscriber);
+            UNIT_ASSERT(response->Discovered);
+        }
+
+        client.AllocateDisk("disk-1", 10_GB);
+        client.Unsubscribe(subscriber);
     }
 }
 

@@ -273,6 +273,14 @@ message TDiskRegistryProxyConfig
     optional uint64 Owner = 1;
     optional uint64 OwnerIdx = 2;
 
-    // timeout (in milliseconds) for lookup/create DR tablet request
+    // Timeout (in milliseconds) for lookup/create DR tablet request.
     optional uint32 LookupTimeout = 3;
+
+    // Timeout (in milliseconds) for retrying a retriable error for
+    // lookup/create DR tablet request.
+    optional uint32 RetryLookupTimeout = 4;
+
+    // Disk registry proxy will not ask Hive for tablet id when this is set.
+    optional uint64 DiskRegistryTabletId = 5;
+
 }
