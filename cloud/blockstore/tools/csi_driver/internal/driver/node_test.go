@@ -236,7 +236,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 
 	mounter.On("IsFilesystemExisted", nbdDeviceFile).Return(false, nil)
 
-	mounter.On("MakeFilesystem", nbdDeviceFile, "ext4").Return(nil)
+	mounter.On("MakeFilesystem", nbdDeviceFile, "ext4").Return([]byte{}, nil)
 
 	mounter.On("IsMountPoint", targetPath).Return(false, nil)
 

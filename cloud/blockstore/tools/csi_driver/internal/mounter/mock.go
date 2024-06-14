@@ -35,9 +35,9 @@ func (c *Mock) IsFilesystemExisted(device string) (bool, error) {
 	return args.Get(0).(bool), args.Error(1)
 }
 
-func (c *Mock) MakeFilesystem(device string, fsType string) error {
+func (c *Mock) MakeFilesystem(device string, fsType string) ([]byte, error) {
 	args := c.Called(device, fsType)
-	return args.Error(0)
+	return args.Get(0).([]byte), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

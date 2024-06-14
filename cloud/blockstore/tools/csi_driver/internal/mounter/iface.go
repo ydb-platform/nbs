@@ -8,5 +8,5 @@ type Interface interface {
 	CleanupMountPoint(target string) error
 
 	IsFilesystemExisted(device string) (bool, error)
-	MakeFilesystem(device string, fsType string) error
+	MakeFilesystem(device string, fsType string) ([]byte, error)
 }

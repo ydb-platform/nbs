@@ -576,12 +576,12 @@ func (s *nodeService) makeFilesystemIfNeeded(
 	}
 
 	logVolume(volumeId, "making filesystem %q on device %q", fsType, deviceName)
-	err = s.mounter.MakeFilesystem(deviceName, fsType)
+	out, err := s.mounter.MakeFilesystem(deviceName, fsType)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
 	}
 
-	logVolume(volumeId, "succeeded making filesystem")
+	logVolume(volumeId, "succeeded making filesystem: %q", out)
 	return nil
 }
 
