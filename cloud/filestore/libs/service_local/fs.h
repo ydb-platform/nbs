@@ -81,6 +81,12 @@ public:
         Store = std::move(store);
     }
 
+    bool HasActiveSessions() const
+    {
+        TReadGuard guard(SessionsLock);
+        return !SessionsList.empty();
+    }
+
 private:
     void InitIndex();
 

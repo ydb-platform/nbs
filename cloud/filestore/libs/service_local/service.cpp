@@ -394,6 +394,12 @@ NProto::TDestroyFileStoreResponse TLocalFileStore::DestroyFileStore(
             << "invalid file system: " << id.Quote());
     }
 
+    if (it->second->HasActiveSessions()) {
+        return TErrorResponse(
+            S_FALSE,
+            TStringBuilder() << "File system has active sessions");
+    }
+
     TFsPath path = Concat(Config->GetRootPath(), Config->GetPathPrefix() + id);
     path.ForceDelete();
 
