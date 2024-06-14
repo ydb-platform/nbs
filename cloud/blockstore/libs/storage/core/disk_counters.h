@@ -54,6 +54,7 @@ enum class EPublishingPolicy
 #define BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS(xxx, ...)                      \
     xxx(HasBrokenDevice,        Generic, Permanent,                __VA_ARGS__)\
     xxx(HasBrokenDeviceSilent,  Generic, Permanent,                __VA_ARGS__)\
+    xxx(ScrubbingProgress,      Generic, Permanent,                __VA_ARGS__)\
 // BLOCKSTORE_DRBASED_PART_SIMPLE_COUNTERS
 
 #define BLOCKSTORE_DRBASED_PART_CUMULATIVE_COUNTERS(xxx, ...)                  \

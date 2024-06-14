@@ -985,4 +985,7 @@ message TStorageServiceConfig
     // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
     // Set in ms.
     optional uint32 WaitDependentDisksRetryRequestDelay = 369;
+
+    // Timeout attempts of scrubbing range, if checksum mismatch was found.
+    optional uint32 ScrubbingChecksumMismatchTimeout = 370;
 }

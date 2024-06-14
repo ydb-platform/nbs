@@ -575,6 +575,7 @@ public:
 
     bool GetDataScrubbingEnabled() const;
     TDuration GetScrubbingInterval() const;
+    TDuration GetScrubbingChecksumMismatchTimeout() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
