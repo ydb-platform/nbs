@@ -21,14 +21,14 @@ struct TStatsTableScheme
 {
     const TVector<NYdb::TColumn> Columns;
     const TVector<TString> KeyColumns;
-    const std::optional<NYdb::NTable::TTtlSettings> Ttl;
+    const TMaybe<NYdb::NTable::TTtlSettings> Ttl;
 
     TStatsTableScheme() = default;
 
     TStatsTableScheme(
             TVector<NYdb::TColumn> columns,
             TVector<TString> keyColumns,
-            std::optional<NYdb::NTable::TTtlSettings> ttl = {})
+            TMaybe<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
         , KeyColumns(std::move(keyColumns))
         , Ttl(std::move(ttl))
@@ -43,7 +43,7 @@ private:
     THashSet<TString> Names;
     TVector<NYdb::TColumn> Columns;
     TVector<TString> KeyColumns;
-    std::optional<NYdb::NTable::TTtlSettings> Ttl;
+    TMaybe<NYdb::NTable::TTtlSettings> Ttl;
 
 public:
     bool AddColumns(
@@ -107,9 +107,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsTableSchemePtr CreateStatsTableScheme();
+TStatsTableSchemePtr CreateStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateHistoryTableScheme();
-TStatsTableSchemePtr CreateArchiveStatsTableScheme();
+TStatsTableSchemePtr CreateArchiveStatsTableScheme(TDuration ttl);
 TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme();
 
 }   // namespace NCloud::NBlockStore::NYdbStats

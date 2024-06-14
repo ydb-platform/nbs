@@ -1,4 +1,6 @@
 #include "ydbscheme.h"
+
+#include "config.h"
 #include "ydbrow.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
@@ -59,7 +61,7 @@ TStatsTableSchemeBuilder BuildListOfColumns()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStatsTableSchemePtr CreateStatsTableScheme()
+TStatsTableSchemePtr CreateStatsTableScheme(TDuration ttl)
 {
     auto out = BuildListOfColumns();
     STORAGE_VERIFY_C(
@@ -67,6 +69,12 @@ TStatsTableSchemePtr CreateStatsTableScheme()
         TWellKnownEntityTypes::YDB_TABLE,
         "stats table",
         "unable to set key fields");
+    if (ttl) {
+        out.SetTtl(NTable::TTtlSettings{
+            "Timestamp",
+            NTable::TTtlSettings::EUnit::MilliSeconds,
+            ttl});
+    }
     return out.Finish();
 }
 
@@ -81,7 +89,7 @@ TStatsTableSchemePtr CreateHistoryTableScheme()
     return out.Finish();
 }
 
-TStatsTableSchemePtr CreateArchiveStatsTableScheme()
+TStatsTableSchemePtr CreateArchiveStatsTableScheme(TDuration ttl)
 {
     auto out = BuildListOfColumns();
     STORAGE_VERIFY_C(
@@ -89,6 +97,12 @@ TStatsTableSchemePtr CreateArchiveStatsTableScheme()
         TWellKnownEntityTypes::YDB_TABLE,
         "archive table",
         "unable to setup key fields");
+    if (ttl) {
+        out.SetTtl(NTable::TTtlSettings{
+            "Timestamp",
+            NTable::TTtlSettings::EUnit::MilliSeconds,
+            ttl});
+    }
     return out.Finish();
 }
 

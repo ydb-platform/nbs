@@ -18,6 +18,7 @@
 #include <util/generic/vector.h>
 #include <util/datetime/base.h>
 
+#include <optional>
 #include <utility>
 
 namespace NCloud::NBlockStore::NYdbStats {
@@ -53,8 +54,12 @@ struct TDescribeTableResponse
 
     TDescribeTableResponse(
             TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns)
-        : TableScheme(std::move(columns), std::move(keyColumns))
+            TVector<TString> keyColumns,
+            TMaybe<NYdb::NTable::TTtlSettings> ttlSettings )
+        : TableScheme(
+            std::move(columns),
+            std::move(keyColumns),
+            std::move(ttlSettings))
     {}
 };
 
