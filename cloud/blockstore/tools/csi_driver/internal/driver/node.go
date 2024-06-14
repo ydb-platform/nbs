@@ -57,8 +57,7 @@ type nodeService struct {
 	nodeID              string
 	clientID            string
 	vmMode              bool
-	nbsSocketsDir       string
-	podSocketsDir       string
+	socketsDir          string
 	targetFsPathRegexp  *regexp.Regexp
 	targetBlkPathRegexp *regexp.Regexp
 
@@ -71,8 +70,7 @@ func newNodeService(
 	nodeID string,
 	clientID string,
 	vmMode bool,
-	nbsSocketsDir string,
-	podSocketsDir string,
+	socketsDir string,
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	nbsClient nbsclient.ClientIface,
@@ -83,8 +81,7 @@ func newNodeService(
 		nodeID:              nodeID,
 		clientID:            clientID,
 		vmMode:              vmMode,
-		nbsSocketsDir:       nbsSocketsDir,
-		podSocketsDir:       podSocketsDir,
+		socketsDir:          socketsDir,
 		nbsClient:           nbsClient,
 		nfsClient:           nfsClient,
 		mounter:             mounter,
@@ -364,15 +361,14 @@ func (s *nodeService) startNbsEndpoint(
 	volumeId string,
 	ipcType nbsapi.EClientIpcType) (*nbsapi.TStartEndpointResponse, error) {
 
-	endpointDir := filepath.Join(s.podSocketsDir, podId, volumeId)
+	endpointDir := filepath.Join(s.socketsDir, podId, volumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return nil, err
 	}
 
-	socketPath := filepath.Join(s.nbsSocketsDir, podId, volumeId, nbsSocketName)
 	hostType := nbsapi.EHostType_HOST_TYPE_DEFAULT
 	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
-		UnixSocketPath:   socketPath,
+		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           volumeId,
 		ClientId:         s.clientID,
 		DeviceName:       volumeId,
@@ -394,7 +390,7 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 	ctx context.Context,
 	req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
+	endpointDir := filepath.Join(s.socketsDir, s.getPodId(req), req.VolumeId)
 	if err := os.MkdirAll(endpointDir, os.FileMode(0755)); err != nil {
 		return err
 	}
@@ -403,10 +399,9 @@ func (s *nodeService) nodePublishFileStoreAsVhostSocket(
 		return fmt.Errorf("NFS client wasn't created")
 	}
 
-	socketPath := filepath.Join(s.nbsSocketsDir, s.getPodId(req), req.VolumeId, nfsSocketName)
 	_, err := s.nfsClient.StartEndpoint(ctx, &nfsapi.TStartEndpointRequest{
 		Endpoint: &nfsapi.TEndpointConfig{
-			SocketPath:       socketPath,
+			SocketPath:       filepath.Join(endpointDir, nfsSocketName),
 			FileSystemId:     req.VolumeId,
 			ClientId:         fmt.Sprintf("%s-%s", s.clientID, s.getPodId(req)),
 			VhostQueuesCount: 8,
@@ -437,8 +432,7 @@ func (s *nodeService) nodeUnpublishVolume(
 		}
 	}
 
-	podSocketDir := filepath.Join(s.podSocketsDir, podId, req.VolumeId)
-	nodeSocketDir := filepath.Join(s.nbsSocketsDir, podId, req.VolumeId)
+	socketDir := filepath.Join(s.socketsDir, podId, req.VolumeId)
 
 	// Trying to stop both NBS and NFS endpoints,
 	// because the endpoint's backend service is unknown here.
@@ -446,7 +440,7 @@ func (s *nodeService) nodeUnpublishVolume(
 
 	if s.nbsClient != nil {
 		_, err := s.nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-			UnixSocketPath: filepath.Join(nodeSocketDir, nbsSocketName),
+			UnixSocketPath: filepath.Join(socketDir, nbsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nbs endpoint: %w", err)
@@ -455,25 +449,25 @@ func (s *nodeService) nodeUnpublishVolume(
 
 	if s.nfsClient != nil {
 		_, err := s.nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
-			SocketPath: filepath.Join(nodeSocketDir, nfsSocketName),
+			SocketPath: filepath.Join(socketDir, nfsSocketName),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to stop nfs endpoint: %w", err)
 		}
 	}
 
-	if err := os.RemoveAll(podSocketDir); err != nil {
+	if err := os.RemoveAll(socketDir); err != nil {
 		return err
 	}
 
 	// remove pod's folder if it's empty
-	os.Remove(filepath.Join(s.podSocketsDir, podId))
+	os.Remove(filepath.Join(s.socketsDir, podId))
 	return nil
 }
 
 func (s *nodeService) mountSocketDir(req *csi.NodePublishVolumeRequest) error {
 
-	endpointDir := filepath.Join(s.podSocketsDir, s.getPodId(req), req.VolumeId)
+	endpointDir := filepath.Join(s.socketsDir, s.getPodId(req), req.VolumeId)
 
 	// https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/#persistentvolumeclaim
 	// "If the disk.img image file has not been created manually before starting a VM

@@ -24,16 +24,7 @@ func main() {
 	flag.StringVar(&cfg.NfsServerSocket, "nfs-server-socket", "", "NFS server unix socket path")
 	flag.UintVar(&cfg.NfsVhostPort, "nfs-vhost-port", 9022, "NFS vhost port")
 	flag.StringVar(&cfg.NfsVhostSocket, "nfs-vhost-socket", "", "NFS vhost unix socket path")
-	flag.StringVar(&cfg.NbsSocketsDir,
-		"nbs-sockets-dir",
-		"/run/nbsd/sockets",
-		"Path to folder with disk sockets on the node",
-	)
-	flag.StringVar(&cfg.PodSocketsDir,
-		"pod-sockets-dir",
-		"/nbsd-sockets",
-		"Path to folder with disk sockets on the pod",
-	)
+	flag.StringVar(&cfg.SocketsDir, "sockets-dir", "/run/nbsd/sockets", "Path to folder with disk sockets")
 
 	flag.Parse()
 
