@@ -71,6 +71,11 @@ message TDiagnosticsConfig
     // Used to form path to file with cpu wait counters
     optional string CpuWaitServiceName = 15;
 
+    // Alternatively to CpuWaitServiceName, can be used to explicitly specify
+    // the filename of the file with cpu wait counters. If both are specified,
+    // CpuWaitFilename is used.
+    optional string CpuWaitFilename = 23;
+
     // Aggregate and write metrics values in Metrics service to monlib counters
     // every MetricsUpdateInterval ms.
     optional uint32 MetricsUpdateInterval = 16;
