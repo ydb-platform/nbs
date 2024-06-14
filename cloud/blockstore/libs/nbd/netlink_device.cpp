@@ -183,8 +183,19 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
 
-        if (sscanf(DeviceName.c_str(), "/dev/nbd%u", &DeviceIndex) != 1) {
-            throw TServiceError(E_ARGUMENT) << "invalid nbd device target";
+        const char suffix[] = "nbd";
+        size_t index = DeviceName.find(suffix);
+        if (index == TString::npos) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
+        }
+
+        try {
+            TStringStream stream(DeviceName.substr(index + sizeof(suffix)));
+            stream >> DeviceIndex;
+        } catch (...) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
         }
     }
 
@@ -434,7 +445,7 @@ public:
 
         return CreateNetlinkDevice(
             Logging,
-            std::move(connectAddress),
+            connectAddress,
             std::move(deviceName),
             Timeout,
             DeadConnectionTimeout,
