@@ -269,8 +269,12 @@ void TMirrorPartitionActor::ScheduleScrubbingNextRange(
     const TActorContext& ctx)
 {
     if (!ScrubbingScheduled) {
+        const auto scrubbingInterval = TDuration::Seconds(
+            ResyncRangeSize / (1.0 * State.GetBlockCount() * State.GetBlockSize() *
+                               Config->GetScrubbingBandwidth() / 1_TB));
+
         ctx.Schedule(
-            Config->GetScrubbingInterval(),
+            scrubbingInterval,
             new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
         ScrubbingScheduled = true;
     }

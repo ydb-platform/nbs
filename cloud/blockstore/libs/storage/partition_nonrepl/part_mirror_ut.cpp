@@ -131,6 +131,7 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetDataScrubbingEnabled(true);
+        storageConfig.SetScrubbingBandwidth(3'600'000'000'000);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),

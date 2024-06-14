@@ -988,4 +988,7 @@ message TStorageServiceConfig
 
     // Timeout attempts of scrubbing range, if checksum mismatch was found.
     optional uint32 ScrubbingChecksumMismatchTimeout = 370;
+
+    // Scrubbing bandwidth per 1 TiB in MiB/s
+    optional uint64 ScrubbingBandwidth = 371;
 }
