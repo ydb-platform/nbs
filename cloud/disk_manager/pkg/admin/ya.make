@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     common.go
+    consistency_check.go
     disks.go
     filesystem.go
     images.go
