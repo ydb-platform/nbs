@@ -548,9 +548,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        const auto config1 = AgentConfig(42, {
-            Device("dev-1", "uuid-1", "rack-1", 512, 1_TB)
-        });
+        auto device = Device("dev-1", "uuid-1", "rack-1", 512, 10_GB);
+        device.SetUnadjustedBlockCount(1_TB / 512);
+
+        const auto config1 = AgentConfig(42, {device});
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
@@ -604,9 +605,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             db.InitSchema();
         });
 
-        const auto config1 = AgentConfig(42, {
-            Device("dev-1", "uuid-1", "rack-1", 512, 1_TB)
-        });
+        auto device = Device("dev-1", "uuid-1", "rack-1", 512, 10_GB);
+        device.SetUnadjustedBlockCount(1_TB / 512);
+
+        const auto config1 = AgentConfig(42, {device});
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents({ config1 })
@@ -1437,7 +1439,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(diskRegistryGroup)
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("local-ssd", 93, NProto::DEVICE_POOL_KIND_LOCAL)
+            .AddDevicePoolConfig("local-ssd", 93_GB, NProto::DEVICE_POOL_KIND_LOCAL)
             .Build();
 
         TDiskRegistrySelfCounters::TDevicePoolCounters defaultPool;
@@ -6237,7 +6239,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .AddDevicePoolConfig("", 100_GB, NProto::DEVICE_POOL_KIND_DEFAULT)
+            .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
 
         TTestExecutor executor;
@@ -6317,7 +6320,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .WithDisks({
                 Disk("disk-1", {"uuid-1.1"}),
             })
@@ -6385,7 +6388,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             .With(diskRegistryGroup)
             .With(storageConfig)
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
 
         TTestExecutor executor;
@@ -6757,7 +6760,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         TDiskRegistryState state = TDiskRegistryStateBuilder()
             .With(storageConfig)
             .WithKnownAgents(agents)
-            .AddDevicePoolConfig("rot", 100, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .AddDevicePoolConfig("rot", 100_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
 
         TTestExecutor executor;
@@ -8309,8 +8312,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Disk("disk-4", {"uuid-4.1"}),
             })
             .WithDirtyDevices({"uuid-2.1", "uuid-3.3", "uuid-3.6", "uuid-5.2"})
-            .AddDevicePoolConfig("local-ssd", 10, NProto::DEVICE_POOL_KIND_LOCAL)
-            .AddDevicePoolConfig("rot", 10, NProto::DEVICE_POOL_KIND_GLOBAL)
+            .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
+            .AddDevicePoolConfig("rot", 10_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
             .Build();
 
         const auto poolNames = state.GetPoolNames();
@@ -9739,7 +9742,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 Device("dev-1", "uuid-1.1", "rack-1", DefaultBlockSize, 11_GB),
             }),
             AgentConfig(2, {
-                Device("dev-1", "uuid-2.1", "rack-2", DefaultBlockSize, 12_GB),
+                [] {
+                    auto config = Device(
+                        "dev-1",
+                        "uuid-2.1",
+                        "rack-2", DefaultBlockSize, 10_GB);
+                    config.SetUnadjustedBlockCount(12_GB / DefaultBlockSize);
+                    return config;
+                } ()
             }),
         };
 
@@ -9773,7 +9783,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         {
             auto device = state.GetDevice("uuid-2.1");
             UNIT_ASSERT_VALUES_EQUAL("uuid-2.1", device.GetDeviceUUID());
-            UNIT_ASSERT_VALUES_EQUAL(12_GB/DefaultBlockSize, device.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(10_GB/DefaultBlockSize, device.GetBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(12_GB/DefaultBlockSize, device.GetUnadjustedBlockCount());
             UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_ONLINE, device.GetState());
         }

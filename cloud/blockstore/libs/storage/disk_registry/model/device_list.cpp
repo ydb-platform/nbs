@@ -94,13 +94,18 @@ TDeviceList::TDeviceList(
     }
 }
 
-void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent, TNodeId prevNodeId)
+void TDeviceList::UpdateDevices(
+    const NProto::TAgentConfig& agent,
+    const TDevicePoolConfigs& poolConfigs,
+    TNodeId prevNodeId)
 {
     NodeDevices.erase(prevNodeId);
-    UpdateDevices(agent);
+    UpdateDevices(agent, poolConfigs);
 }
 
-void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
+void TDeviceList::UpdateDevices(
+    const NProto::TAgentConfig& agent,
+    const TDevicePoolConfigs& poolConfigs)
 {
     if (agent.GetNodeId() == 0) {
         for (const auto& device: agent.GetDevices()) {
@@ -145,24 +150,40 @@ void TDeviceList::UpdateDevices(const NProto::TAgentConfig& agent)
             continue;
         }
 
-        if (agent.GetState() == NProto::AGENT_STATE_ONLINE &&
-            device.GetState() == NProto::DEVICE_STATE_ONLINE &&
-            !AllocatedDevices.contains(uuid) &&
-            !DirtyDevices.contains(uuid) &&
-            !SuspendedDevices.contains(uuid))
+        const ui64 deviceSize = device.GetBlockSize() * device.GetBlocksCount();
+
+        const bool isFree = agent.GetState() == NProto::AGENT_STATE_ONLINE &&
+                            device.GetState() == NProto::DEVICE_STATE_ONLINE &&
+                            !AllocatedDevices.contains(uuid) &&
+                            !DirtyDevices.contains(uuid) &&
+                            !SuspendedDevices.contains(uuid);
+
+        const auto* poolConfig = poolConfigs.FindPtr(device.GetPoolName());
+        if (!poolConfig || poolConfig->GetKind() != device.GetPoolKind() ||
+            poolConfig->GetAllocationUnit() != deviceSize)
         {
+            if (isFree) {
+                ReportDiskRegistryAgentDevicePoolConfigMismatch(
+                    TStringBuilder()
+                    << "Device: " << device << " Pool config: "
+                    << (poolConfig ? *poolConfig
+                                   : NProto::TDevicePoolConfig{}));
+            }
+
+            continue;
+        }
+
+        if (isFree) {
             nodeDevices.FreeDevices.push_back(device);
         }
 
         auto& poolNames = PoolKind2PoolNames[device.GetPoolKind()];
-        auto it =
-            Find(poolNames.begin(), poolNames.end(), device.GetPoolName());
+        auto it = Find(poolNames, device.GetPoolName());
         if (it == poolNames.end()) {
             poolNames.push_back(device.GetPoolName());
         }
 
-        nodeDevices.TotalSize +=
-            device.GetBlockSize() * device.GetBlocksCount();
+        nodeDevices.TotalSize += deviceSize;
     }
 
     SortBy(nodeDevices.FreeDevices, TBySortQueryKey());

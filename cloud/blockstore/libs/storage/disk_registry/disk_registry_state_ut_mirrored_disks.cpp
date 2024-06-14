@@ -2505,6 +2505,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         NProto::TStorageServiceConfig proto;
         proto.SetMaxAutomaticDeviceReplacementsPerHour(10);
+        proto.SetAllocationUnitNonReplicatedSSD(10);
         auto storageConfig = CreateStorageConfig(proto);
 
         TDiskRegistryState state = TDiskRegistryStateBuilder()

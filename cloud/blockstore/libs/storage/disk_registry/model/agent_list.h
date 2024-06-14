@@ -96,6 +96,18 @@ public:
         TInstant timestamp,
         const TKnownAgent& knownAgent);
 
+    struct TUpdateAgentDevicesResult
+    {
+        NProto::TAgentConfig* Agent = nullptr;
+        TVector<TDeviceId> NewDevices;
+    };
+
+    // If agent with agentId exists, split devices between Devices &
+    // UnknownDevices according to knownAgent.
+    TUpdateAgentDevicesResult TryUpdateAgentDevices(
+        const TString& agentId,
+        const TKnownAgent& knownAgent);
+
     bool RemoveAgent(TNodeId nodeId);
     bool RemoveAgent(const TAgentId& agentId);
 
@@ -165,6 +177,8 @@ private:
         NProto::TDeviceConfig device);
 
     TString FindAgentRack(const TString& agentId) const;
+
+    void RegisterCounters(const NProto::TAgentConfig& agent);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
