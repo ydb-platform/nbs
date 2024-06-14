@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 
 	"k8s.io/mount-utils"
 )
@@ -37,15 +39,33 @@ func (m *mounter) IsFilesystemExisted(device string) (bool, error) {
 		return false, fmt.Errorf("failed to find 'blkid' tool: %w", err)
 	}
 
+	if _, err := exec.LookPath("blockdev"); err != nil {
+		return false, fmt.Errorf("failed to find 'blockdev' tool: %w", err)
+	}
+
 	if _, err := os.Stat(device); os.IsNotExist(err) {
 		return false, fmt.Errorf("failed to find device %q: %w", device, err)
 	}
 
-	out, err := exec.Command("blkid", device).CombinedOutput()
+	out, err := exec.Command("blockdev", "--getsize64", device).CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("failed to get size of device %q: %w", device, err)
+	}
+
+	deviceSize, err := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("failed to convert %q to number: %w", out, err)
+	}
+
+	if deviceSize == 0 {
+		return false, fmt.Errorf("size of device %q is empty", device)
+	}
+
+	out, err = exec.Command("blkid", device).CombinedOutput()
 	return err == nil && string(out) != "", nil
 }
 
-func (m *mounter) MakeFilesystem(device string, fsType string) error {
+func (m *mounter) MakeFilesystem(device string, fsType string) ([]byte, error) {
 	options := []string{"-t", fsType}
 	if fsType == "ext4" {
 		options = append(options, "-E", "nodiscard")
@@ -55,10 +75,5 @@ func (m *mounter) MakeFilesystem(device string, fsType string) error {
 	}
 
 	options = append(options, device)
-	out, err := exec.Command("mkfs", options...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to make filesystem: %w, output %q", err, out)
-	}
-
-	return nil
+	return exec.Command("mkfs", options...).CombinedOutput()
 }
