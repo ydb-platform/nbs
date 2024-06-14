@@ -61,7 +61,7 @@ void TMirrorPartitionActor::MirrorRequest(
     const auto requestIdentityKey = ev->Cookie;
     RequestsInProgress.AddWriteRequest(requestIdentityKey, range);
 
-    if (ScrubbingRange.Overlaps(range)) {
+    if (GetScrubbingRange().Overlaps(range)) {
         WriteIntersectsWithScrubbing = true;
     }
 
