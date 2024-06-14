@@ -459,8 +459,9 @@ std::optional<NProto::TError> TCheckpointStore::ValidateCheckpointRequest(
                 return std::nullopt;
             }
             case ECheckpointRequestType::DeleteData:
-            case ECheckpointRequestType::Delete: {
                 return makeErrorInvalid("Checkpoint does not exist");
+            case ECheckpointRequestType::Delete: {
+                return makeErrorAlready("Checkpoint does not exist");
             }
         }
     }

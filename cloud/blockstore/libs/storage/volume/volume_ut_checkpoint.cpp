@@ -4762,6 +4762,36 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.RecvCreateCheckpointResponse()->GetStatus());
     }
 
+    Y_UNIT_TEST(ShouldDeleteCheckpointEvenIfItNeverExisted)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,  // maxBandwidth
+            0,  // maxIops
+            0,  // burstPercentage
+            0,  // maxPostponedWeight
+            false,  // throttlingEnabled
+            1,  // version
+            NProto::STORAGE_MEDIA_SSD,
+            1024,   // block count per partition
+            "vol0",  // diskId
+            "cloud",  // cloudId
+            "folder",  // folderId
+            1,  // partition count
+            2  // blocksPerStripe
+        );
+        volume.WaitReady();
+
+        volume.SendDeleteCheckpointRequest("checkpoint_never_existed");
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            volume.RecvDeleteCheckpointResponse()->GetStatus());
+    }
+
     Y_UNIT_TEST(ShouldHandleGetChangedBlocksForShadowDiskBasedCheckpoint)
     {
         NProto::TStorageServiceConfig config;
