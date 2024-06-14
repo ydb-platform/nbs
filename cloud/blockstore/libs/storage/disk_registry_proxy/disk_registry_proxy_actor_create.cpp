@@ -111,19 +111,28 @@ void TCreateDiskRegistryActor::Bootstrap(const TActorContext& ctx)
         0);
 }
 
-void TCreateDiskRegistryActor::ReplyAndDie(const TActorContext& ctx, ui64 tabletId)
+void TCreateDiskRegistryActor::ReplyAndDie(
+    const TActorContext& ctx,
+    ui64 tabletId)
 {
-    auto response = std::make_unique<TEvDiskRegistryProxy::TEvDiskRegistryCreateResult>(
-        tabletId);
+    auto response = std::make_unique<
+        TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult>(
+        tabletId,
+        Kinds);
     NCloud::Send(ctx, Sender, std::move(response));
 
     Die(ctx);
 }
 
-void TCreateDiskRegistryActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TCreateDiskRegistryActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
-    auto response = std::make_unique<TEvDiskRegistryProxy::TEvDiskRegistryCreateResult>(
-        error);
+    auto response = std::make_unique<
+        TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult>(
+        error,
+        0,
+        Kinds);
     NCloud::Send(ctx, Sender, std::move(response));
 
     Die(ctx);
@@ -232,8 +241,7 @@ void TCreateDiskRegistryActor::HandleCreateTablet(
 
     LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "Can't create Disk Registry tablet: " << FormatError(msg->Error));
-
-    ReplyAndDie(ctx, std::move(msg->Error));
+    ReplyAndDie(ctx, msg->Error);
 }
 
 STFUNC(TCreateDiskRegistryActor::StateWork)
@@ -265,10 +273,27 @@ void TDiskRegistryProxyActor::CreateTablet(
 }
 
 void TDiskRegistryProxyActor::HandleCreateResult(
-    const TEvDiskRegistryProxy::TEvDiskRegistryCreateResult::TPtr& ev,
+    const TEvDiskRegistryProxyPrivate::TEvDiskRegistryCreateResult::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+
+    if (HasError(msg->GetError()) &&
+        GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable)
+    {
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_PROXY,
+            "CreateTablet failed with a retriable error: "
+                << FormatError(msg->GetError()));
+
+        ++RequestId;
+        ctx.Schedule(
+            Config->GetRetryLookupTimeout(),
+            new TEvDiskRegistryProxyPrivate::TEvCreateTabletRequest(
+                std::move(msg->Kinds)));
+        return;
+    }
 
     if (!ReassignRequestInfo) {
         if (!FAILED(msg->GetStatus())) {
