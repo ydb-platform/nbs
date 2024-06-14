@@ -59,18 +59,6 @@ struct TDescribeTableResponse
         : TableScheme(
             std::move(columns),
             std::move(keyColumns),
-            ttlSettings.Empty()
-                ? std::optional<NYdb::NTable::TTtlSettings>()
-                : std::move(*ttlSettings))
-    {}
-
-    TDescribeTableResponse(
-            TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns,
-            std::optional<NYdb::NTable::TTtlSettings> ttlSettings )
-        : TableScheme(
-            std::move(columns),
-            std::move(keyColumns),
             std::move(ttlSettings))
     {}
 };

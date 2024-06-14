@@ -21,27 +21,9 @@ struct TStatsTableScheme
 {
     const TVector<NYdb::TColumn> Columns;
     const TVector<TString> KeyColumns;
-    const std::optional<NYdb::NTable::TTtlSettings> Ttl;
+    const TMaybe<NYdb::NTable::TTtlSettings> Ttl;
 
     TStatsTableScheme() = default;
-
-    TStatsTableScheme(
-            TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns,
-            NYdb::NTable::TTtlSettings ttl)
-        : Columns(std::move(columns))
-        , KeyColumns(std::move(keyColumns))
-        , Ttl(std::move(ttl))
-    {}
-
-    TStatsTableScheme(
-            TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns,
-            std::optional<NYdb::NTable::TTtlSettings> ttl)
-        : Columns(std::move(columns))
-        , KeyColumns(std::move(keyColumns))
-        , Ttl(std::move(ttl))
-    {}
 
     TStatsTableScheme(
             TVector<NYdb::TColumn> columns,
@@ -49,7 +31,7 @@ struct TStatsTableScheme
             TMaybe<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
         , KeyColumns(std::move(keyColumns))
-        , Ttl(ttl.Empty() ? decltype(Ttl){} : *ttl)
+        , Ttl(std::move(ttl))
     {}
 };
 
@@ -61,7 +43,7 @@ private:
     THashSet<TString> Names;
     TVector<NYdb::TColumn> Columns;
     TVector<TString> KeyColumns;
-    std::optional<NYdb::NTable::TTtlSettings> Ttl;
+    TMaybe<NYdb::NTable::TTtlSettings> Ttl;
 
 public:
     bool AddColumns(

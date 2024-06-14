@@ -383,7 +383,7 @@ public:
                     origColumns,
                     origKeyColumns,
                     settings.GetAlterTtlSettings().Empty()
-                        ? std::optional<TTtlSettings>{}
+                        ? TMaybe<TTtlSettings>{}
                         : settings.GetAlterTtlSettings()->GetTtlSettings())});
             return MakeFuture(MakeError(S_OK));
         }

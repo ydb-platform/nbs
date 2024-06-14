@@ -40,15 +40,15 @@ struct TAlterCheckResult
 {
     const NProto::TError Error;
     const THashMap<TString, EPrimitiveType> Columns;
-    const std::optional<NYdb::NTable::TTtlSettings> Ttl;
+    const TMaybe<NYdb::NTable::TTtlSettings> Ttl;
 
     TAlterCheckResult(NProto::TError error)
         : Error(std::move(error))
     {}
 
     TAlterCheckResult(
-        THashMap<TString, EPrimitiveType> columns,
-        std::optional<NYdb::NTable::TTtlSettings> ttl)
+            THashMap<TString, EPrimitiveType> columns,
+            TMaybe<NYdb::NTable::TTtlSettings> ttl)
         : Columns(std::move(columns))
         , Ttl(std::move(ttl))
     {}
@@ -728,14 +728,14 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
     };
 
     auto areTtlSettingsUpdated = [&] () {
-        return !scheme.Ttl.has_value()
-            || diff.Ttl.value().GetMode() != scheme.Ttl.value().GetMode()
+        return scheme.Ttl.Empty()
+            || diff.Ttl->GetMode() != scheme.Ttl->GetMode()
             || areTtlSettingsDifferent(
-                diff.Ttl.value().GetValueSinceUnixEpoch(),
-                scheme.Ttl.value().GetValueSinceUnixEpoch());
+                diff.Ttl->GetValueSinceUnixEpoch(),
+                scheme.Ttl->GetValueSinceUnixEpoch());
     };
 
-    bool shouldUpdateTtl = diff.Ttl.has_value() && areTtlSettingsUpdated();
+    bool shouldUpdateTtl = diff.Ttl.Defined() && areTtlSettingsUpdated();
 
     if (!diff.Columns && !shouldUpdateTtl) {
         // nothing to do
@@ -752,7 +752,7 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
         settings.AppendAddColumns(TColumn(c.first, builder.Build()));
     }
 
-    if (diff.Ttl.has_value()) {
+    if (diff.Ttl.Defined()) {
         const auto& ttl = diff.Ttl->GetValueSinceUnixEpoch();
         settings.AlterTtlSettings(
             TAlterTtlSettings::Set(
