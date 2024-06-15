@@ -48,7 +48,8 @@ TStorages InitKeyringStorages()
 
     auto endpointStorage = CreateKeyringEndpointStorage(
         nbsDesc,
-        endpointsDesc);
+        endpointsDesc,
+        true /* notImplementedErrorIsFatal */);
 
     auto mutableEndpointStorage = CreateKeyringMutableEndpointStorage(
         nbsDesc,

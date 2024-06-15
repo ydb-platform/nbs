@@ -132,6 +132,7 @@ public:
     TDuration GetNbdConnectionTimeout() const;
     TString GetEndpointProxySocketPath() const;
     bool GetAllowAllRequestsViaUDS() const;
+    bool GetEndpointStorageNotImplementedErrorIsFatal() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

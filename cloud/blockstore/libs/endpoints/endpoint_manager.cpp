@@ -15,11 +15,14 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
@@ -1000,7 +1003,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     RemoveSession(std::move(ctx), *request);
 
     if (auto error = EndpointStorage->RemoveEndpoint(socketPath);
-        HasError(error))
+        HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
     {
         STORAGE_ERROR(
             "Failed to remove endpoint from storage: " << FormatError(error));
@@ -1074,12 +1077,14 @@ NProto::TListKeyringsResponse TEndpointManager::DoListKeyrings(
 
     endpoints.Reserve(storedIds.size());
 
-    for (auto keyringId: storedIds) {
+    for (const auto& keyringId: storedIds) {
         auto& endpoint = *endpoints.Add();
         endpoint.SetKeyringId(keyringId);
 
         auto [str, error] = EndpointStorage->GetEndpoint(keyringId);
-        if (HasError(error)) {
+        if (HasError(error)
+                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        {
             STORAGE_WARN("Failed to get endpoint from storage, ID: "
                 << keyringId << ", error: " << FormatError(error));
             continue;
@@ -1436,7 +1441,7 @@ TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
 TFuture<void> TEndpointManager::DoRestoreEndpoints()
 {
     auto [storedIds, error] = EndpointStorage->GetEndpointIds();
-    if (HasError(error)) {
+    if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
         STORAGE_ERROR("Failed to get endpoints from storage: "
             << FormatError(error));
         ReportEndpointRestoringError();
@@ -1449,9 +1454,11 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
 
     TVector<TFuture<void>> futures;
 
-    for (auto keyringId: storedIds) {
+    for (const auto& keyringId: storedIds) {
         auto [str, error] = EndpointStorage->GetEndpoint(keyringId);
-        if (HasError(error)) {
+        if (HasError(error)
+                && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
+        {
             // NBS-3678
             STORAGE_WARN("Failed to restore endpoint. ID: " << keyringId
                 << ", error: " << FormatError(error));

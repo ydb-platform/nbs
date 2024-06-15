@@ -187,11 +187,15 @@ void TBootstrapVhost::InitComponents()
     NVhost::InitLog(Logging);
     switch (Configs->VhostServiceConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
-        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING:
+        case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
+            const bool notImplementedErrorIsFatal =
+                Configs->VhostServiceConfig->GetEndpointStorageNotImplementedErrorIsFatal();
             EndpointStorage = CreateKeyringEndpointStorage(
                 Configs->VhostServiceConfig->GetRootKeyringName(),
-                Configs->VhostServiceConfig->GetEndpointsKeyringName());
+                Configs->VhostServiceConfig->GetEndpointsKeyringName(),
+                notImplementedErrorIsFatal);
             break;
+        }
         case NCloud::NProto::ENDPOINT_STORAGE_FILE:
             EndpointStorage = CreateFileEndpointStorage(
                 Configs->VhostServiceConfig->GetEndpointStorageDir());
