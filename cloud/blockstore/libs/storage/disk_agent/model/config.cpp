@@ -30,6 +30,9 @@ namespace {
     xxx(DeviceEraseMethod,                                                     \
         NProto::EDeviceEraseMethod,                                            \
         NProto::DEVICE_ERASE_METHOD_ZERO_FILL                                 )\
+    xxx(NvmeManagerType,                                                       \
+        NProto::EDiskAgentNvmeManagerType,                                     \
+        NProto::DISK_AGENT_NVME_MANAGER_DEFAULT                               )\
                                                                                \
     xxx(AcquireRequired,                    bool,       false                 )\
     xxx(ReleaseInactiveSessionsTimeout,     TDuration,  TDuration::Seconds(10))\

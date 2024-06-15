@@ -32,22 +32,27 @@ namespace {
 
 bool VolumeUsesNode(const NProto::TVolume& volume, ui32 nodeId)
 {
+    Cerr << "VolumeUsesNode [" << volume.GetDiskId() << "] " << nodeId << "?" << Endl;
     auto containsNodeIdPred = [nodeId](const NProto::TDevice& device)
     {
+        Cerr << "device = " << device.GetDeviceUUID() << ": " << device.GetNodeId() << Endl;
         return device.GetNodeId() == nodeId;
     };
 
     bool foundNodeId = AnyOf(volume.GetDevices(), containsNodeIdPred);
     if (foundNodeId) {
+        Cerr << "---------------------------------------------" << Endl;
         return true;
     }
 
     for (const auto& replica: volume.GetReplicas()) {
         foundNodeId = AnyOf(replica.GetDevices(), containsNodeIdPred);
         if (foundNodeId) {
+            Cerr << "---------------------------------------------" << Endl;
             return true;
         }
     }
+    Cerr << "---------------------------------------------" << Endl;
     return false;
 }
 
@@ -114,6 +119,7 @@ TWaitDependentDisksToSwitchNodeActor::TWaitDependentDisksToSwitchNodeActor(
 
 void TWaitDependentDisksToSwitchNodeActor::Bootstrap(const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::Bootstrap" << Endl;
     if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
         HandleError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
@@ -171,8 +177,9 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
     const TActorContext& ctx,
     ui64 cookie)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest" << Endl;
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(cookie));
-    LOG_DEBUG(
+    LOG_ERROR(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Schedule GetVolumeInfoRequest for volume: %s, timeout: %s",
@@ -194,6 +201,7 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
 void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreSwitched(
     const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreSwitched" << Endl;
     if (DependentDiskStates.empty()) {
         HandleSuccess(ctx);
         return;
@@ -224,6 +232,7 @@ void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreSwitched(
 void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreReady(
     const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreReady" << Endl;
     if (DependentDiskStates.empty()) {
         HandleSuccess(ctx);
         return;
@@ -249,6 +258,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetDependentDisksResponse(
     const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::HandleGetDependentDisksResponse" << Endl;
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         LOG_WARN(
@@ -308,6 +318,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetVolumeInfoResponse(
     const TEvVolume::TEvGetVolumeInfoResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::HandleGetVolumeInfoResponse" << Endl;
     const auto* msg = ev->Get();
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(ev->Cookie));
     STORAGE_CHECK_PRECONDITION_C(
@@ -344,7 +355,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetVolumeInfoResponse(
         return;
     }
 
-    LOG_DEBUG(
+    LOG_ERROR(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Volume %s has switched its node",
@@ -359,6 +370,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleWaitReadyResponse(
     const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "TWaitDependentDisksToSwitchNodeActor::HandleWaitReadyResponse" << Endl;
     const auto* msg = ev->Get();
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(ev->Cookie));
     STORAGE_CHECK_PRECONDITION_C(
@@ -380,7 +392,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleWaitReadyResponse(
         DependentDiskStates[ev->Cookie].SetDiskState(
             TWaitDependentDisksToSwitchNodeResponse::DISK_STATE_ERROR);
     } else {
-        LOG_DEBUG(
+        LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Volume %s is ready",

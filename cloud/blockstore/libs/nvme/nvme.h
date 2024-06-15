@@ -4,6 +4,7 @@
 
 #include "spec.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore::NNvme {
@@ -30,7 +31,9 @@ struct INvmeManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-INvmeManagerPtr CreateNvmeManager(TDuration timeout);
+INvmeManagerPtr CreateNvmeManager(
+    NProto::EDiskAgentNvmeManagerType type,
+    TDuration timeout);
 INvmeManagerPtr CreateNvmeManagerStub(bool isDeviceSsd = true);
 
 }   // namespace NCloud::NBlockStore::NNvme

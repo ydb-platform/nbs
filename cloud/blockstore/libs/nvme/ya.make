@@ -13,6 +13,7 @@ ENDIF(OS_LINUX)
 
 PEERDIR(
     cloud/blockstore/config
+    contrib/libs/systemd
 )
 
 END()

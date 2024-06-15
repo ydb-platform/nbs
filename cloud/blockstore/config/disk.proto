@@ -30,6 +30,15 @@ enum EDiskAgentBackendType
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// NVME manager implementations.
+
+enum EDiskAgentNvmeManagerType
+{
+    DISK_AGENT_NVME_MANAGER_DEFAULT = 0;
+    DISK_AGENT_NVME_MANAGER_SYSTEMD = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 message TMemoryDeviceArgs
 {
@@ -233,6 +242,9 @@ message TDiskAgentConfig
     // Flag which indicates that the agent was launched as a temporary one
     // during blue-green deployment.
     optional bool TemporaryAgent = 29;
+
+    // Type of the NvmeManager which will be created at the start.
+    optional EDiskAgentNvmeManagerType NvmeManagerType = 30;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
