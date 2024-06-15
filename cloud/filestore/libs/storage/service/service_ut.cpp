@@ -2525,6 +2525,86 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
     }
+
+    Y_UNIT_TEST(ShouldCreateSessionInFollowers)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1'000);
+        service.CreateFileStore("test-f1", 1'000);
+        service.CreateFileStore("test-f2", 1'000);
+
+        NProtoPrivate::TConfigureFollowersRequest request;
+        request.SetFileSystemId("test");
+        *request.AddFollowerFileSystemIds() = "test-f1";
+        *request.AddFollowerFileSystemIds() = "test-f2";
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+        auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
+        NProtoPrivate::TForcedOperationResponse response;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response).ok());
+
+        auto headers = service.InitSession("test", "client");
+        auto headers1 = headers;
+        headers1.FileSystemId = request.GetFollowerFileSystemIds(0);
+        auto headers2 = headers;
+        headers2.FileSystemId = request.GetFollowerFileSystemIds(1);
+
+        ui64 nodeId1 =
+            service
+                .CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle1 =
+            service
+                .CreateHandle(
+                    headers1,
+                    headers1.FileSystemId,
+                    nodeId1,
+                    "",
+                    TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        service.WriteData(
+            headers1,
+            headers1.FileSystemId,
+            nodeId1,
+            handle1,
+            0,
+            TString(1_MB, 'a'));
+
+        ui64 nodeId2 =
+            service
+                .CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle2 =
+            service
+                .CreateHandle(
+                    headers2,
+                    headers2.FileSystemId,
+                    nodeId2,
+                    "",
+                    TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        service.WriteData(
+            headers2,
+            headers2.FileSystemId,
+            nodeId2,
+            handle2,
+            0,
+            TString(1_MB, 'a'));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

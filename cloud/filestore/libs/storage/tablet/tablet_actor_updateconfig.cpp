@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <util/string/join.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -231,6 +233,72 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     response->Record.SetTxId(args.TxId);
     response->Record.SetOrigin(TabletID());
     response->Record.SetStatus(NKikimrFileStore::OK);
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleConfigureFollowers(
+    const TEvIndexTablet::TEvConfigureFollowersRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        // external event
+        MakeIntrusive<TCallContext>(GetFileSystemId()));
+
+    ExecuteTx<TConfigureFollowers>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_ConfigureFollowers(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfigureFollowers& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_ConfigureFollowers(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfigureFollowers& args)
+{
+    Y_UNUSED(ctx);
+
+    TIndexTabletDatabase db(tx.DB);
+
+    auto config = GetFileSystem();
+    // TODO(#1350): properly process follower removal
+    *config.MutableFollowerFileSystemIds() =
+        std::move(*args.Request.MutableFollowerFileSystemIds());
+
+    UpdateConfig(db, config, GetThrottlingConfig());
+}
+
+void TIndexTabletActor::CompleteTx_ConfigureFollowers(
+    const TActorContext& ctx,
+    TTxIndexTablet::TConfigureFollowers& args)
+{
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Configured followers, new follower list: %s",
+        LogTag.c_str(),
+        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvConfigureFollowersResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

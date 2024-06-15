@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "profile_log_events.h"
 #include "tablet_database.h"
 #include "tablet_private.h"
@@ -65,6 +66,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadState,                          __VA_ARGS__)                       \
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
+    xxx(ConfigureFollowers,                 __VA_ARGS__)                       \
                                                                                \
     xxx(CreateSession,                      __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
@@ -345,6 +347,28 @@ struct TTxIndexTablet
             : RequestInfo(std::move(requestInfo))
             , TxId(txId)
             , FileSystem(std::move(fileSystem))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // ConfigureFollowers
+    //
+
+    struct TConfigureFollowers
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TConfigureFollowersRequest Request;
+
+        TConfigureFollowers(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TConfigureFollowersRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
         {}
 
         void Clear()

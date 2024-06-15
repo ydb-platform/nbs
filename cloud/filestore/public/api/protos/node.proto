@@ -54,8 +54,14 @@ message TNodeAttr
     // File size.
     uint64 Size = 9;
 
-    // Number of persistent links
+    // Number of persistent links.
     uint32 Links = 10;
+
+    // Follower FS id. Set if this node is actually located in the follower FS.
+    // ATime, MTime, CTime and Size are stored in the follower FS.
+    string FollowerFileSystemId = 11;
+    // Node identifier in the follower FS.
+    uint64 FollowerId = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,6 +149,11 @@ message TCreateNodeRequest
         TSymLink SymLink = 8;
         TSocket Socket = 9;
     }
+
+    // If set, the node will be created in the follower FS.
+    string FollowerFileSystemId = 12;
+    // Parent node id in the follower FS.
+    uint64 FollowerNodeId = 13;
 }
 
 message TCreateNodeResponse

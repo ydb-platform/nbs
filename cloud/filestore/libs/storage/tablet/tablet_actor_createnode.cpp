@@ -81,9 +81,9 @@ void TIndexTabletActor::HandleCreateNode(
     }
 
     auto* msg = ev->Get();
-    if (auto entry = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
         auto response = std::make_unique<TEvService::TEvCreateNodeResponse>();
-        GetDupCacheEntry(entry, response->Record);
+        GetDupCacheEntry(e, response->Record);
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 

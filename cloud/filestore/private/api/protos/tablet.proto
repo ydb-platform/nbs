@@ -489,3 +489,21 @@ message TForcedOperationResponse
     // Affected range count.
     uint64 RangeCount = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureFollowers request/response.
+
+message TConfigureFollowersRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // Follower FileSystem identifiers.
+    repeated string FollowerFileSystemIds = 2;
+}
+
+message TConfigureFollowersResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

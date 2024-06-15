@@ -56,6 +56,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "reassigntablet",
             &TStorageServiceActor::CreateReassignTabletActionActor
         },
+        {
+            "configurefollowers",
+            &TStorageServiceActor::CreateConfigureFollowersActionActor
+        },
     };
 
     auto it = actions.find(action);
