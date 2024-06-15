@@ -1271,11 +1271,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             Device("dev-3", "uuid-7", "rack-1")
         });
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents({ agent1, agent2 })
-            .WithDisks({ Disk("disk-1", {"uuid-1"}) })
-            .WithDirtyDevices({ "uuid-4", "uuid-7" })
-            .Build();
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agent1, agent2})
+                .WithDisks({Disk("disk-1", {"uuid-1"})})
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-4", {}}, TDirtyDevice{"uuid-7", {}}})
+                .Build();
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             TVector<TDeviceConfig> devices;
@@ -8303,18 +8305,29 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             }),
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({
-                Disk("disk-1", {"uuid-1.1"}),
-                Disk("disk-2", {"uuid-2.2"}),
-                Disk("disk-3", {"uuid-3.4", "uuid-3.5"}),
-                Disk("disk-4", {"uuid-4.1"}),
-            })
-            .WithDirtyDevices({"uuid-2.1", "uuid-3.3", "uuid-3.6", "uuid-5.2"})
-            .AddDevicePoolConfig("local-ssd", 10_GB, NProto::DEVICE_POOL_KIND_LOCAL)
-            .AddDevicePoolConfig("rot", 10_GB, NProto::DEVICE_POOL_KIND_GLOBAL)
-            .Build();
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(agents)
+                .WithDisks({
+                    Disk("disk-1", {"uuid-1.1"}),
+                    Disk("disk-2", {"uuid-2.2"}),
+                    Disk("disk-3", {"uuid-3.4", "uuid-3.5"}),
+                    Disk("disk-4", {"uuid-4.1"}),
+                })
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-2.1", {}},
+                     TDirtyDevice{"uuid-3.3", {}},
+                     TDirtyDevice{"uuid-3.6", {}},
+                     TDirtyDevice{"uuid-5.2", {}}})
+                .AddDevicePoolConfig(
+                    "local-ssd",
+                    10_GB,
+                    NProto::DEVICE_POOL_KIND_LOCAL)
+                .AddDevicePoolConfig(
+                    "rot",
+                    10_GB,
+                    NProto::DEVICE_POOL_KIND_GLOBAL)
+                .Build();
 
         const auto poolNames = state.GetPoolNames();
         ASSERT_VECTORS_EQUAL(
@@ -11560,6 +11573,84 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(errorTs.MicroSeconds(), d.GetStateTs());
             UNIT_ASSERT_VALUES_EQUAL(errorMessage, d.GetStateMessage());
         });
+    }
+
+    Y_UNIT_TEST(ShouldCleanMultipleDevicesFromOneDisk)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent1 = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1", "rack-1")});
+
+        const auto agent2 = AgentConfig(
+            2,
+            {Device("dev-2", "uuid-2", "rack-1")});
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agent1, agent2})
+                .WithDisks({Disk("disk-1", {"uuid-1", "uuid-2"})})
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-1", "disk-1"},
+                     TDirtyDevice{"uuid-2", "disk-1"}})
+                .Build();
+
+        UNIT_ASSERT_EQUAL(state.GetDirtyDevices().size(), 2);
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const auto& cleanDisks = state.MarkDeviceAsClean(
+                    Now(),
+                    db,
+                    TVector<TString>{"uuid-1", "uuid-2"});
+                UNIT_ASSERT_EQUAL(cleanDisks.size(), 1);
+                UNIT_ASSERT_EQUAL(cleanDisks[0], "disk-1");
+            });
+
+        UNIT_ASSERT(state.GetDirtyDevices().empty());
+    }
+
+    Y_UNIT_TEST(ShouldCleanMultipleDevicesFromDifferentDisks)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agent1 = AgentConfig(
+            1,
+            {Device("dev-1", "uuid-1", "rack-1")});
+
+        const auto agent2 = AgentConfig(
+            2,
+            {Device("dev-2", "uuid-2", "rack-1")});
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents({agent1, agent2})
+                .WithDisks(
+                    {Disk("disk-1", {"uuid-1"}), Disk("disk-1", {"uuid-2"})})
+                .WithDirtyDevices(
+                    {TDirtyDevice{"uuid-1", "disk-1"},
+                     TDirtyDevice{"uuid-2", "disk-2"}})
+                .Build();
+
+        UNIT_ASSERT_EQUAL(state.GetDirtyDevices().size(), 2);
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                const auto& cleanDisks = state.MarkDeviceAsClean(
+                    Now(),
+                    db,
+                    TVector<TString>{"uuid-1", "uuid-2"});
+                UNIT_ASSERT_EQUAL(cleanDisks.size(), 2);
+                UNIT_ASSERT_EQUAL(cleanDisks[0], "disk-1");
+                UNIT_ASSERT_EQUAL(cleanDisks[1], "disk-2");
+            });
+
+        UNIT_ASSERT(state.GetDirtyDevices().empty());
     }
 }
 

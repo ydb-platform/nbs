@@ -493,10 +493,14 @@ public:
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
-    TString MarkDeviceAsClean(
+    TDiskId MarkDeviceAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDeviceId& uuid);
+    TVector<TDiskId> MarkDeviceAsClean(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TVector<TDeviceId>& uuids);
     bool MarkDeviceAsDirty(TDiskRegistryDatabase& db, const TDeviceId& uuid);
 
     NProto::TError CreatePlacementGroup(
@@ -1123,6 +1127,11 @@ private:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDeviceId& uuid);
+
+    TVector<TDeviceId> TryUpdateDevices(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TVector<TDeviceId>& uuids);
 
     TDeviceList::TAllocationQuery MakeMigrationQuery(
         const TDiskId& sourceDiskId,
