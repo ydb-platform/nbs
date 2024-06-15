@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 #include "profile_log_events.h"
 #include "tablet_database.h"
 #include "tablet_private.h"
@@ -17,6 +16,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
+
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
