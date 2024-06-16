@@ -61,18 +61,18 @@ struct TMemberMeta
 
 namespace NDetail {
 
-template <auto T>
+template <auto TMemberPtr>
 consteval auto ExtractMemberPtr()
 {
-    return T;
+    return TMemberPtr;
 }
 
 }   // namespace NDetail
 
-template <auto T>
+template <auto TMemberPtr>
 consteval auto MakeMeta()
 {
-    TMemberMeta<decltype(NDetail::ExtractMemberPtr<T>())> result;
+    TMemberMeta<decltype(NDetail::ExtractMemberPtr<TMemberPtr>())> result;
 
     // Extract member name from __PRETTY_FUNCTION__.
     // __PRETTY_FUNCTION__ looks like
@@ -85,7 +85,7 @@ consteval auto MakeMeta()
     result.Name = raw.substr(start + left.size(), end - start - left.size());
 
     // Store member ptr.
-    result.MemberPtr = NDetail::ExtractMemberPtr<T>();
+    result.MemberPtr = NDetail::ExtractMemberPtr<TMemberPtr>();
     return result;
 }
 
