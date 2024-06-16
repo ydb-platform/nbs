@@ -214,6 +214,8 @@ struct TIndexTabletSchema
         struct CommitId     : Column<2, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct Name         : Column<3, NKikimr::NScheme::NTypeIds::String> {};
         struct ChildId      : Column<4, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct FollowerId   : Column<5, NKikimr::NScheme::NTypeIds::String> {};
+        struct FollowerName : Column<6, NKikimr::NScheme::NTypeIds::String> {};
 
         using TKey = TableKey<NodeId, Name>;
 
@@ -221,7 +223,9 @@ struct TIndexTabletSchema
             NodeId,
             CommitId,
             Name,
-            ChildId
+            ChildId,
+            FollowerId,
+            FollowerName
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
@@ -234,6 +238,8 @@ struct TIndexTabletSchema
         struct MaxCommitId  : Column<3, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct Name         : Column<4, NKikimr::NScheme::NTypeIds::String> {};
         struct ChildId      : Column<5, NKikimr::NScheme::NTypeIds::Uint64> {};
+        struct FollowerId   : Column<6, NKikimr::NScheme::NTypeIds::String> {};
+        struct FollowerName : Column<7, NKikimr::NScheme::NTypeIds::String> {};
 
         using TKey = TableKey<NodeId, Name, MinCommitId>;
 
@@ -242,7 +248,9 @@ struct TIndexTabletSchema
             MinCommitId,
             MaxCommitId,
             Name,
-            ChildId
+            ChildId,
+            FollowerId,
+            FollowerName
         >;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;

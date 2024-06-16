@@ -152,8 +152,6 @@ message TCreateNodeRequest
 
     // If set, the node will be created in the follower FS.
     string FollowerFileSystemId = 12;
-    // Parent node id in the follower FS.
-    uint64 FollowerNodeId = 13;
 }
 
 message TCreateNodeResponse

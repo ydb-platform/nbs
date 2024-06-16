@@ -2526,23 +2526,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format on
     }
 
-    Y_UNIT_TEST(ShouldCreateSessionInFollowers)
+    void ConfigureFollowers(
+        TServiceClient& service,
+        const TString& fsId,
+        const TString& shard1Id,
+        const TString& shard2Id)
     {
-        NProto::TStorageConfig config;
-        TTestEnv env({}, config);
-        env.CreateSubDomain("nfs");
-
-        ui32 nodeIdx = env.CreateNode("nfs");
-
-        const TString fsId = "test";
-        const auto shard1Id = fsId + "-f1";
-        const auto shard2Id = fsId + "-f2";
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore(fsId, 1'000);
-        service.CreateFileStore(shard1Id, 1'000);
-        service.CreateFileStore(shard2Id, 1'000);
-
         {
             NProtoPrivate::TConfigureAsFollowerRequest request;
             request.SetFileSystemId(shard1Id);
@@ -2582,6 +2571,26 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                 jsonResponse->Record.GetOutput(), &response).ok());
         }
+    }
+
+    Y_UNIT_TEST(ShouldCreateSessionInFollowers)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
 
         auto headers = service.InitSession(fsId, "client");
         auto headers1 = headers;
@@ -2607,7 +2616,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        UNIT_ASSERT_C(handle1 >= (1LU << 56U) && handle1 < (2LU << 56U), handle1);
+        UNIT_ASSERT_C(
+            handle1 >= (1LU << 56U) && handle1 < (2LU << 56U),
+            handle1);
 
         service.WriteData(
             headers1,
@@ -2635,7 +2646,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        UNIT_ASSERT_C(handle2 >= (2LU << 56U) && handle2 < (3LU << 56U), handle2);
+        UNIT_ASSERT_C(
+            handle2 >= (2LU << 56U) && handle2 < (3LU << 56U),
+            handle2);
 
         service.WriteData(
             headers2,
@@ -2645,6 +2658,85 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             0,
             TString(1_MB, 'a'));
     }
+
+    Y_UNIT_TEST(ShouldCreateNodeInFollowerViaLeader)
+    {
+        NProto::TStorageConfig config;
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        ui64 nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(
+                    RootNodeId,
+                    "file1",
+                    0, // mode
+                    shard1Id))
+                ->Record.GetNode()
+                .GetId();
+
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            shard1Id,
+            createHandleResponse.GetFollowerFileSystemId());
+
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            "",
+            createHandleResponse.GetFollowerNodeName());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        createHandleResponse = service.CreateHandle(
+            headers1,
+            headers1.FileSystemId,
+            RootNodeId,
+            createHandleResponse.GetFollowerNodeName(),
+            TCreateHandleArgs::RDWR)->Record;
+
+        auto handle1 = createHandleResponse.GetHandle();
+
+        UNIT_ASSERT_C(
+            handle1 >= (1LU << 56U) && handle1 < (2LU << 56U),
+            handle1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        service.WriteData(
+            headers1,
+            headers1.FileSystemId,
+            nodeId1,
+            handle1,
+            0,
+            TString(1_MB, 'a'));
+    }
+
+    // TODO: Y_UNIT_TEST(ShouldCreateNodeInFollowerViaLeaderByCreateHandle)
 }
 
 }   // namespace NCloud::NFileStore::NStorage

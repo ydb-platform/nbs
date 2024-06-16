@@ -22,6 +22,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/folder/pathsplit.h>
+#include <util/generic/guid.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/maybe.h>
@@ -599,6 +600,9 @@ struct TTxIndexTablet
         const ui64 TargetNodeId;
         const TString Name;
         const NProto::TNode Attrs;
+        const TString FollowerId;
+        const TString FollowerName;
+        NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<TIndexTabletDatabase::TNode> ParentNode;
@@ -619,7 +623,13 @@ struct TTxIndexTablet
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
             , Attrs(attrs)
-        {}
+            , FollowerId(request.GetFollowerFileSystemId())
+            , FollowerName(CreateGuidAsString())
+        {
+            if (FollowerId) {
+                Request = request;
+            }
+        }
 
         void Clear()
         {
@@ -1035,10 +1045,14 @@ struct TTxIndexTablet
         const ui32 Mode;
         const ui32 Uid;
         const ui32 Gid;
+        const TString RequestFollowerId;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
         ui64 TargetNodeId = InvalidNodeId;
+        TString FollowerId;
+        TString FollowerName;
+        bool IsNewFollowerNode = false;
         TMaybe<TIndexTabletDatabase::TNode> TargetNode;
         TMaybe<TIndexTabletDatabase::TNode> ParentNode;
 
@@ -1055,6 +1069,7 @@ struct TTxIndexTablet
             , Mode(request.GetMode())
             , Uid(request.GetUid())
             , Gid(request.GetGid())
+            , RequestFollowerId(request.GetFollowerFileSystemId())
         {}
 
         void Clear()
@@ -1062,6 +1077,9 @@ struct TTxIndexTablet
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
+            FollowerId.clear();
+            FollowerName.clear();
+            IsNewFollowerNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
 

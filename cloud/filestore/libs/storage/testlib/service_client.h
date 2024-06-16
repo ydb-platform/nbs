@@ -251,7 +251,8 @@ public:
         const TString& fileSystemId,
         ui64 nodeId,
         const TString& name,
-        ui32 flags)
+        ui32 flags,
+        const TString& followerId = "")
     {
         auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
         headers.Fill(request->Record);
@@ -259,6 +260,7 @@ public:
         request->Record.SetNodeId(nodeId);
         request->Record.SetName(name);
         request->Record.SetFlags(flags);
+        request->Record.SetFollowerFileSystemId(followerId);
         return request;
     }
 

@@ -762,7 +762,7 @@ void TIndexTabletState::CommitDupCacheEntry(
     const TString& sessionId,
     ui64 requestId)
 {
-    if (auto session = FindSession(sessionId)) {
+    if (auto* session = FindSession(sessionId)) {
         session->CommitDupCacheEntry(requestId);
     }
 }
