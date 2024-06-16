@@ -68,6 +68,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
     xxx(ConfigureFollowers,                 __VA_ARGS__)                       \
+    xxx(ConfigureAsFollower,                __VA_ARGS__)                       \
                                                                                \
     xxx(CreateSession,                      __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
@@ -368,6 +369,28 @@ struct TTxIndexTablet
         TConfigureFollowers(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TConfigureFollowersRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // ConfigureAsFollower
+    //
+
+    struct TConfigureAsFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TConfigureAsFollowerRequest Request;
+
+        TConfigureAsFollower(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TConfigureAsFollowerRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}

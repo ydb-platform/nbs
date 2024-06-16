@@ -303,4 +303,69 @@ void TIndexTabletActor::CompleteTx_ConfigureFollowers(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::HandleConfigureAsFollower(
+    const TEvIndexTablet::TEvConfigureAsFollowerRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        // external event
+        MakeIntrusive<TCallContext>(GetFileSystemId()));
+
+    ExecuteTx<TConfigureAsFollower>(
+        ctx,
+        std::move(requestInfo),
+        std::move(msg->Record));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool TIndexTabletActor::PrepareTx_ConfigureAsFollower(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfigureAsFollower& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_ConfigureAsFollower(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TConfigureAsFollower& args)
+{
+    Y_UNUSED(ctx);
+
+    TIndexTabletDatabase db(tx.DB);
+
+    auto config = GetFileSystem();
+    // TODO(#1350): properly validate ShardNo change
+    config.SetShardNo(args.Request.GetShardNo());
+
+    UpdateConfig(db, config, GetThrottlingConfig());
+}
+
+void TIndexTabletActor::CompleteTx_ConfigureAsFollower(
+    const TActorContext& ctx,
+    TTxIndexTablet::TConfigureAsFollower& args)
+{
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s Configured followers, new follower list: %s",
+        LogTag.c_str(),
+        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerResponse>();
+
+    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+}
+
 }   // namespace NCloud::NFileStore::NStorage

@@ -507,3 +507,21 @@ message TConfigureFollowersResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigureFollowers request/response.
+
+message TConfigureAsFollowerRequest
+{
+    // FileSystem identifier.
+    string FileSystemId = 1;
+
+    // ShardNo (will be used for the high bits of NodeId and HandleId)
+    uint32 ShardNo = 2;
+}
+
+message TConfigureAsFollowerResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

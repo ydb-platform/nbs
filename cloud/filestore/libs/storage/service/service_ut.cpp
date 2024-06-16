@@ -2534,34 +2534,68 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         ui32 nodeIdx = env.CreateNode("nfs");
 
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1'000);
-        service.CreateFileStore("test-f1", 1'000);
-        service.CreateFileStore("test-f2", 1'000);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
 
-        NProtoPrivate::TConfigureFollowersRequest request;
-        request.SetFileSystemId("test");
-        *request.AddFollowerFileSystemIds() = "test-f1";
-        *request.AddFollowerFileSystemIds() = "test-f2";
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(1);
 
-        TString buf;
-        google::protobuf::util::MessageToJsonString(request, &buf);
-        auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
-        NProtoPrivate::TForcedOperationResponse response;
-        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(), &response).ok());
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
 
-        auto headers = service.InitSession("test", "client");
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard2Id);
+            request.SetShardNo(2);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddFollowerFileSystemIds() = shard2Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
+            NProtoPrivate::TConfigureFollowersResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        auto headers = service.InitSession(fsId, "client");
         auto headers1 = headers;
-        headers1.FileSystemId = request.GetFollowerFileSystemIds(0);
+        headers1.FileSystemId = shard1Id;
         auto headers2 = headers;
-        headers2.FileSystemId = request.GetFollowerFileSystemIds(1);
+        headers2.FileSystemId = shard2Id;
 
         ui64 nodeId1 =
             service
                 .CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"))
                 ->Record.GetNode()
                 .GetId();
+
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
 
         ui64 handle1 =
             service
@@ -2572,6 +2606,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     "",
                     TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
+
+        UNIT_ASSERT_C(handle1 >= (1LU << 56U) && handle1 < (2LU << 56U), handle1);
 
         service.WriteData(
             headers1,
@@ -2587,6 +2623,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 ->Record.GetNode()
                 .GetId();
 
+        UNIT_ASSERT_VALUES_EQUAL((2LU << 56U) + 2, nodeId2);
+
         ui64 handle2 =
             service
                 .CreateHandle(
@@ -2596,6 +2634,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     "",
                     TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
+
+        UNIT_ASSERT_C(handle2 >= (2LU << 56U) && handle2 < (3LU << 56U), handle2);
 
         service.WriteData(
             headers2,

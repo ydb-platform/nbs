@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/model/utils.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace
@@ -59,7 +61,8 @@ ui64 TIndexTabletState::CreateNode(
     ui64 commitId,
     const NProto::TNode& attrs)
 {
-    ui64 nodeId = IncrementLastNodeId(db);
+    const ui64 nodeId =
+        ShardedId(IncrementLastNodeId(db), GetFileSystem().GetShardNo());
 
     db.WriteNode(nodeId, commitId, attrs);
     IncrementUsedNodesCount(db);

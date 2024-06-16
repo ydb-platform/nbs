@@ -60,6 +60,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "configurefollowers",
             &TStorageServiceActor::CreateConfigureFollowersActionActor
         },
+        {
+            "configureasfollower",
+            &TStorageServiceActor::CreateConfigureAsFollowerActionActor
+        },
     };
 
     auto it = actions.find(action);
