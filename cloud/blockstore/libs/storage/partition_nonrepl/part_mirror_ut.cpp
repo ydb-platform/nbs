@@ -1425,7 +1425,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         env.WriteMirror(range, 'A');
 
-        TAutoPtr<IEventHandle> delayedChecksumRequest;
+        TAutoPtr<IEventHandle> delayedWriteResponse;
         ui32 writeDeviceResponses = 0;
         runtime.SetEventFilter([&] (auto& runtime, auto& event) {
             Y_UNUSED(runtime);
@@ -1437,17 +1437,15 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
                     auto response = std::make_unique<
                         TEvDiskAgent::TEvWriteDeviceBlocksResponse>(
                         MakeError(E_REJECTED, "error"));
-                    runtime.Send(new IEventHandle(
+
+                    delayedWriteResponse = new IEventHandle(
                         event->Sender,
                         event->Recipient,
                         response.release(),
                         0, // flags
                         event->Cookie
-                    ), 0);
+                    );
 
-                    if (delayedChecksumRequest) {
-                        runtime.Send(delayedChecksumRequest.Release());
-                    }
                     return true;
                 }
             }
@@ -1457,6 +1455,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         TPartitionClient client(runtime, env.ActorId);
         TString data(DefaultBlockSize, 'B');
         client.SendWriteBlocksLocalRequest(range, data);
+
+        ui32 iterations = 0;
+        while (!delayedWriteResponse && iterations++ < 100) {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        runtime.Send(delayedWriteResponse.Release());
         auto response = client.RecvWriteBlocksLocalResponse();
 
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
@@ -1473,7 +1477,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         client.SendWriteBlocksLocalRequest(range, data);
         response = client.RecvWriteBlocksLocalResponse();
 
-        ui32 iterations = 0;
+        iterations = 0;
         while (counters.Simple.ScrubbingProgress.Value == 0 &&
             iterations++ < 100)
         {
