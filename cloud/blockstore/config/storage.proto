@@ -1011,4 +1011,7 @@ message TStorageServiceConfig
     // Delay that DR uses to wait unavailable agents to register before allowing
     // infra to deploy a host.
     optional uint32 IdleAgentDeployByCmsDelay = 377;
+
+    // Enable default enctyption for NRD/Mirrored disks.
+    optional bool DefaultEncryptionEnabled = 377;
 }

@@ -588,6 +588,8 @@ public:
     TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefixes() const;
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
+
+    [[nodiscard]] bool GetDefaultEncryptionEnabled() const;
 };
 
 ui64 GetAllocationUnit(
