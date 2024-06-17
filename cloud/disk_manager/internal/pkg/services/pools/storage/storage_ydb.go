@@ -418,6 +418,24 @@ func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	)
 }
 
+func (s *storageYDB) CheckPoolsConsistency(ctx context.Context) error {
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkPoolsConsistency(ctx, session)
+		},
+	)
+}
+
+func (s *storageYDB) CheckBaseDisksConsistency(ctx context.Context) error {
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkBaseDisksConsistency(ctx, session)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorage(

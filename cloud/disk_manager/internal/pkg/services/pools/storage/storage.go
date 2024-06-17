@@ -158,4 +158,10 @@ type Storage interface {
 
 	// Used in tests.
 	CheckConsistency(ctx context.Context) error
+
+	// Used in tests.
+	CheckPoolsConsistency(ctx context.Context) error
+
+	// Used in tests.
+	CheckBaseDisksConsistency(ctx context.Context) error
 }
