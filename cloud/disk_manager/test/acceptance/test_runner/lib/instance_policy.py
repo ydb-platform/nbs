@@ -20,6 +20,7 @@ class YcpNewInstancePolicy:
                  compute_node: str,
                  placement_group: str,
                  platform_ids: list[str],
+                 do_not_delete_on_error: bool,
                  auto_delete: bool,
                  module_factory,
                  ssh_key_path: str | None = None) -> None:
@@ -31,6 +32,7 @@ class YcpNewInstancePolicy:
         self._compute_node = compute_node
         self._placement_group = placement_group
         self._platform_ids = platform_ids
+        self._do_not_delete_on_error = do_not_delete_on_error
         self._auto_delete = auto_delete
         self._module_factory = module_factory
         self._ssh_key_path = ssh_key_path
@@ -62,6 +64,11 @@ class YcpNewInstancePolicy:
                                          f' {self._zone_id}')
         try:
             yield self._instance
+        except Exception:
+            if self._do_not_delete_on_error:
+                _logger.info(f'Instance <id={self._instance.id}> will not be deleted')
+                self._auto_delete = False
+            raise
         finally:
             if self._auto_delete:
                 self._ycp.delete_instance(self._instance)
