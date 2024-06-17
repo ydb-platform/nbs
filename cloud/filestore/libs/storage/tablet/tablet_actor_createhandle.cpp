@@ -52,6 +52,7 @@ private:
     const TString FollowerName;
     const TActorId ParentId;
     const NProto::TNode Attrs;
+    NProto::THeaders Headers;
     NProto::TCreateHandleResponse Response;
     NProto::TCreateNodeResponse FollowerResponse;
 
@@ -63,6 +64,7 @@ public:
         TString followerName,
         const TActorId& parentId,
         NProto::TNode attrs,
+        NProto::THeaders headers,
         NProto::TCreateHandleResponse response);
 
     void Bootstrap(const TActorContext& ctx);
@@ -92,6 +94,7 @@ TCreateNodeInFollowerUponCreateHandleActor::TCreateNodeInFollowerUponCreateHandl
         TString followerName,
         const TActorId& parentId,
         NProto::TNode attrs,
+        NProto::THeaders headers,
         NProto::TCreateHandleResponse response)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
@@ -99,6 +102,7 @@ TCreateNodeInFollowerUponCreateHandleActor::TCreateNodeInFollowerUponCreateHandl
     , FollowerName(std::move(followerName))
     , ParentId(parentId)
     , Attrs(std::move(attrs))
+    , Headers(std::move(headers))
     , Response(std::move(response))
 {}
 
@@ -111,6 +115,7 @@ void TCreateNodeInFollowerUponCreateHandleActor::Bootstrap(const TActorContext& 
 void TCreateNodeInFollowerUponCreateHandleActor::SendRequest(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvCreateNodeRequest>();
+    *request->Record.MutableHeaders() = std::move(Headers);
     request->Record.MutableFile()->SetMode(Attrs.GetMode());
     request->Record.SetUid(Attrs.GetUid());
     request->Record.SetGid(Attrs.GetGid());
@@ -161,6 +166,7 @@ void TCreateNodeInFollowerUponCreateHandleActor::HandleCreateNodeResponse(
         FollowerName.c_str());
 
     FollowerResponse = std::move(msg->Record);
+    Response.MutableNodeAttr()->CopyFrom(FollowerResponse.GetNode());
 
     ReplyAndDie(ctx, {});
 }
@@ -474,6 +480,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             args.FollowerName,
             ctx.SelfID,
             CreateRegularAttrs(args.Mode, args.Uid, args.Gid),
+            std::move(args.Headers),
             std::move(args.Response));
 
         auto actorId = NCloud::Register(ctx, std::move(actor));

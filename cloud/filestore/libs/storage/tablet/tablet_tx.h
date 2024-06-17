@@ -1046,6 +1046,7 @@ struct TTxIndexTablet
         const ui32 Uid;
         const ui32 Gid;
         const TString RequestFollowerId;
+        NProto::THeaders Headers;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
@@ -1070,7 +1071,11 @@ struct TTxIndexTablet
             , Uid(request.GetUid())
             , Gid(request.GetGid())
             , RequestFollowerId(request.GetFollowerFileSystemId())
-        {}
+        {
+            if (RequestFollowerId) {
+                Headers = request.GetHeaders();
+            }
+        }
 
         void Clear()
         {
