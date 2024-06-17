@@ -11,10 +11,15 @@
 #include <netlink/netlink.h>
 
 #include <util/generic/scope.h>
+#include <util/stream/mem.h>
 
 namespace NCloud::NBlockStore::NBD {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TStringBuf NBD_DEVICE_SUFFIX = "/dev/nbd";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -183,8 +188,20 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
 
-        if (sscanf(DeviceName.c_str(), "/dev/nbd%u", &DeviceIndex) != 1) {
-            throw TServiceError(E_ARGUMENT) << "invalid nbd device target";
+        // accept /dev/nbd devices with a prefix other than /
+        // (e.g. inside a container)
+        const size_t pos = DeviceName.rfind(NBD_DEVICE_SUFFIX);
+        if (pos == TString::npos) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
+        }
+
+        try {
+            TMemoryInput stream(DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
+            stream >> DeviceIndex;
+        } catch (...) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
         }
     }
 
@@ -438,7 +455,7 @@ public:
 
         return CreateNetlinkDevice(
             Logging,
-            std::move(connectAddress),
+            connectAddress,
             std::move(deviceName),
             Timeout,
             DeadConnectionTimeout,
