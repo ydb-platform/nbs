@@ -56,7 +56,7 @@ struct TProxyDevice: NBD::IDevice
         , BlockSize(blockSize)
     {}
 
-    void Start() override
+    NThreading::TFuture<NProto::TError> Start() override
     {
         auto request = std::make_shared<NProto::TStartProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
@@ -69,18 +69,22 @@ struct TProxyDevice: NBD::IDevice
             request->SetBlocksCount(BlockCount);
             request->SetBlockSize(BlockSize);
         }
-        // XXX bad signature - can't return a future, sync wait is bad as well
-        Client->StartProxyEndpoint(std::move(request));
+        return Client->StartProxyEndpoint(std::move(request)).Apply(
+            [] (const auto& f) {
+                return f.GetValue().GetError();
+            });
     }
 
-    void Stop(bool deleteDevice) override
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         // server should always delete device when stopping endpoint
         Y_UNUSED(deleteDevice);
         auto request = std::make_shared<NProto::TStopProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
-        // XXX bad signature - can't return a future, sync wait is bad as well
-        Client->StopProxyEndpoint(std::move(request));
+        return Client->StopProxyEndpoint(std::move(request)).Apply(
+            [] (const auto& f) {
+                return f.GetValue().GetError();
+            });
     }
 };
 
