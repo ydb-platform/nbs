@@ -878,6 +878,8 @@ struct TTxIndexTablet
         TMaybe<TIndexTabletDatabase::TNode> ParentNode;
         ui64 TargetNodeId = InvalidNodeId;
         TMaybe<TIndexTabletDatabase::TNode> TargetNode;
+        TString FollowerId;
+        TString FollowerName;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -895,6 +897,8 @@ struct TTxIndexTablet
             ParentNode.Clear();
             TargetNodeId = InvalidNodeId;
             TargetNode.Clear();
+            FollowerId.clear();
+            FollowerName.clear();
         }
     };
 

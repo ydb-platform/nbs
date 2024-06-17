@@ -2769,9 +2769,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             shard1Id,
             createHandleResponse.GetFollowerFileSystemId());
 
-        UNIT_ASSERT_VALUES_UNEQUAL(
-            "",
-            createHandleResponse.GetFollowerNodeName());
+        const auto followerNodeName =
+            createHandleResponse.GetFollowerNodeName();
+
+        UNIT_ASSERT_VALUES_UNEQUAL("", followerNodeName);
 
         const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
@@ -2783,7 +2784,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             headers1,
             headers1.FileSystemId,
             RootNodeId,
-            createHandleResponse.GetFollowerNodeName(),
+            followerNodeName,
             TCreateHandleArgs::RDWR)->Record;
 
         auto handle1 = createHandleResponse.GetHandle();
@@ -2803,6 +2804,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle1,
             0,
             TString(1_MB, 'a'));
+
+        auto getAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            shard1Id,
+            getAttrResponse.GetNode().GetFollowerFileSystemId());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            followerNodeName,
+            getAttrResponse.GetNode().GetFollowerNodeName());
+
+        getAttrResponse = service.GetNodeAttr(
+            headers1,
+            shard1Id,
+            RootNodeId,
+            followerNodeName)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(nodeId1, getAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, getAttrResponse.GetNode().GetSize());
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            shard1Id,
+            listNodesResponse.GetNodes(0).GetFollowerFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            followerNodeName,
+            listNodesResponse.GetNodes(0).GetFollowerNodeName());
     }
 }
 
