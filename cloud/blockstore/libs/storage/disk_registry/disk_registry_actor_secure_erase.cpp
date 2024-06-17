@@ -411,22 +411,30 @@ void TDiskRegistryActor::HandleSecureErase(
 
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received SecureErase request: DirtyDevices=%lu",
         TabletID(),
         msg->DirtyDevices.size());
 
-    auto actor = NCloud::Register<TSecureEraseActor>(
-        ctx,
-        ctx.SelfID,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext
-        ),
-        msg->RequestTimeout,
-        std::move(msg->DirtyDevices));
-    Actors.insert(actor);
+    TMap<
+        ::NCloud::NBlockStore::NProto::EDevicePoolKind,
+        TVector<NProto::TDeviceConfig>>
+        poolMap;
+    for (auto& device: msg->DirtyDevices) {
+        poolMap[device.GetPoolKind()].push_back(std::move(device));
+    }
+
+    for (auto& devices: poolMap) {
+        auto actor = NCloud::Register<TSecureEraseActor>(
+            ctx,
+            ctx.SelfID,
+            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+            msg->RequestTimeout,
+            std::move(devices));
+        Actors.insert(actor);
+    }
 }
 
 void TDiskRegistryActor::HandleSecureEraseResponse(
