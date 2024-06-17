@@ -51,7 +51,7 @@ type PoolInfo struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Used in tests.
+// Used in tests and sre tools.
 type PoolOffsettingTransition struct {
 	ImageID               string `json:"image_id"`
 	ZoneID                string `json:"zone_id"`
@@ -170,14 +170,14 @@ type Storage interface {
 
 	GetReadyPoolInfos(ctx context.Context) ([]PoolInfo, error)
 
-	// Used in tests.
+	// Used in tests and sre tools.
 	CheckConsistency(ctx context.Context) error
 
-	// Used in tests.
+	// Used in tests and sre tools.
 	CheckPoolsConsistency(
 		ctx context.Context,
 	) ([]PoolOffsettingTransition, error)
 
-	// Used in tests.
+	// Used in tests and sre tools.
 	CheckBaseDisksConsistency(ctx context.Context) error
 }
