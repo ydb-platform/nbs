@@ -12,6 +12,7 @@ message ServiceAccount {
     required string Id = 1;
     required string KeyId = 2;
     required string Audience = 3;
+    required string Root = 4;
 }
 
 message AuthConfig {
