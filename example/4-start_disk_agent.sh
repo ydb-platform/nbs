@@ -36,6 +36,10 @@ start_nbs_agent() {
         --disk-agent-file $BIN_DIR/nbs/nbs-disk-agent-$1.txt >logs/remote-da$1.log 2>&1 &
 }
 
+start_nbs_agent 0
+pid0=$!
+echo "Agent 0 started with pid $pid0"
+
 start_nbs_agent 1
 pid1=$!
 echo "Agent 1 started with pid $pid1"
@@ -52,6 +56,7 @@ echo "Agent 3 started with pid $pid3"
 trap ctrl_c INT
 
 function ctrl_c() {
+    kill $pid0
     kill $pid1
     kill $pid2
     kill $pid3
