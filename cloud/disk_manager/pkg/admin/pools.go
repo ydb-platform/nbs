@@ -90,9 +90,8 @@ func newBaseDisksConsistencyCheck(
 ////////////////////////////////////////////////////////////////////////////////
 
 type poolsConsistencyCheck struct {
-	clientConfig        *client_config.ClientConfig
-	serverConfig        *server_config.ServerConfig
-	transitionsFilePath string
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
 }
 
 func (t *poolsConsistencyCheck) run() error {
@@ -114,7 +113,7 @@ func (t *poolsConsistencyCheck) run() error {
 		return err
 	}
 
-	fmt.Println(s)
+	fmt.Print(s)
 
 	return nil
 }

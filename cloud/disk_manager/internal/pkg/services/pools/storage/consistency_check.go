@@ -314,7 +314,7 @@ func (s *storageYDB) checkConsistency(
 
 	if len(corrections) != 0 {
 		return errors.NewNonRetriableErrorf(
-			"internal inconsistency: pools offsetting corrections are %+v",
+			"internal inconsistency: pool consistency corrections are %+v",
 			corrections,
 		)
 	}

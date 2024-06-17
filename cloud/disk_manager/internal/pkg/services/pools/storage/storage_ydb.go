@@ -413,17 +413,17 @@ func (s *storageYDB) CheckPoolsConsistency(
 	ctx context.Context,
 ) ([]PoolConsistencyCorrection, error) {
 
-	var transitions []PoolConsistencyCorrection
+	var corrections []PoolConsistencyCorrection
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			transitions, err = s.checkPoolsConsistency(ctx, session)
+			corrections, err = s.checkPoolsConsistency(ctx, session)
 			return err
 		},
 	)
-	return transitions, err
+	return corrections, err
 }
 
 func (s *storageYDB) CheckBaseDisksConsistency(ctx context.Context) error {
