@@ -290,9 +290,6 @@ func (s *storageYDB) checkPoolsConsistency(
 			pool,
 			baseDisks,
 		)
-		if err != nil {
-			return []PoolConsistencyCorrection{}, err
-		}
 
 		if correction != nil {
 			corrections = append(corrections, *correction)
