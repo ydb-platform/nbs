@@ -4,6 +4,10 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
+#include <library/cpp/threading/future/future.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/network/address.h>
@@ -16,12 +20,12 @@ struct IDevice
 {
     virtual ~IDevice() = default;
 
-    virtual void Start() = 0;
+    virtual NThreading::TFuture<NProto::TError> Start() = 0;
 
     // some devices can be reconfigured, so we want to differentiate between
     // cases when user explicitly asked us to stop the device and it being
     // stopped for technical reasons like service restart
-    virtual void Stop(bool deleteDevice) = 0;
+    virtual NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
