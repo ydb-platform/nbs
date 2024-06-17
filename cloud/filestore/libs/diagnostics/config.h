@@ -53,6 +53,7 @@ public:
     ui32 GetLWTraceShuttleCount() const;
 
     TString GetCpuWaitServiceName() const;
+    TString GetCpuWaitFilename() const;
 
     TDuration GetMetricsUpdateInterval() const;
 

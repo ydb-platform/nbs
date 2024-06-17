@@ -24,6 +24,7 @@ namespace {
     xxx(LWTraceShuttleCount,        ui32,       2000                          )\
                                                                                \
     xxx(CpuWaitServiceName,         TString,    ""                            )\
+    xxx(CpuWaitFilename,            TString,    ""                            )\
                                                                                \
     xxx(MetricsUpdateInterval,      TDuration,  TDuration::Seconds(5)         )\
                                                                                \
