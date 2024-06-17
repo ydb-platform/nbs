@@ -95,6 +95,7 @@ func Run(
 		newSnapshotsCmd(clientConfig, serverConfig),
 		newFilesystemCmd(clientConfig, serverConfig),
 		newPlacementGroupCmd(clientConfig, serverConfig),
+		newPoolsCmd(clientConfig, serverConfig),
 	}
 
 	parseClientAndServerConfig := func(cmd *cobra.Command, args []string) error {

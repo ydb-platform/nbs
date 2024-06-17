@@ -13,10 +13,10 @@ import (
 
 func (s *storageYDB) getPools(
 	ctx context.Context,
-	tx *persistence.Transaction,
+	session *persistence.Session,
 ) ([]pool, error) {
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 
@@ -211,7 +211,7 @@ func (s *storageYDB) checkPoolConsistency(
 	ctx context.Context,
 	expectedPoolState pool,
 	baseDisks []baseDisk,
-) error {
+) *PoolConsistencyCorrection {
 
 	var actualPoolState pool
 	for _, baseDisk := range baseDisks {
@@ -233,40 +233,19 @@ func (s *storageYDB) checkPoolConsistency(
 		}
 	}
 
-	if expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits {
-		return errors.NewNonRetriableErrorf(
-			"actual acquiredUnits %v is not equal to expected %v for pool %+v",
-			actualPoolState.acquiredUnits,
-			expectedPoolState.acquiredUnits,
-			expectedPoolState,
-		)
-	}
+	if expectedPoolState.size != actualPoolState.size ||
+		expectedPoolState.freeUnits != actualPoolState.freeUnits ||
+		expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits ||
+		expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
 
-	if expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
-		return errors.NewNonRetriableErrorf(
-			"actual baseDisksInflight %v is not equal to expected %v for pool %+v",
-			actualPoolState.baseDisksInflight,
-			expectedPoolState.baseDisksInflight,
-			expectedPoolState,
-		)
-	}
-
-	if expectedPoolState.size != actualPoolState.size {
-		return errors.NewNonRetriableErrorf(
-			"actual size %v is not equal to expected %v for pool %+v",
-			actualPoolState.size,
-			expectedPoolState.size,
-			expectedPoolState,
-		)
-	}
-
-	if expectedPoolState.freeUnits != actualPoolState.freeUnits {
-		return errors.NewNonRetriableErrorf(
-			"actual freeUnits %v is not equal to expected %v for pool %+v",
-			actualPoolState.freeUnits,
-			expectedPoolState.freeUnits,
-			expectedPoolState,
-		)
+		return &PoolConsistencyCorrection{
+			ImageID:               expectedPoolState.imageID,
+			ZoneID:                expectedPoolState.zoneID,
+			SizeDiff:              actualPoolState.size - expectedPoolState.size,
+			FreeUnitsDiff:         actualPoolState.freeUnits - expectedPoolState.freeUnits,
+			AcquiredUnitsDiff:     actualPoolState.acquiredUnits - expectedPoolState.acquiredUnits,
+			BaseDisksInflightDiff: actualPoolState.baseDisksInflight - expectedPoolState.baseDisksInflight,
+		}
 	}
 
 	return nil
@@ -275,32 +254,49 @@ func (s *storageYDB) checkPoolConsistency(
 func (s *storageYDB) checkPoolsConsistency(
 	ctx context.Context,
 	session *persistence.Session,
-) error {
+) ([]PoolConsistencyCorrection, error) {
 
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	var corrections []PoolConsistencyCorrection
 
-	pools, err := s.getPools(ctx, tx)
+	pools, err := s.getPools(ctx, session)
 	if err != nil {
-		return err
+		return []PoolConsistencyCorrection{}, err
 	}
 
 	for _, pool := range pools {
-		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
+		tx, err := session.BeginRWTransaction(ctx)
 		if err != nil {
-			return err
+			return []PoolConsistencyCorrection{}, err
+		}
+		defer tx.Rollback(ctx)
+
+		pool, err := s.getPoolOrDefault(ctx, tx, pool.imageID, pool.zoneID)
+		if err != nil {
+			return []PoolConsistencyCorrection{}, err
 		}
 
-		err = s.checkPoolConsistency(ctx, pool, baseDisks)
+		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
 		if err != nil {
-			return err
+			return []PoolConsistencyCorrection{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return []PoolConsistencyCorrection{}, err
+		}
+
+		correction := s.checkPoolConsistency(
+			ctx,
+			pool,
+			baseDisks,
+		)
+
+		if correction != nil {
+			corrections = append(corrections, *correction)
 		}
 	}
 
-	return tx.Commit(ctx)
+	return corrections, nil
 }
 
 func (s *storageYDB) checkConsistency(
@@ -308,9 +304,16 @@ func (s *storageYDB) checkConsistency(
 	session *persistence.Session,
 ) error {
 
-	err := s.checkPoolsConsistency(ctx, session)
+	corrections, err := s.checkPoolsConsistency(ctx, session)
 	if err != nil {
 		return err
+	}
+
+	if len(corrections) != 0 {
+		return errors.NewNonRetriableErrorf(
+			"internal inconsistency: pool consistency corrections are %+v",
+			corrections,
+		)
 	}
 
 	return s.checkBaseDisksConsistency(ctx, session)
