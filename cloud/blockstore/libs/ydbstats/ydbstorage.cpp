@@ -250,7 +250,8 @@ TFuture<NYdbStats::TDescribeTableResponse> TYdbNativeStorage::DescribeTable(
                 const auto& description = future.GetValue().GetTableDescription();
                 result.SetValue(TDescribeTableResponse(
                     description.GetColumns(),
-                    description.GetPrimaryKeyColumns()));
+                    description.GetPrimaryKeyColumns(),
+                    description.GetTtlSettings()));
             }
             return MakeFuture<NYdb::TStatus>(future.GetValue());
         });

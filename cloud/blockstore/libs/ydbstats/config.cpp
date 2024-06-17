@@ -8,6 +8,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDuration Seconds(ui32 value)
+{
+    return TDuration::Seconds(value);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_YDBSTATS_CONFIG(xxx)                                        \
     xxx(StatsTableName,                   TString,          ""                )\
     xxx(HistoryTablePrefix,               TString,          ""                )\
@@ -19,6 +26,9 @@ namespace {
     xxx(ArchiveStatsTableName,            TString,          ""                )\
     xxx(BlobLoadMetricsTableName,         TString,          ""                )\
     xxx(UseSsl,                           bool,             false             )\
+    xxx(StatsTableTtl,                    TDuration,        Seconds(0)        )\
+    xxx(ArchiveStatsTableTtl,             TDuration,        Seconds(0)        )\
+
 // BLOCKSTORE_YDBSTATS_CONFIG
 
 #define BLOCKSTORE_YDBSTATS_DECLARE_CONFIG(name, type, value)                  \
@@ -35,6 +45,12 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(TSource value)
 {
     return static_cast<TTarget>(std::move(value));
+}
+
+template <>
+TDuration ConvertValue<TDuration, ui32>(ui32 value)
+{
+    return TDuration::MilliSeconds(value);
 }
 
 }   // namespace
