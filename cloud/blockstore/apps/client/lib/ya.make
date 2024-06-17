@@ -34,6 +34,7 @@ SRCS(
     list_placement_groups.cpp
     list_volumes.cpp
     ping.cpp
+    query_agents_info.cpp
     query_available_storage.cpp
     read_blocks.cpp
     refresh_endpoint.cpp

@@ -278,6 +278,9 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithDirtyDevices(TVector<TString> dirtyDevices);
 
+    TDiskRegistryStateBuilder& WithSuspendedDevices(
+        TVector<TString> suspendedDevices);
+
     TDiskRegistryStateBuilder& WithSpreadPlacementGroups(
         TVector<TString> groupIds);
 

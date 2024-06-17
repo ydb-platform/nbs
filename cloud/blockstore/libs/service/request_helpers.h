@@ -313,6 +313,7 @@ constexpr bool IsControlRequest(EBlockStoreRequest requestType)
         case EBlockStoreRequest::ListKeyrings:
         case EBlockStoreRequest::DescribeEndpoint:
         case EBlockStoreRequest::RefreshEndpoint:
+        case EBlockStoreRequest::QueryAgentsInfo:
             return true;
         case EBlockStoreRequest::MAX:
             Y_DEBUG_ABORT_UNLESS(false);

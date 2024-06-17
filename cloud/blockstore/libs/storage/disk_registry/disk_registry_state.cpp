@@ -7040,4 +7040,58 @@ NProto::EVolumeIOMode TDiskRegistryState::GetIoMode(
     return NProto::VOLUME_IO_OK;
 }
 
+TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
+{
+    TVector<NProto::TAgentInfo> ret;
+    for (const auto& agent: AgentList.GetAgents()) {
+        TMap<TString, NProto::TDeviceInfo> deviceMap;
+        for (const auto& device: agent.GetDevices()) {
+            const bool dirty = IsDirtyDevice(device.GetDeviceUUID());
+            const bool suspended = IsSuspendedDevice(device.GetDeviceUUID());
+            const bool allocated = !FindDisk(device.GetDeviceUUID()).empty();
+            const auto deviceBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+
+            auto [it, inserted] = deviceMap.try_emplace(device.GetDeviceName());
+            auto& deviceInfo = it->second;
+            if (inserted) {
+                deviceInfo.SetDeviceName(device.GetDeviceName());
+                deviceInfo.SetDeviceSerialNumber(device.GetSerialNumber());
+            }
+
+            deviceInfo.SetDeviceTotalSpaceInBytes(
+                deviceInfo.GetDeviceTotalSpaceInBytes() + deviceBytes);
+
+            if (dirty) {
+                deviceInfo.SetDeviceDirtySpaceInBytes(
+                    deviceInfo.GetDeviceDirtySpaceInBytes() + deviceBytes);
+                continue;
+            }
+
+            if (suspended) {
+                deviceInfo.SetDeviceSuspendedSpaceInBytes(
+                    deviceInfo.GetDeviceSuspendedSpaceInBytes() + deviceBytes);
+                continue;
+            }
+
+            if (allocated) {
+                deviceInfo.SetDeviceAllocatedSpaceInBytes(
+                    deviceInfo.GetDeviceAllocatedSpaceInBytes() + deviceBytes);
+            } else {
+                deviceInfo.SetDeviceFreeSpaceInBytes(
+                    deviceInfo.GetDeviceFreeSpaceInBytes() + deviceBytes);
+            }
+        }
+
+        ret.emplace_back();
+        auto& agentInfo = ret.back();
+        agentInfo.SetAgentId(agent.GetAgentId());
+        for (auto& [name, info]: deviceMap) {
+            *agentInfo.AddDevices() = std::move(info);
+        }
+    }
+
+    return ret;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage
