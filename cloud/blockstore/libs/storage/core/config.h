@@ -580,6 +580,8 @@ public:
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
+
+    [[nodiscard]] bool GetDefaultEncryptionEnabled() const;
 };
 
 ui64 GetAllocationUnit(
