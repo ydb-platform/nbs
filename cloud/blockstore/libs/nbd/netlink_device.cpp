@@ -11,10 +11,15 @@
 #include <netlink/netlink.h>
 
 #include <util/generic/scope.h>
+#include <util/stream/mem.h>
 
 namespace NCloud::NBlockStore::NBD {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TStringBuf NBD_DEVICE_SUFFIX = "/dev/nbd";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -183,15 +188,16 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
 
-        const char suffix[] = "nbd";
-        size_t index = DeviceName.find(suffix);
-        if (index == TString::npos) {
+        // accept /dev/nbd devices with a prefix other than /
+        // (e.g. inside a container)
+        const size_t pos = DeviceName.rfind(NBD_DEVICE_SUFFIX);
+        if (pos == TString::npos) {
             throw TServiceError(E_ARGUMENT)
                 << "unable to parse " << DeviceName << " device index";
         }
 
         try {
-            TStringStream stream(DeviceName.substr(index + sizeof(suffix)));
+            TMemoryInput stream(DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
             stream >> DeviceIndex;
         } catch (...) {
             throw TServiceError(E_ARGUMENT)
