@@ -58,7 +58,8 @@ class Client(_SafeClient):
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
-            request_timeout: int | None = None) -> futures.Future:
+            request_timeout: int | None = None,
+            encryption_spec: protos.TEncryptionSpec | None = None) -> futures.Future:
 
         request = protos.TMountVolumeRequest(
             DiskId=disk_id,
@@ -66,7 +67,8 @@ class Client(_SafeClient):
             VolumeAccessMode=access_mode,
             VolumeMountMode=mount_mode,
             MountFlags=mount_flags,
-            MountSeqNumber=mount_seq_number
+            MountSeqNumber=mount_seq_number,
+            EncryptionSpec=encryption_spec,
         )
 
         future = futures.Future()
@@ -107,7 +109,8 @@ class Client(_SafeClient):
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
-            request_timeout: int | None = None) -> dict:
+            request_timeout: int | None = None,
+            encryption_spec: protos.TEncryptionSpec | None = None) -> dict:
 
         request = protos.TMountVolumeRequest(
             DiskId=disk_id,
@@ -115,7 +118,8 @@ class Client(_SafeClient):
             VolumeAccessMode=access_mode,
             VolumeMountMode=mount_mode,
             MountFlags=mount_flags,
-            MountSeqNumber=mount_seq_number
+            MountSeqNumber=mount_seq_number,
+            EncryptionSpec=encryption_spec,
         )
         response = self._impl.mount_volume(
             request,
@@ -361,7 +365,8 @@ class Client(_SafeClient):
             timestamp: datetime | None = None,
             trace_id: str | None = None,
             request_timeout: int | None = None,
-            device_name: str | None = None) -> futures.Future:
+            device_name: str | None = None,
+            encryption_spec: protos.TEncryptionSpec | None = None) -> futures.Future:
 
         request = protos.TStartEndpointRequest(
             UnixSocketPath=unix_socket_path,
@@ -373,7 +378,8 @@ class Client(_SafeClient):
             MountFlags=mount_flags,
             UnalignedRequestsDisabled=unaligned_requests_disabled,
             MountSeqNumber=seq_number,
-            VhostQueuesCount=vhost_queues
+            VhostQueuesCount=vhost_queues,
+            EncryptionSpec=encryption_spec,
         )
 
         if endpoint_request_timeout is not None:
@@ -430,7 +436,8 @@ class Client(_SafeClient):
             timestamp: datetime | None = None,
             trace_id: str | None = None,
             request_timeout: int | None = None,
-            device_name: str | None = None) -> dict:
+            device_name: str | None = None,
+            encryption_spec: protos.TEncryptionSpec | None = None) -> dict:
 
         request = protos.TStartEndpointRequest(
             UnixSocketPath=unix_socket_path,
@@ -442,7 +449,8 @@ class Client(_SafeClient):
             MountFlags=mount_flags,
             UnalignedRequestsDisabled=unaligned_requests_disabled,
             MountSeqNumber=seq_number,
-            VhostQueuesCount=vhost_queues
+            VhostQueuesCount=vhost_queues,
+            EncryptionSpec=encryption_spec,
         )
 
         if endpoint_request_timeout is not None:

@@ -9,6 +9,7 @@ RECURSE(
     client
     cms
     csi_driver
+    default_encryption
     disk_agent_config
     external_endpoint
     e2e-tests
