@@ -2,8 +2,7 @@ package admin
 
 import (
 	"encoding/json"
-	"log"
-	"os"
+	"fmt"
 
 	"github.com/spf13/cobra"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
@@ -12,35 +11,35 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type consistencyCheckTask struct {
+type consistencyCheck struct {
 	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
 }
 
-func (t *consistencyCheckTask) run() error {
+func (t *consistencyCheck) run() error {
 	ctx := newContext(t.clientConfig)
 
-	poolsStorage, db, err := newPoolStorage(ctx, t.serverConfig)
+	poolStorage, db, err := newPoolStorage(ctx, t.serverConfig)
 	if err != nil {
 		return err
 	}
 	defer db.Close(ctx)
 
-	return poolsStorage.CheckConsistency(ctx)
+	return poolStorage.CheckConsistency(ctx)
 }
 
-func newConsistencyCheckTask(
+func newConsistencyCheck(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	t := &consistencyCheckTask{
+	t := &consistencyCheck{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
 
 	cmd := &cobra.Command{
-		Use: "check",
+		Use: "check_consistency",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},
@@ -51,35 +50,35 @@ func newConsistencyCheckTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type baseDisksConsistencyCheckTask struct {
+type baseDisksConsistencyCheck struct {
 	clientConfig *client_config.ClientConfig
 	serverConfig *server_config.ServerConfig
 }
 
-func (t *baseDisksConsistencyCheckTask) run() error {
+func (t *baseDisksConsistencyCheck) run() error {
 	ctx := newContext(t.clientConfig)
 
-	poolsStorage, db, err := newPoolStorage(ctx, t.serverConfig)
+	poolStorage, db, err := newPoolStorage(ctx, t.serverConfig)
 	if err != nil {
 		return err
 	}
 	defer db.Close(ctx)
 
-	return poolsStorage.CheckBaseDisksConsistency(ctx)
+	return poolStorage.CheckBaseDisksConsistency(ctx)
 }
 
-func newBaseDisksConsistencyCheckTask(
+func newBaseDisksConsistencyCheck(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	t := &baseDisksConsistencyCheckTask{
+	t := &baseDisksConsistencyCheck{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
 
 	cmd := &cobra.Command{
-		Use: "check_base_disks",
+		Use: "check_base_disks_consistency",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},
@@ -90,71 +89,51 @@ func newBaseDisksConsistencyCheckTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type poolsConsistencyCheckTask struct {
+type poolsConsistencyCheck struct {
 	clientConfig        *client_config.ClientConfig
 	serverConfig        *server_config.ServerConfig
 	transitionsFilePath string
 }
 
-func (t *poolsConsistencyCheckTask) run() error {
+func (t *poolsConsistencyCheck) run() error {
 	ctx := newContext(t.clientConfig)
 
-	poolsStorage, db, err := newPoolStorage(ctx, t.serverConfig)
+	poolStorage, db, err := newPoolStorage(ctx, t.serverConfig)
 	if err != nil {
 		return err
 	}
 	defer db.Close(ctx)
 
-	transitions, err := poolsStorage.CheckPoolsConsistency(ctx)
+	transitions, err := poolStorage.CheckPoolsConsistency(ctx)
 	if err != nil {
 		return err
 	}
 
-	if len(t.transitionsFilePath) != 0 {
-		f, err := os.OpenFile(
-			t.transitionsFilePath,
-			os.O_TRUNC|os.O_WRONLY|os.O_CREATE,
-			0644,
-		)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		s, err := json.Marshal(transitions)
-		if err != nil {
-			return err
-		}
-
-		_, err = f.Write(s)
-		if err != nil {
-			return err
-		}
+	s, err := json.Marshal(transitions)
+	if err != nil {
+		return err
 	}
+
+	fmt.Println(s)
 
 	return nil
 }
 
-func newPoolsConsistencyCheckTask(
+func newPoolsConsistencyCheck(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	t := &poolsConsistencyCheckTask{
+	t := &poolsConsistencyCheck{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
 
 	cmd := &cobra.Command{
-		Use: "check_pools",
+		Use: "check_pools_consistency",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return t.run()
 		},
-	}
-
-	cmd.Flags().StringVar(&t.transitionsFilePath, "path", "", "file path where offsetting transitions will be saved; optional")
-	if err := cmd.MarkFlagFilename("path"); err != nil {
-		log.Fatalf("Error setting flag path as required: %v", err)
 	}
 
 	return cmd
@@ -162,19 +141,20 @@ func newPoolsConsistencyCheckTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func newConsistencyCheckCmd(
+func newPoolsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
 	cmd := &cobra.Command{
-		Use: "consistency",
+		Use:     "pools",
+		Aliases: []string{"pool"},
 	}
 
 	cmd.AddCommand(
-		newConsistencyCheckTask(clientConfig, serverConfig),
-		newBaseDisksConsistencyCheckTask(clientConfig, serverConfig),
-		newPoolsConsistencyCheckTask(clientConfig, serverConfig),
+		newConsistencyCheck(clientConfig, serverConfig),
+		newBaseDisksConsistencyCheck(clientConfig, serverConfig),
+		newPoolsConsistencyCheck(clientConfig, serverConfig),
 	)
 
 	return cmd

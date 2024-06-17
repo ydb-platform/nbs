@@ -89,13 +89,13 @@ func Run(
 	)
 
 	additionalCommands := []*cobra.Command{
-		newConsistencyCheckCmd(clientConfig, serverConfig),
 		newDisksCmd(clientConfig, serverConfig),
-		newFilesystemCmd(clientConfig, serverConfig),
-		newImagesCmd(clientConfig, serverConfig),
-		newPlacementGroupCmd(clientConfig, serverConfig),
-		newSnapshotsCmd(clientConfig, serverConfig),
 		newTasksCmd(clientConfig, serverConfig),
+		newImagesCmd(clientConfig, serverConfig),
+		newSnapshotsCmd(clientConfig, serverConfig),
+		newFilesystemCmd(clientConfig, serverConfig),
+		newPlacementGroupCmd(clientConfig, serverConfig),
+		newPoolsCmd(clientConfig, serverConfig),
 	}
 
 	parseClientAndServerConfig := func(cmd *cobra.Command, args []string) error {

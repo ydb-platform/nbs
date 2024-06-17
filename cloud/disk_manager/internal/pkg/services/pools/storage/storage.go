@@ -52,7 +52,7 @@ type PoolInfo struct {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Used in tests and sre tools.
-type PoolOffsettingTransition struct {
+type PoolConsistencyCorrection struct {
 	ImageID               string `json:"image_id"`
 	ZoneID                string `json:"zone_id"`
 	SizeDiff              uint64 `json:"size_diff"`
@@ -171,13 +171,14 @@ type Storage interface {
 	GetReadyPoolInfos(ctx context.Context) ([]PoolInfo, error)
 
 	// Used in tests and sre tools.
-	CheckConsistency(ctx context.Context) error
-
-	// Used in tests and sre tools.
 	CheckPoolsConsistency(
 		ctx context.Context,
-	) ([]PoolOffsettingTransition, error)
+	) ([]PoolConsistencyCorrection, error)
 
 	// Used in tests and sre tools.
 	CheckBaseDisksConsistency(ctx context.Context) error
+
+	// Used in tests and sre tools.
+	// Execute both CheckPoolsConsistency and CheckBaseDisksConsistency.
+	CheckConsistency(ctx context.Context) error
 }

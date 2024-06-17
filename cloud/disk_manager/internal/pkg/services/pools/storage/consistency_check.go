@@ -13,10 +13,10 @@ import (
 
 func (s *storageYDB) getPools(
 	ctx context.Context,
-	tx *persistence.Transaction,
+	session *persistence.Session,
 ) ([]pool, error) {
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 
@@ -211,7 +211,7 @@ func (s *storageYDB) checkPoolConsistency(
 	ctx context.Context,
 	expectedPoolState pool,
 	baseDisks []baseDisk,
-) *PoolOffsettingTransition {
+) *PoolConsistencyCorrection {
 
 	var actualPoolState pool
 	for _, baseDisk := range baseDisks {
@@ -238,7 +238,7 @@ func (s *storageYDB) checkPoolConsistency(
 		expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits ||
 		expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
 
-		return &PoolOffsettingTransition{
+		return &PoolConsistencyCorrection{
 			ImageID:               expectedPoolState.imageID,
 			ZoneID:                expectedPoolState.zoneID,
 			SizeDiff:              actualPoolState.size - expectedPoolState.size,
@@ -254,42 +254,52 @@ func (s *storageYDB) checkPoolConsistency(
 func (s *storageYDB) checkPoolsConsistency(
 	ctx context.Context,
 	session *persistence.Session,
-) ([]PoolOffsettingTransition, error) {
+) ([]PoolConsistencyCorrection, error) {
 
-	var transitions []PoolOffsettingTransition
+	var corrections []PoolConsistencyCorrection
 
-	tx, err := session.BeginRWTransaction(ctx)
+	pools, err := s.getPools(ctx, session)
 	if err != nil {
-		return []PoolOffsettingTransition{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	pools, err := s.getPools(ctx, tx)
-	if err != nil {
-		return []PoolOffsettingTransition{}, err
+		return []PoolConsistencyCorrection{}, err
 	}
 
 	for _, pool := range pools {
-		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
+		tx, err := session.BeginRWTransaction(ctx)
 		if err != nil {
-			return []PoolOffsettingTransition{}, err
+			return []PoolConsistencyCorrection{}, err
+		}
+		defer tx.Rollback(ctx)
+
+		pool, err := s.getPoolOrDefault(ctx, tx, pool.imageID, pool.zoneID)
+		if err != nil {
+			return []PoolConsistencyCorrection{}, err
 		}
 
-		transition := s.checkPoolConsistency(
+		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
+		if err != nil {
+			return []PoolConsistencyCorrection{}, err
+		}
+
+		err = tx.Commit(ctx)
+		if err != nil {
+			return []PoolConsistencyCorrection{}, err
+		}
+
+		correction := s.checkPoolConsistency(
 			ctx,
 			pool,
 			baseDisks,
 		)
 		if err != nil {
-			return []PoolOffsettingTransition{}, err
+			return []PoolConsistencyCorrection{}, err
 		}
 
-		if transition != nil {
-			transitions = append(transitions, *transition)
+		if correction != nil {
+			corrections = append(corrections, *correction)
 		}
 	}
 
-	return transitions, tx.Commit(ctx)
+	return corrections, nil
 }
 
 func (s *storageYDB) checkConsistency(
@@ -297,15 +307,15 @@ func (s *storageYDB) checkConsistency(
 	session *persistence.Session,
 ) error {
 
-	transitions, err := s.checkPoolsConsistency(ctx, session)
+	corrections, err := s.checkPoolsConsistency(ctx, session)
 	if err != nil {
 		return err
 	}
 
-	if len(transitions) != 0 {
+	if len(corrections) != 0 {
 		return errors.NewNonRetriableErrorf(
-			"internal inconsistency: pools offsetting transitions are %+v",
-			transitions,
+			"internal inconsistency: pools offsetting corrections are %+v",
+			corrections,
 		)
 	}
 
