@@ -49,6 +49,20 @@ type PoolInfo struct {
 	CreatedAt     time.Time
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Used in tests.
+type PoolOffsettingTransition struct {
+	ImageID               string `json:"image_id"`
+	ZoneID                string `json:"zone_id"`
+	SizeDiff              uint64 `json:"size_diff"`
+	FreeUnitsDiff         uint64 `json:"free_units_diff"`
+	AcquiredUnitsDiff     uint64 `json:"acquired_units_diff"`
+	BaseDisksInflightDiff uint64 `json:"base_disks_inflight_diff"`
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Storage interface {
 	// Acquires slot for given |slot.OverlayDisk|.
 	AcquireBaseDiskSlot(
@@ -160,7 +174,9 @@ type Storage interface {
 	CheckConsistency(ctx context.Context) error
 
 	// Used in tests.
-	CheckPoolsConsistency(ctx context.Context) error
+	CheckPoolsConsistency(
+		ctx context.Context,
+	) ([]PoolOffsettingTransition, error)
 
 	// Used in tests.
 	CheckBaseDisksConsistency(ctx context.Context) error

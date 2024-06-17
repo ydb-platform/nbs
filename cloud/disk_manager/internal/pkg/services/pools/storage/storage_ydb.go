@@ -418,13 +418,21 @@ func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	)
 }
 
-func (s *storageYDB) CheckPoolsConsistency(ctx context.Context) error {
-	return s.db.Execute(
+func (s *storageYDB) CheckPoolsConsistency(
+	ctx context.Context,
+) ([]PoolOffsettingTransition, error) {
+
+	var transitions []PoolOffsettingTransition
+
+	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.checkPoolsConsistency(ctx, session)
+			var err error
+			transitions, err = s.checkPoolsConsistency(ctx, session)
+			return err
 		},
 	)
+	return transitions, err
 }
 
 func (s *storageYDB) CheckBaseDisksConsistency(ctx context.Context) error {

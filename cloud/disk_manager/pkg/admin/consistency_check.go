@@ -1,6 +1,10 @@
 package admin
 
 import (
+	"encoding/json"
+	"log"
+	"os"
+
 	"github.com/spf13/cobra"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
@@ -30,7 +34,7 @@ func newConsistencyCheckTask(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	c := &consistencyCheckTask{
+	t := &consistencyCheckTask{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
@@ -38,7 +42,7 @@ func newConsistencyCheckTask(
 	cmd := &cobra.Command{
 		Use: "check",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.run()
+			return t.run()
 		},
 	}
 
@@ -69,7 +73,7 @@ func newBaseDisksConsistencyCheckTask(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	c := &consistencyCheckTask{
+	t := &baseDisksConsistencyCheckTask{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
@@ -77,7 +81,7 @@ func newBaseDisksConsistencyCheckTask(
 	cmd := &cobra.Command{
 		Use: "check_base_disks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.run()
+			return t.run()
 		},
 	}
 
@@ -87,8 +91,9 @@ func newBaseDisksConsistencyCheckTask(
 ////////////////////////////////////////////////////////////////////////////////
 
 type poolsConsistencyCheckTask struct {
-	clientConfig *client_config.ClientConfig
-	serverConfig *server_config.ServerConfig
+	clientConfig        *client_config.ClientConfig
+	serverConfig        *server_config.ServerConfig
+	transitionsFilePath string
 }
 
 func (t *poolsConsistencyCheckTask) run() error {
@@ -100,7 +105,34 @@ func (t *poolsConsistencyCheckTask) run() error {
 	}
 	defer db.Close(ctx)
 
-	return poolsStorage.CheckPoolsConsistency(ctx)
+	transitions, err := poolsStorage.CheckPoolsConsistency(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(t.transitionsFilePath) != 0 {
+		f, err := os.OpenFile(
+			t.transitionsFilePath,
+			os.O_TRUNC|os.O_WRONLY|os.O_CREATE,
+			0644,
+		)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		s, err := json.Marshal(transitions)
+		if err != nil {
+			return err
+		}
+
+		_, err = f.Write(s)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func newPoolsConsistencyCheckTask(
@@ -108,7 +140,7 @@ func newPoolsConsistencyCheckTask(
 	serverConfig *server_config.ServerConfig,
 ) *cobra.Command {
 
-	c := &consistencyCheckTask{
+	t := &poolsConsistencyCheckTask{
 		clientConfig: clientConfig,
 		serverConfig: serverConfig,
 	}
@@ -116,8 +148,13 @@ func newPoolsConsistencyCheckTask(
 	cmd := &cobra.Command{
 		Use: "check_pools",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.run()
+			return t.run()
 		},
+	}
+
+	cmd.Flags().StringVar(&t.transitionsFilePath, "path", "", "file path where offsetting transitions will be saved; optional")
+	if err := cmd.MarkFlagFilename("path"); err != nil {
+		log.Fatalf("Error setting flag path as required: %v", err)
 	}
 
 	return cmd

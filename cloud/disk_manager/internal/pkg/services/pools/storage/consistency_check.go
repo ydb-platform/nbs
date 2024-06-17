@@ -211,7 +211,7 @@ func (s *storageYDB) checkPoolConsistency(
 	ctx context.Context,
 	expectedPoolState pool,
 	baseDisks []baseDisk,
-) error {
+) *PoolOffsettingTransition {
 
 	var actualPoolState pool
 	for _, baseDisk := range baseDisks {
@@ -233,40 +233,19 @@ func (s *storageYDB) checkPoolConsistency(
 		}
 	}
 
-	if expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits {
-		return errors.NewNonRetriableErrorf(
-			"actual acquiredUnits %v is not equal to expected %v for pool %+v",
-			actualPoolState.acquiredUnits,
-			expectedPoolState.acquiredUnits,
-			expectedPoolState,
-		)
-	}
+	if expectedPoolState.size != actualPoolState.size ||
+		expectedPoolState.freeUnits != actualPoolState.freeUnits ||
+		expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits ||
+		expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
 
-	if expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
-		return errors.NewNonRetriableErrorf(
-			"actual baseDisksInflight %v is not equal to expected %v for pool %+v",
-			actualPoolState.baseDisksInflight,
-			expectedPoolState.baseDisksInflight,
-			expectedPoolState,
-		)
-	}
-
-	if expectedPoolState.size != actualPoolState.size {
-		return errors.NewNonRetriableErrorf(
-			"actual size %v is not equal to expected %v for pool %+v",
-			actualPoolState.size,
-			expectedPoolState.size,
-			expectedPoolState,
-		)
-	}
-
-	if expectedPoolState.freeUnits != actualPoolState.freeUnits {
-		return errors.NewNonRetriableErrorf(
-			"actual freeUnits %v is not equal to expected %v for pool %+v",
-			actualPoolState.freeUnits,
-			expectedPoolState.freeUnits,
-			expectedPoolState,
-		)
+		return &PoolOffsettingTransition{
+			ImageID:               expectedPoolState.imageID,
+			ZoneID:                expectedPoolState.zoneID,
+			SizeDiff:              actualPoolState.size - expectedPoolState.size,
+			FreeUnitsDiff:         actualPoolState.freeUnits - expectedPoolState.freeUnits,
+			AcquiredUnitsDiff:     actualPoolState.acquiredUnits - expectedPoolState.acquiredUnits,
+			BaseDisksInflightDiff: actualPoolState.baseDisksInflight - expectedPoolState.baseDisksInflight,
+		}
 	}
 
 	return nil
@@ -275,32 +254,42 @@ func (s *storageYDB) checkPoolConsistency(
 func (s *storageYDB) checkPoolsConsistency(
 	ctx context.Context,
 	session *persistence.Session,
-) error {
+) ([]PoolOffsettingTransition, error) {
+
+	var transitions []PoolOffsettingTransition
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return err
+		return []PoolOffsettingTransition{}, err
 	}
 	defer tx.Rollback(ctx)
 
 	pools, err := s.getPools(ctx, tx)
 	if err != nil {
-		return err
+		return []PoolOffsettingTransition{}, err
 	}
 
 	for _, pool := range pools {
 		baseDisks, err := s.getBaseDisksFromPool(ctx, tx, pool)
 		if err != nil {
-			return err
+			return []PoolOffsettingTransition{}, err
 		}
 
-		err = s.checkPoolConsistency(ctx, pool, baseDisks)
+		transition := s.checkPoolConsistency(
+			ctx,
+			pool,
+			baseDisks,
+		)
 		if err != nil {
-			return err
+			return []PoolOffsettingTransition{}, err
+		}
+
+		if transition != nil {
+			transitions = append(transitions, *transition)
 		}
 	}
 
-	return tx.Commit(ctx)
+	return transitions, tx.Commit(ctx)
 }
 
 func (s *storageYDB) checkConsistency(
@@ -308,9 +297,16 @@ func (s *storageYDB) checkConsistency(
 	session *persistence.Session,
 ) error {
 
-	err := s.checkPoolsConsistency(ctx, session)
+	transitions, err := s.checkPoolsConsistency(ctx, session)
 	if err != nil {
 		return err
+	}
+
+	if len(transitions) != 0 {
+		return errors.NewNonRetriableErrorf(
+			"internal inconsistency: pools offsetting transitions are %+v",
+			transitions,
+		)
 	}
 
 	return s.checkBaseDisksConsistency(ctx, session)
