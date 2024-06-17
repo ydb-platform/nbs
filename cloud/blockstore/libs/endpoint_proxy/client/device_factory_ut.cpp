@@ -178,6 +178,14 @@ Y_UNIT_TEST_SUITE(TProxyDeviceFactoryTest)
             E_FAIL,
             error.GetCode(),
             error.GetMessage());
+
+        stopFuture = device->Stop(false /* delete device */);
+        UNIT_ASSERT(stopFuture.HasValue());
+        error = stopFuture.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            error.GetCode(),
+            error.GetMessage());
     }
 }
 

@@ -77,8 +77,10 @@ struct TProxyDevice: NBD::IDevice
 
     NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
-        // server should always delete device when stopping endpoint
-        Y_UNUSED(deleteDevice);
+        if (!deleteDevice) {
+            return NThreading::MakeFuture(MakeError(S_OK));
+        }
+
         auto request = std::make_shared<NProto::TStopProxyEndpointRequest>();
         request->SetUnixSocketPath(AddressString);
         return Client->StopProxyEndpoint(std::move(request)).Apply(
