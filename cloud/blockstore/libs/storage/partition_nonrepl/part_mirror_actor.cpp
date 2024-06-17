@@ -26,11 +26,14 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 TDuration CalculateScrubbingInterval(
     ui64 blockCount,
     ui32 blockSize,
-    ui64 bandwidthPerTiB)
+    ui64 bandwidthPerTiB,
+    ui64 maxBandwidth,
+    ui64 minBandwidth)
 {
     const auto bandwidth =
-        Min(50.0,
-            Max(5.0, 1.0 * blockCount * blockSize * bandwidthPerTiB / 1_TB));
+        Min(1.0 * maxBandwidth,
+            Max(1.0 * minBandwidth,
+                1.0 * blockCount * blockSize * bandwidthPerTiB / 1_TB));
 
     return TDuration::Seconds(ResyncRangeSize / (bandwidth * 1_MB));
 }
@@ -288,7 +291,9 @@ void TMirrorPartitionActor::ScheduleScrubbingNextRange(
             CalculateScrubbingInterval(
                 State.GetBlockCount(),
                 State.GetBlockSize(),
-                Config->GetScrubbingBandwidth()),
+                Config->GetScrubbingBandwidth(),
+                Config->GetMaxScrubbingBandwidth(),
+                Config->GetMinScrubbingBandwidth()),
             new TEvNonreplPartitionPrivate::TEvScrubbingNextRange());
         ScrubbingScheduled = true;
     }

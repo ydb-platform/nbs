@@ -134,13 +134,18 @@ struct TTestEnv
         storageConfig.SetDataScrubbingEnabled(true);
         storageConfig.SetScrubbingBandwidth(27962026);
 
-        ScrubbingInterval = CalculateScrubbingInterval(6144, 512, 27962026);
-
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
                 NCloud::NProto::TFeaturesConfig())
         );
+
+        ScrubbingInterval = CalculateScrubbingInterval(
+            6144,
+            512,
+            Config->GetScrubbingBandwidth(),
+            Config->GetMaxScrubbingBandwidth(),
+            Config->GetMinScrubbingBandwidth());
 
         auto nodeId = Runtime.GetNodeId(0);
 
@@ -1138,19 +1143,19 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
     {
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(0.8),
-            CalculateScrubbingInterval(24379392, 4_KB, 20));
+            CalculateScrubbingInterval(24379392, 4_KB, 20, 50, 5));
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(0.08),
-            CalculateScrubbingInterval(2437939200, 4_KB, 20));
+            CalculateScrubbingInterval(2437939200, 4_KB, 20, 50, 5));
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(0.2),
-            CalculateScrubbingInterval(268435456, 4_KB, 20));
+            CalculateScrubbingInterval(268435456, 4_KB, 20, 50, 5));
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(0.8),
-            CalculateScrubbingInterval(6144, 512, 50));
+            CalculateScrubbingInterval(6144, 512, 50, 50, 5));
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(0.1),
-            CalculateScrubbingInterval(536870912, 4_KB, 20));
+            CalculateScrubbingInterval(536870912, 4_KB, 20, 50, 5));
     }
 
     Y_UNIT_TEST(ShouldReportScrubbingCounter)
@@ -1169,8 +1174,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         auto& counters = env.StorageStatsServiceState->Counters;
 
-        runtime.DispatchEvents({},
-            CalculateScrubbingInterval(6144, 512, env.Config->GetScrubbingBandwidth()));
+        runtime.DispatchEvents({}, env.ScrubbingInterval);
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 

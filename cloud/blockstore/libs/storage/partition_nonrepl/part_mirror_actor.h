@@ -33,7 +33,9 @@ namespace NCloud::NBlockStore::NStorage {
 TDuration CalculateScrubbingInterval(
     ui64 blockCount,
     ui32 blockSize,
-    ui64 bandwidthPerTiB);
+    ui64 bandwidthPerTiB,
+    ui64 maxBandwidth,
+    ui64 minBandwidth);
 
 ////////////////////////////////////////////////////////////////////////////////
 
