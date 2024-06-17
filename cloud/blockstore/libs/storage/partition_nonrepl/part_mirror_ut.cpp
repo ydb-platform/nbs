@@ -132,7 +132,8 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetDataScrubbingEnabled(true);
-        storageConfig.SetScrubbingBandwidth(27962026);
+        // set bandwidth to reach maximum bandwidth for scrubbing - 50 MiB/s
+        storageConfig.SetScrubbingBandwidth(20000000);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
