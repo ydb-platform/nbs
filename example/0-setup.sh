@@ -9,6 +9,7 @@ find_bin_dir() {
     readlink -e `dirname $0`
 }
 
+LOCALHOST=$(hostname --fqdn)
 BIN_DIR=`find_bin_dir`
 PERSISTENT_TMP_DIR=${PERSISTENT_TMP_DIR:-$HOME/tmp/nbs}
 source ./prepare_binaries.sh || exit 1
@@ -24,7 +25,7 @@ generate_cert() {
     local fallback_name="$name-fallback"
     local dir="$2"
     openssl genrsa -passout pass:$pass -des3 -out $dir/$name.key 4096
-    openssl req -passin pass:$pass -new -key $dir/$name.key -out $dir/$name.csr -subj "/C=RU/L=MyCity/O=MyCloud/OU=Infrastructure/CN=$(hostname --fqdn)"
+    openssl req -passin pass:$pass -new -key $dir/$name.key -out $dir/$name.csr -subj "/C=RU/L=MyCity/O=MyCloud/OU=Infrastructure/CN=$LOCALHOST"
     openssl req -passin pass:$pass -new -key $dir/$name.key -out $dir/$fallback_name.csr -subj "/C=RU/L=MyCity/O=MyCloud/OU=Infrastructure/CN=localhost"
     openssl x509 -req -passin pass:$pass -days 365 -in $dir/$name.csr -signkey $dir/$name.key -set_serial 01 -out $dir/$name.crt
     openssl x509 -req -passin pass:$pass -days 365 -in $dir/$fallback_name.csr -signkey $dir/$name.key -set_serial 01 -out $dir/$fallback_name.crt
@@ -47,7 +48,7 @@ format_disk() {
     ln -s $REAL_DISK_FILE $DISK_FILE
 }
 
-setup_nonrepl_disk_agent() {
+setup_remote_disk_agent() {
     if [ -z "$1" ]; then echo "Agent number is required"; exit 1; fi
 
     truncate -s  1G "$BIN_DIR/data/remote$1-1024-1.bin"
@@ -86,14 +87,56 @@ DataCenter: "local-dc"
 Rack: "rack-$1"
 EOF
 
+} # setup_remote_disk_agent
+
+setup_local_disk_agent() {
+    truncate -s  1G "$BIN_DIR/data/local-1024-1.bin"
+    truncate -s  1G "$BIN_DIR/data/local-1024-2.bin"
+    truncate -s  1G "$BIN_DIR/data/local-1024-3.bin"
+
+    cat > $BIN_DIR/nbs/nbs-disk-agent-0.txt <<EOF
+AgentId: "$LOCALHOST"
+Enabled: true
+DedicatedDiskAgent: true
+Backend: DISK_AGENT_BACKEND_AIO
+AcquireRequired: true
+
+FileDevices: {
+    Path: "$BIN_DIR/data/local-1024-1.bin"
+    DeviceId: "local-1024-1"
+    BlockSize: 512
+    PoolName: "local-ssd"
 }
+
+FileDevices: {
+    Path: "$BIN_DIR/data/local-1024-2.bin"
+    DeviceId: "local-1024-2"
+    BlockSize: 512
+    PoolName: "local-ssd"
+}
+
+FileDevices: {
+    Path: "$BIN_DIR/data/local-1024-3.bin"
+    DeviceId: "local-1024-3"
+    BlockSize: 512
+    PoolName: "local-ssd"
+}
+EOF
+
+cat > $BIN_DIR/nbs/nbs-location-0.txt <<EOF
+DataCenter: "local-dc"
+Rack: "rack-local"
+EOF
+
+} # setup_local_disk_agent
 
 
 setup_nonrepl_disk_registry() {
 
-    setup_nonrepl_disk_agent 1
-    setup_nonrepl_disk_agent 2
-    setup_nonrepl_disk_agent 3
+    setup_local_disk_agent
+    setup_remote_disk_agent 1
+    setup_remote_disk_agent 2
+    setup_remote_disk_agent 3
 
     cat > "$BIN_DIR"/nbs/nbs-disk-registry.txt <<EOF
 KnownAgents {
@@ -116,6 +159,19 @@ KnownAgents {
     Devices: "remote3-1024-2"
     Devices: "remote3-1024-3"
 }
+
+KnownAgents {
+    AgentId: "$LOCALHOST"
+    Devices: "local-1024-1"
+    Devices: "local-1024-2"
+    Devices: "local-1024-3"
+}
+
+KnownDevicePools: <
+  Name: "local-ssd"
+  AllocationUnit: 1073741824
+  Kind: DEVICE_POOL_KIND_LOCAL
+>
 
 EOF
 }

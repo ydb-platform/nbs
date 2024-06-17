@@ -7,3 +7,6 @@ AllocationUnitMirror2SSD: 1
 AllocationUnitMirror3SSD: 1
 NonReplicatedDontSuspendDevices: true
 UseShadowDisksForNonreplDiskCheckpoints: true
+MaxShadowDiskFillIoDepth: 4
+OptimizeVoidBuffersTransferForReadsEnabled: true
+MaxShadowDiskFillBandwidth: 1000
