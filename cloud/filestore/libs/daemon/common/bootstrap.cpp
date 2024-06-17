@@ -53,17 +53,21 @@ namespace {
 const TString TraceLoggerId = "st_trace_logger";
 const TString SlowRequestsFilterId = "st_slow_requests_filter";
 
+// One can use either a service name and have the stats file inferred from it,
+// or provide the stats file explicitly.
 NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
     const TString& cpuWaitServiceName,
+    const TString& cpuWaitFilename,
     const TLog& log,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     const TString& metricsComponent)
 {
-    if (cpuWaitServiceName.Empty()) {
+    if (cpuWaitServiceName.Empty() && cpuWaitFilename.Empty()) {
         const auto& Log = log;
         STORAGE_INFO(
-            "CpuWaitServiceName is empty, can't build CgroupStatsFetcher");
+            "CpuWaitServiceName and CpuWaitFilename are empty, can't build "
+            "CgroupStatsFetcher");
         return CreateCgroupStatsFetcherStub();
     }
     auto cgroupStatsFetcherMonitoringSettings =
@@ -72,12 +76,16 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
             .ComponentGroupName = metricsComponent,
             .CounterName = "CpuWaitFailure",
         };
+    TString statsFile =
+        cpuWaitFilename.Empty()
+            ? NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName)
+            : cpuWaitFilename;
 
     return CreateCgroupStatsFetcher(
         "FILESTORE_CGROUPS",
         std::move(logging),
         std::move(monitoring),
-        NCloud::NStorage::BuildCpuWaitStatsFilename(cpuWaitServiceName),
+        statsFile,
         std::move(cgroupStatsFetcherMonitoringSettings));
 };
 
@@ -298,6 +306,7 @@ void TBootstrapCommon::InitActorSystem()
 
     CgroupStatsFetcher = BuildCgroupStatsFetcher(
         Configs->DiagnosticsConfig->GetCpuWaitServiceName(),
+        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
         Log,
         logging,
         monitoring,
