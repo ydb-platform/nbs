@@ -273,6 +273,16 @@ service TBlockStoreService
     }
 
     //
+    // Agents info
+    //
+    rpc QueryAgentsInfo(TQueryAgentsInfoRequest) returns (TQueryAgentsInfoResponse) {
+        option (google.api.http) = {
+            post: "/query_agents_info"
+            body: "*"
+        };
+    }
+
+    //
     // Local SSD
     //
 

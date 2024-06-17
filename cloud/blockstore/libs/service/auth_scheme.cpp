@@ -58,11 +58,12 @@ TPermissionList GetRequestPermissions(EBlockStoreRequest requestType)
     switch (requestType) {
         case EBlockStoreRequest::CmsAction:
             return CreatePermissionList({EPermission::Update});
-        // The following 4 don't deal with user data.
+        // The following 5 don't deal with user data.
         case EBlockStoreRequest::Ping:
         case EBlockStoreRequest::UploadClientMetrics:
         case EBlockStoreRequest::DiscoverInstances:
         case EBlockStoreRequest::QueryAvailableStorage:
+        case EBlockStoreRequest::QueryAgentsInfo:
             return CreatePermissionList({});
         // UnmountVolume can't expose or corrupt any user data.
         case EBlockStoreRequest::UnmountVolume:
