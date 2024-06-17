@@ -42,6 +42,7 @@ struct TTestEnv
     TStorageStatsServiceStatePtr StorageStatsServiceState;
     TDiskAgentStatePtr DiskAgentState;
     TVector<TActorId> ReplicaActors;
+    TDuration ScrubbingInterval;
 
     static void AddDevice(
         ui32 nodeId,
@@ -131,7 +132,9 @@ struct TTestEnv
         storageConfig.SetNonReplicatedMinRequestTimeoutSSD(1'000);
         storageConfig.SetNonReplicatedMaxRequestTimeoutSSD(5'000);
         storageConfig.SetDataScrubbingEnabled(true);
-        storageConfig.SetScrubbingBandwidth(3'600'000'000'000);
+        storageConfig.SetScrubbingBandwidth(27962026);
+
+        ScrubbingInterval = CalculateScrubbingInterval(6144, 512, 27962026);
 
         Config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
@@ -1131,6 +1134,25 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             counters.BytesCount.Value);
     }
 
+    Y_UNIT_TEST(ShouldCalculateScrubbingIntervalCorrectly)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(0.8),
+            CalculateScrubbingInterval(24379392, 4_KB, 20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(0.08),
+            CalculateScrubbingInterval(2437939200, 4_KB, 20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(0.2),
+            CalculateScrubbingInterval(268435456, 4_KB, 20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(0.8),
+            CalculateScrubbingInterval(6144, 512, 50));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(0.1),
+            CalculateScrubbingInterval(536870912, 4_KB, 20));
+    }
+
     Y_UNIT_TEST(ShouldReportScrubbingCounter)
     {
         using namespace NMonitoring;
@@ -1147,7 +1169,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         auto& counters = env.StorageStatsServiceState->Counters;
 
-        runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        runtime.DispatchEvents({},
+            CalculateScrubbingInterval(6144, 512, env.Config->GetScrubbingBandwidth()));
         runtime.AdvanceCurrentTime(UpdateCountersInterval);
         runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
 
@@ -1289,7 +1312,7 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         rangeCount = 0;
         ui32 iterations = 0;
         while (rangeCount < 5 && iterations++ < 100) {
-            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+            runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(0, mirroredDiskChecksumMismatch->Val());
@@ -1389,13 +1412,13 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
             return false;
         });
 
-        runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+        runtime.DispatchEvents({}, env.ScrubbingInterval);
 
         env.WriteActor(env.ActorId, range, 'D');
 
         ui32 iterations = 0;
         while (rangeCount < 5 && iterations++ < 100) {
-            runtime.DispatchEvents({}, env.Config->GetScrubbingInterval());
+            runtime.DispatchEvents({}, env.ScrubbingInterval);
         }
 
         auto mirroredDiskChecksumMismatch = counters->GetCounter(
