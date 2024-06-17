@@ -100,7 +100,8 @@ class Session(object):
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
-            request_timeout=None):
+            request_timeout=None,
+            encryption_spec=None):
 
         result = futures.Future()
 
@@ -139,7 +140,8 @@ class Session(object):
             idempotence_id,
             timestamp,
             trace_id,
-            request_timeout)
+            request_timeout,
+            encryption_spec)
 
         def process_mount_response(f):
             with self.__mount_lock:
@@ -161,13 +163,15 @@ class Session(object):
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
-            request_timeout=None):
+            request_timeout=None,
+            encryption_spec=None):
 
         return self.mount_volume_async(
             idempotence_id,
             timestamp,
             trace_id,
-            request_timeout).result()
+            request_timeout,
+            encryption_spec).result()
 
     @_handle_errors
     def unmount_volume_async(

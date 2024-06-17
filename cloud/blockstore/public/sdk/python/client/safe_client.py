@@ -68,7 +68,8 @@ class _SafeClient(object):
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
-            request_timeout=None):
+            request_timeout=None,
+            encryption_spec=None):
 
         request = protos.TCreateVolumeRequest(
             DiskId=disk_id,
@@ -83,7 +84,8 @@ class _SafeClient(object):
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
-            StoragePoolName=storage_pool_name
+            StoragePoolName=storage_pool_name,
+            EncryptionSpec=encryption_spec,
         )
         return self.__impl.create_volume_async(
             request,
@@ -111,7 +113,8 @@ class _SafeClient(object):
             idempotence_id=None,
             timestamp=None,
             trace_id=None,
-            request_timeout=None):
+            request_timeout=None,
+            encryption_spec=None):
 
         request = protos.TCreateVolumeRequest(
             DiskId=disk_id,
@@ -126,7 +129,8 @@ class _SafeClient(object):
             BaseDiskId=base_disk_id,
             BaseDiskCheckpointId=base_disk_checkpoint_id,
             PartitionsCount=partitions_count,
-            StoragePoolName=storage_pool_name
+            StoragePoolName=storage_pool_name,
+            EncryptionSpec=encryption_spec,
         )
         self.__impl.create_volume(
             request,
