@@ -21,7 +21,7 @@ struct TStatsTableScheme
 {
     const TVector<NYdb::TColumn> Columns;
     const TVector<TString> KeyColumns;
-    const TMaybe<NYdb::NTable::TTtlSettings> Ttl;
+    const TMaybe<NYdb::NTable::TTtlSettings> Ttl = {};
 
     TStatsTableScheme() = default;
 
