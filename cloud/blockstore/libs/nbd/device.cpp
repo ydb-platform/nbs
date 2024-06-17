@@ -245,12 +245,16 @@ class TDeviceStub final
     : public IDevice
 {
 public:
-    void Start() override
-    {}
+    NThreading::TFuture<NProto::TError> Start() override
+    {
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
 
-    void Stop(bool deleteDevice) override
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         Y_UNUSED(deleteDevice);
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 };
 
