@@ -81,6 +81,12 @@ private:
         const typename TMethod::TRequest::TPtr& ev);
 
     template <typename TMethod>
+    void ForwardRequestToFollower(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        ui32 shardNo);
+
+    template <typename TMethod>
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);

@@ -2844,6 +2844,129 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             followerNodeName,
             listNodesResponse.GetNodes(0).GetFollowerNodeName());
     }
+
+    Y_UNIT_TEST(ShouldForwardRequestsToFollower)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE,
+            shard1Id)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            shard1Id,
+            createHandleResponse.GetFollowerFileSystemId());
+
+        const auto followerNodeName =
+            createHandleResponse.GetFollowerNodeName();
+
+        UNIT_ASSERT_VALUES_UNEQUAL("", followerNodeName);
+
+        const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        auto accessNodeResponse = service.AccessNode(
+            headers,
+            fsId,
+            nodeId1)->Record;
+
+        Y_UNUSED(accessNodeResponse);
+
+        auto setNodeAttrResponse = service.SetNodeAttr(
+            headers,
+            fsId,
+            nodeId1,
+            1_MB)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            setNodeAttrResponse.GetNode().GetId());
+
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, setNodeAttrResponse.GetNode().GetSize());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        createHandleResponse = service.CreateHandle(
+            headers1,
+            headers1.FileSystemId,
+            RootNodeId,
+            followerNodeName,
+            TCreateHandleArgs::RDWR)->Record;
+
+        auto handle1 = createHandleResponse.GetHandle();
+
+        UNIT_ASSERT_C(
+            handle1 >= (1LU << 56U) && handle1 < (2LU << 56U),
+            handle1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        auto allocateDataResponse = service.AllocateData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1,
+            0,
+            2_MB)->Record;
+
+        Y_UNUSED(allocateDataResponse);
+
+        auto destroyHandleResponse = service.DestroyHandle(
+            headers,
+            fsId,
+            nodeId1,
+            handle1)->Record;
+
+        Y_UNUSED(destroyHandleResponse);
+
+        // TODO: CreateHandle, GetNodeAttr, ListNodes
+        // TODO: WriteData and ReadData
+
+        // a less important TODO: test XAttr requests
+
+        /*
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            shard1Id,
+            listNodesResponse.GetNodes(0).GetFollowerFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            followerNodeName,
+            listNodesResponse.GetNodes(0).GetFollowerNodeName());
+        */
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

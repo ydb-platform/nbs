@@ -281,4 +281,9 @@ message TStorageConfig
     // the same range, it may be beneficial to increase the reported blocksize x-fold.
     // This numeric value is that x.
     optional uint32 PreferredBlockSizeMultiplier = 354;
+
+    // Enables request forwarding to followers in the StorageServiceActor.
+    // Forwarding is done based on the NodeId and Handle high bits.
+    // Disabling this thing shouldn't really be needed apart from tests.
+    optional bool MultiTabletForwardingEnabled = 355;
 }
