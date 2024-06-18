@@ -251,7 +251,8 @@ public:
         const TString& fileSystemId,
         ui64 nodeId,
         const TString& name,
-        ui32 flags)
+        ui32 flags,
+        const TString& followerId = "")
     {
         auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
         headers.Fill(request->Record);
@@ -259,6 +260,7 @@ public:
         request->Record.SetNodeId(nodeId);
         request->Record.SetName(name);
         request->Record.SetFlags(flags);
+        request->Record.SetFollowerFileSystemId(followerId);
         return request;
     }
 
@@ -305,6 +307,32 @@ public:
         auto request = std::make_unique<TEvService::TEvExecuteActionRequest>();
         request->Record.SetAction(action);
         request->Record.SetInput(input);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvGetNodeAttrRequest> CreateGetNodeAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& nodeName)
+    {
+        auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(nodeName);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvListNodesRequest> CreateListNodesRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId)
+    {
+        auto request = std::make_unique<TEvService::TEvListNodesRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
         return request;
     }
 

@@ -124,7 +124,6 @@ void TIndexTabletProxyActor::OnConnectionError(
 
     CancelActiveRequests(ctx, conn);
     ProcessPendingRequests(ctx, conn);
-
 }
 
 void TIndexTabletProxyActor::ProcessPendingRequests(

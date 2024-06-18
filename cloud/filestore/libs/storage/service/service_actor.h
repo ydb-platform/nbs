@@ -157,6 +157,14 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateConfigureFollowersActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    NActors::IActorPtr CreateConfigureAsFollowerActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
 private:
     void RenderSessions(IOutputStream& out);
     void RenderLocalFileStores(IOutputStream& out);
