@@ -108,12 +108,12 @@ func (t *poolsConsistencyCheck) run() error {
 		return err
 	}
 
-	s, err := json.Marshal(transitions)
+	j, err := json.Marshal(transitions)
 	if err != nil {
 		return err
 	}
 
-	fmt.Print(s)
+	fmt.Println(string(j))
 
 	return nil
 }
