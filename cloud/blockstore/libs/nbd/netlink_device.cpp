@@ -193,22 +193,26 @@ public:
         Stop(false);
     }
 
-    void Start() override
+    NThreading::TFuture<NProto::TError> Start() override
     {
         ConnectSocket();
         ConnectDevice();
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
-    void Stop(bool deleteDevice) override
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         if (AtomicSwap(&ShouldStop, 1) == 1) {
-            return;
+            return NThreading::MakeFuture(MakeError(S_OK));
         }
 
         if (deleteDevice) {
             DisconnectDevice();
             DisconnectSocket();
         }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
 private:
