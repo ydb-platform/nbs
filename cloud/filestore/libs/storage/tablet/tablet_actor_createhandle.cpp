@@ -220,6 +220,8 @@ void TIndexTabletActor::HandleCreateHandle(
     const TEvService::TEvCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    using TResponse = TEvService::TEvCreateHandleResponse;
+
     auto* session =
         AcceptRequest<TEvService::TCreateHandleMethod>(ev, ctx, ValidateRequest);
     if (!session) {
@@ -228,9 +230,27 @@ void TIndexTabletActor::HandleCreateHandle(
 
     auto* msg = ev->Get();
     if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
-        auto response = std::make_unique<TEvService::TEvCreateHandleResponse>();
+        auto response = std::make_unique<TResponse>();
         GetDupCacheEntry(e, response->Record);
         return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    if (msg->Record.GetFollowerFileSystemId()) {
+        bool found = false;
+        for (const auto& f: GetFileSystem().GetFollowerFileSystemIds()) {
+            if (f == msg->Record.GetFollowerFileSystemId()) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            auto error = MakeError(E_ARGUMENT, TStringBuilder() <<
+                "invalid follower id: "
+                << msg->Record.GetFollowerFileSystemId());
+            auto response = std::make_unique<TResponse>(std::move(error));
+            NCloud::Reply(ctx, *ev, std::move(response));
+        }
     }
 
     auto requestInfo = CreateRequestInfo(
@@ -323,7 +343,13 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
     } else {
         args.TargetNodeId = args.NodeId;
-        args.FollowerId = args.RequestFollowerId;
+        if (args.RequestFollowerId) {
+            args.Error = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "CreateHandle request without Name and with"
+                " FollowerId is not supported");
+            return true;
+        }
     }
 
     // TODO(#1350): proper validity checks for external node requests

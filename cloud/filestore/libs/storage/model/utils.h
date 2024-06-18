@@ -16,6 +16,7 @@ inline ui64 ShardedId(ui64 id, ui32 shardNo)
 {
     const auto realBits = 56U;
     const auto realMask = Max<ui64>() >> (64 - realBits);
+    Y_DEBUG_ABORT_UNLESS(shardNo < (1UL << (64 - realBits)));
     return (static_cast<ui64>(shardNo) << realBits) | (realMask & id);
 }
 
