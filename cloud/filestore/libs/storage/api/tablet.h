@@ -27,6 +27,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GenerateBlobIds,            __VA_ARGS__)                               \
     xxx(AddData,                    __VA_ARGS__)                               \
     xxx(ForcedOperation,            __VA_ARGS__)                               \
+    xxx(ConfigureFollowers,         __VA_ARGS__)                               \
+    xxx(ConfigureAsFollower,        __VA_ARGS__)                               \
 // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,6 +78,12 @@ struct TEvIndexTablet
 
         EvForcedOperationRequest = EvBegin + 23,
         EvForcedOperationResponse,
+
+        EvConfigureFollowersRequest = EvBegin + 25,
+        EvConfigureFollowersResponse,
+
+        EvConfigureAsFollowerRequest = EvBegin + 27,
+        EvConfigureAsFollowerResponse,
 
         EvEnd
     };

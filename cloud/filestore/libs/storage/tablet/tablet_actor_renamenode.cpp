@@ -132,7 +132,8 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return false;   // not ready
     }
 
-    if (args.NewChildRef) {
+    // TODO(#1350): properly process moving into an external node
+    if (args.NewChildRef && args.NewChildRef->FollowerId.Empty()) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_NOREPLACE)) {
             args.Error = ErrorAlreadyExists(args.NewName);
             return true;
@@ -213,7 +214,9 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.ChildRef->MinCommitId,
         args.CommitId,
         args.Name,
-        args.ChildRef->ChildNodeId);
+        args.ChildRef->ChildNodeId,
+        args.ChildRef->FollowerId,
+        args.ChildRef->FollowerName);
 
     if (args.NewChildNode) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
@@ -224,7 +227,9 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->MinCommitId,
                 args.CommitId,
                 args.NewName,
-                args.NewChildRef->NodeId);
+                args.NewChildRef->NodeId,
+                args.NewChildRef->FollowerId,
+                args.NewChildRef->FollowerName);
 
             // create source ref to target node
             CreateNodeRef(
@@ -232,8 +237,10 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
-                args.NewChildRef->ChildNodeId);
-        } else {
+                args.NewChildRef->ChildNodeId,
+                args.NewChildRef->FollowerId,
+                args.NewChildRef->FollowerName);
+        } else if (args.NewChildRef->FollowerId.Empty()) {
             // remove target ref and unlink target node
             UnlinkNode(
                 db,
@@ -261,7 +268,9 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
-        args.ChildRef->ChildNodeId);
+        args.ChildRef->ChildNodeId,
+        args.ChildRef->FollowerId,
+        args.ChildRef->FollowerName);
 
     auto newparent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
