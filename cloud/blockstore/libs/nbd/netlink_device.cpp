@@ -15,7 +15,12 @@
 
 namespace NCloud::NBlockStore::NBD {
 
+#define SET_ERROR(promise, code, message) \
+    promise.SetValue(MakeError(code, TStringBuilder() << message))
+
 namespace {
+
+using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -155,7 +160,18 @@ public:
 
 class TNetlinkDevice final
     : public IDevice
+    , public std::enable_shared_from_this<TNetlinkDevice>
 {
+private:
+    struct THandlerContext
+    {
+        std::shared_ptr<TNetlinkDevice> Device;
+
+        THandlerContext(std::shared_ptr<TNetlinkDevice> device)
+            : Device(std::move(device))
+        {}
+    };
+
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
@@ -168,8 +184,10 @@ private:
     IClientHandlerPtr Handler;
     TSocket Socket;
     ui32 DeviceIndex;
-
     TAtomic ShouldStop = 0;
+
+    TPromise<NProto::TError> StartResult = NewPromise<NProto::TError>();
+    TPromise<NProto::TError> StopResult = NewPromise<NProto::TError>();
 
 public:
     TNetlinkDevice(
@@ -207,21 +225,22 @@ public:
 
     ~TNetlinkDevice()
     {
-        Stop(false);
+        Stop(false).GetValueSync();
     }
 
-    NThreading::TFuture<NProto::TError> Start() override
+    TFuture<NProto::TError> Start() override
     {
         ConnectSocket();
         ConnectDevice();
 
-        return NThreading::MakeFuture(MakeError(S_OK));
+        // will be set asynchronously in Connect > HandleStatus > DoConnect
+        return StartResult.GetFuture();
     }
 
-    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
+    TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         if (AtomicSwap(&ShouldStop, 1) == 1) {
-            return NThreading::MakeFuture(MakeError(S_OK));
+            return StopResult.GetFuture();
         }
 
         if (deleteDevice) {
@@ -229,7 +248,12 @@ public:
             DisconnectSocket();
         }
 
-        return NThreading::MakeFuture(MakeError(S_OK));
+        // both disconnect functions are actually synchronous
+        if (!StopResult.HasValue()) {
+            StopResult.SetValue(MakeError(S_OK));
+        }
+
+        return StopResult.GetFuture();
     }
 
 private:
@@ -308,8 +332,14 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         message.Send(socket);
+
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("unable to configure " << DeviceName << ": " << e.what());
+        SET_ERROR(StartResult, E_FAIL,
+            "unable to configure " << DeviceName << ": " << e.what());
+    }
+
+    if (!StartResult.HasValue()) {
+        StartResult.SetValue(MakeError(S_OK));
     }
 }
 
@@ -323,7 +353,8 @@ void TNetlinkDevice::DisconnectDevice()
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Send(socket);
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("unable to disconnect " << DeviceName << ": " << e.what());
+        SET_ERROR(StopResult, E_FAIL,
+            "unable to disconnect " << DeviceName << ": " << e.what());
     }
 }
 
@@ -333,32 +364,31 @@ void TNetlinkDevice::ConnectDevice()
 {
     try {
         TNetlinkSocket socket;
+        auto context = std::make_unique<THandlerContext>(shared_from_this());
+
         nl_socket_modify_cb(
             socket,
             NL_CB_VALID,
             NL_CB_CUSTOM,
             TNetlinkDevice::StatusHandler,
-            this);
-
-        // TODO: use proper context containing device pointer and a socket
-        // send_sync waits for the response and invokes callback immediately
-        // even before returning, so it's technically okay to pass 'this' as
-        // an argument, but it still looks flimsy
+            context.release()); // libnl doesn't throw
 
         TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Send(socket);
+
     } catch (const TServiceError& e) {
-        throw TServiceError(e.GetCode())
-            << "unable to configure " << DeviceName << ": " << e.what();
+        SET_ERROR(StartResult, E_FAIL,
+            "unable to configure " << DeviceName << ": " << e.what());
     }
 }
 
 int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
 {
     auto* header = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(message)));
-    auto* conn = static_cast<TNetlinkDevice*>(argument);
-    auto Log = conn->Log;
+    auto context = std::unique_ptr<THandlerContext>(
+        static_cast<THandlerContext*>(argument));
+
     nlattr* attr[NBD_ATTR_MAX + 1] = {};
     nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1] = {};
     nlattr* device[NBD_DEVICE_ATTR_MAX + 1] = {};
@@ -377,12 +407,14 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             genlmsg_attrlen(header, 0),
             NULL))
     {
-        STORAGE_ERROR("unable to parse NBD_CMD_STATUS response: " << err);
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "unable to parse NBD_CMD_STATUS response: " << err);
         return NL_STOP;
     }
 
     if (!attr[NBD_ATTR_DEVICE_LIST]) {
-        STORAGE_ERROR("did not receive NBD_ATTR_DEVICE_LIST");
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "did not receive NBD_ATTR_DEVICE_LIST");
         return NL_STOP;
     }
 
@@ -392,12 +424,14 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             attr[NBD_ATTR_DEVICE_LIST],
             deviceItemPolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_ATTR_DEVICE_LIST: " << err);
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "unable to parse NBD_ATTR_DEVICE_LIST: " << err);
         return NL_STOP;
     }
 
     if (!deviceItem[NBD_DEVICE_ITEM]) {
-        STORAGE_ERROR("did not receive NBD_DEVICE_ITEM");
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "did not receive NBD_DEVICE_ITEM");
         return NL_STOP;
     }
 
@@ -407,16 +441,18 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             deviceItem[NBD_DEVICE_ITEM],
             devicePolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_DEVICE_ITEM: " << err);
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "unable to parse NBD_DEVICE_ITEM: " << err);
         return NL_STOP;
     }
 
     if (!device[NBD_DEVICE_CONNECTED]) {
-        STORAGE_ERROR("did not receive NBD_DEVICE_CONNECTED");
+        SET_ERROR(context->Device->StartResult, E_FAIL,
+            "did not receive NBD_DEVICE_CONNECTED");
         return NL_STOP;
     }
 
-    conn->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
+    context->Device->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
 
     return NL_OK;
 }
