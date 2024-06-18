@@ -173,17 +173,24 @@ ui32 CountVoidBuffers(const NProto::TIOVector& iov)
 
 bool IsAllZeroes(const char* src, size_t size)
 {
-    using TBigNumber = ui32;
+    using TBigNumber = ui64;
 
     if (size < sizeof(TBigNumber)) {
         return false;
     }
 
-    const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
-    if (*a) {
-        return false;
+    const bool isAligned =
+        reinterpret_cast<std::uintptr_t>(src) % sizeof(TBigNumber) == 0;
+
+    if (isAligned) {
+        const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
+        return !a[0] && !memcmp(
+                            src,
+                            src + sizeof(TBigNumber),
+                            size - sizeof(TBigNumber));
+    } else {
+        return !src[0] && !memcmp(src, src + sizeof(char), size - sizeof(char));
     }
-    return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
 }
 
 }   // namespace NCloud::NBlockStore
