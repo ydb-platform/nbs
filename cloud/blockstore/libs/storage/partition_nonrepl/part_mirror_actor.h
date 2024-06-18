@@ -30,6 +30,15 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TDuration CalculateScrubbingInterval(
+    ui64 blockCount,
+    ui32 blockSize,
+    ui64 bandwidthPerTiB,
+    ui64 maxBandwidth,
+    ui64 minBandwidth);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TMirrorPartitionActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionActor>
 {
@@ -63,10 +72,10 @@ private:
 
     bool ScrubbingScheduled = false;
     ui64 ScrubbingRangeId = 0;
-    TBlockRange64 ScrubbingRange;
     TChecksumRangeActorCompanion ChecksumRangeActorCompanion;
     bool WriteIntersectsWithScrubbing = false;
     ui64 ScrubbingThroughput = 0;
+    TInstant ScrubbingRangeStarted;
 
 public:
     TMirrorPartitionActor(
@@ -93,6 +102,10 @@ private:
     void SendStats(const NActors::TActorContext& ctx);
     void CompareChecksums(const NActors::TActorContext& ctx);
     void ReplyAndDie(const NActors::TActorContext& ctx);
+    TBlockRange64 GetScrubbingRange() const;
+    void StartScrubbingRange(
+        const NActors::TActorContext& ctx,
+        ui64 scrubbingRangeId);
 
 private:
     STFUNC(StateWork);

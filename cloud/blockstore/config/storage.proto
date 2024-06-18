@@ -968,7 +968,7 @@ message TStorageServiceConfig
 
     // Enable data scrubbing for mirrored disks.
     optional bool DataScrubbingEnabled = 364;
-    // Interval between scrubbing ranges in milliseconds
+    // Interval between scrubbing ranges in milliseconds.
     optional uint32 ScrubbingInterval = 365;
 
     // Optimize all-zeros blocks transmission over the network.
@@ -985,4 +985,16 @@ message TStorageServiceConfig
     // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
     // Set in ms.
     optional uint32 WaitDependentDisksRetryRequestDelay = 369;
+
+    // Timeout attempts of scrubbing range, if checksum mismatch was found.
+    optional uint32 ScrubbingChecksumMismatchTimeout = 370;
+
+    // Scrubbing bandwidth per 1 TiB in MiB/s.
+    optional uint64 ScrubbingBandwidth = 371;
+
+    // Max scrubbing bandwidth in MiB/s.
+    optional uint64 MaxScrubbingBandwidth = 372;
+
+    // Min scrubbing bandwidth in MiB/s.
+    optional uint64 MinScrubbingBandwidth = 373;
 }
