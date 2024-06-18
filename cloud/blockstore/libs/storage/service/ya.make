@@ -20,6 +20,7 @@ SRCS(
     service_actor_actions_flush_profile_log.cpp
     service_actor_actions_get_dependent_disks.cpp
     service_actor_actions_get_compaction_status.cpp
+    service_actor_actions_get_disk_agent_node_id.cpp
     service_actor_actions_get_diskregistry_tablet_info.cpp
     service_actor_actions_get_nameservice_config.cpp
     service_actor_actions_get_partition_info.cpp
@@ -44,6 +45,7 @@ SRCS(
     service_actor_actions_update_placement_group_settings.cpp
     service_actor_actions_update_used_blocks.cpp
     service_actor_actions_update_volume_params.cpp
+    service_actor_actions_wait_dependent_disks_switched_node.cpp
     service_actor_actions_writable_state.cpp
     service_actor_actions.cpp
     service_actor_alter.cpp

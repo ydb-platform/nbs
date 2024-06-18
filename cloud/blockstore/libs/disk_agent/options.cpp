@@ -37,6 +37,17 @@ TOptions::TOptions()
         .RequiredArgument("STR")
         .DefaultValue("disk-agent")
         .StoreResult(&NodeType);
+
+    Opts.AddLongOption(
+            "temporary-agent",
+            "run temporary disk agent for blue-green deployment")
+        .NoArgument()
+        .StoreTrue(&TemporaryAgent);
+
+    Opts.AddLongOption("rdma-target-port")
+        .RequiredArgument("NUM")
+        .DefaultValue(0)
+        .StoreResult(&RdmaTargetPort);
 }
 
 void TOptions::Parse(int argc, char** argv)

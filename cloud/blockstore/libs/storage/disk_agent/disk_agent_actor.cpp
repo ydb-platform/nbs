@@ -128,6 +128,10 @@ void TDiskAgentActor::UpdateSessionCache(const TActorContext& ctx)
 
 void TDiskAgentActor::RunSessionCacheActor(const TActorContext& ctx)
 {
+    if (AgentConfig->GetTemporaryAgent()) {
+        return;
+    }
+
     auto path = GetCachedSessionsPath();
     if (path.empty()) {
         return;

@@ -106,6 +106,8 @@ public:
     TString GetCachedConfigPath() const;
     TString GetCachedSessionsPath() const;
 
+    bool GetTemporaryAgent() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

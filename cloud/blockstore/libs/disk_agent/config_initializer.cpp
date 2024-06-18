@@ -287,6 +287,15 @@ void TConfigInitializer::SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) 
     if (config.GetAgentId().empty()) {
         config.SetAgentId(FQDNHostName());
     }
+
+    if (Options->TemporaryAgent) {
+        config.SetTemporaryAgent(true);
+    }
+
+    if (Options->RdmaTargetPort != 0) {
+        config.MutableRdmaTarget()->MutableEndpoint()->SetPort(
+            Options->RdmaTargetPort);
+    }
 }
 
 TString TConfigInitializer::GetFullSchemeShardDir() const

@@ -20,10 +20,10 @@ struct TOptions
     TString DiskRegistryProxyConfig;
     TString FeaturesConfig;
     TString RdmaConfig;
-
     TString SysLogService;
-
     TString NodeType;
+    bool TemporaryAgent = false;
+    ui32 RdmaTargetPort = 0;
 
     TOptions();
 

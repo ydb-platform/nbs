@@ -57,7 +57,7 @@ void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 
         ep = RdmaClient->StartEndpoint(
             d.GetAgentId(),
-            Config->GetRdmaTargetPort());
+            d.GetRdmaEndpoint().GetPort());
     }
 
     Become(&TThis::StateWork);

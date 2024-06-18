@@ -62,6 +62,7 @@ target_sources(libs-storage-disk_registry PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_create_disk_from_devices.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_describe.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_destroy.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_get_agent_node_id.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_get_dependent_disks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_initiate_realloc.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_registry/disk_registry_actor_initschema.cpp

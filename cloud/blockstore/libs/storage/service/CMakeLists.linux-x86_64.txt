@@ -58,6 +58,7 @@ target_sources(libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_finish_fill_disk.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_flush_profile_log.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_get_dependent_disks.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_get_disk_agent_node_id.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_get_compaction_status.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_get_diskregistry_tablet_info.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_get_nameservice_config.cpp
@@ -83,6 +84,7 @@ target_sources(libs-storage-service PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_placement_group_settings.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_used_blocks.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_update_volume_params.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_wait_dependent_disks_switched_node.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions_writable_state.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_actions.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/service/service_actor_alter.cpp

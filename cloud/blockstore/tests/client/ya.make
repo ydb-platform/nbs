@@ -5,10 +5,12 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/large.inc)
 TEST_SRCS(
     keepalive.py
     test_with_client.py
+    test_with_multiple_agents.py
 )
 
 DEPENDS(
     cloud/blockstore/apps/client
+    cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/endpoint_proxy
     cloud/blockstore/apps/server
 
