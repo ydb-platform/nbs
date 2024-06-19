@@ -199,7 +199,7 @@ func (c *S3Client) PutObject(
 ) (err error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Info(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
+	logging.Info(ctx, "putting object to s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()

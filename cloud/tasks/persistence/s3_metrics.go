@@ -83,7 +83,7 @@ func (m *s3Metrics) StatCall(
 					canceledCounter.Inc()
 				}
 			} else {
-				logging.Info(ctx, "failed to process aws go sdk error %v", err)
+				logging.Warn(ctx, "failed to process aws go sdk error %v", err)
 			}
 
 			return

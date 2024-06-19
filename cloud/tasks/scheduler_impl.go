@@ -295,7 +295,7 @@ func (s *scheduler) WaitAnyTasks(
 			logging.Info(ctx, "waiting cancelled, taskIDs %v", taskIDs)
 			return nil, ctx.Err()
 		case <-timeout:
-			logging.Info(ctx, "waiting timed out, taskIDs %v", taskIDs)
+			logging.Warn(ctx, "waiting timed out, taskIDs %v", taskIDs)
 			return nil, errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -326,7 +326,7 @@ func (s *scheduler) WaitTaskEnded(
 			logging.Info(ctx, "waiting cancelled, taskID %v", taskID)
 			return ctx.Err()
 		case <-timeout:
-			logging.Info(ctx, "waiting timed out, taskID %v", taskID)
+			logging.Warn(ctx, "waiting timed out, taskID %v", taskID)
 			return errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -384,7 +384,7 @@ func (s *scheduler) GetOperation(
 ) (*operation.Operation, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Info(ctx, "getting operation proto %v", taskID)
+	logging.Debug(ctx, "getting operation proto %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
 	if err != nil {
@@ -494,7 +494,7 @@ func (s *scheduler) WaitTaskSync(
 		iteration++
 
 		if iteration%20 == 0 {
-			logging.Info(ctx, "still waiting for task with id %v", taskID)
+			logging.Warn(ctx, "still waiting for task with id %v", taskID)
 		}
 		return nil
 	}
