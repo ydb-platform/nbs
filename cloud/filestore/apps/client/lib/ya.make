@@ -4,6 +4,7 @@ SRCS(
     add_cluster_node.cpp
     command.cpp
     create.cpp
+    create_file.cpp
     create_session.cpp
     describe.cpp
     destroy.cpp
