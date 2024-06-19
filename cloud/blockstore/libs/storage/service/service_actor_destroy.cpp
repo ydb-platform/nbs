@@ -329,12 +329,12 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    auto cloudId = msg->Record.GetVolume().GetCloudId();
+    const auto& cloudId = msg->Record.GetVolume().GetCloudId();
     if (DisableDiskWithCloudIdDestruction && !cloudId.Empty()) {
         auto e = MakeError(
             E_REJECTED,
             TStringBuilder() << "CloudId=" << cloudId <<
-            ", only disks with empty CloudId disks are allowed to be deleted");
+            ", only disks with empty CloudId are allowed to be deleted");
 
         ReplyAndDie(
             ctx,
