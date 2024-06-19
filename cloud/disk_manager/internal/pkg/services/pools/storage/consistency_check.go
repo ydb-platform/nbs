@@ -146,7 +146,7 @@ func (s *storageYDB) checkBaseDiskConsistency(
 			continue
 		}
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"processing slot %+v for baseDisk %+v",
 			slot,

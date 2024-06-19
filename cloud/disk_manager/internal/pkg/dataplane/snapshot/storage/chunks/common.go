@@ -106,7 +106,7 @@ func (s *storageCommon) refChunk(
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),
 	)
 	if err == nil {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"referred chunk %v for referer %v",
 			chunkID,
@@ -204,7 +204,7 @@ func (s *storageCommon) unrefChunk(
 	}
 	defer res.Close()
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"unreferred chunk %v for referer %v",
 		chunkID,

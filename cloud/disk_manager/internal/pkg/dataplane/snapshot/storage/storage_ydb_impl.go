@@ -495,7 +495,7 @@ func (s *storageYDB) ShallowCopyChunk(
 		return err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"copied chunk map entry %+v to snapshot %v",
 		srcEntry,
@@ -638,7 +638,7 @@ func (s *storageYDB) writeDataChunk(
 		return "", err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"created chunk map entry %v for snapshot %v",
 		chunk.ID,
@@ -679,7 +679,7 @@ func (s *storageYDB) writeZeroChunk(
 		persistence.ValueParam("$chunk_index", persistence.Uint32Value(chunk.Index)),
 	)
 	if err == nil {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"created chunk map entry with index %v for snapshot %v",
 			chunk.Index,
