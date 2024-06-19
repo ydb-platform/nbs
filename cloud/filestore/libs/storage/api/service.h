@@ -31,15 +31,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \
-    xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
     xxx(ReadLink,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateHandle,                       __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
@@ -60,13 +54,13 @@ namespace NCloud::NFileStore::NStorage {
     xxx(AllocateData,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID
 
-// TODO: CreateHandle, GetNodeAttr, ListNodes should be handled in two stages:
-// 1. request leader
-// 2. request followers for each TNodeAttr with nonempty FollowerId
-
 #define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(ReadData,                           __VA_ARGS__)                       \
+    xxx(ListNodes,                          __VA_ARGS__)                       \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(CreateNode,                         __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \

@@ -2876,16 +2876,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             shard1Id)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
+            "",
             createHandleResponse.GetFollowerFileSystemId());
-
-        const auto followerNodeName =
-            createHandleResponse.GetFollowerNodeName();
-
-        UNIT_ASSERT_VALUES_UNEQUAL("", followerNodeName);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            createHandleResponse.GetFollowerNodeName());
 
         const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
         UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        const auto handle1 = createHandleResponse.GetHandle();
+
+        UNIT_ASSERT_C(
+            handle1 >= (1LU << 56U) && handle1 < (2LU << 56U),
+            handle1);
 
         auto accessNodeResponse = service.AccessNode(
             headers,
@@ -2905,26 +2909,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             setNodeAttrResponse.GetNode().GetId());
 
         UNIT_ASSERT_VALUES_EQUAL(1_MB, setNodeAttrResponse.GetNode().GetSize());
-
-        auto headers1 = headers;
-        headers1.FileSystemId = shard1Id;
-
-        createHandleResponse = service.CreateHandle(
-            headers1,
-            headers1.FileSystemId,
-            RootNodeId,
-            followerNodeName,
-            TCreateHandleArgs::RDWR)->Record;
-
-        auto handle1 = createHandleResponse.GetHandle();
-
-        UNIT_ASSERT_C(
-            handle1 >= (1LU << 56U) && handle1 < (2LU << 56U),
-            handle1);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            nodeId1,
-            createHandleResponse.GetNodeAttr().GetId());
 
         auto allocateDataResponse = service.AllocateData(
             headers,
@@ -2955,7 +2939,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         Y_UNUSED(destroyHandleResponse);
 
-        // TODO: CreateHandle, GetNodeAttr, ListNodes
+        // TODO: GetNodeAttr, ListNodes
 
         // a less important TODO: test XAttr requests
 

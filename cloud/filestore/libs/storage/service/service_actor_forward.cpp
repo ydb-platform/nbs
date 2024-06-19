@@ -231,4 +231,16 @@ template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \
 
 #undef FILESTORE_DEFINE_HANDLE_FORWARD
 
+template void
+TStorageServiceActor::ForwardRequestToFollower<TEvService::TCreateHandleMethod>(
+    const TActorContext& ctx,
+    const TEvService::TCreateHandleMethod::TRequest::TPtr& ev,
+    ui32 shardNo);
+
+template void
+TStorageServiceActor::ForwardRequestToFollower<TEvService::TGetNodeAttrMethod>(
+    const TActorContext& ctx,
+    const TEvService::TGetNodeAttrMethod::TRequest::TPtr& ev,
+    ui32 shardNo);
+
 }   // namespace NCloud::NFileStore::NStorage
