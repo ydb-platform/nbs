@@ -1712,6 +1712,7 @@ yyerrlab:
   if (!yyerrstatus)
     {
       ++yynerrs;
+      (void)yynerrs;
 #if ! YYERROR_VERBOSE
       yyerror (]b4_yyerror_args[YY_("syntax error"));
 #else
