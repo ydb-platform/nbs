@@ -41,7 +41,7 @@ func (t *acquireBaseDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"acquire base disk imageID %v overlayDisk %v",
 		t.request.SrcImageId,
@@ -61,7 +61,7 @@ func (t *acquireBaseDiskTask) Run(
 		return err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"overlayDisk %v acquired slot on baseDisk %v",
 		t.request.OverlayDisk,
@@ -80,7 +80,7 @@ func (t *acquireBaseDiskTask) Run(
 	}
 
 	if baseDisk.Ready {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"imageID %v overlayDisk %v no need to create new disk",
 			t.request.SrcImageId,
@@ -90,7 +90,7 @@ func (t *acquireBaseDiskTask) Run(
 		return nil
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"imageID %v overlayDisk %v waiting for new disk created by %v",
 		t.request.SrcImageId,
@@ -108,7 +108,7 @@ func (t *acquireBaseDiskTask) Cancel(
 
 	overlayDisk := t.request.OverlayDisk
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"cancel aquire base disk imageID %v overlayDisk %v",
 		t.request.SrcImageId,

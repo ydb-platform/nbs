@@ -69,7 +69,7 @@ func (s *scheduler) ScheduleZonalTask(
 ) (string, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(ctx, "scheduling task %v", taskType)
+	logging.Info(ctx, "scheduling task %v", taskType)
 
 	marshalledRequest, err := proto.Marshal(request)
 	if err != nil {
@@ -135,7 +135,7 @@ func (s *scheduler) ScheduleRegularTasks(
 		for {
 			select {
 			case <-ctx.Done():
-				logging.Debug(ctx, "sheduling regular task %v stopped", taskType)
+				logging.Info(ctx, "sheduling regular task %v stopped", taskType)
 				return
 			case <-time.After(
 				common.RandomDuration(
@@ -144,7 +144,7 @@ func (s *scheduler) ScheduleRegularTasks(
 				)):
 			}
 
-			logging.Debug(ctx, "scheduling %v iteration", taskType)
+			logging.Info(ctx, "scheduling %v iteration", taskType)
 
 			createdAt := time.Now()
 
@@ -292,10 +292,10 @@ func (s *scheduler) WaitAnyTasks(
 
 		select {
 		case <-ctx.Done():
-			logging.Debug(ctx, "waiting cancelled, taskIDs %v", taskIDs)
+			logging.Info(ctx, "waiting cancelled, taskIDs %v", taskIDs)
 			return nil, ctx.Err()
 		case <-timeout:
-			logging.Debug(ctx, "waiting timed out, taskIDs %v", taskIDs)
+			logging.Warn(ctx, "waiting timed out, taskIDs %v", taskIDs)
 			return nil, errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -323,10 +323,10 @@ func (s *scheduler) WaitTaskEnded(
 
 		select {
 		case <-ctx.Done():
-			logging.Debug(ctx, "waiting cancelled, taskID %v", taskID)
+			logging.Info(ctx, "waiting cancelled, taskID %v", taskID)
 			return ctx.Err()
 		case <-timeout:
-			logging.Debug(ctx, "waiting timed out, taskID %v", taskID)
+			logging.Warn(ctx, "waiting timed out, taskID %v", taskID)
 			return errors.NewInterruptExecutionError()
 		case <-time.After(s.pollForTaskUpdatesPeriod):
 		}
@@ -339,7 +339,7 @@ func (s *scheduler) GetTaskMetadata(
 ) (proto.Message, error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(ctx, "getting task metadata %v", taskID)
+	logging.Info(ctx, "getting task metadata %v", taskID)
 
 	taskState, err := s.storage.GetTask(ctx, taskID)
 	if err != nil {
@@ -494,7 +494,7 @@ func (s *scheduler) WaitTaskSync(
 		iteration++
 
 		if iteration%20 == 0 {
-			logging.Debug(ctx, "still waiting for task with id %v", taskID)
+			logging.Warn(ctx, "still waiting for task with id %v", taskID)
 		}
 		return nil
 	}

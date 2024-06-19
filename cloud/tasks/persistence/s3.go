@@ -34,7 +34,7 @@ type s3ClientRetryer struct {
 }
 
 func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
-	logging.Debug(
+	logging.Info(
 		req.Context(),
 		"retrying request %v for a %v time",
 		req.Operation.Name,
@@ -119,7 +119,7 @@ func (c *S3Client) CreateBucket(
 ) (err error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(ctx, "creating bucket %v in s3", bucket)
+	logging.Info(ctx, "creating bucket %v in s3", bucket)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
@@ -153,7 +153,7 @@ func (c *S3Client) GetObject(
 ) (o S3Object, err error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
+	logging.Info(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
@@ -199,7 +199,7 @@ func (c *S3Client) PutObject(
 ) (err error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(ctx, "putting object from s3, bucket %v, key %v", bucket, key)
+	logging.Info(ctx, "putting object to s3, bucket %v, key %v", bucket, key)
 
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
 	defer cancel()
@@ -234,7 +234,7 @@ func (c *S3Client) DeleteObject(
 ) (err error) {
 
 	ctx = withComponentLoggingField(ctx)
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"deleting object from s3, bucket %v, key %v",
 		bucket,

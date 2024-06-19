@@ -40,7 +40,7 @@ func (t *releaseBaseDiskTask) releaseBaseDisk(ctx context.Context) error {
 
 	baseDisk, err := t.storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
 	if err == nil {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"overlayDisk %v released slot on baseDisk %v",
 			overlayDisk,

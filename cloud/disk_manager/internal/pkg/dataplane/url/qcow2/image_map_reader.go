@@ -125,7 +125,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	}
 
 	if checkMagic(r.header.Magic) {
-		logging.Debug(ctx,
+		logging.Info(ctx,
 			"Failed to check qcow2 magic: expected - %v, actual - %v",
 			qcow2Magic,
 			r.header.Magic,
@@ -138,7 +138,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	}
 
 	if r.header.Version < 2 || r.header.Version > 3 {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"Failed to check qcow2 version: version %d",
 			r.header.Version,
@@ -150,7 +150,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 	}
 
 	if r.header.CryptMethod != 0 {
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"encryption is not supported, CryptMethod %v",
 			r.header.CryptMethod,
@@ -170,7 +170,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 
 	hasCustomCompression := r.header.IncompatibleFeatures&(1<<3) != 0
 	if hasCustomCompression {
-		logging.Debug(ctx, "custom compression feature is not supported")
+		logging.Info(ctx, "custom compression feature is not supported")
 		return common.NewSourceInvalidError(
 			"custom compression feature is not supported",
 		)
@@ -178,7 +178,7 @@ func (r *ImageMapReader) readHeader(ctx context.Context) error {
 
 	hasSubclusters := r.header.IncompatibleFeatures&(1<<4) != 0
 	if hasSubclusters {
-		logging.Debug(ctx, "subclusters feature is not supported")
+		logging.Info(ctx, "subclusters feature is not supported")
 		return common.NewSourceInvalidError(
 			"subclusters feature is not supported",
 		)

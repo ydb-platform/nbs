@@ -679,7 +679,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 
 		baseDisk.applyInvariants()
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"applying base disk transition from %+v to %+v",
 			baseDiskTransition.oldState,
@@ -691,7 +691,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			return nil, err
 		}
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"computed pool action is %+v",
 			action,
@@ -716,7 +716,7 @@ func (s *storageYDB) updatePoolsTable(
 	transitions []poolTransition,
 ) error {
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"applying pool transitions %+v",
 		transitions,
@@ -1101,7 +1101,7 @@ func (s *storageYDB) acquireBaseDiskSlot(
 			return BaseDisk{}, err
 		}
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"acquired slot %+v on baseDisk %+v",
 			slot,
@@ -1235,7 +1235,7 @@ func (s *storageYDB) releaseBaseDiskSlot(
 		return BaseDisk{}, err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"released slot %+v on baseDisk %+v",
 		slot,
@@ -2545,7 +2545,7 @@ func (s *storageYDB) deletePool(
 	updated := p
 	updated.status = poolStatusDeleted
 
-	logging.Debug(ctx, "applying pool transition from %+v to %+v", p, updated)
+	logging.Info(ctx, "applying pool transition from %+v to %+v", p, updated)
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -3048,7 +3048,7 @@ func (s *storageYDB) retireBaseDisk(
 		return nil, err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"retireBaseDisk: baseDiskID=%v, slots=%+v",
 		baseDiskID,
@@ -3202,7 +3202,7 @@ func (s *storageYDB) retireBaseDisk(
 		return nil, err
 	}
 
-	logging.Debug(
+	logging.Info(
 		ctx,
 		"retired base disk %+v, rebaseInfos=%+v",
 		baseDisk,
@@ -3244,7 +3244,7 @@ func (s *storageYDB) isBaseDiskRetired(
 
 	retired := baseDisk.isDoomed()
 	if !retired {
-		logging.Debug(ctx, "base disk %+v is not retired", baseDisk)
+		logging.Info(ctx, "base disk %+v is not retired", baseDisk)
 	}
 
 	return retired, nil

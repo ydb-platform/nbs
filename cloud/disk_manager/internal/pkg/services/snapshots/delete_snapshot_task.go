@@ -76,7 +76,7 @@ func (t *deleteSnapshotTask) deleteSnapshot(
 			return err
 		}
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"Successfully unlocked snapshot with id %v",
 			snapshotMeta.BaseSnapshotID,

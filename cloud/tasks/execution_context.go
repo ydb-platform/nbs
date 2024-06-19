@@ -72,7 +72,7 @@ func (c *executionContext) SaveStateWithCallback(
 	return c.updateStateWithCallback(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
-			logging.Debug(ctx, "saving state for task %v", taskState.ID)
+			logging.Info(ctx, "saving state for task %v", taskState.ID)
 
 			taskState.State = state
 			return taskState
@@ -104,7 +104,7 @@ func (c *executionContext) AddTaskDependency(
 	}
 
 	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		logging.Debug(ctx, "add task dependency of %v on %v", taskState.ID, taskID)
+		logging.Info(ctx, "add task dependency of %v on %v", taskState.ID, taskID)
 
 		taskState.State = state
 		taskState.Dependencies.Add(taskID)
