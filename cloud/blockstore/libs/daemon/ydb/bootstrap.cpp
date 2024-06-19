@@ -416,6 +416,7 @@ void TBootstrapYdb::InitKikimrService()
         Y_ABORT_UNLESS(FileIOService);
 
         NvmeManager = CreateNvmeManager(
+            Configs->DiskAgentConfig->GetNvmeManagerType(),
             Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
         AioStorageProvider = CreateAioStorageProvider(

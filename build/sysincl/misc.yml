@@ -173,10 +173,6 @@
   includes:
     - util.h:        contrib/libs/numa/internal/util.h
 
-- source_filter: "^contrib/libs/systemd"
-  includes:
-    - util.h:        contrib/libs/systemd/src/basic/util.h
-
 - source_filter: "^contrib/libs/nvidia/nccl"
   includes:
     - alloc.h:       contrib/libs/nvidia/nccl/src/include/alloc.h

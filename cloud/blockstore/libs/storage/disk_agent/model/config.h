@@ -82,6 +82,7 @@ public:
 
     NProto::EDiskAgentBackendType GetBackend() const;
     NProto::EDeviceEraseMethod GetDeviceEraseMethod() const;
+    NProto::EDiskAgentNvmeManagerType GetNvmeManagerType() const;
 
     bool GetAcquireRequired() const;
 

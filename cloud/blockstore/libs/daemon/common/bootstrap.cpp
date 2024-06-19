@@ -741,6 +741,7 @@ void TBootstrapBase::InitLocalService()
     FileIOService = CreateAIOService();
 
     NvmeManager = CreateNvmeManager(
+        Configs->DiskAgentConfig->GetNvmeManagerType(),
         Configs->DiskAgentConfig->GetSecureEraseTimeout());
 
     Service = CreateLocalService(

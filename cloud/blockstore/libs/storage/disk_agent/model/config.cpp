@@ -108,6 +108,21 @@ IOutputStream& operator <<(
         << ")";
 }
 
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::EDiskAgentNvmeManagerType pt)
+{
+    switch (pt) {
+        case NProto::DISK_AGENT_NVME_MANAGER_DEFAULT:
+            return out << "DISK_AGENT_NVME_MANAGER_DEFAULT";
+        case NProto::DISK_AGENT_NVME_MANAGER_SYSTEMD:
+            return out << "DISK_AGENT_NVME_MANAGER_SYSTEMD";
+    }
+
+    return out << "(Unknown EDiskAgentNvmeManagerType value "
+               << static_cast<int>(pt) << ")";
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////

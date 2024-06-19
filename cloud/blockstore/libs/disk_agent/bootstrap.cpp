@@ -364,7 +364,9 @@ void TBootstrap::InitKikimrService()
 
             case NProto::DISK_AGENT_BACKEND_AIO:
                 FileIOService = CreateAIOService();
-                NvmeManager = CreateNvmeManager(config.GetSecureEraseTimeout());
+                NvmeManager = CreateNvmeManager(
+                    config.GetNvmeManagerType(),
+                    config.GetSecureEraseTimeout());
 
                 AioStorageProvider = CreateAioStorageProvider(
                     FileIOService,

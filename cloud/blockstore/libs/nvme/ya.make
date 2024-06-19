@@ -8,6 +8,7 @@ SRCS(
 IF(OS_LINUX)
     SRCS(
         nvme_linux.cpp
+        nvme_systemd.cpp
     )
 ENDIF(OS_LINUX)
 

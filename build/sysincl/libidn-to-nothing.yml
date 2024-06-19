@@ -1,4 +1,4 @@
-- source_filter: "^(?!contrib/libs/libuv/)"
+- source_filter: "^(?!contrib/libs/libidn/lib/)"
   includes:
   - idn-free.h
   - idn-int.h

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "nvme_linux.h"
 
 namespace NCloud::NBlockStore::NNvme {
