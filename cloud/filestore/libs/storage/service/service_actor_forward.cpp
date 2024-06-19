@@ -15,6 +15,47 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TResultOrError<TString> TStorageServiceActor::SelectShard(
+    const NActors::TActorContext& ctx,
+    const TString& sessionId,
+    const ui64 seqNo,
+    const TString& methodName,
+    const ui64 requestId,
+    const NProto::TFileStore& filestore,
+    ui32 shardNo) const
+{
+    if (StorageConfig->GetMultiTabletForwardingEnabled() && shardNo) {
+        const auto& followerIds = filestore.GetFollowerFileSystemIds();
+        if (followerIds.size() < static_cast<int>(shardNo)) {
+            LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
+                "[%s][%lu] forward %s #%lu - invalid shardNo: %lu/%d",
+                sessionId.Quote().c_str(),
+                seqNo,
+                methodName.c_str(),
+                requestId,
+                shardNo,
+                followerIds.size());
+
+            return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
+                    << shardNo << ", followerIds.size=" << followerIds.size());
+        }
+
+        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+            "[%s][%lu] forward %s #%lu to follower %s",
+            sessionId.Quote().c_str(),
+            seqNo,
+            methodName.c_str(),
+            requestId,
+            followerIds[shardNo - 1].c_str());
+
+        return followerIds[shardNo - 1];
+    }
+
+    return TString();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TMethod>
 void TStorageServiceActor::ForwardRequest(
     const TActorContext& ctx,
@@ -92,33 +133,23 @@ void TStorageServiceActor::ForwardRequestToFollower(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
-    if (StorageConfig->GetMultiTabletForwardingEnabled() && shardNo) {
-        const auto& followerIds = filestore.GetFollowerFileSystemIds();
-        if (followerIds.size() < static_cast<int>(shardNo)) {
-            LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
-                "[%s][%lu] forward %s #%lu - invalid shardNo: %lu/%d",
-                sessionId.Quote().c_str(),
-                seqNo,
-                TMethod::Name,
-                msg->CallContext->RequestId,
-                shardNo,
-                followerIds.size());
+    auto [fsId, error] = SelectShard(
+        ctx,
+        sessionId,
+        seqNo,
+        TMethod::Name,
+        msg->CallContext->RequestId,
+        filestore,
+        shardNo);
 
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
-                    << shardNo << ", followerIds.size=" << followerIds.size()));
-            return NCloud::Reply(ctx, *ev, std::move(response));
-        }
+    if (HasError(error)) {
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
-            "[%s][%lu] forward %s #%lu to follower %s",
-            sessionId.Quote().c_str(),
-            seqNo,
-            TMethod::Name,
-            msg->CallContext->RequestId,
-            followerIds[shardNo - 1].c_str());
-
-        msg->Record.SetFileSystemId(followerIds[shardNo - 1]);
+    if (fsId) {
+        msg->Record.SetFileSystemId(fsId);
     }
 
     auto [cookie, inflight] = CreateInFlightRequest(

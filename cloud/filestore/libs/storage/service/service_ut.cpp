@@ -2936,6 +2936,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         Y_UNUSED(allocateDataResponse);
 
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
+        auto readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1,
+            0,
+            data.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+
         auto destroyHandleResponse = service.DestroyHandle(
             headers,
             fsId,
@@ -2945,7 +2956,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         Y_UNUSED(destroyHandleResponse);
 
         // TODO: CreateHandle, GetNodeAttr, ListNodes
-        // TODO: WriteData and ReadData
 
         // a less important TODO: test XAttr requests
 

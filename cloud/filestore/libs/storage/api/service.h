@@ -63,8 +63,6 @@ namespace NCloud::NFileStore::NStorage {
 // TODO: CreateHandle, GetNodeAttr, ListNodes should be handled in two stages:
 // 1. request leader
 // 2. request followers for each TNodeAttr with nonempty FollowerId
-// TODO: WriteData and ReadData requests should be handled by followers if
-// shardNo != 0
 
 #define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
     xxx(WriteData,                          __VA_ARGS__)                       \
