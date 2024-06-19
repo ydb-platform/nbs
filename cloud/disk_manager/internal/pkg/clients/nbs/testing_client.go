@@ -171,7 +171,7 @@ func (c *client) GoWriteRandomBlocksToNbsDisk(
 				return err
 			}
 
-			logging.Info(
+			logging.Debug(
 				ctx,
 				"%v block with index %v crc32 now is %v",
 				diskID,
