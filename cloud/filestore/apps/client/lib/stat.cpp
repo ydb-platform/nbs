@@ -12,22 +12,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void PrintNodeAttributes(IOutputStream& out, const NProto::TNodeAttr& nodeAttr)
-{
-    out << "Node Id:   " << nodeAttr.GetId() << Endl;
-    out << "Node Type: " << nodeAttr.GetType() << Endl;
-    out << "Mode:      " << nodeAttr.GetMode() << Endl;
-    out << "Uid:       " << nodeAttr.GetUid() << Endl;
-    out << "Gid:       " << nodeAttr.GetGid() << Endl;
-    out << "Access:    " << TInstant::FromValue(nodeAttr.GetATime()) << Endl;
-    out << "Modify:    " << TInstant::FromValue(nodeAttr.GetMTime()) << Endl;
-    out << "Change:    " << TInstant::FromValue(nodeAttr.GetCTime()) << Endl;
-    out << "File Size: " << nodeAttr.GetSize() << Endl;
-    out << "Links:     " << nodeAttr.GetLinks() << Endl;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TStatCommand final: public TFileStoreCommand
 {
 private:
@@ -57,7 +41,7 @@ public:
 
         CheckResponse(response);
 
-        PrintNodeAttributes(Cout, response.GetNode());
+        Cout << response.GetNode().DebugString() << Endl;
 
         return true;
     }
