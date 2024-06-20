@@ -2946,7 +2946,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const auto nodeId2 = createNodeResponse.GetNode().GetId();
         UNIT_ASSERT_VALUES_EQUAL((2LU << 56U) + 2, nodeId2);
 
-        // TODO: GetNodeAttr, ListNodes
+        auto getNodeAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            getNodeAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2_MB,
+            getNodeAttrResponse.GetNode().GetSize());
+
+        getNodeAttrResponse = service.GetNodeAttr(
+            headers,
+            fsId,
+            nodeId1,
+            "")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            getNodeAttrResponse.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2_MB,
+            getNodeAttrResponse.GetNode().GetSize());
+
+        // TODO: ListNodes
 
         // a less important TODO: test XAttr requests
 
