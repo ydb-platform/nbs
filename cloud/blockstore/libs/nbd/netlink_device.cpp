@@ -212,7 +212,8 @@ public:
         }
 
         try {
-            TMemoryInput stream(DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
+            TMemoryInput stream(
+                DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
             stream >> DeviceIndex;
         } catch (...) {
             throw TServiceError(E_ARGUMENT)
@@ -251,8 +252,11 @@ public:
             StopResult.SetValue(MakeError(S_OK));
 
         } catch (const TServiceError& e) {
-            StopResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-                << "unable to disconnect " << DeviceName << ": " << e.what()));
+            StopResult.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "unable to disconnect " << DeviceName << ": "
+                    << e.what()));
         }
 
         return StopResult.GetFuture();
@@ -316,7 +320,9 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         const auto& info = Handler->GetExportInfo();
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Put(NBD_ATTR_SIZE_BYTES, static_cast<ui64>(info.Size));
-        message.Put(NBD_ATTR_BLOCK_SIZE_BYTES, static_cast<ui64>(info.MinBlockSize));
+        message.Put(
+            NBD_ATTR_BLOCK_SIZE_BYTES,
+            static_cast<ui64>(info.MinBlockSize));
         message.Put(NBD_ATTR_SERVER_FLAGS, static_cast<ui64>(info.Flags));
 
         if (Timeout) {
@@ -324,7 +330,9 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         if (DeadConnectionTimeout) {
-            message.Put(NBD_ATTR_DEAD_CONN_TIMEOUT, DeadConnectionTimeout.Seconds());
+            message.Put(
+                NBD_ATTR_DEAD_CONN_TIMEOUT,
+                DeadConnectionTimeout.Seconds());
         }
 
         {
@@ -337,9 +345,10 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         StartResult.SetValue(MakeError(S_OK));
 
     } catch (const TServiceError& e) {
-        StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "unable to configure " << DeviceName << ": " << e.what()));
-        return;
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
     }
 }
 
@@ -373,8 +382,10 @@ void TNetlinkDevice::ConnectDevice()
         message.Send(socket);
 
     } catch (const TServiceError& e) {
-        StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "unable to configure " << DeviceName << ": " << e.what()));
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
     }
 }
 
@@ -402,14 +413,18 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             genlmsg_attrlen(header, 0),
             NULL))
     {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "unable to parse NBD_CMD_STATUS response: " << err));
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_CMD_STATUS response: " << err));
         return NL_STOP;
     }
 
     if (!attr[NBD_ATTR_DEVICE_LIST]) {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "did not receive NBD_ATTR_DEVICE_LIST"));
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "did not receive NBD_ATTR_DEVICE_LIST"));
         return NL_STOP;
     }
 
@@ -419,14 +434,18 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             attr[NBD_ATTR_DEVICE_LIST],
             deviceItemPolicy))
     {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "unable to parse NBD_ATTR_DEVICE_LIST: " << err));
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_ATTR_DEVICE_LIST: " << err));
         return NL_STOP;
     }
 
     if (!deviceItem[NBD_DEVICE_ITEM]) {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "did not receive NBD_DEVICE_ITEM"));
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "did not receive NBD_DEVICE_ITEM"));
         return NL_STOP;
     }
 
@@ -436,14 +455,18 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             deviceItem[NBD_DEVICE_ITEM],
             devicePolicy))
     {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "unable to parse NBD_DEVICE_ITEM: " << err));
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_DEVICE_ITEM: " << err));
         return NL_STOP;
     }
 
     if (!device[NBD_DEVICE_CONNECTED]) {
-        context->Device->StartResult.SetValue(MakeError(E_FAIL, TStringBuilder()
-            << "did not receive NBD_DEVICE_CONNECTED"));
+        context->Device->StartResult.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "did not receive NBD_DEVICE_CONNECTED"));
         return NL_STOP;
     }
 
