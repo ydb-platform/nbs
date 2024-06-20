@@ -102,7 +102,7 @@ func (m *s3Metrics) StatCall(
 	}
 }
 
-func (m *s3Metrics) CountRetry(req *request.Request) {
+func (m *s3Metrics) OnRetry(req *request.Request) {
 	logging.Info(
 		req.Context(),
 		"retrying request %v for a %v time",

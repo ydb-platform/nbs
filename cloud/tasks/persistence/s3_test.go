@@ -24,6 +24,7 @@ func newS3Client(
 		credentials,
 		callTimeout,
 		metricsRegistry,
+		3, // maxRetriableErrorCount
 	)
 }
 
@@ -85,7 +86,7 @@ func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 	metricsRegistry.AssertAllExpectations(t)
 }
 
-func TestS3ShouldCountRetries(t *testing.T) {
+func TestS3ShouldRetryRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 

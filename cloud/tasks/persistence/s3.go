@@ -35,7 +35,7 @@ type s3ClientRetryer struct {
 }
 
 func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
-	r.metrics.CountRetry(req)
+	r.metrics.OnRetry(req)
 
 	return r.DefaultRetryer.RetryRules(req)
 }
@@ -54,6 +54,7 @@ func NewS3Client(
 	credentials S3Credentials,
 	callTimeout time.Duration,
 	registry metrics.Registry,
+	maxRetriableErrorCount uint64,
 ) (*S3Client, error) {
 
 	s3Metrics := newS3Metrics(registry, callTimeout)
@@ -69,7 +70,7 @@ func NewS3Client(
 		S3ForcePathStyle: aws.Bool(true), // Without it we get DNS DDOS errors in tests. This option is fine for production too.
 		Retryer: &s3ClientRetryer{
 			DefaultRetryer: client.DefaultRetryer{
-				NumMaxRetries: 3,
+				NumMaxRetries: int(maxRetriableErrorCount),
 			},
 			metrics: s3Metrics,
 		},
@@ -111,6 +112,7 @@ func NewS3ClientFromConfig(
 		credentials,
 		callTimeout,
 		registry,
+		config.GetMaxRetriableErrorCount(),
 	)
 }
 
