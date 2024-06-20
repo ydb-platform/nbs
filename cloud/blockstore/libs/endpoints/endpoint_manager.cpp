@@ -21,7 +21,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/guid.h>

@@ -39,7 +39,8 @@
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
