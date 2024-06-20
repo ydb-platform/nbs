@@ -1,7 +1,7 @@
+import json
 import os
 import pytest
 import time
-import json
 
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.public.sdk.python.client import CreateClient
@@ -160,7 +160,7 @@ def test_add_host_with_legacy_local_ssd(
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     disk_agent = start_disk_agent(disk_agent_config)
-    disk_agent.wait_for_registration()
+    assert disk_agent.wait_for_registration()
 
     _add_host(client, agent_id)
 
@@ -274,10 +274,12 @@ def test_add_host_with_legacy_local_ssd(
     assert action_results[0].Result.Code == EResult.S_OK.value
 
     bkp = _backup(client)
+
     assert len(bkp.get("DirtyDevices", [])) == 0
     assert len(bkp["SuspendedDevices"]) == 4
 
     disk_agent.kill()
+    assert not disk_agent.is_alive()
 
     # wait for DR to mark the agent as unavailable
     while True:
@@ -287,10 +289,10 @@ def test_add_host_with_legacy_local_ssd(
         time.sleep(1)
 
     disk_agent = start_disk_agent(disk_agent_config)
-    disk_agent.wait_for_registration()
+    assert disk_agent.wait_for_registration()
 
     bkp = _backup(client)
-    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING'
+    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
     # put the agent back
@@ -343,7 +345,7 @@ def test_add_host(
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
     disk_agent = start_disk_agent(disk_agent_config)
-    disk_agent.wait_for_registration()
+    assert disk_agent.wait_for_registration()
 
     _add_host(client, agent_id)
 
@@ -418,6 +420,7 @@ def test_add_host(
     assert len(bkp["SuspendedDevices"]) == 4
 
     disk_agent.kill()
+    assert not disk_agent.is_alive()
 
     # wait for DR to mark the agent as unavailable
     while True:
@@ -427,10 +430,10 @@ def test_add_host(
         time.sleep(1)
 
     disk_agent = start_disk_agent(disk_agent_config)
-    disk_agent.wait_for_registration()
+    assert disk_agent.wait_for_registration()
 
     bkp = _backup(client)
-    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING'
+    assert bkp["Agents"][0]["State"] == 'AGENT_STATE_WARNING', json.dumps(bkp)
     assert len(bkp.get("SuspendedDevices", [])) == 4
 
     # put the agent back
