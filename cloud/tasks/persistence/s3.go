@@ -69,7 +69,11 @@ func NewS3Client(
 		Endpoint:         &endpoint,
 		Region:           &region,
 		S3ForcePathStyle: aws.Bool(true), // Without it we get DNS DDOS errors in tests. This option is fine for production too.
-		Retryer:          &s3ClientRetryer{},
+		Retryer: &s3ClientRetryer{
+			DefaultRetryer: client.DefaultRetryer{
+				NumMaxRetries: 3,
+			},
+		},
 	}
 
 	session, err := session.NewSession(sessionConfig)

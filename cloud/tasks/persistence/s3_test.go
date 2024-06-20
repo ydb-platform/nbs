@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging/testcommon"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics/mocks"
 )
 
@@ -81,6 +83,38 @@ func TestS3ShouldSendErrorTimeoutMetric(t *testing.T) {
 
 	err = s3.CreateBucket(ctx, "test")
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	metricsRegistry.AssertAllExpectations(t)
+}
+
+func TestS3ShouldLogRetries(t *testing.T) {
+	ctx, cancel := context.WithCancel(
+		testcommon.NewContext("idempID", "reqID", "opID"),
+	)
+	defer cancel()
+
+	reader := &testcommon.JournaldReader{ReadCount: 0}
+	logger := logging.NewJournaldLogger(logging.InfoLevel)
+	ctx = logging.SetLogger(ctx, logger)
+
+	metricsRegistry := mocks.NewRegistryMock()
+
+	s3, err := newS3Client(metricsRegistry, 10*time.Second /* callTimeout */)
+	require.NoError(t, err)
+
+	metricsRegistry.GetCounter(
+		"errors",
+		map[string]string{"call": "CreateBucket"},
+	).On("Inc").Once()
+
+	err = s3.CreateBucket(ctx, "test")
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	entries := reader.ReadEntries(t)
+
+	for i := 1; i < 4; i++ {
+		require.Contains(t, entries[i].Message, "retrying request")
+	}
 
 	metricsRegistry.AssertAllExpectations(t)
 }
