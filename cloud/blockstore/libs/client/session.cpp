@@ -25,16 +25,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::EStorageMediaKind GetStorageMediaKind(
-    const IVolumeInfoPtr& volume)
-{
-    return volume
-        ? volume->GetInfo().GetStorageMediaKind()
-        : NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TReadBlocksLocalMethod
 {
     static constexpr EBlockStoreRequest RequestType = EBlockStoreRequest::ReadBlocks;
@@ -956,7 +946,7 @@ void TSession::HandleResponse(
         }
 
         RequestStats->AddRetryStats(
-            GetStorageMediaKind(volumeInfo),
+            VolumeStats->GetStorageMediaKind(request->GetDiskId()),
             T::RequestType,
             errorKind,
             errorFlags);

@@ -368,7 +368,9 @@ public:
             errorKind,
             errorFlags);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).AddRetryStats(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
