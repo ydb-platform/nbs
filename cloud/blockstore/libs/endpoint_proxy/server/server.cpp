@@ -615,10 +615,10 @@ struct TServer: IEndpointProxyServer
                 if (HasError(value)) {
                     STORAGE_ERROR(
                         "unable to start nbd device: " << value.GetMessage());
+                } else {
+                    STORAGE_INFO(request.ShortDebugString().Quote()
+                        << " - Started NBD device connection");
                 }
-
-                STORAGE_INFO(request.ShortDebugString().Quote()
-                    << " - Started NBD device connection");
             } else {
                 STORAGE_WARN(request.ShortDebugString().Quote()
                     << " - NbdDevice missing - no nbd connection with the"
