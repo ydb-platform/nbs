@@ -2972,27 +2972,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             2_MB,
             getNodeAttrResponse.GetNode().GetSize());
 
-        // TODO: ListNodes
-
-        // a less important TODO: test XAttr requests
-
-        /*
         auto listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
 
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
 
-        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            shard1Id,
-            listNodesResponse.GetNodes(0).GetFollowerFileSystemId());
+            nodeId1,
+            listNodesResponse.GetNodes(0).GetId());
         UNIT_ASSERT_VALUES_EQUAL(
-            followerNodeName,
-            listNodesResponse.GetNodes(0).GetFollowerNodeName());
-        */
+            2_MB,
+            listNodesResponse.GetNodes(0).GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            listNodesResponse.GetNodes(1).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse.GetNodes(1).GetSize());
+
+        // TODO(#1350): test XAttr requests
     }
 }
 

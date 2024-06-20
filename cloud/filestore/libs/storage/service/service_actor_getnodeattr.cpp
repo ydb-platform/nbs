@@ -39,7 +39,7 @@ private:
 public:
     TGetNodeAttrActor(
         TRequestInfoPtr requestInfo,
-        NProto::TGetNodeAttrRequest createHandleRequest,
+        NProto::TGetNodeAttrRequest getNodeAttrRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
@@ -72,13 +72,13 @@ private:
 
 TGetNodeAttrActor::TGetNodeAttrActor(
         TRequestInfoPtr requestInfo,
-        NProto::TGetNodeAttrRequest createHandleRequest,
+        NProto::TGetNodeAttrRequest getNodeAttrRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         NCloud::NProto::EStorageMediaKind mediaKind)
     : RequestInfo(std::move(requestInfo))
-    , GetNodeAttrRequest(std::move(createHandleRequest))
+    , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
