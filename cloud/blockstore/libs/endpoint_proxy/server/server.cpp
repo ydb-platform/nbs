@@ -601,7 +601,7 @@ struct TServer: IEndpointProxyServer
 #else
                     STORAGE_ERROR(request.ShortDebugString().Quote()
                         << " - Built without netlink support"
-                        << "", falling back to ioctl");
+                        << ", falling back to ioctl");
 #endif
                 }
                 if (ep.NbdDevice == nullptr) {
