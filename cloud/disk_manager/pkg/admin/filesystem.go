@@ -130,6 +130,7 @@ type createFilesystem struct {
 	clientConfig *client_config.ClientConfig
 	zoneID       string
 	filesystemID string
+	cloudID      string
 	folderID     string
 	blockSize    int64
 	size         int64
@@ -149,6 +150,7 @@ func (c *createFilesystem) run() error {
 			ZoneId:       c.zoneID,
 			FilesystemId: c.filesystemID,
 		},
+		CloudId:   c.cloudID,
 		FolderId:  c.folderID,
 		BlockSize: c.blockSize,
 		Size:      c.size,
@@ -192,6 +194,11 @@ func newCreateFilesystemCmd(clientConfig *client_config.ClientConfig) *cobra.Com
 	}
 
 	cmd.Flags().Int64Var(&c.blockSize, "block-size", 0, "block size in bytes. 0 - use default")
+
+	cmd.Flags().StringVar(&c.cloudID, "cloud-id", "", "cloud ID of the filesystem owner; required")
+	if err := cmd.MarkFlagRequired("cloud-id"); err != nil {
+		log.Fatalf("Error setting flag cloud-id as required: %v", err)
+	}
 
 	cmd.Flags().StringVar(&c.folderID, "folder-id", "", "folder ID of the filesystem owner; required")
 	if err := cmd.MarkFlagRequired("folder-id"); err != nil {
