@@ -20,7 +20,7 @@ void TStorageServiceActor::HandleCreateNode(
 
     auto* session = State->FindSession(sessionId, seqNo);
     if (!session || session->ClientId != clientId || !session->SessionActor) {
-        auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(
+        auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
