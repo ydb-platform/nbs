@@ -169,11 +169,11 @@ AuthConfig: <
     DisableAuthorization: false
     MetadataUrl: "{metadata_url}"
     AccessServiceEndpoint: "localhost:{access_service_port}"
-    CertFile: "{root_certs_file}"
+    CertFile: "{auth_certs_file}"
     ConnectionTimeout: "2s"
     RetryCount: 7
     PerRetryTimeout: "2s"
-    FolderId: "DiskManagerFolderId"
+    FolderId: "DiskManagerFolderId"{service_account}
 >
 PersistenceConfig: <
     Endpoint: "localhost:{ydb_port}"
@@ -185,6 +185,13 @@ PlacementGroupConfig: <
     ClearDeletedPlacementGroupsTaskScheduleInterval: "2s"
 >
 """
+
+SERVICE_ACCOUNT_TEMPLATE = """
+    ServiceAccount: <
+        Id: "{service_account_id}"
+        KeyId: "{service_account_key_id}"
+        Audience: "{service_account_audience}"
+    >"""
 
 
 DATAPLANE_CONFIG_TEMPLATE = """
@@ -353,6 +360,10 @@ class DiskManagerLauncher:
         s3_credentials_file=None,
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
+        access_service_cert_file: str | None = None,
+        service_account_id: str | None = None,
+        service_account_key_id: str | None = None,
+        service_account_audience: str | None = None,
     ):
         self.__idx = idx
 
@@ -380,6 +391,14 @@ class DiskManagerLauncher:
             'disk_manager_config_{}.txt'.format(idx)
         )
 
+        if service_account_id and service_account_audience and service_account_key_id:
+            service_account = SERVICE_ACCOUNT_TEMPLATE.format(
+                service_account_id=service_account_id,
+                service_account_key_id=service_account_key_id,
+                service_account_audience=service_account_audience,
+            )
+        else:
+            service_account = ""
         self.__server_config = None
         if is_dataplane:
             with open(config_file, "w") as f:
@@ -411,7 +430,9 @@ class DiskManagerLauncher:
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
                     access_service_port=access_service_port,
-                    ydb_port=ydb_port
+                    ydb_port=ydb_port,
+                    auth_certs_file=access_service_cert_file or root_certs_file,
+                    service_account=service_account,
                 )
                 f.write(self.__server_config)
 

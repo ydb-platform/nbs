@@ -169,10 +169,13 @@ def start(argv):
 
     if args.nfs_only:
         return
-
-    metadata_service = MetadataServiceLauncher()
-    metadata_service.start()
-
+    token_exchange_endpoint = os.getenv("DISK_MANAGER_RECIPE_TOKEN_EXCHANGE_ENDPOINT")
+    if token_exchange_endpoint is None:
+        metadata_service = MetadataServiceLauncher()
+        metadata_service.start()
+        metadata_service_url = metadata_service.url
+    else:
+        metadata_service_url = token_exchange_endpoint
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder=""
@@ -195,7 +198,7 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
-            metadata_url=metadata_service.url,
+            metadata_url=metadata_service_url,
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=False,
@@ -207,6 +210,10 @@ def start(argv):
             cert_key_file=cert_key_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            access_service_cert_file=os.getenv("DISK_MANAGER_ACCESS_SERVICE_CERT"),
+            service_account_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_ID"),
+            service_account_key_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_KEY_ID"),
+            service_account_audience=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_AUDIENCE"),
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -220,7 +227,7 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
-            metadata_url=metadata_service.url,
+            metadata_url=metadata_service_url,
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=True,
@@ -230,6 +237,10 @@ def start(argv):
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            access_service_cert_file=os.getenv("DISK_MANAGER_ACCESS_SERVICE_CERT"),
+            service_account_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_ID"),
+            service_account_key_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_KEY_ID"),
+            service_account_audience=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_AUDIENCE"),
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
