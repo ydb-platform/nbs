@@ -32,6 +32,7 @@ TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
 TCommandPtr NewStatCommand();
+TCommandPtr NewSetNodeAttrCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,6 +63,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "createsession", NewCreateSessionCommand },
     { "resetsession", NewResetSessionCommand },
     { "stat", NewStatCommand },
+    { "setnodeattr", NewSetNodeAttrCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////

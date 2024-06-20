@@ -157,6 +157,16 @@ class NfsCliClient:
 
         return common.execute(cmd).stdout
 
+    def set_node_attr(self, fs, node_id, *argv):
+        list_args = [str(x) for x in argv]
+        cmd = [
+            self.__binary_path, "setnodeattr",
+            "--filesystem", fs,
+            "--node-id", str(node_id),
+        ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
