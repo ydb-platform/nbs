@@ -584,6 +584,7 @@ struct TServer: IEndpointProxyServer
             if (ep.NbdDevicePath) {
                 if (Config.Netlink) {
 #ifdef NETLINK
+#pragma message "github ci test"
                     try {
                         ep.NbdDevice = NBD::CreateNetlinkDevice(
                             Logging,
