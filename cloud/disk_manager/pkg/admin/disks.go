@@ -202,6 +202,7 @@ type createDisk struct {
 	diskID          string
 	blockSize       int64
 	kind            diskKind
+	cloudID         string
 	folderID        string
 	storagePoolName string
 	agentIds        agentIds
@@ -232,6 +233,7 @@ func (c *createDisk) run() error {
 		},
 		BlockSize:       c.blockSize,
 		Kind:            disk_manager.DiskKind(c.kind),
+		CloudId:         c.cloudID,
 		FolderId:        c.folderID,
 		StoragePoolName: c.storagePoolName,
 		AgentIds:        c.agentIds,
@@ -295,6 +297,11 @@ func newCreateDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command {
 
 	cmd.Flags().Int64Var(&c.blockSize, "block-size", 0, "block size in bytes. 0 - use default")
 	cmd.Flags().Var(&c.kind, "kind", "disk kind")
+
+	cmd.Flags().StringVar(&c.cloudID, "cloud-id", "", "cloud ID of the disk owner; required")
+	if err := cmd.MarkFlagRequired("cloud-id"); err != nil {
+		log.Fatalf("Error setting flag cloud-id as required: %v", err)
+	}
 
 	cmd.Flags().StringVar(&c.folderID, "folder-id", "", "folder ID of the disk owner; required")
 	if err := cmd.MarkFlagRequired("folder-id"); err != nil {
