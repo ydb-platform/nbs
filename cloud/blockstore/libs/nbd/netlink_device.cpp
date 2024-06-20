@@ -133,7 +133,8 @@ public:
     void Put(int attribute, T data)
     {
         if (nla_put(Message, attribute, sizeof(T), &data) < 0) {
-            throw TServiceError(E_FAIL) << "unable to put attribute " << attribute;
+            throw TServiceError(E_FAIL) << "unable to put attribute "
+                << attribute;
         }
     }
 
@@ -254,9 +255,8 @@ public:
         } catch (const TServiceError& e) {
             StopResult.SetValue(MakeError(
                 E_FAIL,
-                TStringBuilder()
-                    << "unable to disconnect " << DeviceName << ": "
-                    << e.what()));
+                TStringBuilder() << "unable to disconnect " << DeviceName
+                                 << ": " << e.what()));
         }
 
         return StopResult.GetFuture();
@@ -464,9 +464,9 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
 
     if (!device[NBD_DEVICE_CONNECTED]) {
         context->Device->StartResult.SetValue(MakeError(
-                E_FAIL,
-                TStringBuilder()
-                    << "did not receive NBD_DEVICE_CONNECTED"));
+            E_FAIL,
+            TStringBuilder()
+                << "did not receive NBD_DEVICE_CONNECTED"));
         return NL_STOP;
     }
 

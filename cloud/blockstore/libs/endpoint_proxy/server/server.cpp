@@ -594,12 +594,14 @@ struct TServer: IEndpointProxyServer
                             true);                  // reconfigure existing device
 
                     } catch (const std::exception& e) {
-                        STORAGE_ERROR(
-                            "unable to create netlink device: " << e.what());
+                        STORAGE_ERROR(request.ShortDebugString().Quote()
+                            << "Unable to create netlink device: " << e.what()
+                            << "falling back to ioctl")
                     }
 #else
-                    STORAGE_ERROR(
-                        "built without netlink support, falling back to ioctl");
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << "Built without netlink support, falling back to "
+                        << "ioctl");
 #endif
                 }
                 if (ep.NbdDevice == nullptr) {
@@ -613,8 +615,9 @@ struct TServer: IEndpointProxyServer
                 auto start = ep.NbdDevice->Start();
                 const auto& value = start.GetValue();
                 if (HasError(value)) {
-                    STORAGE_ERROR(
-                        "unable to start nbd device: " << value.GetMessage());
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << " - Unable to start nbd device: "
+                        << value.GetMessage());
                 } else {
                     STORAGE_INFO(request.ShortDebugString().Quote()
                         << " - Started NBD device connection");
