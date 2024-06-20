@@ -583,6 +583,7 @@ public:
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
+    bool GetDisableDiskWithCloudIdDestruction() const;
 };
 
 ui64 GetAllocationUnit(
