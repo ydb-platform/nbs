@@ -250,6 +250,152 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             deviceSpaceInBytes,
             deviceInfo.GetDeviceAllocatedSpaceInBytes());
     }
+
+    Y_UNIT_TEST(QueryAgentsInfoWithBrokenSpace)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{
+            AgentConfig(
+                1,
+                NProto::EAgentState::AGENT_STATE_UNAVAILABLE,
+                {Device("dev-1", "uuid-1.1")}),
+            AgentConfig(
+                2,
+                {Device(
+                    "dev-2",
+                    "uuid-2.2",
+                    NProto::EDeviceState::DEVICE_STATE_ERROR)})};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("local-ssd");
+                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        local->SetAllocationUnit(DefaultDeviceSize);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+
+        const auto agentsInfo = state.QueryAgentsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
+
+        {
+            const auto& agentInfo = agentsInfo[0];
+            const auto& agent = agents[0];
+            const auto& device = agent.GetDevices(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceBrokenSpaceInBytes());
+        }
+
+        {
+            const auto& agentInfo = agentsInfo[1];
+            const auto& agent = agents[1];
+            const auto& device = agent.GetDevices(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceBrokenSpaceInBytes());
+        }
+    }
+
+    Y_UNIT_TEST(QueryAgentsInfoWithDecommisionedSpace)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const TVector agents{
+            AgentConfig(
+                1,
+                NProto::EAgentState::AGENT_STATE_WARNING,
+                {Device("dev-1", "uuid-1.1")}),
+            AgentConfig(
+                2,
+                {Device(
+                    "dev-2",
+                    "uuid-2.2",
+                    NProto::EDeviceState::DEVICE_STATE_WARNING)})};
+
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+                        auto* local = config.AddDevicePoolConfigs();
+                        local->SetName("local-ssd");
+                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        local->SetAllocationUnit(DefaultDeviceSize);
+
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
+
+        const auto agentsInfo = state.QueryAgentsInfo();
+        UNIT_ASSERT_VALUES_EQUAL(2, agentsInfo.size());
+
+        {
+            const auto& agentInfo = agentsInfo[0];
+            const auto& agent = agents[0];
+            const auto& device = agent.GetDevices(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceDecommissionedSpaceInBytes());
+        }
+
+        {
+            const auto& agentInfo = agentsInfo[1];
+            const auto& agent = agents[1];
+            const auto& device = agent.GetDevices(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
+            const auto& deviceInfo = agentInfo.GetDevices(0);
+            const auto deviceSpaceInBytes =
+                device.GetBlockSize() * device.GetBlocksCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceTotalSpaceInBytes());
+            UNIT_ASSERT_VALUES_EQUAL(
+                deviceSpaceInBytes,
+                deviceInfo.GetDeviceDecommissionedSpaceInBytes());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

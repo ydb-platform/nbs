@@ -188,6 +188,12 @@ message TDeviceInfo
 
     // Suspended space in bytes.
     uint64 DeviceSuspendedSpaceInBytes = 7;
+
+    // Broken space in bytes.
+    uint64 DeviceBrokenSpaceInBytes = 8;
+
+    // Decomissioned space in bytes.
+    uint64 DeviceDecommissionedSpaceInBytes = 9;
 }
 
 message TAgentInfo {
