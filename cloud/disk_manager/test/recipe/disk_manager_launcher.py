@@ -173,7 +173,8 @@ AuthConfig: <
     ConnectionTimeout: "2s"
     RetryCount: 7
     PerRetryTimeout: "2s"
-    FolderId: "{folder_id}"{service_account}
+    FolderId: "{folder_id}"
+{service_account}
 >
 PersistenceConfig: <
     Endpoint: "localhost:{ydb_port}"
@@ -186,8 +187,7 @@ PlacementGroupConfig: <
 >
 """
 
-SERVICE_ACCOUNT_TEMPLATE = """
-    ServiceAccount: <
+SERVICE_ACCOUNT_TEMPLATE = """    ServiceAccount: <
         Id: "{service_account_id}"
         KeyId: "{service_account_key_id}"
         Audience: "{service_account_audience}"
