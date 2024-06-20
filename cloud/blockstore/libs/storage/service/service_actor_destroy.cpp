@@ -29,6 +29,7 @@ private:
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
+    const bool DisableDiskWithCloudIdDestruction;
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
@@ -41,6 +42,7 @@ public:
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
+        bool disableDiskWithCloudIdDestruction,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -89,6 +91,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
+        bool disableDiskWithCloudIdDestruction,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -96,6 +99,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
+    , DisableDiskWithCloudIdDestruction(disableDiskWithCloudIdDestruction)
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -325,6 +329,20 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
+    const auto& cloudId = msg->Record.GetVolume().GetCloudId();
+    if (DisableDiskWithCloudIdDestruction && !cloudId.Empty()) {
+        auto e = MakeError(
+            E_REJECTED,
+            TStringBuilder() << "CloudId=" << cloudId <<
+            ", only disks with empty CloudId are allowed to be deleted");
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+                std::move(e)));
+        return;
+    }
+
     for (const auto& client: msg->Record.GetClients()) {
         if (client.GetInstanceId()) {
             const auto timeout = AttachedDiskDestructionTimeout;
@@ -427,6 +445,7 @@ void TServiceActor::HandleDestroyVolume(
         ev->Sender,
         ev->Cookie,
         Config->GetAttachedDiskDestructionTimeout(),
+        Config->GetDisableDiskWithCloudIdDestruction(),
         diskId,
         destroyIfBroken,
         sync,
