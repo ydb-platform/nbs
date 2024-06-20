@@ -2939,6 +2939,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         Y_UNUSED(destroyHandleResponse);
 
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((2LU << 56U) + 2, nodeId2);
+
         // TODO: GetNodeAttr, ListNodes
 
         // a less important TODO: test XAttr requests

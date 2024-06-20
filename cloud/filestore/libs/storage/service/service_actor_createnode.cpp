@@ -12,7 +12,23 @@ void TStorageServiceActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    // TODO: impl follower forwarding
+    auto* msg = ev->Get();
+
+    const auto& clientId = GetClientId(msg->Record);
+    const auto& sessionId = GetSessionId(msg->Record);
+    const ui64 seqNo = GetSessionSeqNo(msg->Record);
+
+    auto* session = State->FindSession(sessionId, seqNo);
+    if (!session || session->ClientId != clientId || !session->SessionActor) {
+        auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(
+            ErrorInvalidSession(clientId, sessionId, seqNo));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+    const auto& followerId = session->SelectFollower();
+
+    if (StorageConfig->GetMultiTabletForwardingEnabled() && followerId) {
+        msg->Record.SetFollowerFileSystemId(followerId);
+    }
 
     ForwardRequest<TEvService::TCreateNodeMethod>(ctx, ev);
 }
