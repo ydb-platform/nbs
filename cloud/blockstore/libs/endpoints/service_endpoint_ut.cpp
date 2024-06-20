@@ -18,8 +18,9 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
-#include <cloud/storage/core/libs/keyring/endpoints_test.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>

@@ -1,0 +1,65 @@
+add_executable(cloud-storage-core-libs-endpoints-keyring-ut-bin)
+target_include_directories(cloud-storage-core-libs-endpoints-keyring-ut-bin PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/endpoints/keyring
+)
+target_link_libraries(cloud-storage-core-libs-endpoints-keyring-ut-bin PUBLIC
+  contrib-libs-linux-headers
+  contrib-libs-cxxsupp
+  yutil
+  library-cpp-cpuid_check
+  cpp-protobuf-util
+  cpp-testing-unittest_main
+  core-libs-endpoints-keyring
+)
+target_link_options(cloud-storage-core-libs-endpoints-keyring-ut-bin PRIVATE
+  -ldl
+  -lrt
+  -Wl,--no-as-needed
+  -fPIC
+  -fPIC
+  -lpthread
+  -lrt
+  -ldl
+)
+target_sources(cloud-storage-core-libs-endpoints-keyring-ut-bin PRIVATE
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/endpoints/keyring/keyring_endpoints_ut.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/endpoints/keyring/keyring_ut.cpp
+)
+set_property(
+  TARGET
+  cloud-storage-core-libs-endpoints-keyring-ut-bin
+  PROPERTY
+  SPLIT_FACTOR
+  1
+)
+add_yunittest(
+  NAME
+  cloud-storage-core-libs-endpoints-keyring-ut-bin
+  TEST_TARGET
+  cloud-storage-core-libs-endpoints-keyring-ut-bin
+  TEST_ARG
+  --print-before-suite
+  --print-before-test
+  --fork-tests
+  --print-times
+  --show-fails
+)
+set_yunittest_property(
+  TEST
+  cloud-storage-core-libs-endpoints-keyring-ut-bin
+  PROPERTY
+  LABELS
+  SMALL
+)
+set_yunittest_property(
+  TEST
+  cloud-storage-core-libs-endpoints-keyring-ut-bin
+  PROPERTY
+  PROCESSORS
+  1
+)
+target_allocator(cloud-storage-core-libs-endpoints-keyring-ut-bin
+  cpp-malloc-tcmalloc
+  libs-tcmalloc-no_percpu_cache
+)
+vcs_info(cloud-storage-core-libs-endpoints-keyring-ut-bin)
