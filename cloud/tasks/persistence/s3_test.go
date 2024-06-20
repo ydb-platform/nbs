@@ -12,6 +12,10 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const maxRetriableErrorCount = 3
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newS3Client(
 	metricsRegistry *mocks.RegistryMock,
 	callTimeout time.Duration,
@@ -24,7 +28,7 @@ func newS3Client(
 		credentials,
 		callTimeout,
 		metricsRegistry,
-		3, // maxRetriableErrorCount
+		maxRetriableErrorCount,
 	)
 }
 
@@ -103,7 +107,7 @@ func TestS3ShouldRetryRequests(t *testing.T) {
 	metricsRegistry.GetCounter(
 		"retry",
 		map[string]string{"call": "CreateBucket"},
-	).On("Inc").Times(3)
+	).On("Inc").Times(maxRetriableErrorCount)
 
 	err = s3.CreateBucket(ctx, "test")
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
