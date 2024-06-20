@@ -191,7 +191,7 @@ SERVICE_ACCOUNT_TEMPLATE = """
         Id: "{service_account_id}"
         KeyId: "{service_account_key_id}"
         Audience: "{service_account_audience}"
-        TokenPrivateKeyFile: {access_service_cert_file}
+        TokenSigningCertFile: {access_service_cert_file}
     >"""
 
 
