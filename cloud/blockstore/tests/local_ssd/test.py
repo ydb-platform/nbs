@@ -159,7 +159,7 @@ def test_add_host_with_legacy_local_ssd(
         input_bytes=str.encode('{"State": true}'))
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
-    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.1')
     assert disk_agent.wait_for_registration()
 
     _add_host(client, agent_id)
@@ -288,7 +288,7 @@ def test_add_host_with_legacy_local_ssd(
             break
         time.sleep(1)
 
-    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.2')
     assert disk_agent.wait_for_registration()
 
     bkp = _backup(client)
@@ -344,7 +344,7 @@ def test_add_host(
         input_bytes=str.encode('{"State": true}'))
     client.update_disk_registry_config(KNOWN_DEVICE_POOLS)
 
-    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.1')
     assert disk_agent.wait_for_registration()
 
     _add_host(client, agent_id)
@@ -429,7 +429,7 @@ def test_add_host(
             break
         time.sleep(1)
 
-    disk_agent = start_disk_agent(disk_agent_config)
+    disk_agent = start_disk_agent(disk_agent_config, name='disk-agent.2')
     assert disk_agent.wait_for_registration()
 
     bkp = _backup(client)
