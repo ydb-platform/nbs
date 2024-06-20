@@ -584,15 +584,24 @@ struct TServer: IEndpointProxyServer
             if (ep.NbdDevicePath) {
                 if (Config.Netlink) {
 #ifdef NETLINK
-                    ep.NbdDevice = NBD::CreateNetlinkDevice(
-                        Logging,
-                        *ep.ListenAddress,
-                        request.GetNbdDevice(),
-                        TDuration::Minutes(1),  // request timeout
-                        TDuration::Days(1),     // connection timeout
-                        true);                  // reconfigure device if exists
+                    try {
+                        ep.NbdDevice = NBD::CreateNetlinkDevice(
+                            Logging,
+                            *ep.ListenAddress,
+                            request.GetNbdDevice(),
+                            TDuration::Minutes(1),  // request timeout
+                            TDuration::Days(1),     // connection timeout
+                            true);                  // reconfigure existing device
+
+                    } catch (const std::exception& e) {
+                        STORAGE_ERROR(request.ShortDebugString().Quote()
+                            << " - Unable to create netlink device: " << e.what()
+                            << ", falling back to ioctl");
+                    }
 #else
-                    STORAGE_ERROR("built without netlink support, falling back to ioctl");
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << " - Built without netlink support"
+                        << ", falling back to ioctl");
 #endif
                 }
                 if (ep.NbdDevice == nullptr) {
@@ -602,10 +611,17 @@ struct TServer: IEndpointProxyServer
                         request.GetNbdDevice(),
                         TDuration::Days(1));    // request timeout
                 }
-                ep.NbdDevice->Start();
 
-                STORAGE_INFO(request.ShortDebugString().Quote()
-                    << " - Started NBD device connection");
+                auto start = ep.NbdDevice->Start();
+                const auto& value = start.GetValue();
+                if (HasError(value)) {
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << " - Unable to start nbd device: "
+                        << value.GetMessage());
+                } else {
+                    STORAGE_INFO(request.ShortDebugString().Quote()
+                        << " - Started NBD device connection");
+                }
             } else {
                 STORAGE_WARN(request.ShortDebugString().Quote()
                     << " - NbdDevice missing - no nbd connection with the"
