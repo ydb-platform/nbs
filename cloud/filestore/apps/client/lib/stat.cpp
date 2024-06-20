@@ -12,6 +12,17 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void Print(const NProto::TNodeAttr& nodeAttr, bool jsonOutput) {
+
+    if (jsonOutput) {
+        Cout << nodeAttr.AsJSON() << Endl;
+    } else {
+        Cout << nodeAttr.DebugString() << Endl;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStatCommand final: public TFileStoreCommand
 {
 private:
@@ -40,9 +51,7 @@ public:
             Client->GetNodeAttr(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
-
-        Cout << response.GetNode().DebugString() << Endl;
-
+        Print(response.GetNode(), JsonOutput);
         return true;
     }
 };
