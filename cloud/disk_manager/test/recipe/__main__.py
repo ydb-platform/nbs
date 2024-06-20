@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -169,6 +170,7 @@ def start(argv):
 
     if args.nfs_only:
         return
+
     token_exchange_endpoint = os.getenv("DISK_MANAGER_RECIPE_TOKEN_EXCHANGE_ENDPOINT")
     if token_exchange_endpoint is None:
         metadata_service = MetadataServiceLauncher()
@@ -176,10 +178,17 @@ def start(argv):
         metadata_service_url = metadata_service.url
     else:
         metadata_service_url = token_exchange_endpoint
+
+    service_account_config = os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_CONFIG")
+    service_account = None
+    if service_account_config is not None:
+        service_account = json.loads(service_account_config)
+
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder=""
     )
+
     ensure_path_exists(working_dir)
 
     s3_credentials_file = os.path.join(working_dir, 's3_credentials.json')
@@ -210,10 +219,7 @@ def start(argv):
             cert_key_file=cert_key_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
-            access_service_cert_file=os.getenv("DISK_MANAGER_ACCESS_SERVICE_CERT"),
-            service_account_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_ID"),
-            service_account_key_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_KEY_ID"),
-            service_account_audience=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_AUDIENCE"),
+            service_account=service_account,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -237,10 +243,7 @@ def start(argv):
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
-            access_service_cert_file=os.getenv("DISK_MANAGER_ACCESS_SERVICE_CERT"),
-            service_account_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_ID"),
-            service_account_key_id=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_KEY_ID"),
-            service_account_audience=os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_AUDIENCE"),
+            service_account=service_account,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()

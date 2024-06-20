@@ -173,7 +173,7 @@ AuthConfig: <
     ConnectionTimeout: "2s"
     RetryCount: 7
     PerRetryTimeout: "2s"
-    FolderId: "DiskManagerFolderId"{service_account}
+    FolderId: {folder_id}{service_account}
 >
 PersistenceConfig: <
     Endpoint: "localhost:{ydb_port}"
@@ -361,10 +361,7 @@ class DiskManagerLauncher:
         s3_credentials_file=None,
         min_restart_period_sec: int = 5,
         max_restart_period_sec: int = 30,
-        access_service_cert_file: str | None = None,
-        service_account_id: str | None = None,
-        service_account_key_id: str | None = None,
-        service_account_audience: str | None = None,
+        service_account: dict | None = None,
     ):
         self.__idx = idx
 
@@ -391,16 +388,19 @@ class DiskManagerLauncher:
             working_dir,
             'disk_manager_config_{}.txt'.format(idx)
         )
-        service_account_info = dict(
-            service_account_id=service_account_id,
-            service_account_key_id=service_account_audience,
-            service_account_audience=service_account_key_id,
-            access_service_cert_file=access_service_cert_file,
-        )
-        if all(service_account_info.values()):
-            service_account = SERVICE_ACCOUNT_TEMPLATE.format(**service_account_info)
+        if service_account is None:
+            service_account_content = ""
+            folder_id = "DiskManagerFolderId"
         else:
-            service_account = ""
+            service_account_info = dict(
+                service_account_id=service_account["service_account"],
+                service_account_key_id=service_account["key_id"],
+                service_account_audience=service_account["audience"],
+                access_service_cert_file=service_account["private_key_path"],
+            )
+            service_account_content = SERVICE_ACCOUNT_TEMPLATE.format(**service_account_info)
+            folder_id = service_account["folder_id"]
+
         self.__server_config = None
         if is_dataplane:
             with open(config_file, "w") as f:
@@ -433,7 +433,8 @@ class DiskManagerLauncher:
                     metadata_url=metadata_url,
                     access_service_port=access_service_port,
                     ydb_port=ydb_port,
-                    service_account=service_account,
+                    service_account=service_account_content,
+                    folder_id=folder_id,
                 )
                 f.write(self.__server_config)
 
