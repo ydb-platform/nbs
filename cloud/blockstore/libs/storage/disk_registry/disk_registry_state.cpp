@@ -7074,6 +7074,25 @@ TVector<NProto::TAgentInfo> TDiskRegistryState::QueryAgentsInfo() const
                 continue;
             }
 
+            const auto agentState = agent.GetState();
+            const auto deviceState = device.GetState();
+            if (agentState == NProto::AGENT_STATE_UNAVAILABLE ||
+                deviceState == NProto::DEVICE_STATE_ERROR)
+            {
+                deviceInfo.SetDeviceBrokenSpaceInBytes(
+                    deviceInfo.GetDeviceBrokenSpaceInBytes() + deviceBytes);
+                continue;
+            }
+
+            if (agentState == NProto::AGENT_STATE_WARNING ||
+                deviceState == NProto::DEVICE_STATE_WARNING)
+            {
+                deviceInfo.SetDeviceDecommissionedSpaceInBytes(
+                    deviceInfo.GetDeviceDecommissionedSpaceInBytes() +
+                    deviceBytes);
+                continue;
+            }
+
             if (allocated) {
                 deviceInfo.SetDeviceAllocatedSpaceInBytes(
                     deviceInfo.GetDeviceAllocatedSpaceInBytes() + deviceBytes);
