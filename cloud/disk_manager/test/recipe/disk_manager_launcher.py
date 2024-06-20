@@ -169,7 +169,7 @@ AuthConfig: <
     DisableAuthorization: false
     MetadataUrl: "{metadata_url}"
     AccessServiceEndpoint: "localhost:{access_service_port}"
-    CertFile: "{auth_certs_file}"
+    CertFile: "{root_certs_file}"
     ConnectionTimeout: "2s"
     RetryCount: 7
     PerRetryTimeout: "2s"
@@ -191,6 +191,7 @@ SERVICE_ACCOUNT_TEMPLATE = """
         Id: "{service_account_id}"
         KeyId: "{service_account_key_id}"
         Audience: "{service_account_audience}"
+        TokenPrivateKeyFile: {access_service_cert_file}
     >"""
 
 
@@ -390,13 +391,14 @@ class DiskManagerLauncher:
             working_dir,
             'disk_manager_config_{}.txt'.format(idx)
         )
-
-        if service_account_id and service_account_audience and service_account_key_id:
-            service_account = SERVICE_ACCOUNT_TEMPLATE.format(
-                service_account_id=service_account_id,
-                service_account_key_id=service_account_key_id,
-                service_account_audience=service_account_audience,
-            )
+        service_account_info = dict(
+            service_account_id=service_account_id,
+            service_account_key_id=service_account_audience,
+            service_account_audience=service_account_key_id,
+            access_service_cert_file=access_service_cert_file,
+        )
+        if all(service_account_info.values()):
+            service_account = SERVICE_ACCOUNT_TEMPLATE.format(**service_account_info)
         else:
             service_account = ""
         self.__server_config = None
@@ -431,7 +433,6 @@ class DiskManagerLauncher:
                     metadata_url=metadata_url,
                     access_service_port=access_service_port,
                     ydb_port=ydb_port,
-                    auth_certs_file=access_service_cert_file or root_certs_file,
                     service_account=service_account,
                 )
                 f.write(self.__server_config)
