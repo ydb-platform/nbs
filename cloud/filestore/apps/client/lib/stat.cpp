@@ -47,10 +47,11 @@ public:
         CreateSession();
 
         const auto resolved = ResolvePath(Path, false);
-        Y_ENSURE(!resolved.empty(), "resolved path is empty");
+        Y_ABORT_UNLESS(resolved.size() >= 2);
 
         auto request = CreateRequest<NProto::TGetNodeAttrRequest>();
-        request->SetNodeId(resolved.back().Node.GetId());
+        request->SetNodeId(resolved[resolved.size() - 2].Node.GetId());
+        request->SetName(ToString(resolved.back().Name));
         auto response = WaitFor(
             Client->GetNodeAttr(PrepareCallContext(), std::move(request)));
 
