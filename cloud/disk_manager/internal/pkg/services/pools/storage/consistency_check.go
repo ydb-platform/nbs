@@ -16,7 +16,7 @@ func (s *storageYDB) getPools(
 	session *persistence.Session,
 ) ([]pool, error) {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 
@@ -38,6 +38,12 @@ func (s *storageYDB) getPools(
 
 			pools = append(pools, pool)
 		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
 	}
 
 	return pools, nil
