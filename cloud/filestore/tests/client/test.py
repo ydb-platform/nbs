@@ -171,3 +171,76 @@ def test_write_ls_rm_ls():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_set_node_attr():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.mkdir("fs0", "/aaa")
+
+    out = client.stat("fs0", "/aaa")
+    stat = json.loads(out)
+    node_id = stat["Id"]
+    uid = 1
+    gid = 1
+    size = 123
+    mode = 221
+    atime = stat["ATime"] - 1
+    mtime = stat["MTime"] - 1
+    ctime = stat["CTime"] - 1
+
+    client.set_node_attr(
+        "fs0", node_id,
+        "--uid", uid,
+        "--gid", gid,
+        "--size", size,
+        "--mode", mode,
+        "--atime", atime,
+        "--mtime", mtime,
+        "--ctime", ctime)
+
+    out = client.stat("fs0", "/aaa")
+    stat = json.loads(out)
+
+    assert uid == stat["Uid"]
+    assert gid == stat["Gid"]
+    assert size == stat["Size"]
+    assert mode == stat["Mode"]
+    assert atime == stat["ATime"]
+    assert mtime == stat["MTime"]
+    assert ctime == stat["CTime"]
+
+
+def test_partial_set_node_attr():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.mkdir("fs0", "/aaa")
+    client.touch("fs0", "/aaa/bbb")
+
+    out = client.stat("fs0", "/aaa/bbb")
+    stat = json.loads(out)
+    node_id = stat["Id"]
+    uid = 1
+    gid = 1
+
+    client.set_node_attr(
+        "fs0", node_id,
+        "--uid", uid,
+        "--gid", gid,
+        "--size", 123)
+
+    out = client.stat("fs0", "/aaa/bbb")
+    stat = json.loads(out)
+
+    assert uid == stat["Uid"]
+    assert gid == stat["Gid"]
+    gid = 2
+    client.set_node_attr(
+        "fs0", node_id,
+        "--gid", gid)
+    out = client.stat("fs0", "/aaa/bbb")
+    new_stat = json.loads(out)
+    assert gid == new_stat["Gid"]
+    assert stat["Uid"] == new_stat["Uid"]
+    assert stat["Size"] == new_stat["Size"]
+    assert stat["Mode"] == new_stat["Mode"]
