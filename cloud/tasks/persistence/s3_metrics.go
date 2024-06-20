@@ -102,6 +102,23 @@ func (m *s3Metrics) StatCall(
 	}
 }
 
+func (m *s3Metrics) CountRetry(req *request.Request) {
+	logging.Info(
+		req.Context(),
+		"retrying request %v for a %v time",
+		req.Operation.Name,
+		req.RetryCount+1,
+	)
+
+	subRegistry := m.registry.WithTags(map[string]string{
+		"call": req.Operation.Name,
+	})
+
+	// Should initialize all counters before using them, to avoid 'no data'.
+	retryCounter := subRegistry.Counter("retry")
+	retryCounter.Inc()
+}
+
 func newS3Metrics(registry metrics.Registry, callTimeout time.Duration) *s3Metrics {
 	return &s3Metrics{
 		registry:    registry,

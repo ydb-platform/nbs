@@ -20,6 +20,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     journald_tests
-    testcommon
     tests
 )

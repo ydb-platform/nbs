@@ -31,15 +31,11 @@ func withComponentLoggingField(ctx context.Context) context.Context {
 
 type s3ClientRetryer struct {
 	client.DefaultRetryer
+	metrics *s3Metrics
 }
 
 func (r *s3ClientRetryer) RetryRules(req *request.Request) time.Duration {
-	logging.Info(
-		req.Context(),
-		"retrying request %v for a %v time",
-		req.Operation.Name,
-		req.RetryCount+1,
-	)
+	r.metrics.CountRetry(req)
 
 	return r.DefaultRetryer.RetryRules(req)
 }
@@ -60,6 +56,8 @@ func NewS3Client(
 	registry metrics.Registry,
 ) (*S3Client, error) {
 
+	s3Metrics := newS3Metrics(registry, callTimeout)
+
 	sessionConfig := &aws.Config{
 		Credentials: aws_credentials.NewStaticCredentials(
 			credentials.ID,
@@ -73,6 +71,7 @@ func NewS3Client(
 			DefaultRetryer: client.DefaultRetryer{
 				NumMaxRetries: 3,
 			},
+			metrics: s3Metrics,
 		},
 	}
 
@@ -84,7 +83,7 @@ func NewS3Client(
 	return &S3Client{
 		s3:          aws_s3.New(session),
 		callTimeout: callTimeout,
-		metrics:     newS3Metrics(registry, callTimeout),
+		metrics:     s3Metrics,
 	}, nil
 }
 
