@@ -16,7 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/service
     
     cloud/storage/core/libs/common
-    cloud/storage/core/libs/keyring
+    cloud/storage/core/libs/endpoints/keyring
 
     contrib/libs/openssl
 )

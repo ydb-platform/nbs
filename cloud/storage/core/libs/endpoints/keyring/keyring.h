@@ -1,6 +1,6 @@
 #pragma once
 
-#include "public.h"
+#include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>

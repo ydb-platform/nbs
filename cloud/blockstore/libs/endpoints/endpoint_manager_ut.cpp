@@ -30,8 +30,8 @@
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
-#include <cloud/storage/core/libs/keyring/endpoints_test.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

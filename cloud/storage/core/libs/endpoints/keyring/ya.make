@@ -1,14 +1,13 @@
 LIBRARY()
 
 SRCS(
-    endpoints.cpp
-    endpoints_test.cpp
     keyring.cpp
+    keyring_endpoints.cpp
+    keyring_endpoints_test.cpp
 )
 
 PEERDIR(
     cloud/storage/core/libs/common
-
     library/cpp/protobuf/util
 )
 

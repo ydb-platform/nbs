@@ -11,7 +11,7 @@
 #include <cloud/filestore/libs/vfs/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
-#include <cloud/storage/core/libs/keyring/public.h>
+#include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 namespace NCloud::NFileStore::NDaemon {
 

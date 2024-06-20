@@ -10,7 +10,7 @@
 
 #include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
 
-#include <cloud/storage/core/libs/keyring/public.h>
+#include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 #include <library/cpp/logger/log.h>
 

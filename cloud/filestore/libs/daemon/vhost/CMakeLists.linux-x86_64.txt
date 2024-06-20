@@ -27,7 +27,8 @@ target_link_libraries(libs-daemon-vhost PUBLIC
   core-libs-common
   core-libs-daemon
   core-libs-diagnostics
-  core-libs-keyring
+  core-libs-endpoints-fs
+  core-libs-endpoints-keyring
   core-libs-kikimr
   core-blobstorage-lwtrace_probes
   ydb-core-tablet_flat

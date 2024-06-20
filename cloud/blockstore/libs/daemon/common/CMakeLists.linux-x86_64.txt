@@ -49,8 +49,9 @@ target_link_libraries(libs-daemon-common PUBLIC
   core-libs-coroutine
   core-libs-daemon
   core-libs-diagnostics
+  core-libs-endpoints-fs
+  core-libs-endpoints-keyring
   core-libs-grpc
-  core-libs-keyring
   core-libs-version
   cpp-actors-util
   cpp-getopt-small
