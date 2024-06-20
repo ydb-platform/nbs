@@ -595,13 +595,13 @@ struct TServer: IEndpointProxyServer
 
                     } catch (const std::exception& e) {
                         STORAGE_ERROR(request.ShortDebugString().Quote()
-                            << "Unable to create netlink device: " << e.what()
-                            << "falling back to ioctl")
+                            << " - Unable to create netlink device: " << e.what()
+                            << ", falling back to ioctl");
                     }
 #else
                     STORAGE_ERROR(request.ShortDebugString().Quote()
-                        << "Built without netlink support, falling back to "
-                        << "ioctl");
+                        << " - Built without netlink support"
+                        << "", falling back to ioctl");
 #endif
                 }
                 if (ep.NbdDevice == nullptr) {

@@ -423,8 +423,7 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     if (!attr[NBD_ATTR_DEVICE_LIST]) {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "did not receive NBD_ATTR_DEVICE_LIST"));
+            "did not receive NBD_ATTR_DEVICE_LIST"));
         return NL_STOP;
     }
 
@@ -444,8 +443,7 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     if (!deviceItem[NBD_DEVICE_ITEM]) {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "did not receive NBD_DEVICE_ITEM"));
+            "did not receive NBD_DEVICE_ITEM"));
         return NL_STOP;
     }
 
@@ -465,8 +463,7 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     if (!device[NBD_DEVICE_CONNECTED]) {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "did not receive NBD_DEVICE_CONNECTED"));
+            "did not receive NBD_DEVICE_CONNECTED"));
         return NL_STOP;
     }
 
