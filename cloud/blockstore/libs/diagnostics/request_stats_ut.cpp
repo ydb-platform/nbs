@@ -223,6 +223,89 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotTrackRequestsForDefaultMediaKindAsHdd)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto requestStats = CreateServerRequestStats(
+            monitoring->GetCounters(),
+            CreateWallClockTimer());
+
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        TIntrusivePtr<NMonitoring::TDynamicCounters> countersByMediaKind[]{
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "ssd")
+                ->GetSubgroup("request", "WriteBlocks"),
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "hdd")
+                ->GetSubgroup("request", "WriteBlocks"),
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "ssd_nonrepl")
+                ->GetSubgroup("request", "WriteBlocks"),
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "hdd_nonrepl")
+                ->GetSubgroup("request", "WriteBlocks"),
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "ssd_mirror2")
+                ->GetSubgroup("request", "WriteBlocks"),
+            monitoring->GetCounters()
+                ->GetSubgroup("type", "ssd_mirror3")
+                ->GetSubgroup("request", "WriteBlocks")
+        };
+
+        // Add statistics for STORAGE_MEDIA_DEFAULT and check that statistics
+        // are not taken into account for a specific type of media.
+        {
+            AddRequestStats(
+                *requestStats,
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::WriteBlocks,
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
+
+            UNIT_ASSERT_EQUAL(1, totalCounters->GetCounter("Count")->Val());
+            for (const auto& counter: countersByMediaKind) {
+                UNIT_ASSERT_EQUAL(0, counter->GetCounter("Count")->Val());
+            }
+        }
+
+        {
+            requestStats->AddRetryStats(
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::WriteBlocks,
+                EDiagnosticsErrorKind::ErrorRetriable,
+                0);
+
+            UNIT_ASSERT_EQUAL(
+                1,
+                totalCounters->GetCounter("Errors/Retriable")->Val());
+            for (const auto& counter: countersByMediaKind) {
+                UNIT_ASSERT_EQUAL(
+                    0,
+                    counter->GetCounter("Errors/Retriable")->Val());
+            }
+        }
+
+        {
+            const auto totalTime = TDuration::Seconds(15);
+            requestStats->AddIncompleteStats(
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::WriteBlocks,
+                TRequestTime{
+                    .TotalTime = totalTime,
+                    .ExecutionTime = totalTime},
+                ECalcMaxTime::ENABLE);
+            requestStats->UpdateStats(true);
+
+            UNIT_ASSERT_EQUAL(
+                totalTime.MicroSeconds(),
+                totalCounters->GetCounter("MaxTime")->Val());
+            for (const auto& counter: countersByMediaKind) {
+                UNIT_ASSERT_EQUAL(0, counter->GetCounter("MaxTime")->Val());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldFillTimePercentiles)
     {
         // Hdr histogram is no-op under Tsan, so just finish this test
