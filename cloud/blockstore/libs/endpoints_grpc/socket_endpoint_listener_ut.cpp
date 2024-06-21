@@ -406,12 +406,28 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
 
         auto client = CreateClient(logging, unixSocket.GetPath());
         client->Start();
+        Y_DEFER {
+            if (client) {
+                client->Stop();
+            }
+        };
 
         auto clientEndpoint = client->CreateEndpoint();
         clientEndpoint->Start();
+        Y_DEFER {
+            if (clientEndpoint) {
+                clientEndpoint->Stop();
+            }
+        };
 
-        Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientStorage->GetSessionCount() == 1);
+        const auto waitIters = 10;
+        for (ui32 i = 0; i < waitIters; ++i) {
+            if (clientStorage->GetSessionCount()) {
+                break;
+            }
+            Sleep(TDuration::MilliSeconds(100));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, clientStorage->GetSessionCount());
 
         clientEndpoint->Stop();
         clientEndpoint.reset();
@@ -419,8 +435,13 @@ Y_UNIT_TEST_SUITE(TSocketEndpointListenerTest)
         client->Stop();
         client.reset();
 
-        Sleep(TDuration::MilliSeconds(100));
-        UNIT_ASSERT(clientStorage->GetSessionCount() == 0);
+        for (ui32 i = 0; i < waitIters; ++i) {
+            if (!clientStorage->GetSessionCount()) {
+                break;
+            }
+            Sleep(TDuration::MilliSeconds(100));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, clientStorage->GetSessionCount());
     }
 
     Y_UNIT_TEST(ShouldNotAcceptClientAfterServerStopped)
