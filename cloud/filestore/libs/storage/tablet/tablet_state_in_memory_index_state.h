@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Stores a subset of the actual index state for caching purposes.
-class TInMemoryIndexState: public IIndexState
+class TInMemoryIndexState: public IIndexTabletDatabase
 {
 public:
     //

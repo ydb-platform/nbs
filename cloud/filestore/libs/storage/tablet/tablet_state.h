@@ -337,7 +337,7 @@ public:
 
     void RemoveNode(
         TIndexTabletDatabase& db,
-        const IIndexState::TNode& node,
+        const IIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
 
@@ -345,15 +345,15 @@ public:
         TIndexTabletDatabase& db,
         ui64 parentNodeId,
         const TString& name,
-        const IIndexState::TNode& node,
+        const IIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
 
     bool ReadNode(
-        IIndexState& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
-        TMaybe<IIndexState::TNode>& node);
+        TMaybe<IIndexTabletDatabase::TNode>& node);
 
     void RewriteNode(
         TIndexTabletDatabase& db,
@@ -403,14 +403,14 @@ public:
         const TIndexTabletDatabase::TNodeAttr& attr);
 
     bool ReadNodeAttr(
-        IIndexState& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
         TMaybe<TIndexTabletDatabase::TNodeAttr>& attr);
 
     bool ReadNodeAttrs(
-        IIndexState& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         TVector<TIndexTabletDatabase::TNodeAttr>& attrs);
@@ -447,18 +447,18 @@ public:
         const TString& followerName);
 
     bool ReadNodeRef(
-        IIndexState& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexState::TNodeRef>& ref);
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref);
 
     bool ReadNodeRefs(
-        IIndexState& db,
+        IIndexTabletDatabase& db,
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexState::TNodeRef>& refs,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr);
 

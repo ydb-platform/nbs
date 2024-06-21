@@ -354,7 +354,7 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
         // load inodes so we could check and update stats later
         auto it = args.Nodes.find(write.NodeId);
         if (it == args.Nodes.end()) {
-            TMaybe<IIndexState::TNode> node;
+            TMaybe<IIndexTabletDatabase::TNode> node;
             if (!ReadNode(db, write.NodeId, args.CommitId, node)) {
                 ready = false;
                 continue;

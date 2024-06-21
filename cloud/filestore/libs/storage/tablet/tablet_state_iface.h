@@ -9,7 +9,7 @@ namespace NCloud::NFileStore::NStorage {
 // This interface contains a subset of the methods that can be performed over
 // the localDB tables. Throughout the code two implementations are supported:
 // one for the localDB access, and one for the in-memory cache.
-class IIndexState
+class IIndexTabletDatabase
 {
 public:
     struct TNode
@@ -42,7 +42,7 @@ public:
     };
 
 public:
-    virtual ~IIndexState() = default;
+    virtual ~IIndexTabletDatabase() = default;
 
     //
     // Nodes
