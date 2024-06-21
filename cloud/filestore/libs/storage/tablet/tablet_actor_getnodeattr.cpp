@@ -130,7 +130,7 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         TABLET_VERIFY(args.ParentNode);
 
         // validate target node exists
-        TMaybe<TIndexTabletDatabase::TNodeRef> ref;
+        TMaybe<IIndexState::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.CommitId, args.Name, ref)) {
             return false;   // not ready
         }

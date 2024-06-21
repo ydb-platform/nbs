@@ -97,7 +97,7 @@ void TIndexTabletState::UpdateNode(
 
 void TIndexTabletState::RemoveNode(
     TIndexTabletDatabase& db,
-    const TIndexTabletDatabase::TNode& node,
+    const IIndexState::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -127,7 +127,7 @@ void TIndexTabletState::UnlinkNode(
     TIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
-    const TIndexTabletDatabase::TNode& node,
+    const IIndexState::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -158,10 +158,10 @@ void TIndexTabletState::UnlinkNode(
 }
 
 bool TIndexTabletState::ReadNode(
-    TIndexTabletDatabase& db,
+    IIndexState& db,
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<TIndexTabletDatabase::TNode>& node)
+    TMaybe<IIndexState::TNode>& node)
 {
     bool ready = db.ReadNode(nodeId, commitId, node);
 
@@ -285,7 +285,7 @@ void TIndexTabletState::RemoveNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexState& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -310,7 +310,7 @@ bool TIndexTabletState::ReadNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttrs(
-    TIndexTabletDatabase& db,
+    IIndexState& db,
     ui64 nodeId,
     ui64 commitId,
     TVector<TIndexTabletDatabase::TNodeAttr>& attrs)
@@ -395,11 +395,11 @@ void TIndexTabletState::RemoveNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexState& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<IIndexState::TNodeRef>& ref)
 {
     bool ready = db.ReadNodeRef(nodeId, commitId, name, ref);
 
@@ -420,11 +420,11 @@ bool TIndexTabletState::ReadNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRefs(
-    TIndexTabletDatabase& db,
+    IIndexState& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
-    TVector<TIndexTabletDatabase::TNodeRef>& refs,
+    TVector<IIndexState::TNodeRef>& refs,
     ui32 maxBytes,
     TString* next)
 {
