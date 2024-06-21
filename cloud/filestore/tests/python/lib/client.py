@@ -147,6 +147,16 @@ class NfsCliClient:
 
         return common.execute(cmd).stdout
 
+    def stat(self, fs, path):
+        cmd = [
+            self.__binary_path, "stat",
+            "--filesystem", fs,
+            "--path", path,
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd).stdout
+
     def execute_action(self, action, request):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
