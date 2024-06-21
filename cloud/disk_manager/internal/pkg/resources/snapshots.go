@@ -744,7 +744,7 @@ func (s *storageYDB) deleteSnapshot(
 				return nil, err
 			}
 
-			logging.Debug(
+			logging.Info(
 				ctx,
 				"Snapshot with id %v is locked, can't delete",
 				snapshotID,
@@ -1122,7 +1122,7 @@ func (s *storageYDB) unlockSnapshot(
 		return err
 	}
 
-	logging.Debug(ctx, "Successfully unlocked snapshot with id %v", snapshotID)
+	logging.Info(ctx, "Successfully unlocked snapshot with id %v", snapshotID)
 	return nil
 }
 

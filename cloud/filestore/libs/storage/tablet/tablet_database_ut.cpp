@@ -135,18 +135,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
             db.WriteNode(nodeId, commitId, attrs);
             db.WriteNode(childNodeId1, commitId, attrs);
             db.WriteNode(childNodeId2, commitId, attrs);
-            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1);
-            db.WriteNodeRef(nodeId, commitId, "child2", childNodeId2);
+            db.WriteNodeRef(nodeId, commitId, "child1", childNodeId1, "", "");
+            db.WriteNodeRef(
+                nodeId,
+                commitId,
+                "child2",
+                childNodeId2,
+                "follower",
+                "name");
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
             TMaybe<IIndexState::TNodeRef> ref1;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child1", ref1));
             UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
+            UNIT_ASSERT_EQUAL(ref1->FollowerId, "");
+            UNIT_ASSERT_EQUAL(ref1->FollowerName, "");
 
             TMaybe<IIndexState::TNodeRef> ref2;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child2", ref2));
             UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
+            UNIT_ASSERT_EQUAL(ref2->FollowerId, "follower");
+            UNIT_ASSERT_EQUAL(ref2->FollowerName, "name");
 
             TMaybe<IIndexState::TNodeRef> ref3;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child3", ref3));

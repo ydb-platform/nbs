@@ -31,6 +31,7 @@ TCommandPtr NewWriteCommand();
 TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
+TCommandPtr NewStatCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -60,6 +61,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "executeaction", NewExecuteActionCommand },
     { "createsession", NewCreateSessionCommand },
     { "resetsession", NewResetSessionCommand },
+    { "stat", NewStatCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////

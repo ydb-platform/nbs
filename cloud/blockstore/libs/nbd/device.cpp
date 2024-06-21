@@ -74,30 +74,46 @@ public:
         Stop(true);
     }
 
-    void Start() override
+    NThreading::TFuture<NProto::TError> Start() override
     {
-        ConnectSocket();
-        ConnectDevice();
+        try {
+            ConnectSocket();
+            ConnectDevice();
 
-        ISimpleThread::Start();
+            ISimpleThread::Start();
+        } catch (...) {
+            return NThreading::MakeFuture(MakeError(
+                E_FAIL,
+                CurrentExceptionMessage()));
+        }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
-    void Stop(bool deleteDevice) override
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         // device configured via ioctl interface is bound to the process, there
         // is no point keeping it
         Y_UNUSED(deleteDevice);
 
         if (AtomicSwap(&ShouldStop, 1) == 1) {
-            return;
+            return NThreading::MakeFuture(MakeError(S_OK));
         }
 
-        DisconnectDevice();
+        try {
+            DisconnectDevice();
 
-        ISimpleThread::Join();
+            ISimpleThread::Join();
 
-        Device.Close();
-        DisconnectSocket();
+            Device.Close();
+            DisconnectSocket();
+        } catch (...) {
+            return NThreading::MakeFuture(MakeError(
+                E_FAIL,
+                CurrentExceptionMessage()));
+        }
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 
 private:
@@ -229,12 +245,16 @@ class TDeviceStub final
     : public IDevice
 {
 public:
-    void Start() override
-    {}
+    NThreading::TFuture<NProto::TError> Start() override
+    {
+        return NThreading::MakeFuture(MakeError(S_OK));
+    }
 
-    void Stop(bool deleteDevice) override
+    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         Y_UNUSED(deleteDevice);
+
+        return NThreading::MakeFuture(MakeError(S_OK));
     }
 };
 

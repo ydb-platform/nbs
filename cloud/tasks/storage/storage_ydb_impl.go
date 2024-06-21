@@ -65,7 +65,7 @@ func (s *storageYDB) getTaskID(
 			return "", err
 		}
 
-		logging.Debug(
+		logging.Info(
 			ctx,
 			"Existing taskID %v for idempotencyKey %v accountID %v",
 			id,
@@ -527,7 +527,7 @@ func (s *storageYDB) prepareCreateTask(
 		}
 
 		if count != 0 {
-			logging.Debug(
+			logging.Info(
 				ctx,
 				"%v tasks with id='%v' already exist",
 				count,
@@ -1431,9 +1431,9 @@ func (s *storageYDB) updateTaskTx(
 	ctx, cancel = context.WithTimeout(ctx, s.updateTaskTimeout)
 	defer cancel()
 
-	logging.Debug(ctx, "updating task with id %v", state.ID)
+	logging.Info(ctx, "updating task with id %v", state.ID)
 	defer func() {
-		logging.Debug(ctx, "finished updating task with id %v", state.ID)
+		logging.Info(ctx, "finished updating task with id %v", state.ID)
 	}()
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`

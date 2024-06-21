@@ -289,7 +289,7 @@ func (t *Transaction) Execute(
 		ydb_table.NewQueryParameters(params...),
 	)
 	if err != nil {
-		logging.Debug(
+		logging.Warn(
 			ctx,
 			"query failed: query %v: %v",
 			query,
@@ -354,7 +354,7 @@ func (s *Session) BeginRWTransaction(
 	var ydbTx ydb_table.Transaction
 	ydbTx, err = s.session.BeginTransaction(ctx, settings)
 	if err != nil {
-		logging.Debug(ctx, "failed to begin transaction: %v", err)
+		logging.Warn(ctx, "failed to begin transaction: %v", err)
 
 		// TODO: some errors should not be retriable.
 		return nil, errors.NewRetriableErrorf(
@@ -466,7 +466,7 @@ func (s *Session) execute(
 		ydb_table.NewQueryParameters(params...),
 	)
 	if err != nil {
-		logging.Debug(
+		logging.Warn(
 			ctx,
 			"session execution failed: query %v: %v",
 			query,

@@ -241,10 +241,20 @@ func (s *StorageMock) GetReadyPoolInfos(
 	return args.Get(0).([]storage.PoolInfo), args.Error(1)
 }
 
-func (s *StorageMock) CheckConsistency(
+func (s *StorageMock) CheckPoolsConsistency(
 	ctx context.Context,
-) error {
+) ([]storage.PoolConsistencyCorrection, error) {
 
+	args := s.Called(ctx)
+	return args.Get(0).([]storage.PoolConsistencyCorrection), args.Error(1)
+}
+
+func (s *StorageMock) CheckBaseDisksConsistency(ctx context.Context) error {
+	args := s.Called(ctx)
+	return args.Error(0)
+}
+
+func (s *StorageMock) CheckConsistency(ctx context.Context) error {
 	args := s.Called(ctx)
 	return args.Error(0)
 }

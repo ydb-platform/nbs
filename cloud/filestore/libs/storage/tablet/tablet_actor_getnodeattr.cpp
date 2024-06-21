@@ -141,8 +141,14 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttr(
         }
 
         args.TargetNodeId = ref->ChildNodeId;
+        args.FollowerId = ref->FollowerId;
+        args.FollowerName = ref->FollowerName;
     } else {
         args.TargetNodeId = args.NodeId;
+    }
+
+    if (args.FollowerId) {
+        return true;
     }
 
     if (!ReadNode(db, args.TargetNodeId, args.CommitId, args.TargetNode)) {
@@ -178,9 +184,17 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
 
     auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
-        TABLET_VERIFY(args.TargetNode);
         auto* node = response->Record.MutableNode();
-        ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
+        if (args.FollowerId) {
+            node->SetFollowerFileSystemId(args.FollowerId);
+            node->SetFollowerNodeName(args.FollowerName);
+        } else {
+            TABLET_VERIFY(args.TargetNode);
+            ConvertNodeFromAttrs(
+                *node,
+                args.TargetNodeId,
+                args.TargetNode->Attrs);
+        }
 
         if (args.Name) {
             // cache the result for future access

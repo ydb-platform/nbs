@@ -163,7 +163,7 @@ func (t Transferer) Transfer(
 				}
 			}
 
-			logging.Debug(ctx, "Saving progress with milestone %+v", milestone)
+			logging.Info(ctx, "Saving progress with milestone %+v", milestone)
 			return saveProgress(ctx, milestone)
 		},
 	)

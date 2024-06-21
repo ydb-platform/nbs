@@ -576,10 +576,14 @@ public:
     bool GetDataScrubbingEnabled() const;
     TDuration GetScrubbingInterval() const;
     TDuration GetScrubbingChecksumMismatchTimeout() const;
+    ui64 GetScrubbingBandwidth() const;
+    ui64 GetMaxScrubbingBandwidth() const;
+    ui64 GetMinScrubbingBandwidth() const;
 
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
+    bool GetDisableDiskWithCloudIdDestruction() const;
 };
 
 ui64 GetAllocationUnit(

@@ -48,9 +48,9 @@ void TIndexTabletActor::HandleUnlinkNode(
     }
 
     auto* msg = ev->Get();
-    if (auto entry = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
         auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        GetDupCacheEntry(entry, response->Record);
+        GetDupCacheEntry(e, response->Record);
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -150,6 +150,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
+    // TODO(#1350): unlink external nodes
     UnlinkNode(
         db,
         args.ParentNodeId,

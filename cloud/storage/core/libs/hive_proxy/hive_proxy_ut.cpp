@@ -1452,7 +1452,6 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(receivedlookupCount, 1);
 
         runtime.Register(CreateTabletKiller(FakeHiveTablet));
-        runtime.Register(CreateTabletKiller(TenantHiveTablet));
         runtime.DispatchEvents({}, TDuration::Seconds(1));
         for (ui32 i = 0; i < LookupCount; ++i) {
             auto ev =

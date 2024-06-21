@@ -432,7 +432,9 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& childName,
-        ui64 childNodeId);
+        ui64 childNodeId,
+        const TString& followerId,
+        const TString& followerName);
 
     void RemoveNodeRef(
         TIndexTabletDatabase& db,
@@ -440,7 +442,9 @@ public:
         ui64 minCommitId,
         ui64 maxCommitId,
         const TString& childName,
-        ui64 prevChildNodeId);
+        ui64 prevChildNodeId,
+        const TString& followerId,
+        const TString& followerName);
 
     bool ReadNodeRef(
         IIndexState& db,
@@ -470,7 +474,9 @@ public:
         ui64 minCommitId,
         ui64 maxCommitId,
         const TString& childName,
-        ui64 childNodeId);
+        ui64 childNodeId,
+        const TString& followerId,
+        const TString& followerName);
 
     //
     // Sessions

@@ -14,8 +14,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
-#include <cloud/storage/core/libs/keyring/endpoints_test.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/json/proto2json.h>

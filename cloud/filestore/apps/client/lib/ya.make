@@ -23,6 +23,7 @@ SRCS(
     resize.cpp
     rm.cpp
     start_endpoint.cpp
+    stat.cpp
     stop_endpoint.cpp
     text_table.cpp
     touch.cpp

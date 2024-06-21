@@ -42,7 +42,8 @@ PEERDIR(
     cloud/blockstore/tools/testing/loadtest/protos
 
     cloud/storage/core/libs/grpc
-    cloud/storage/core/libs/keyring
+    cloud/storage/core/libs/endpoints/iface
+    cloud/storage/core/libs/endpoints/fs
     cloud/storage/core/libs/version
 
     library/cpp/aio

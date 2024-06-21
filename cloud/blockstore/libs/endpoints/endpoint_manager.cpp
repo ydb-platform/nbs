@@ -21,7 +21,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/guid.h>
@@ -498,7 +498,7 @@ public:
         RestoringClient->Stop();
 
         for (auto& [socket, endpoint]: Endpoints) {
-            endpoint.Device->Stop(false);
+            endpoint.Device->Stop(false).GetValueSync();
         }
     }
 
@@ -807,7 +807,11 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     if (!restoring) {
         error = AddEndpointToStorage(*request);
         if (HasError(error)) {
-            device->Stop(true);
+            auto stopFuture = device->Stop(true);
+            const auto& stopError = Executor->WaitFor(stopFuture);
+            if (HasError(stopError)) {
+                return TErrorResponse(stopError);
+            }
             ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             CloseAllEndpointSockets(*request);
             RemoveSession(std::move(ctx), *request);
@@ -997,7 +1001,11 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
         c->Dec();
     }
 
-    endpoint.Device->Stop(true);
+    auto stopFuture = endpoint.Device->Stop(true);
+    const auto& stopError = Executor->WaitFor(stopFuture);
+    if (HasError(stopError)) {
+        return TErrorResponse(stopError);
+    }
     ReleaseNbdDevice(endpoint.Request->GetNbdDeviceFile(), false);
     CloseAllEndpointSockets(*endpoint.Request);
     RemoveSession(std::move(ctx), *request);
@@ -1417,7 +1425,11 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
             request->GetNbdDeviceFile(),
             volume.GetBlocksCount(),
             volume.GetBlockSize());
-        device->Start();
+        auto startFuture = device->Start();
+        const auto& startError = Executor->WaitFor(startFuture);
+        if (HasError(startError)) {
+            return startError;
+        }
     } catch (...) {
         ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
         return MakeError(E_FAIL, CurrentExceptionMessage());

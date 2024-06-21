@@ -39,7 +39,7 @@ func NewCredentials(
 			credentials.WithJWTSubjectToken(
 				credentials.WithSigningMethod(jwt.SigningMethodRS256),
 				credentials.WithKeyID(config.GetServiceAccount().GetKeyId()),
-				credentials.WithRSAPrivateKeyPEMFile(config.GetCertFile()),
+				credentials.WithRSAPrivateKeyPEMFile(config.GetServiceAccount().GetTokenSigningCertFile()),
 				credentials.WithIssuer(config.GetServiceAccount().GetId()),
 				credentials.WithSubject(config.GetServiceAccount().GetId()),
 				credentials.WithAudience(config.GetServiceAccount().GetAudience()),

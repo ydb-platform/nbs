@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
+#include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/public.h>
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob.h>
@@ -495,6 +496,48 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // NodeCreatedInFollower
+    //
+
+    struct TNodeCreatedInFollower
+    {
+        TRequestInfoPtr RequestInfo;
+        NProto::TCreateNodeResponse FollowerCreateNodeResponse;
+        NProto::TCreateNodeResponse CreateNodeResponse;
+
+        TNodeCreatedInFollower(
+                TRequestInfoPtr requestInfo,
+                NProto::TCreateNodeResponse followerCreateNodeResponse,
+                NProto::TCreateNodeResponse createNodeResponse)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerCreateNodeResponse(std::move(followerCreateNodeResponse))
+            , CreateNodeResponse(std::move(createNodeResponse))
+        {
+        }
+    };
+
+    //
+    // NodeCreatedInFollowerUponCreateHandle
+    //
+
+    struct TNodeCreatedInFollowerUponCreateHandle
+    {
+        TRequestInfoPtr RequestInfo;
+        NProto::TCreateNodeResponse FollowerCreateNodeResponse;
+        NProto::TCreateHandleResponse CreateHandleResponse;
+
+        TNodeCreatedInFollowerUponCreateHandle(
+                TRequestInfoPtr requestInfo,
+                NProto::TCreateNodeResponse followerCreateNodeResponse,
+                NProto::TCreateHandleResponse createHandleResponse)
+            : RequestInfo(std::move(requestInfo))
+            , FollowerCreateNodeResponse(std::move(followerCreateNodeResponse))
+            , CreateHandleResponse(std::move(createHandleResponse))
+        {
+        }
+    };
+
+    //
     // DumpCompactionRange
     //
 
@@ -710,6 +753,9 @@ struct TEvIndexTabletPrivate
 
         EvForcedRangeOperationProgress,
 
+        EvNodeCreatedInFollower,
+        EvNodeCreatedInFollowerUponCreateHandle,
+
         EvEnd
     };
 
@@ -731,6 +777,13 @@ struct TEvIndexTabletPrivate
 
     using TEvForcedRangeOperationProgress =
         TRequestEvent<TForcedRangeOperationProgress, EvForcedRangeOperationProgress>;
+
+    using TEvNodeCreatedInFollower =
+        TRequestEvent<TNodeCreatedInFollower, EvNodeCreatedInFollower>;
+
+    using TEvNodeCreatedInFollowerUponCreateHandle = TRequestEvent<
+        TNodeCreatedInFollowerUponCreateHandle,
+        EvNodeCreatedInFollowerUponCreateHandle>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

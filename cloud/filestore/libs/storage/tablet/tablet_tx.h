@@ -17,9 +17,12 @@
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/folder/pathsplit.h>
+#include <util/generic/guid.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/maybe.h>
@@ -65,6 +68,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(LoadState,                          __VA_ARGS__)                       \
     xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
+    xxx(ConfigureFollowers,                 __VA_ARGS__)                       \
+    xxx(ConfigureAsFollower,                __VA_ARGS__)                       \
                                                                                \
     xxx(CreateSession,                      __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
@@ -354,6 +359,50 @@ struct TTxIndexTablet
     };
 
     //
+    // ConfigureFollowers
+    //
+
+    struct TConfigureFollowers
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TConfigureFollowersRequest Request;
+
+        TConfigureFollowers(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TConfigureFollowersRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
+    // ConfigureAsFollower
+    //
+
+    struct TConfigureAsFollower
+    {
+        const TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TConfigureAsFollowerRequest Request;
+
+        TConfigureAsFollower(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TConfigureAsFollowerRequest request)
+            : RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
+        }
+    };
+
+    //
     // CreateSession
     //
 
@@ -551,6 +600,9 @@ struct TTxIndexTablet
         const ui64 TargetNodeId;
         const TString Name;
         const NProto::TNode Attrs;
+        const TString FollowerId;
+        const TString FollowerName;
+        NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexState::TNode> ParentNode;
@@ -571,7 +623,13 @@ struct TTxIndexTablet
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
             , Attrs(attrs)
-        {}
+            , FollowerId(request.GetFollowerFileSystemId())
+            , FollowerName(CreateGuidAsString())
+        {
+            if (FollowerId) {
+                Request = request;
+            }
+        }
 
         void Clear()
         {
@@ -820,6 +878,8 @@ struct TTxIndexTablet
         TMaybe<IIndexState::TNode> ParentNode;
         ui64 TargetNodeId = InvalidNodeId;
         TMaybe<IIndexState::TNode> TargetNode;
+        TString FollowerId;
+        TString FollowerName;
 
         TGetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -837,6 +897,8 @@ struct TTxIndexTablet
             ParentNode.Clear();
             TargetNodeId = InvalidNodeId;
             TargetNode.Clear();
+            FollowerId.clear();
+            FollowerName.clear();
         }
     };
 
@@ -987,10 +1049,15 @@ struct TTxIndexTablet
         const ui32 Mode;
         const ui32 Uid;
         const ui32 Gid;
+        const TString RequestFollowerId;
+        NProto::THeaders Headers;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
         ui64 TargetNodeId = InvalidNodeId;
+        TString FollowerId;
+        TString FollowerName;
+        bool IsNewFollowerNode = false;
         TMaybe<IIndexState::TNode> TargetNode;
         TMaybe<IIndexState::TNode> ParentNode;
 
@@ -1007,13 +1074,21 @@ struct TTxIndexTablet
             , Mode(request.GetMode())
             , Uid(request.GetUid())
             , Gid(request.GetGid())
-        {}
+            , RequestFollowerId(request.GetFollowerFileSystemId())
+        {
+            if (RequestFollowerId) {
+                Headers = request.GetHeaders();
+            }
+        }
 
         void Clear()
         {
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
             TargetNodeId = InvalidNodeId;
+            FollowerId.clear();
+            FollowerName.clear();
+            IsNewFollowerNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
 

@@ -488,9 +488,13 @@ TDuration MSeconds(ui32 value)
     xxx(DataScrubbingEnabled,                           bool,      false         )\
     xxx(ScrubbingInterval,                              TDuration, MSeconds(50)  )\
     xxx(ScrubbingChecksumMismatchTimeout,               TDuration, Seconds(300)  )\
+    xxx(ScrubbingBandwidth,                             ui64,      20            )\
+    xxx(MaxScrubbingBandwidth,                          ui64,      50            )\
+    xxx(MinScrubbingBandwidth,                          ui64,      5             )\
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
+    xxx(DisableDiskWithCloudIdDestruction,              bool,      false         )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW

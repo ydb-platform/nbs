@@ -570,7 +570,7 @@ func lockAndExecuteTask(
 ////////////////////////////////////////////////////////////////////////////////
 
 func runnerLoop(ctx context.Context, registry *Registry, runner runner) {
-	logging.Debug(ctx, "started runner loop")
+	logging.Info(ctx, "started runner loop")
 
 	for {
 		handle, err := runner.receiveTask(ctx)
@@ -579,15 +579,15 @@ func runnerLoop(ctx context.Context, registry *Registry, runner runner) {
 			return
 		}
 
-		logging.Debug(ctx, "iteration trying %v", handle.task)
+		logging.Info(ctx, "iteration trying %v", handle.task)
 		err = runner.lockAndExecuteTask(ctx, handle.task)
 		if err == nil {
-			logging.Debug(ctx, "iteration completed successfully %v", handle.task)
+			logging.Info(ctx, "iteration completed successfully %v", handle.task)
 		}
 		handle.close()
 
 		if ctx.Err() != nil {
-			logging.Debug(ctx, "iteration stopped: ctx cancelled")
+			logging.Info(ctx, "iteration stopped: ctx cancelled")
 			return
 		}
 	}

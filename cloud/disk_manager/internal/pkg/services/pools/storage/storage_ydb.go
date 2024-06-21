@@ -409,6 +409,32 @@ func (s *storageYDB) UnlockPool(
 	)
 }
 
+func (s *storageYDB) CheckPoolsConsistency(
+	ctx context.Context,
+) ([]PoolConsistencyCorrection, error) {
+
+	var corrections []PoolConsistencyCorrection
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			corrections, err = s.checkPoolsConsistency(ctx, session)
+			return err
+		},
+	)
+	return corrections, err
+}
+
+func (s *storageYDB) CheckBaseDisksConsistency(ctx context.Context) error {
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.checkBaseDisksConsistency(ctx, session)
+		},
+	)
+}
+
 func (s *storageYDB) CheckConsistency(ctx context.Context) error {
 	return s.db.Execute(
 		ctx,

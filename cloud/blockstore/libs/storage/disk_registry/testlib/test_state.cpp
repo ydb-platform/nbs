@@ -574,6 +574,19 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDirtyDevices(
     return *this;
 }
 
+TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSuspendedDevices(
+    TVector<TString> suspendedDevices)
+{
+    SuspendedDevices.clear();
+    SuspendedDevices.reserve(suspendedDevices.size());
+    for (auto& uuid: suspendedDevices) {
+        NProto::TSuspendedDevice suspendedDevice;
+        suspendedDevice.SetId(uuid);
+        SuspendedDevices.push_back(std::move(suspendedDevice));
+    }
+    return *this;
+}
+
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithSpreadPlacementGroups(
     TVector<TString> groupIds)
 {

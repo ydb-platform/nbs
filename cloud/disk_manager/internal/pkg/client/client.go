@@ -49,7 +49,7 @@ func WaitResponse(
 	response proto.Message,
 ) error {
 
-	logging.Debug(ctx, "Waiting for operation %v", operationID)
+	logging.Info(ctx, "Waiting for operation %v", operationID)
 
 	o, err := client.WaitOperation(
 		ctx,
@@ -72,7 +72,7 @@ func WaitResponse(
 		return err
 	}
 
-	logging.Debug(ctx, "Operation %v finished", operationID)
+	logging.Info(ctx, "Operation %v finished", operationID)
 	return nil
 }
 

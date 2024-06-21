@@ -14,6 +14,7 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	pools_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -149,4 +150,22 @@ func newResourceStorage(
 	)
 
 	return resourcesStorage, db, err
+}
+
+func newPoolStorage(
+	ctx context.Context,
+	config *server_config.ServerConfig,
+) (pools_storage.Storage, *persistence.YDBClient, error) {
+
+	db, err := newYDBClient(ctx, config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	poolsStorage, err := pools_storage.NewStorage(
+		config.GetPoolsConfig(),
+		db,
+	)
+
+	return poolsStorage, db, err
 }

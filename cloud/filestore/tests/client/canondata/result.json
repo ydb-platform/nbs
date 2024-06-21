@@ -13,5 +13,8 @@
     },
     "test.test_list_filestores": {
         "uri": "file://test.test_list_filestores/results.txt"
+    },
+    "test.test_stat": {
+        "uri": "file://test.test_stat/results.txt"
     }
 }

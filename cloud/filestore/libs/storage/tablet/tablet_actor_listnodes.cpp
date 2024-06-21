@@ -23,6 +23,18 @@ void AddNode(
     ConvertNodeFromAttrs(*record.AddNodes(), id, attrs);
 }
 
+void AddExternalNode(
+    NProto::TListNodesResponse& record,
+    TString name,
+    const TString& followerId,
+    const TString& followerName)
+{
+    record.AddNames(std::move(name));
+    auto* node = record.AddNodes();
+    node->SetFollowerFileSystemId(followerId);
+    node->SetFollowerNodeName(followerName);
+}
+
 NProto::TError ValidateRequest(const NProto::TListNodesRequest& request)
 {
     if (request.GetNodeId() == InvalidNodeId) {
@@ -135,6 +147,10 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     // get actual nodes
     args.ChildNodes.reserve(args.ChildRefs.size());
     for (const auto& ref: args.ChildRefs) {
+        if (ref.FollowerId) {
+            continue;
+        }
+
         TMaybe<TIndexTabletDatabase::TNode> childNode;
         if (!ReadNode(db, ref.ChildNodeId, args.CommitId, childNode)) {
             ready = false;   // not ready
@@ -172,9 +188,25 @@ void TIndexTabletActor::CompleteTx_ListNodes(
         record.MutableNames()->Reserve(args.ChildRefs.size());
         record.MutableNodes()->Reserve(args.ChildRefs.size());
 
+        size_t j = 0;
         for (size_t i = 0; i < args.ChildRefs.size(); ++i) {
             const auto& ref = args.ChildRefs[i];
-            AddNode(record, ref.Name, ref.ChildNodeId, args.ChildNodes[i].Attrs);
+            if (ref.FollowerId) {
+                AddExternalNode(
+                    record,
+                    ref.Name,
+                    ref.FollowerId,
+                    ref.FollowerName);
+
+                continue;
+            }
+
+            AddNode(
+                record,
+                ref.Name,
+                ref.ChildNodeId,
+                args.ChildNodes[j].Attrs);
+            ++j;
         }
 
         if (args.Next) {

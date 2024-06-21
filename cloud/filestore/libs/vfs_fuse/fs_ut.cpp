@@ -39,6 +39,7 @@
 #include <util/generic/string.h>
 #include <util/random/random.h>
 
+#include <atomic>
 #include <fstream>
 
 namespace NCloud::NFileStore::NFuse {
@@ -307,7 +308,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const TString sessionId = CreateGuidAsString();
 
-        bool recovered = false;
+        std::atomic_bool recovered = false;
         bootstrap.Service->CreateSessionHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
 
@@ -403,19 +404,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const TString sessionId1 = CreateGuidAsString();
         const TString sessionId2 = CreateGuidAsString();
 
-        TString sessionId = sessionId1;
+        const TString* sessionId = &sessionId1;
         bootstrap.Service->CreateSessionHandler = [&] (auto callContext, auto request) {
             Y_UNUSED(callContext);
 
             NProto::TCreateSessionResponse result;
             if (auto session = GetSessionId(*request)) {
-                if (session != sessionId) {
+                if (session != *sessionId) {
                     result = TErrorResponse(E_FS_INVALID_SESSION, "invalid session");
                 }
             }
 
-            result.MutableSession()->SetSessionId(sessionId);
-            sessionId = sessionId2;
+            result.MutableSession()->SetSessionId(*sessionId);
+            sessionId = &sessionId2;
 
             return MakeFuture(result);
         };
@@ -424,7 +425,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
 
             NProto::TCreateHandleResponse result;
-            if (GetSessionId(*request) != sessionId) {
+            if (GetSessionId(*request) != *sessionId) {
                 result = TErrorResponse(E_FS_INVALID_SESSION, "");
             } else {
                 result.SetHandle(handle);

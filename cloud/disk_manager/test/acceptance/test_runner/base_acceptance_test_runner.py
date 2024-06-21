@@ -192,6 +192,7 @@ class BaseAcceptanceTestRunner(ABC):
             compute_node=self._args.compute_node,
             placement_group=self._args.placement_group_name,
             platform_ids=self._args.instance_platform_ids,
+            do_not_delete_on_error=True,
             auto_delete=not self._args.debug,
             module_factory=self._module_factory,
             ssh_key_path=self._args.ssh_key_path)

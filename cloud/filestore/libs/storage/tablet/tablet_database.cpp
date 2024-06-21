@@ -482,7 +482,9 @@ void TIndexTabletDatabase::WriteNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    ui64 childNodeId)
+    ui64 childNodeId,
+    const TString& followerId,
+    const TString& followerName)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -490,7 +492,9 @@ void TIndexTabletDatabase::WriteNodeRef(
         .Key(nodeId, name)
         .Update(
             NIceDb::TUpdate<TTable::CommitId>(commitId),
-            NIceDb::TUpdate<TTable::ChildId>(childNodeId)
+            NIceDb::TUpdate<TTable::ChildId>(childNodeId),
+            NIceDb::TUpdate<TTable::FollowerId>(followerId),
+            NIceDb::TUpdate<TTable::FollowerName>(followerName)
         );
 }
 
@@ -528,6 +532,8 @@ bool TIndexTabletDatabase::ReadNodeRef(
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
+                it.GetValue<TTable::FollowerId>(),
+                it.GetValue<TTable::FollowerName>(),
                 minCommitId,
                 maxCommitId
             };
@@ -566,6 +572,8 @@ bool TIndexTabletDatabase::ReadNodeRefs(
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
+                it.GetValue<TTable::FollowerId>(),
+                it.GetValue<TTable::FollowerName>(),
                 minCommitId,
                 maxCommitId
             });
@@ -612,7 +620,9 @@ void TIndexTabletDatabase::WriteNodeRefVer(
     ui64 minCommitId,
     ui64 maxCommitId,
     const TString& name,
-    ui64 childNodeId)
+    ui64 childNodeId,
+    const TString& followerId,
+    const TString& followerName)
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
@@ -620,7 +630,9 @@ void TIndexTabletDatabase::WriteNodeRefVer(
         .Key(nodeId, name, ReverseCommitId(minCommitId))
         .Update(
             NIceDb::TUpdate<TTable::MaxCommitId>(maxCommitId),
-            NIceDb::TUpdate<TTable::ChildId>(childNodeId)
+            NIceDb::TUpdate<TTable::ChildId>(childNodeId),
+            NIceDb::TUpdate<TTable::FollowerId>(followerId),
+            NIceDb::TUpdate<TTable::FollowerName>(followerName)
         );
 }
 
@@ -668,6 +680,8 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
+                it.GetValue<TTable::FollowerId>(),
+                it.GetValue<TTable::FollowerName>(),
                 minCommitId,
                 maxCommitId
             };
@@ -706,6 +720,8 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
+                it.GetValue<TTable::FollowerId>(),
+                it.GetValue<TTable::FollowerName>(),
                 minCommitId,
                 maxCommitId
             });
