@@ -294,7 +294,6 @@ void TBootstrap::Start()
     if (Options->ConnectDevice) {
 #if defined(_linux_)
         if (Options->Netlink) {
-#if defined(NETLINK)
             NbdDevice = CreateNetlinkDevice(
                 Logging,
                 listenAddress,
@@ -302,9 +301,6 @@ void TBootstrap::Start()
                 Options->Timeout,
                 Options->DeadConnectionTimeout,
                 Options->Reconfigure);
-#else
-            ythrow yexception() << "built without netlink support";
-#endif
         } else {
             NbdDevice = CreateDevice(
                 Logging,
@@ -312,7 +308,10 @@ void TBootstrap::Start()
                 Options->ConnectDevice,
                 Options->Timeout);
         }
-        NbdDevice->Start();
+        auto status = NbdDevice->Start().ExtractValue();
+        if (HasError(status)) {
+            ythrow yexception() << status.GetMessage();
+        }
 #else
         ythrow yexception() << "unsupported platform";
 #endif
