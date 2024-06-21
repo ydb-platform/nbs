@@ -92,6 +92,8 @@ struct TSessionInfo
 
     bool ShouldStop = false;
 
+    ui32 FollowerSelector = 0;
+
     void GetInfo(NProto::TSessionInfo& info, ui64 seqNo)
     {
         info.SetSessionId(SessionId);
@@ -130,6 +132,16 @@ struct TSessionInfo
         if (auto it = SubSessions.find(seqNo); it != SubSessions.end()) {
             it->second.second = now;
         }
+    }
+
+    const TString& SelectFollower()
+    {
+        const auto& followers = FileStore.GetFollowerFileSystemIds();
+        if (followers.empty()) {
+            return Default<TString>();
+        }
+
+        return followers[FollowerSelector++ % followers.size()];
     }
 };
 

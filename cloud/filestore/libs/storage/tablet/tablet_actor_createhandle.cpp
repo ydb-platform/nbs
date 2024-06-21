@@ -250,6 +250,7 @@ void TIndexTabletActor::HandleCreateHandle(
                 << msg->Record.GetFollowerFileSystemId());
             auto response = std::make_unique<TResponse>(std::move(error));
             NCloud::Reply(ctx, *ev, std::move(response));
+            return;
         }
     }
 

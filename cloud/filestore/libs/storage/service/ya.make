@@ -16,14 +16,18 @@ SRCS(
     service_actor_alterfs.cpp
     service_actor_complete.cpp
     service_actor_createfs.cpp
+    service_actor_createhandle.cpp
+    service_actor_createnode.cpp
     service_actor_createsession.cpp
     service_actor_describefsmodel.cpp
     service_actor_destroyfs.cpp
     service_actor_destroysession.cpp
     service_actor_forward.cpp
     service_actor_getfsinfo.cpp
+    service_actor_getnodeattr.cpp
     service_actor_getsessionevents.cpp
     service_actor_list.cpp
+    service_actor_listnodes.cpp
     service_actor_monitoring.cpp
     service_actor_monitoring_search.cpp
     service_actor_ping.cpp

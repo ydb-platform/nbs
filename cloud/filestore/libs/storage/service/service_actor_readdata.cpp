@@ -628,6 +628,25 @@ void TStorageServiceActor::HandleReadData(
     }
     const NProto::TFileStore& filestore = session->FileStore;
 
+    auto [fsId, error] = SelectShard(
+        ctx,
+        sessionId,
+        seqNo,
+        TEvService::TReadDataMethod::Name,
+        msg->CallContext->RequestId,
+        filestore,
+        ExtractShardNo(msg->Record.GetHandle()));
+
+    if (HasError(error)) {
+        auto response = std::make_unique<TEvService::TEvReadDataResponse>(
+            std::move(error));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    if (fsId) {
+        msg->Record.SetFileSystemId(fsId);
+    }
+
     if (!filestore.GetFeatures().GetTwoStageReadEnabled()) {
         // If two-stage read is disabled, forward the request to the tablet in
         // the same way as all other requests.

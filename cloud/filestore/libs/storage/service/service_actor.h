@@ -81,6 +81,12 @@ private:
         const typename TMethod::TRequest::TPtr& ev);
 
     template <typename TMethod>
+    void ForwardRequestToFollower(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        ui32 shardNo);
+
+    template <typename TMethod>
     void CompleteRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TResponse::TPtr& ev);
@@ -130,6 +136,15 @@ private:
     void RemoveSession(
         const TString& sessionId,
         const NActors::TActorContext& ctx);
+
+    TResultOrError<TString> SelectShard(
+        const NActors::TActorContext& ctx,
+        const TString& sessionId,
+        const ui64 seqNo,
+        const TString& methodName,
+        const ui64 requestId,
+        const NProto::TFileStore& filestore,
+        ui32 shardNo) const;
 
 private:
     // actions
