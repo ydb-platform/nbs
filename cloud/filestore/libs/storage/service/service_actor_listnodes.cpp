@@ -35,6 +35,7 @@ private:
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    const bool MultiTabletForwardingEnabled;
 
 public:
     TListNodesActor(
@@ -43,7 +44,8 @@ public:
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind);
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool multiTabletForwardingEnabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -78,13 +80,15 @@ TListNodesActor::TListNodesActor(
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool multiTabletForwardingEnabled)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
+    , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
 {
 }
 
@@ -127,6 +131,11 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
 
 void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
 {
+    if (!MultiTabletForwardingEnabled) {
+        GetNodeAttrResponses = Response.NodesSize();
+        return;
+    }
+
     for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
         const auto& node = Response.GetNodes(cookie);
         if (node.GetFollowerFileSystemId()) {
@@ -324,7 +333,8 @@ void TStorageServiceActor::HandleListNodes(
         msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        session->MediaKind);
+        session->MediaKind,
+        StorageConfig->GetMultiTabletForwardingEnabled());
 
     NCloud::Register(ctx, std::move(actor));
 }

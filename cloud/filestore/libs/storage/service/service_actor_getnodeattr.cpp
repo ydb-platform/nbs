@@ -35,6 +35,7 @@ private:
     IProfileLogPtr ProfileLog;
     TMaybe<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    const bool MultiTabletForwardingEnabled;
 
 public:
     TGetNodeAttrActor(
@@ -43,7 +44,8 @@ public:
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind);
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool multiTabletForwardingEnabled);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -76,13 +78,15 @@ TGetNodeAttrActor::TGetNodeAttrActor(
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool multiTabletForwardingEnabled)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
+    , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
 {
 }
 
@@ -198,7 +202,9 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         msg->Record.GetNode().GetFollowerFileSystemId().c_str(),
         msg->Record.GetNode().GetFollowerNodeName().Quote().c_str());
 
-    if (msg->Record.GetNode().GetFollowerFileSystemId().Empty()) {
+    if (!MultiTabletForwardingEnabled
+            || msg->Record.GetNode().GetFollowerFileSystemId().Empty())
+    {
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
     }
@@ -304,7 +310,8 @@ void TStorageServiceActor::HandleGetNodeAttr(
         msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        session->MediaKind);
+        session->MediaKind,
+        StorageConfig->GetMultiTabletForwardingEnabled());
 
     NCloud::Register(ctx, std::move(actor));
 }
