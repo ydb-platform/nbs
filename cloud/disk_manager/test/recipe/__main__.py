@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -170,13 +171,24 @@ def start(argv):
     if args.nfs_only:
         return
 
-    metadata_service = MetadataServiceLauncher()
-    metadata_service.start()
+    token_exchange_endpoint = os.getenv("DISK_MANAGER_RECIPE_TOKEN_EXCHANGE_ENDPOINT")
+    if token_exchange_endpoint is None:
+        metadata_service = MetadataServiceLauncher()
+        metadata_service.start()
+        metadata_service_url = metadata_service.url
+    else:
+        metadata_service_url = token_exchange_endpoint
+
+    service_account_config = os.getenv("DISK_MANAGER_SERVICE_ACCOUNT_CONFIG")
+    service_account = None
+    if service_account_config is not None:
+        service_account = json.loads(service_account_config)
 
     working_dir = get_unique_path_for_current_test(
         output_path=yatest_common.output_path(),
         sub_folder=""
     )
+
     ensure_path_exists(working_dir)
 
     s3_credentials_file = os.path.join(working_dir, 's3_credentials.json')
@@ -195,7 +207,7 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
-            metadata_url=metadata_service.url,
+            metadata_url=metadata_service_url,
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=False,
@@ -207,6 +219,7 @@ def start(argv):
             cert_key_file=cert_key_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            service_account=service_account,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
@@ -220,7 +233,7 @@ def start(argv):
             nbs_port=nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
-            metadata_url=metadata_service.url,
+            metadata_url=metadata_service_url,
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=True,
@@ -230,6 +243,7 @@ def start(argv):
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
+            service_account=service_account,
         )
         disk_managers.append(disk_manager)
         disk_manager.start()
