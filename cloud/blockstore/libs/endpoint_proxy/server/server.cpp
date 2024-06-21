@@ -582,31 +582,46 @@ struct TServer: IEndpointProxyServer
 
             ep.NbdDevicePath = request.GetNbdDevice();
             if (ep.NbdDevicePath) {
+                if (Config.Netlink) {
 #ifdef NETLINK
-                bool netlink = Config.Netlink;
+                    try {
+                        ep.NbdDevice = NBD::CreateNetlinkDevice(
+                            Logging,
+                            *ep.ListenAddress,
+                            request.GetNbdDevice(),
+                            TDuration::Minutes(1),  // request timeout
+                            TDuration::Days(1),     // connection timeout
+                            true);                  // reconfigure existing device
+
+                    } catch (const std::exception& e) {
+                        STORAGE_ERROR(request.ShortDebugString().Quote()
+                            << " - Unable to create netlink device: " << e.what()
+                            << ", falling back to ioctl");
+                    }
 #else
-                bool netlink = false;
-                STORAGE_ERROR("built without netlink support, falling back to ioctl");
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << " - Built without netlink support"
+                        << ", falling back to ioctl");
 #endif
-                if (netlink) {
-                    ep.NbdDevice = NBD::CreateNetlinkDevice(
-                        Logging,
-                        *ep.ListenAddress,
-                        request.GetNbdDevice(),
-                        TDuration::Minutes(1),  // request timeout
-                        TDuration::Days(1),     // connection timeout
-                        true);                  // reconfigure device if exists
-                } else {
+                }
+                if (ep.NbdDevice == nullptr) {
                     ep.NbdDevice = NBD::CreateDevice(
                         Logging,
                         *ep.ListenAddress,
                         request.GetNbdDevice(),
                         TDuration::Days(1));    // request timeout
                 }
-                ep.NbdDevice->Start();
 
-                STORAGE_INFO(request.ShortDebugString().Quote()
-                    << " - Started NBD device connection");
+                auto start = ep.NbdDevice->Start();
+                const auto& value = start.GetValue();
+                if (HasError(value)) {
+                    STORAGE_ERROR(request.ShortDebugString().Quote()
+                        << " - Unable to start nbd device: "
+                        << value.GetMessage());
+                } else {
+                    STORAGE_INFO(request.ShortDebugString().Quote()
+                        << " - Started NBD device connection");
+                }
             } else {
                 STORAGE_WARN(request.ShortDebugString().Quote()
                     << " - NbdDevice missing - no nbd connection with the"

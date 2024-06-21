@@ -11,10 +11,17 @@
 #include <netlink/netlink.h>
 
 #include <util/generic/scope.h>
+#include <util/stream/mem.h>
 
 namespace NCloud::NBlockStore::NBD {
 
 namespace {
+
+using namespace NThreading;
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr TStringBuf NBD_DEVICE_SUFFIX = "/dev/nbd";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -126,7 +133,8 @@ public:
     void Put(int attribute, T data)
     {
         if (nla_put(Message, attribute, sizeof(T), &data) < 0) {
-            throw TServiceError(E_FAIL) << "unable to put attribute " << attribute;
+            throw TServiceError(E_FAIL) << "unable to put attribute "
+                << attribute;
         }
     }
 
@@ -150,7 +158,18 @@ public:
 
 class TNetlinkDevice final
     : public IDevice
+    , public std::enable_shared_from_this<TNetlinkDevice>
 {
+private:
+    struct THandlerContext
+    {
+        std::shared_ptr<TNetlinkDevice> Device;
+
+        THandlerContext(std::shared_ptr<TNetlinkDevice> device)
+            : Device(std::move(device))
+        {}
+    };
+
 private:
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
@@ -163,8 +182,10 @@ private:
     IClientHandlerPtr Handler;
     TSocket Socket;
     ui32 DeviceIndex;
-
     TAtomic ShouldStop = 0;
+
+    TPromise<NProto::TError> StartResult = NewPromise<NProto::TError>();
+    TPromise<NProto::TError> StopResult = NewPromise<NProto::TError>();
 
 public:
     TNetlinkDevice(
@@ -183,36 +204,62 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
 
-        if (sscanf(DeviceName.c_str(), "/dev/nbd%u", &DeviceIndex) != 1) {
-            throw TServiceError(E_ARGUMENT) << "invalid nbd device target";
+        // accept /dev/nbd devices with a prefix other than /
+        // (e.g. inside a container)
+        const size_t pos = DeviceName.rfind(NBD_DEVICE_SUFFIX);
+        if (pos == TString::npos) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
+        }
+
+        try {
+            TMemoryInput stream(
+                DeviceName.data() + pos + NBD_DEVICE_SUFFIX.size());
+            stream >> DeviceIndex;
+        } catch (...) {
+            throw TServiceError(E_ARGUMENT)
+                << "unable to parse " << DeviceName << " device index";
         }
     }
 
     ~TNetlinkDevice()
     {
-        Stop(false);
+        Stop(false).GetValueSync();
     }
 
-    NThreading::TFuture<NProto::TError> Start() override
+    TFuture<NProto::TError> Start() override
     {
         ConnectSocket();
         ConnectDevice();
 
-        return NThreading::MakeFuture(MakeError(S_OK));
+        // will be set asynchronously in Connect > HandleStatus > DoConnect
+        return StartResult.GetFuture();
     }
 
-    NThreading::TFuture<NProto::TError> Stop(bool deleteDevice) override
+    TFuture<NProto::TError> Stop(bool deleteDevice) override
     {
         if (AtomicSwap(&ShouldStop, 1) == 1) {
-            return NThreading::MakeFuture(MakeError(S_OK));
+            return StopResult.GetFuture();
         }
 
-        if (deleteDevice) {
+        if (!deleteDevice) {
+            StopResult.SetValue(MakeError(S_OK));
+            return StopResult.GetFuture();
+        }
+
+        try {
             DisconnectDevice();
             DisconnectSocket();
+            StopResult.SetValue(MakeError(S_OK));
+
+        } catch (const TServiceError& e) {
+            StopResult.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder() << "unable to disconnect " << DeviceName
+                                 << ": " << e.what()));
         }
 
-        return NThreading::MakeFuture(MakeError(S_OK));
+        return StopResult.GetFuture();
     }
 
 private:
@@ -273,7 +320,9 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         const auto& info = Handler->GetExportInfo();
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Put(NBD_ATTR_SIZE_BYTES, static_cast<ui64>(info.Size));
-        message.Put(NBD_ATTR_BLOCK_SIZE_BYTES, static_cast<ui64>(info.MinBlockSize));
+        message.Put(
+            NBD_ATTR_BLOCK_SIZE_BYTES,
+            static_cast<ui64>(info.MinBlockSize));
         message.Put(NBD_ATTR_SERVER_FLAGS, static_cast<ui64>(info.Flags));
 
         if (Timeout) {
@@ -281,7 +330,9 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         if (DeadConnectionTimeout) {
-            message.Put(NBD_ATTR_DEAD_CONN_TIMEOUT, DeadConnectionTimeout.Seconds());
+            message.Put(
+                NBD_ATTR_DEAD_CONN_TIMEOUT,
+                DeadConnectionTimeout.Seconds());
         }
 
         {
@@ -291,8 +342,13 @@ void TNetlinkDevice::DoConnectDevice(bool connected)
         }
 
         message.Send(socket);
+        StartResult.SetValue(MakeError(S_OK));
+
     } catch (const TServiceError& e) {
-        STORAGE_ERROR("unable to configure " << DeviceName << ": " << e.what());
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
     }
 }
 
@@ -300,14 +356,10 @@ void TNetlinkDevice::DisconnectDevice()
 {
     STORAGE_INFO("disconnect " << DeviceName);
 
-    try {
-        TNetlinkSocket socket;
-        TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
-        message.Put(NBD_ATTR_INDEX, DeviceIndex);
-        message.Send(socket);
-    } catch (const TServiceError& e) {
-        STORAGE_ERROR("unable to disconnect " << DeviceName << ": " << e.what());
-    }
+    TNetlinkSocket socket;
+    TNetlinkMessage message(socket.GetFamily(), NBD_CMD_DISCONNECT);
+    message.Put(NBD_ATTR_INDEX, DeviceIndex);
+    message.Send(socket);
 }
 
 // queries device status and registers callback that will connect
@@ -316,32 +368,33 @@ void TNetlinkDevice::ConnectDevice()
 {
     try {
         TNetlinkSocket socket;
+        auto context = std::make_unique<THandlerContext>(shared_from_this());
+
         nl_socket_modify_cb(
             socket,
             NL_CB_VALID,
             NL_CB_CUSTOM,
             TNetlinkDevice::StatusHandler,
-            this);
-
-        // TODO: use proper context containing device pointer and a socket
-        // send_sync waits for the response and invokes callback immediately
-        // even before returning, so it's technically okay to pass 'this' as
-        // an argument, but it still looks flimsy
+            context.release()); // libnl doesn't throw
 
         TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
         message.Send(socket);
+
     } catch (const TServiceError& e) {
-        throw TServiceError(e.GetCode())
-            << "unable to configure " << DeviceName << ": " << e.what();
+        StartResult.SetValue(MakeError(
+            e.GetCode(),
+            TStringBuilder()
+                << "unable to configure " << DeviceName << ": " << e.what()));
     }
 }
 
 int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
 {
     auto* header = static_cast<genlmsghdr*>(nlmsg_data(nlmsg_hdr(message)));
-    auto* conn = static_cast<TNetlinkDevice*>(argument);
-    auto Log = conn->Log;
+    auto context = std::unique_ptr<THandlerContext>(
+        static_cast<THandlerContext*>(argument));
+
     nlattr* attr[NBD_ATTR_MAX + 1] = {};
     nlattr* deviceItem[NBD_DEVICE_ITEM_MAX + 1] = {};
     nlattr* device[NBD_DEVICE_ATTR_MAX + 1] = {};
@@ -360,12 +413,17 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             genlmsg_attrlen(header, 0),
             NULL))
     {
-        STORAGE_ERROR("unable to parse NBD_CMD_STATUS response: " << err);
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_CMD_STATUS response: " << err));
         return NL_STOP;
     }
 
     if (!attr[NBD_ATTR_DEVICE_LIST]) {
-        STORAGE_ERROR("did not receive NBD_ATTR_DEVICE_LIST");
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            "did not receive NBD_ATTR_DEVICE_LIST"));
         return NL_STOP;
     }
 
@@ -375,12 +433,17 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             attr[NBD_ATTR_DEVICE_LIST],
             deviceItemPolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_ATTR_DEVICE_LIST: " << err);
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_ATTR_DEVICE_LIST: " << err));
         return NL_STOP;
     }
 
     if (!deviceItem[NBD_DEVICE_ITEM]) {
-        STORAGE_ERROR("did not receive NBD_DEVICE_ITEM");
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            "did not receive NBD_DEVICE_ITEM"));
         return NL_STOP;
     }
 
@@ -390,16 +453,21 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
             deviceItem[NBD_DEVICE_ITEM],
             devicePolicy))
     {
-        STORAGE_ERROR("unable to parse NBD_DEVICE_ITEM: " << err);
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "unable to parse NBD_DEVICE_ITEM: " << err));
         return NL_STOP;
     }
 
     if (!device[NBD_DEVICE_CONNECTED]) {
-        STORAGE_ERROR("did not receive NBD_DEVICE_CONNECTED");
+        context->Device->StartResult.SetValue(MakeError(
+            E_FAIL,
+            "did not receive NBD_DEVICE_CONNECTED"));
         return NL_STOP;
     }
 
-    conn->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
+    context->Device->DoConnectDevice(nla_get_u8(device[NBD_DEVICE_CONNECTED]));
 
     return NL_OK;
 }
@@ -438,7 +506,7 @@ public:
 
         return CreateNetlinkDevice(
             Logging,
-            std::move(connectAddress),
+            connectAddress,
             std::move(deviceName),
             Timeout,
             DeadConnectionTimeout,
