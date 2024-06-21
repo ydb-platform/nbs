@@ -33,8 +33,6 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
-    TMaybe<TInFlightRequest> InFlightRequest;
-    const NCloud::NProto::EStorageMediaKind MediaKind;
 
 public:
     TCreateHandleActor(
@@ -42,8 +40,7 @@ public:
         NProto::TCreateHandleRequest createHandleRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind);
+        IProfileLogPtr profileLog);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -75,14 +72,12 @@ TCreateHandleActor::TCreateHandleActor(
         NProto::TCreateHandleRequest createHandleRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , CreateHandleRequest(std::move(createHandleRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
-    , MediaKind(mediaKind)
 {
 }
 
@@ -105,21 +100,6 @@ void TCreateHandleActor::CreateHandleInLeader(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
     request->Record = CreateHandleRequest;
-
-    // RequestType is set in order to properly record the request type
-    InFlightRequest.ConstructInPlace(
-        TRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            RequestInfo->CallContext),
-        ProfileLog,
-        MediaKind,
-        RequestStats);
-
-    InFlightRequest->Start(ctx.Now());
-    InitProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        request->Record);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -144,21 +124,6 @@ void TCreateHandleActor::CreateHandleInFollower(const TActorContext& ctx)
     request->Record.SetName(LeaderResponse.GetFollowerNodeName());
     request->Record.ClearFollowerFileSystemId();
 
-    // RequestType is set in order to properly record the request type
-    InFlightRequest.ConstructInPlace(
-        TRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            RequestInfo->CallContext),
-        ProfileLog,
-        MediaKind,
-        RequestStats);
-
-    InFlightRequest->Start(ctx.Now());
-    InitProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        request->Record);
-
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
@@ -170,13 +135,6 @@ void TCreateHandleActor::HandleCreateHandleResponse(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-
-    TABLET_VERIFY(InFlightRequest);
-
-    InFlightRequest->Complete(ctx.Now(), msg->GetError());
-    FinalizeProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        msg->Record);
 
     if (HasError(msg->GetError())) {
         HandleError(ctx, *msg->Record.MutableError());
@@ -317,8 +275,7 @@ void TStorageServiceActor::HandleCreateHandle(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
         session->RequestStats,
-        ProfileLog,
-        session->MediaKind);
+        ProfileLog);
 
     NCloud::Register(ctx, std::move(actor));
 }

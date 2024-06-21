@@ -33,8 +33,7 @@ private:
     // Stats for reporting
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
-    TMaybe<TInFlightRequest> InFlightRequest;
-    const NCloud::NProto::EStorageMediaKind MediaKind;
+
     const bool MultiTabletForwardingEnabled;
 
 public:
@@ -44,7 +43,6 @@ public:
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind,
         bool multiTabletForwardingEnabled);
 
     void Bootstrap(const TActorContext& ctx);
@@ -80,14 +78,12 @@ TListNodesActor::TListNodesActor(
         TString logTag,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind,
         bool multiTabletForwardingEnabled)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
-    , MediaKind(mediaKind)
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
 {
 }
@@ -110,21 +106,6 @@ void TListNodesActor::ListNodes(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvListNodesRequest>();
     request->Record = ListNodesRequest;
 
-    // RequestType is set in order to properly record the request type
-    InFlightRequest.ConstructInPlace(
-        TRequestInfo(
-            RequestInfo->Sender,
-            RequestInfo->Cookie,
-            RequestInfo->CallContext),
-        ProfileLog,
-        MediaKind,
-        RequestStats);
-
-    InFlightRequest->Start(ctx.Now());
-    InitProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        request->Record);
-
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
@@ -135,6 +116,9 @@ void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
         GetNodeAttrResponses = Response.NodesSize();
         return;
     }
+
+    // TODO(#1350): register inflight requests for these GetNodeAttr requests
+    // TODO(#1350): batch GetNodeAttr requests by FollowerFileSystemId
 
     for (ui64 cookie = 0; cookie < Response.NodesSize(); ++cookie) {
         const auto& node = Response.GetNodes(cookie);
@@ -245,13 +229,6 @@ void TListNodesActor::HandlePoisonPill(
 
 void TListNodesActor::ReplyAndDie(const TActorContext& ctx)
 {
-    TABLET_VERIFY(InFlightRequest);
-
-    InFlightRequest->Complete(ctx.Now(), Response.GetError());
-    FinalizeProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        Response);
-
     auto response = std::make_unique<TEvService::TEvListNodesResponse>();
     response->Record = std::move(Response);
 
@@ -263,13 +240,6 @@ void TListNodesActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    TABLET_VERIFY(InFlightRequest);
-
-    InFlightRequest->Complete(ctx.Now(), Response.GetError());
-    FinalizeProfileLogRequestInfo(
-        InFlightRequest->ProfileLogRequest,
-        Response);
-
     auto response = std::make_unique<TEvService::TEvListNodesResponse>(
         std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -333,7 +303,6 @@ void TStorageServiceActor::HandleListNodes(
         msg->Record.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        session->MediaKind,
         StorageConfig->GetMultiTabletForwardingEnabled());
 
     NCloud::Register(ctx, std::move(actor));
