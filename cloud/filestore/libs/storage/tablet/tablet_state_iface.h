@@ -25,6 +25,8 @@ public:
         ui64 NodeId;
         TString Name;
         ui64 ChildNodeId;
+        TString FollowerId;
+        TString FollowerName;
         ui64 MinCommitId;
         ui64 MaxCommitId;
     };
