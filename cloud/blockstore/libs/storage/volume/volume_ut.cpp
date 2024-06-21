@@ -8203,6 +8203,98 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT(describeRequest);
     }
 
+    Y_UNIT_TEST(ShouldLoadFromResizedOverlayDisk)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+
+        auto runtime = PrepareTestActorRuntime(std::move(storageServiceConfig));
+        runtime->RegisterService(
+            MakeVolumeProxyServiceId(),
+            runtime->AllocateEdgeActor(),
+            0);
+
+        ui64 diskBlocksCount = 1024;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            diskBlocksCount,   // block count per partition
+            "vol0",            // diskId
+            "cloud",           // cloudId
+            "folder",          // folderId
+            1,                 // partition count
+            2,                 // blocksPerStripe
+            "",                // tags
+            "disk1",           // baseDiskId
+            "ch"               // baseDiskCheckpointId
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        ui8 countOfBlockReadReq = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::TEvReadBlocksRequest::EventType:
+                        ++countOfBlockReadReq;
+                        break;
+
+                    default:
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // write 1024 blocks
+        volume.WriteBlocks(
+            TBlockRange64::WithLength(0, diskBlocksCount),
+            clientInfo.GetClientId(),
+            1);
+
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // resize overlay disk
+        volume.UpdateVolumeConfig(
+            0,       // maxBandwidth
+            0,       // maxIops
+            0,       // burstPercentage
+            0,       // maxPostponedWeight
+            false,   // throttlingEnabled
+            1,       // version
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            diskBlocksCount * 2,   // double blocks size per partition
+            "vol0",                // diskId
+            "cloud",               // cloudId
+            "folder",              // folderId
+            1,                     // partition count
+            2,                     // blocksPerStripe
+            "",                    // tags
+            "disk1",               // baseDiskId
+            "ch"                   // baseDiskCheckpointId
+        );
+        volume.WaitReady();
+
+        // read blocks out of original range
+        auto readRequest = volume.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(512, diskBlocksCount),
+            clientInfo.GetClientId());
+        volume.SendToPipe(std::move(readRequest));
+        volume.RecvReadBlocksResponse();
+
+        UNIT_ASSERT_EQUAL(countOfBlockReadReq, 2);
+    }
+
     Y_UNIT_TEST(ShouldReportLongRunningForBaseDisk)
     {
         NProto::TStorageServiceConfig storageServiceConfig;
