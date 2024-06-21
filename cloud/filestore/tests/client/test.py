@@ -127,3 +127,20 @@ def test_describe_sessions():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_stat():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+    client.mkdir("fs0", "/aaa")
+    out = client.stat("fs0", "/aaa")
+    stat = json.loads(out)
+    del stat["ATime"]
+    del stat["MTime"]
+    del stat["CTime"]
+
+    with open(results_path, "w") as results_file:
+        json.dump(stat, results_file, indent=4)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
