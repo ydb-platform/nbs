@@ -336,6 +336,66 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvAccessNodeRequest> CreateAccessNodeRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId)
+    {
+        auto request = std::make_unique<TEvService::TEvAccessNodeRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvSetNodeAttrRequest> CreateSetNodeAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const ui64 size)
+    {
+        auto request = std::make_unique<TEvService::TEvSetNodeAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.MutableUpdate()->SetSize(size);
+        request->Record.SetFlags(
+            ProtoFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE));
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvDestroyHandleRequest> CreateDestroyHandleRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const ui64 handle)
+    {
+        auto request = std::make_unique<TEvService::TEvDestroyHandleRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvAllocateDataRequest> CreateAllocateDataRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const ui64 handle,
+        const ui64 offset,
+        const ui64 len)
+    {
+        auto request = std::make_unique<TEvService::TEvAllocateDataRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(len);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                     \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

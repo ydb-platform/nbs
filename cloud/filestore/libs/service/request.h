@@ -180,9 +180,6 @@ template <typename T>
 TString GetStorageMediaKind(const T& request);
 
 template <typename T>
-ui64 GetNodeId(const T& request);
-
-template <typename T>
 TString GetRequestName(const T& request);
 
 template <typename T>

@@ -31,38 +31,43 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
     xxx(ResolvePath,                        __VA_ARGS__)                       \
-    xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(AccessNode,                         __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
     xxx(ReadLink,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
-    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateHandle,                       __VA_ARGS__)                       \
-    xxx(DestroyHandle,                      __VA_ARGS__)                       \
                                                                                \
     xxx(AcquireLock,                        __VA_ARGS__)                       \
     xxx(ReleaseLock,                        __VA_ARGS__)                       \
     xxx(TestLock,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(AllocateData,                       __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_FWD
+
+#define FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID(xxx, ...)        \
+    xxx(AccessNode,                         __VA_ARGS__)                       \
+    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
+    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
+    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
+// FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID
+
+#define FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_HANDLE(xxx, ...)         \
+    xxx(DestroyHandle,                      __VA_ARGS__)                       \
+    xxx(AllocateData,                       __VA_ARGS__)                       \
+// FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID
 
 #define FILESTORE_SERVICE_REQUESTS_HANDLE(xxx, ...)                            \
     xxx(WriteData,                          __VA_ARGS__)                       \
     xxx(ReadData,                           __VA_ARGS__)                       \
+    xxx(ListNodes,                          __VA_ARGS__)                       \
+    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
+    xxx(CreateHandle,                       __VA_ARGS__)                       \
+    xxx(CreateNode,                         __VA_ARGS__)                       \
 // FILESTORE_SERVICE_REQUESTS_HANDLE
 
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \
     FILESTORE_SERVICE_REQUESTS_HANDLE(xxx,   __VA_ARGS__)                      \
     FILESTORE_SERVICE_REQUESTS_FWD(xxx,      __VA_ARGS__)                      \
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_NODE_ID(xxx,  __VA_ARGS__)   \
+    FILESTORE_SERVICE_REQUESTS_FWD_TO_FOLLOWER_BY_HANDLE(xxx,   __VA_ARGS__)   \
 // FILESTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
