@@ -108,6 +108,11 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return false;   // not ready
     }
 
+    if (args.ChildRef->FollowerId) {
+        // TODO(#1350): support unlinking for external nodes
+        return true;
+    }
+
     // TODO: AccessCheck
     TABLET_VERIFY(args.ChildNode);
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
@@ -145,12 +150,16 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
     TIndexTabletDatabase db(tx.DB);
 
+    // TODO(#1350): unlink external nodes
+    if (args.ChildRef->FollowerId) {
+        return;
+    }
+
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "UnlinkNode");
     }
 
-    // TODO(#1350): unlink external nodes
     UnlinkNode(
         db,
         args.ParentNodeId,

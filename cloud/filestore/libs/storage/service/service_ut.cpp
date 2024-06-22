@@ -3,6 +3,7 @@
 
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -2873,8 +2874,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fsId,
             RootNodeId,
             "file1",
-            TCreateHandleArgs::CREATE,
-            shard1Id)->Record;
+            TCreateHandleArgs::CREATE_EXL)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
@@ -2997,6 +2997,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             listNodesResponse.GetNodes(1).GetSize());
 
         // TODO(#1350): test XAttr requests
+    }
+
+    Y_UNIT_TEST(ShouldCreateDirectoryStructureInLeader)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir1"))->Record;
+        const auto dir1Id = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir1Id));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir1Id, "dir1_1"))->Record;
+        const auto dir1_1Id = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir1_1Id));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(dir1Id, "dir1_2"))->Record;
+        const auto dir1_2Id = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(0, ExtractShardNo(dir1_2Id));
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            dir1_1Id,
+            "file1",
+            TCreateHandleArgs::CREATE)->Record;
+
+        const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(ShardedId(2, 1), nodeId1);
+
+        const auto handle1 = createHandleResponse.GetHandle();
+        UNIT_ASSERT_C(ExtractShardNo(handle1) == 1, handle1);
+
+        createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            dir1_2Id,
+            "file1",
+            TCreateHandleArgs::CREATE)->Record;
+
+        const auto nodeId2 = createHandleResponse.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(ShardedId(2, 2), nodeId2);
+
+        const auto handle2 = createHandleResponse.GetHandle();
+        UNIT_ASSERT_C(ExtractShardNo(handle2) == 2, handle2);
+
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
+        auto readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1,
+            0,
+            data.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+
+        data = GenerateValidateData(1_MB);
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data);
+        readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId2,
+            handle2,
+            0,
+            data.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+
+        service.DestroyHandle(headers, fsId, nodeId1, handle1);
+        service.DestroyHandle(headers, fsId, nodeId2, handle2);
     }
 }
 

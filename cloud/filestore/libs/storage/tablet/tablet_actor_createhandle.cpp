@@ -248,6 +248,13 @@ void TIndexTabletActor::HandleCreateHandle(
             auto error = MakeError(E_ARGUMENT, TStringBuilder() <<
                 "invalid follower id: "
                 << msg->Record.GetFollowerFileSystemId());
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Can't create handle: %s",
+                LogTag.c_str(),
+                FormatError(error).Quote().c_str());
+
             auto response = std::make_unique<TResponse>(std::move(error));
             NCloud::Reply(ctx, *ev, std::move(response));
             return;
