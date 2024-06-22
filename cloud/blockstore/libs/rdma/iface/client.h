@@ -29,7 +29,7 @@ struct TClientConfig
     TDuration MaxResponseDelay = TDuration::Seconds(60);
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
-    bool AlignedDataEnabled = false;
+    bool AlignedDataEnabled = true;
 
     TClientConfig() = default;
 
