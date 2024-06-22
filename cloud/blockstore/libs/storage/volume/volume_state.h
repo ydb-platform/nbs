@@ -698,6 +698,8 @@ public:
 
     bool IsMirrorResyncNeeded() const
     {
+        return false;
+
         if (!UseMirrorResync) {
             return false;
         }
