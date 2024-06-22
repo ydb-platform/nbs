@@ -6,6 +6,7 @@
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
+#include <google/protobuf/messagext.h>
 
 #include <util/random/random.h>
 
@@ -749,7 +750,8 @@ void TIndexTabletState::GetDupCacheEntry(                                      \
         *response.MutableError() = ErrorDuplicate();                           \
     } else if (!entry->Has##name()) {                                          \
         *response.MutableError() = MakeError(                                  \
-            E_ARGUMENT, "invalid request dup cache type");                     \
+            E_ARGUMENT, TStringBuilder() << "invalid request dup cache type: " \
+                << entry->ShortUtf8DebugString().Quote());                     \
     }                                                                          \
 }                                                                              \
 // FILESTORE_IMPLEMENT_DUPCACHE

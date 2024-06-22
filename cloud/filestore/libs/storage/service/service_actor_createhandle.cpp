@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
@@ -123,6 +124,11 @@ void TCreateHandleActor::CreateHandleInFollower(const TActorContext& ctx)
     request->Record.SetNodeId(RootNodeId);
     request->Record.SetName(LeaderResponse.GetFollowerNodeName());
     request->Record.ClearFollowerFileSystemId();
+    // E_EXCLUSIVE flag should be unset in order not to get EEXIST from the
+    // follower
+    const auto exclusiveFlag =
+        ProtoFlag(NProto::TCreateHandleRequest::E_EXCLUSIVE);
+    request->Record.SetFlags(CreateHandleRequest.GetFlags() & ~exclusiveFlag);
 
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());

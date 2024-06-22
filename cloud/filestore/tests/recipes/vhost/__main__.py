@@ -4,9 +4,11 @@ import pathlib
 import uuid
 
 import yatest.common as common
+import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
+from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.config.vhost_pb2 import \
     TVhostAppConfig, TVhostServiceConfig, TServiceEndpoint
 
@@ -28,6 +30,7 @@ def start(argv):
     parser.add_argument("--service", action="store", default=None)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--restart-flag", action="store", default=None)
+    parser.add_argument("--storage-config-patch", action="store", default=None)
     args = parser.parse_args(argv)
 
     vhost_binary_path = common.binary_path(
@@ -65,6 +68,13 @@ def start(argv):
 
     config.VhostServiceConfig.ServiceEndpoints.append(service_endpoint)
 
+    storage_config = TStorageConfig()
+    if args.storage_config_patch:
+        with open(common.source_path(args.storage_config_patch)) as p:
+            storage_config = text_format.Parse(
+                p.read(),
+                TStorageConfig())
+
     vhost_configurator = NfsVhostConfigGenerator(
         binary_path=vhost_binary_path,
         app_config=config,
@@ -74,6 +84,7 @@ def start(argv):
         domain=domain,
         restart_interval=restart_interval,
         restart_flag=restart_flag,
+        storage_config=storage_config,
     )
 
     nfs_vhost = NfsVhost(vhost_configurator)
