@@ -205,6 +205,7 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
 {
     if (HasError(error)) {
         // TODO(#1350): properly retry node creation via the leader fs
+        // don't forget to properly handle EEXIST after a retry
         *Response.MutableError() = std::move(error);
     }
 

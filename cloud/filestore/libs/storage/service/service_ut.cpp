@@ -2873,7 +2873,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             fsId,
             RootNodeId,
             "file1",
-            TCreateHandleArgs::CREATE)->Record;
+            TCreateHandleArgs::CREATE_EXL)->Record;
 
         UNIT_ASSERT_VALUES_EQUAL(
             "",
