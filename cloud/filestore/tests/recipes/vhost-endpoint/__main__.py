@@ -18,6 +18,7 @@ def start(argv):
     parser.add_argument("--socket-path", action="store", default="/tmp")
     parser.add_argument("--socket-prefix", action="store", default="test.vhost")
     parser.add_argument("--mount-seqno", action="store", default=0)
+    parser.add_argument("--shard-count", action="store", default=0, type=int)
     parser.add_argument("--read-only", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
     args = parser.parse_args(argv)
@@ -37,6 +38,22 @@ def start(argv):
         cwd=common.output_path())
 
     client.create(args.filesystem, "test_cloud", "test_folder")
+
+    if args.shard_count > 0:
+        shards = []
+        for i in range(args.shard_count):
+            shard_id = args.filesystem + "_shard_" + str(i)
+            client.create(shard_id, "test_cloud", "test_folder")
+            shards.append(shard_id)
+            client.execute_action("configureasfollower", {
+                "FileSystemId": shard_id,
+                "ShardNo": i + 1,
+            })
+
+        client.execute_action("configurefollowers", {
+            "FileSystemId": args.filesystem,
+            "FollowerFileSystemIds": shards,
+        })
 
     socket = create_endpoint(
         client,

@@ -24,10 +24,13 @@ void TStorageServiceActor::HandleCreateNode(
             ErrorInvalidSession(clientId, sessionId, seqNo));
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
-    const auto& followerId = session->SelectFollower();
 
-    if (StorageConfig->GetMultiTabletForwardingEnabled() && followerId) {
-        msg->Record.SetFollowerFileSystemId(followerId);
+    if (msg->Record.HasFile()) {
+        const auto& followerId = session->SelectFollower();
+
+        if (StorageConfig->GetMultiTabletForwardingEnabled() && followerId) {
+            msg->Record.SetFollowerFileSystemId(followerId);
+        }
     }
 
     ForwardRequest<TEvService::TCreateNodeMethod>(ctx, ev);
