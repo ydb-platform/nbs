@@ -789,10 +789,10 @@ public:
 private:
     void ValidateNextBlock()
     {
-        if (RemainingBlockCount == 0) {
+        // if (RemainingBlockCount == 0) {
             Response.SetValue(NProto::TError());
             return;
-        }
+        // }
 
         RemainingBlockCount--;
 
