@@ -77,9 +77,9 @@ void TMirrorPartitionActor::Bootstrap(const TActorContext& ctx)
     SetupPartitions(ctx);
     ScheduleCountersUpdate(ctx);
 
-    if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
-        StartScrubbingRange(ctx, 0);
-    }
+    // if (Config->GetDataScrubbingEnabled() && !ResyncActorId) {
+    //     StartScrubbingRange(ctx, 0);
+    // }
 
     Become(&TThis::StateWork);
 }
