@@ -48,9 +48,9 @@ void TIndexTabletActor::HandleUnlinkNode(
     }
 
     auto* msg = ev->Get();
-    if (auto entry = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
         auto response = std::make_unique<TEvService::TEvUnlinkNodeResponse>();
-        GetDupCacheEntry(entry, response->Record);
+        GetDupCacheEntry(e, response->Record);
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -108,6 +108,11 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
         return false;   // not ready
     }
 
+    if (args.ChildRef->FollowerId) {
+        // TODO(#1350): support unlinking for external nodes
+        return true;
+    }
+
     // TODO: AccessCheck
     TABLET_VERIFY(args.ChildNode);
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
@@ -144,6 +149,11 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     FILESTORE_VALIDATE_TX_ERROR(UnlinkNode, args);
 
     TIndexTabletDatabase db(tx.DB);
+
+    // TODO(#1350): unlink external nodes
+    if (args.ChildRef->FollowerId) {
+        return;
+    }
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {

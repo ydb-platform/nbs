@@ -1,5 +1,9 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+
+#include <util/string/join.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -84,7 +88,9 @@ TActorId DoRecoverSession(
     return oldOwner;
 }
 
-void Convert(const NProto::TFileSystem& fileSystem, NProto::TFileStore& fileStore)
+void Convert(
+    const NProto::TFileSystem& fileSystem,
+    NProto::TFileStore& fileStore)
 {
     fileStore.SetFileSystemId(fileSystem.GetFileSystemId());
     fileStore.SetProjectId(fileSystem.GetProjectId());
@@ -95,6 +101,165 @@ void Convert(const NProto::TFileSystem& fileSystem, NProto::TFileStore& fileStor
     // TODO need set ConfigVersion?
     fileStore.SetNodesCount(fileSystem.GetNodesCount());
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
+    fileStore.MutableFollowerFileSystemIds()->CopyFrom(
+        fileSystem.GetFollowerFileSystemIds());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCreateFollowerSessionsActor final
+    : public TActorBootstrapped<TCreateFollowerSessionsActor>
+{
+private:
+    const TString LogTag;
+    const TRequestInfoPtr RequestInfo;
+    const NProtoPrivate::TCreateSessionRequest Request;
+    const google::protobuf::RepeatedPtrField<TString> FollowerIds;
+    std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> Response;
+    int CreatedSessions = 0;
+
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
+
+public:
+    TCreateFollowerSessionsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TCreateSessionRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequests(const TActorContext& ctx);
+
+    void HandleCreateSessionResponse(
+        const TEvIndexTablet::TEvCreateSessionResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCreateFollowerSessionsActor::TCreateFollowerSessionsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TCreateSessionRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse> response)
+    : LogTag(std::move(logTag))
+    , RequestInfo(std::move(requestInfo))
+    , Request(std::move(request))
+    , FollowerIds(std::move(followerIds))
+    , Response(std::move(response))
+{}
+
+void TCreateFollowerSessionsActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequests(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TCreateFollowerSessionsActor::SendRequests(const TActorContext& ctx)
+{
+    ui32 cookie = 0;
+    for (const auto& followerId: FollowerIds) {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvCreateSessionRequest>();
+        request->Record = Request;
+        request->Record.SetFileSystemId(followerId);
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Sending CreateSessionRequest to follower %s",
+            LogTag.c_str(),
+            followerId.c_str());
+
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            {}, // flags
+            cookie++);
+    }
+}
+
+void TCreateFollowerSessionsActor::HandleCreateSessionResponse(
+    const TEvIndexTablet::TEvCreateSessionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Follower session creation failed for %s with error %s",
+            LogTag.c_str(),
+            FollowerIds[ev->Cookie].c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Follower session created for %s",
+        LogTag.c_str(),
+        FollowerIds[ev->Cookie].c_str());
+
+    if (++CreatedSessions == FollowerIds.size()) {
+        ReplyAndDie(ctx, {});
+    }
+}
+
+void TCreateFollowerSessionsActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TCreateFollowerSessionsActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    if (HasError(error)) {
+        // TODO(#1350): properly rollback session creation in the leader tablet
+        // and in the followers
+        Response =
+            std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(error);
+    }
+    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
+
+    Die(ctx);
+}
+
+STFUNC(TCreateFollowerSessionsActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvCreateSessionResponse,
+            HandleCreateSessionResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            break;
+    }
 }
 
 }   // namespace
@@ -257,13 +422,15 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s CreateSession completed (%s)",
-        LogTag.c_str(),
-        FormatError(args.Error).c_str());
+    using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
 
     if (HasError(args.Error)) {
-        auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(args.Error);
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession failed (%s)",
+            LogTag.c_str(),
+            FormatError(args.Error).c_str());
+
+        auto response = std::make_unique<TResponse>(args.Error);
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
@@ -271,14 +438,42 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     auto* session = FindSession(args.SessionId);
     TABLET_VERIFY(session);
 
-    auto response = std::make_unique<TEvIndexTablet::TEvCreateSessionResponse>(args.Error);
+    auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));
     response->Record.SetSessionState(session->GetSessionState());
     auto& fileStore = *response->Record.MutableFileStore();
     Convert(GetFileSystem(), fileStore);
     FillFeatures(*Config, fileStore);
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+    if (followerIds.empty()) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession completed (%s)",
+            LogTag.c_str(),
+            FormatError(args.Error).c_str());
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s CreateSession completed - local (%s)"
+        ", creating follower sessions (%s)",
+        LogTag.c_str(),
+        FormatError(args.Error).c_str(),
+        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+
+    auto actor = std::make_unique<TCreateFollowerSessionsActor>(
+        LogTag,
+        args.RequestInfo,
+        args.Request,
+        followerIds,
+        std::move(response));
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+
+    Y_UNUSED(actorId);
+    // TODO(#1350): register actorId in WorkerActors, erase upon completion
 }
 
 }   // namespace NCloud::NFileStore::NStorage

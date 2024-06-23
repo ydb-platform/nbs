@@ -186,7 +186,9 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        ui64 childNode);
+        ui64 childNode,
+        const TString& followerId,
+        const TString& followerName);
 
     void DeleteNodeRef(ui64 nodeId, const TString& name);
 
@@ -195,6 +197,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 NodeId;
         TString Name;
         ui64 ChildNodeId;
+        TString FollowerId;
+        TString FollowerName;
         ui64 MinCommitId;
         ui64 MaxCommitId;
     };
@@ -227,7 +231,9 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 minCommitId,
         ui64 maxCommitId,
         const TString& name,
-        ui64 childNode);
+        ui64 childNode,
+        const TString& followerId,
+        const TString& followerName);
 
     void DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name);
 

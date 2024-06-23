@@ -463,6 +463,14 @@ private:
         const TEvIndexTabletPrivate::TEvForcedRangeOperationProgress::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleNodeCreatedInFollower(
+        const TEvIndexTabletPrivate::TEvNodeCreatedInFollower::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleNodeCreatedInFollowerUponCreateHandle(
+        const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);

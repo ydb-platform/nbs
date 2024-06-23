@@ -49,7 +49,6 @@ private:
     TVector<std::unique_ptr<TInFlightRequest>> InFlightBSRequests;
     const NCloud::NProto::EStorageMediaKind MediaKind;
 
-
 public:
     TWriteDataActor(
             NProto::TWriteDataRequest request,
@@ -404,6 +403,25 @@ void TStorageServiceActor::HandleWriteData(
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
     const NProto::TFileStore& filestore = session->FileStore;
+
+    auto [fsId, error] = SelectShard(
+        ctx,
+        sessionId,
+        seqNo,
+        TEvService::TWriteDataMethod::Name,
+        msg->CallContext->RequestId,
+        filestore,
+        ExtractShardNo(msg->Record.GetHandle()));
+
+    if (HasError(error)) {
+        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(
+            std::move(error));
+        return NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    if (fsId) {
+        msg->Record.SetFileSystemId(fsId);
+    }
 
     if (!filestore.GetFeatures().GetThreeStageWriteEnabled()) {
         // If three-stage write is disabled, forward the request to the tablet

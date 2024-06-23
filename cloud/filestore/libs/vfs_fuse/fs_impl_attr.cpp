@@ -121,6 +121,7 @@ void TFileSystem::GetAttr(
     }
 
     auto request = StartRequest<NProto::TGetNodeAttrRequest>(ino);
+    // XXX handle seems to be unneeded
     request->SetHandle(handle);
 
     Session->GetNodeAttr(callContext, std::move(request))

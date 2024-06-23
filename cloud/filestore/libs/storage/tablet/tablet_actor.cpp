@@ -740,6 +740,12 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -772,6 +778,12 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvForcedRangeOperationProgress,
             HandleForcedRangeOperationProgress);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);

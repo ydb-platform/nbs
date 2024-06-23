@@ -54,8 +54,14 @@ message TNodeAttr
     // File size.
     uint64 Size = 9;
 
-    // Number of persistent links
+    // Number of persistent links.
     uint32 Links = 10;
+
+    // Follower FS id. Set if this node is actually located in the follower FS.
+    // ATime, MTime, CTime and Size are stored in the follower FS.
+    string FollowerFileSystemId = 11;
+    // Node name in the follower FS.
+    string FollowerNodeName = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,7 +119,8 @@ message TCreateNodeRequest
         bytes TargetPath = 1;
     }
 
-    message TSocket {
+    message TSocket
+    {
         uint32 Mode = 1;
     }
 
@@ -143,6 +150,9 @@ message TCreateNodeRequest
         TSymLink SymLink = 8;
         TSocket Socket = 9;
     }
+
+    // If set, the node will be created in the follower FS.
+    string FollowerFileSystemId = 12;
 }
 
 message TCreateNodeResponse
@@ -361,6 +371,7 @@ message TSetNodeAttrRequest
     uint64 NodeId = 3;
 
     // IO handle.
+    // XXX seems to be unneeded
     uint64 Handle = 4;
 
     // Update.
@@ -405,6 +416,7 @@ message TGetNodeAttrRequest
     bytes Name = 4;
 
     // IO handle.
+    // XXX seems to be unneeded
     uint64 Handle = 5;
 
     // Specifies information to get.

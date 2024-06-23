@@ -46,7 +46,7 @@ struct TTestEnvConfig
     ui32 ChannelCount = DefaultChannelCount;
     ui32 Groups = 2;
 
-    NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_DEBUG;
+    NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;
     NActors::NLog::EPriority LogPriority_Others = NActors::NLog::PRI_WARN;
 };

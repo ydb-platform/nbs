@@ -1,11 +1,15 @@
 #include "tablet_state_impl.h"
 
+#include <cloud/filestore/libs/storage/model/utils.h>
+
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/actors/core/actor.h>
 #include <library/cpp/actors/core/log.h>
 
 #include <util/random/random.h>
+
+#include <google/protobuf/messagext.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -454,7 +458,7 @@ ui64 TIndexTabletState::GenerateHandle() const
 {
     ui64 h;
     do {
-        h = RandomNumber<ui64>();
+        h = ShardedId(RandomNumber<ui64>(), GetFileSystem().GetShardNo());
     } while (!h || Impl->HandleById.contains(h));
 
     return h;
@@ -747,7 +751,8 @@ void TIndexTabletState::GetDupCacheEntry(                                      \
         *response.MutableError() = ErrorDuplicate();                           \
     } else if (!entry->Has##name()) {                                          \
         *response.MutableError() = MakeError(                                  \
-            E_ARGUMENT, "invalid request dup cache type");                     \
+            E_ARGUMENT, TStringBuilder() << "invalid request dup cache type: " \
+                << entry->ShortUtf8DebugString().Quote());                     \
     }                                                                          \
 }                                                                              \
 // FILESTORE_IMPLEMENT_DUPCACHE
@@ -760,7 +765,7 @@ void TIndexTabletState::CommitDupCacheEntry(
     const TString& sessionId,
     ui64 requestId)
 {
-    if (auto session = FindSession(sessionId)) {
+    if (auto* session = FindSession(sessionId)) {
         session->CommitDupCacheEntry(requestId);
     }
 }

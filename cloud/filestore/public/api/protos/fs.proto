@@ -43,6 +43,8 @@ message TFileStore
 
     // The list of features that are enabled for this fs.
     TFileStoreFeatures Features = 11;
+
+    repeated string FollowerFileSystemIds = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
