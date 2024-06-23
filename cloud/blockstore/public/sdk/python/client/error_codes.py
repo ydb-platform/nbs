@@ -24,78 +24,78 @@ class EFacility(enum.Enum):
     FACILITY_TXPROXY = 6
 
 
-def succeeded(code):
+def succeeded(code: int) -> bool:
     return (code & 0x80000000 == 0)
 
 
-def failed(code):
+def failed(code: int) -> bool:
     return (code & 0x80000000 != 0)
 
 
-def facility_from_code(code):
+def facility_from_code(code: int) -> int:
     return (code & 0x7FFF0000) >> 16
 
 
-def status_from_code(code):
+def status_from_code(code: int) -> int:
     return (code & 0x0000FFFF)
 
 
-def make_result_code(severity, facility, status):
+def make_result_code(severity: int, facility: int, status: int) -> int:
     return ((severity & 0x00000001) << 31) | \
         ((facility & 0x00007FFF) << 16) | \
         (status & 0x0000FFFF)
 
 
-def make_success(status):
+def make_success(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_SUCCESS.value,
         EFacility.FACILITY_NULL.value,
         status)
 
 
-def make_error(status):
+def make_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_NULL.value,
         status)
 
 
-def make_system_error(status):
+def make_system_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_SYSTEM.value,
         status)
 
 
-def make_grpc_error(status):
+def make_grpc_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_GRPC.value,
         status)
 
 
-def make_kikimr_error(status):
+def make_kikimr_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_KIKIMR.value,
         status)
 
 
-def make_scheme_shard_error(status):
+def make_scheme_shard_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_SCHEMESHARD.value,
         status)
 
 
-def make_service_error(status):
+def make_service_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_SERVICE.value,
         status)
 
 
-def make_txproxy_error(status):
+def make_txproxy_error(status: int) -> int:
     return make_result_code(
         ESeverity.SEVERITY_ERROR.value,
         EFacility.FACILITY_TXPROXY.value,
@@ -157,21 +157,21 @@ class EResult(enum.Enum):
     E_MOUNT_CONFLICT = make_service_error(6)
 
 
-def facility_string(code):
+def facility_string(code: int) -> str:
     try:
         return EFacility(facility_from_code(code)).name
     except Exception:
         return "FACILITY_UNKNOWN"
 
 
-def severity_string(code):
+def severity_string(code: int) -> str:
     if succeeded(code):
         return "SEVERITY_SUCCESS"
     else:
         return "SEVERITY_ERROR"
 
 
-def format_error_code(code):
+def format_error_code(code: int) -> str:
     return "{} {} status:{}".format(
         severity_string(code),
         facility_string(code),

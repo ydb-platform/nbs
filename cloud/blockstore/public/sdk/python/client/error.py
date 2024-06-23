@@ -25,34 +25,34 @@ def _handle_errors(f):
 
 class ClientError(RuntimeError):
 
-    def __init__(self, code=EResult.S_OK.value, message=""):
+    def __init__(self, code: int = EResult.S_OK.value, message : str = ""):
         self.code = code
         self.message = message
 
     @property
-    def succeeded(self):
+    def succeeded(self) -> int:
         return error_codes_succeeded(self.code)
 
     @property
-    def failed(self):
+    def failed(self) -> int:
         return error_codes_failed(self.code)
 
     @property
-    def facility(self):
+    def facility(self) -> int:
         return facility_from_code(self.code)
 
     @property
-    def status(self):
+    def status(self) -> int:
         return status_from_code(self.code)
 
     @staticmethod
-    def from_grpc_error(rpc_error):
+    def from_grpc_error(rpc_error: grpc.RpcError):
         status = rpc_error.code()
         code = make_grpc_error(status.value[0])
         return ClientError(code, rpc_error.details())
 
     @property
-    def is_retriable(self):
+    def is_retriable(self) -> bool:
         # special error code for retries
         if self.code in [
             EResult.E_REJECTED.value,
@@ -93,5 +93,5 @@ class ClientError(RuntimeError):
             return format_error_code(self.code)
 
 
-def client_error_from_response(response):
+def client_error_from_response(response) -> ClientError:
     return ClientError(response.Error.Code, response.Error.Message)

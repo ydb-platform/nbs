@@ -1,4 +1,5 @@
 from concurrent.futures import Future
+from typing import Callable
 
 
 def unit(x):
@@ -7,7 +8,7 @@ def unit(x):
     return f
 
 
-def bind(future, callback):
+def bind(future : Future, callback: Callable) -> Future:
     """
     Applies function to the future result when it's ready, or propagates an exception
     """
