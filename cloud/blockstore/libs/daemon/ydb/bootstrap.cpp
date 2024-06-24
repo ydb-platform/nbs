@@ -222,14 +222,17 @@ void TBootstrapYdb::InitKikimrService()
         .NodeType = Configs->ServerConfig->GetNodeType(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl,
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
         .MaxAttempts = static_cast<int>(
             Configs->ServerConfig->GetNodeRegistrationMaxAttempts()),
         .ErrorTimeout = Configs->ServerConfig->GetNodeRegistrationErrorTimeout(),
-        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout()
+        .RegistrationTimeout = Configs->ServerConfig->GetNodeRegistrationTimeout(),
+        .PathToGrpcCaFile = Configs->ServerConfig->GetRootCertsFile(),
+        .PathToGrpcCertFile = Configs->ServerConfig->GetCertFile(),
+        .PathToGrpcPrivateKeyFile = Configs->ServerConfig->GetCertPrivateKeyFile(),
     };
-
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
         ParseProtoTextFromFile(Configs->Options->LocationFile, location);

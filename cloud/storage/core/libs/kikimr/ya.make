@@ -34,4 +34,6 @@ PEERDIR(
     contrib/ydb/core/tx/schemeshard
 )
 
+YQL_LAST_ABI_VERSION()
+
 END()
