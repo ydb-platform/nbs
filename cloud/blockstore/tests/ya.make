@@ -24,6 +24,7 @@ RECURSE(
     rdma
     recipes
     resize-disk
+    secure-registration
     session_cache
     spare_node
     stats_aggregator_perf
