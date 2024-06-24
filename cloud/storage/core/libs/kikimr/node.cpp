@@ -5,12 +5,12 @@
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
+#include <contrib/ydb/core/driver_lib/run/config.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
-#include <contrib/ydb/core/driver_lib/run/config.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_discovery/discovery.h>
+#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/event.h>
@@ -28,7 +28,13 @@ using namespace NActors;
 
 using namespace NKikimr;
 
+using namespace NYdb;
+
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+constexpr const char* DefaultToken = "root@builtin";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +43,9 @@ TString ReadFile(const TString& name)
     return TFileInput(name).ReadAll();
 }
 
+////////////////////////////////////////////////////////////////////////////////
 
-TString ExtractYdbError(const NYdb::TStatus& status)
+TString ExtractYdbError(const TStatus& status)
 {
     TStringStream out;
     status.GetIssues().PrintTo(out, true);
@@ -132,11 +139,11 @@ TMaybe<NKikimrConfig::TAppConfig> GetConfigsFromCms(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NYdb::TDriverConfig CreateDriverConfig(
+TDriverConfig CreateDriverConfig(
     const TRegisterDynamicNodeOptions& options,
     const TString& addr)
 {
-    NYdb::TDriverConfig config;
+    TDriverConfig config;
 
     if (options.PathToGrpcCaFile) {
         config.UseSecureConnection(ReadFile(options.PathToGrpcCaFile).c_str());
@@ -147,7 +154,7 @@ NYdb::TDriverConfig CreateDriverConfig(
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
-    config.SetAuthToken("root@builtin");
+    config.SetAuthToken(DefaultToken);
     config.SetEndpoint(addr);
 
     return config;
@@ -155,15 +162,15 @@ NYdb::TDriverConfig CreateDriverConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NYdb::NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
+NDiscovery::TNodeRegistrationResult TryToRegisterDynamicNodeViaDiscoveryService(
     const TRegisterDynamicNodeOptions& options,
     const TString& addr,
-    const NYdb::NDiscovery::TNodeRegistrationSettings& settings)
+    const NDiscovery::TNodeRegistrationSettings& settings)
 {
-    auto connection = NYdb::TDriver(CreateDriverConfig(options, addr));
+    auto connection = TDriver(CreateDriverConfig(options, addr));
 
-    auto client = NYdb::NDiscovery::TDiscoveryClient(connection);
-    NYdb::NDiscovery::TNodeRegistrationResult result =
+    auto client = NDiscovery::TDiscoveryClient(connection);
+    NDiscovery::TNodeRegistrationResult result =
         client.NodeRegistration(settings).GetValueSync();
     connection.Stop(true);
     return result;
@@ -273,7 +280,7 @@ struct TDiscoveryNodeRegistrant
     NKikimrConfig::TStaticNameserviceConfig& NsConfig;
     NKikimrConfig::TDynamicNodeConfig& DnConfig;
 
-    NYdb::NDiscovery::TNodeRegistrationSettings Settings;
+    NDiscovery::TNodeRegistrationSettings Settings;
 
     TDiscoveryNodeRegistrant(
             TString hostName,
@@ -287,7 +294,7 @@ struct TDiscoveryNodeRegistrant
         , NsConfig(nsConfig)
         , DnConfig(dnConfig)
     {
-        NYdb::NDiscovery::TNodeLocation location;
+        NDiscovery::TNodeLocation location;
         location.DataCenter = Options.DataCenter;
         location.Rack = Options.Rack;
         location.Unit = ToString(Options.Body);
