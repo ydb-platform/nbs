@@ -27,8 +27,9 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     if (StorageConfig->GetMultiTabletForwardingEnabled() && shardNo) {
         const auto& followerIds = filestore.GetFollowerFileSystemIds();
         if (followerIds.size() < static_cast<int>(shardNo)) {
-            LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
-                "[%s][%lu] forward %s #%lu - invalid shardNo: %lu/%d",
+            LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+                "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
+                " (legacy handle?)",
                 sessionId.Quote().c_str(),
                 seqNo,
                 methodName.c_str(),
@@ -36,8 +37,10 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 shardNo,
                 followerIds.size());
 
-            return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
-                    << shardNo << ", followerIds.size=" << followerIds.size());
+            // TODO(#1350): uncomment when there are no legacy handles anymore
+            //return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
+            //        << shardNo << ", followerIds.size=" << followerIds.size());
+            return TString();
         }
 
         LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
