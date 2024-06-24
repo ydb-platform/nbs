@@ -688,6 +688,22 @@ func (client *durableClient) CmsAction(
 	return resp.(*protos.TCmsActionResponse), err
 }
 
+func (client *durableClient) QueryAgentsInfo(
+	ctx context.Context,
+	req *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.QueryAgentsInfo(ctx, req)
+		},
+	)
+
+	return resp.(*protos.TQueryAgentsInfoResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type DurableClientOpts struct {

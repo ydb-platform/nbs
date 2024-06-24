@@ -43,6 +43,7 @@ NBS_CLIENT_METHODS = [
     "cms_action",
     "update_disk_registry_config",
     "describe_disk_registry_config",
+    "query_agents_info",
 ]
 
 
