@@ -339,6 +339,8 @@ void TVolumeSelfCounters::Publish(TInstant now)
             counter.Publish();
         }
     }
+
+    Reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
