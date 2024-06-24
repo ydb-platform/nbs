@@ -624,6 +624,17 @@ public:
         return infoIt->second;
     }
 
+    NProto::EStorageMediaKind GetStorageMediaKind(
+        const TString& diskId) const override
+    {
+        TReadGuard guard(Lock);
+
+        const auto volumeIt = Volumes.find(diskId);
+        return volumeIt != Volumes.end()
+                   ? volumeIt->second.VolumeBase->Volume.GetStorageMediaKind()
+                   : NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
+    }
+
     ui32 GetBlockSize(const TString& diskId) const override
     {
         TWriteGuard guard(Lock);
@@ -995,6 +1006,14 @@ struct TVolumeStatsStub final
         Y_UNUSED(clientId);
 
         return nullptr;
+    }
+
+    NProto::EStorageMediaKind GetStorageMediaKind(
+        const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+
+        return NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     }
 
     ui32 GetBlockSize(const TString& diskId) const override

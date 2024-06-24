@@ -28,16 +28,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::EStorageMediaKind GetStorageMediaKind(
-    const IVolumeInfoPtr& volume)
-{
-    return volume
-        ? volume->GetInfo().GetStorageMediaKind()
-        : NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 ELogPriority GetDetailsLogPriority(const NProto::TError& error)
 {
     const auto kind = GetDiagnosticsErrorKind(error);
@@ -314,7 +304,7 @@ private:
                 }
 
                 RequestStats->AddRetryStats(
-                    GetStorageMediaKind(volumeInfo),
+                    VolumeStats->GetStorageMediaKind(diskId),
                     T::Request,
                     errorKind,
                     errorFlags);

@@ -103,6 +103,9 @@ struct IVolumeStats
         const TString& diskId,
         const TString& clientId) const = 0;
 
+    virtual NProto::EStorageMediaKind GetStorageMediaKind(
+        const TString& diskId) const = 0;
+
     virtual ui32 GetBlockSize(const TString& diskId) const = 0;
 
     virtual void TrimVolumes() = 0;

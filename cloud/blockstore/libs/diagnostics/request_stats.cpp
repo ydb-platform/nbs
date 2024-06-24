@@ -270,7 +270,9 @@ public:
                 TranslateLocalRequestType(requestType)),
             requestBytes);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).RequestStarted(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
@@ -304,7 +306,9 @@ public:
             calcMaxTime,
             responseSent);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).RequestCompleted(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
@@ -346,7 +350,9 @@ public:
             requestTime.TotalTime,
             calcMaxTime);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).AddIncompleteStats(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
@@ -368,7 +374,9 @@ public:
             errorKind,
             errorFlags);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).AddRetryStats(
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
@@ -431,7 +439,9 @@ public:
             timeHist,
             sizeHist);
 
-        if (IsReadWriteRequest(requestType)) {
+        if (IsReadWriteRequest(requestType) &&
+            mediaKind != NProto::STORAGE_MEDIA_DEFAULT)
+        {
             GetRequestCounters(mediaKind).BatchCompleted(
                 static_cast<TRequestCounters::TRequestType>(requestType),
                 count,
