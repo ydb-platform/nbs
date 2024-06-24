@@ -11,6 +11,8 @@ namespace NCloud::NFileStore::NStorage {
 class TInMemoryIndexState: public IIndexTabletDatabase
 {
 public:
+    TInMemoryIndexState() = default;
+
     //
     // Nodes
     //
