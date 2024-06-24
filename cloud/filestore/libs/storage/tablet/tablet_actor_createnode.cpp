@@ -317,7 +317,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     TABLET_VERIFY(args.ParentNode);
 
     // validate target node doesn't exist
-    TMaybe<IIndexState::TNodeRef> childRef;
+    TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
     if (!ReadNodeRef(db, args.ParentNodeId, args.CommitId, args.Name, childRef)) {
         return false;   // not ready
     }
@@ -385,7 +385,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 args.CommitId,
                 args.Attrs);
 
-            args.ChildNode = IIndexState::TNode {
+            args.ChildNode = IIndexTabletDatabase::TNode {
                 args.ChildNodeId,
                 args.Attrs,
                 args.CommitId,
