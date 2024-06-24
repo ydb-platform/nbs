@@ -27,7 +27,7 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     if (StorageConfig->GetMultiTabletForwardingEnabled() && shardNo) {
         const auto& followerIds = filestore.GetFollowerFileSystemIds();
         if (followerIds.size() < static_cast<int>(shardNo)) {
-            LOG_WARN(ctx, TFileStoreComponents::SERVICE,
+            LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
                 " (legacy handle?)",
                 sessionId.Quote().c_str(),
