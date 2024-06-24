@@ -23,6 +23,7 @@ struct TRegisterDynamicNodeOptions
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    bool UseNodeBrokerSsl = false;
 
     ui32 InterconnectPort = 0;
 
@@ -35,6 +36,10 @@ struct TRegisterDynamicNodeOptions
     int MaxAttempts = 0;
     TDuration ErrorTimeout;
     TDuration RegistrationTimeout;
+
+    TString PathToGrpcCaFile;
+    TString PathToGrpcCertFile;
+    TString PathToGrpcPrivateKeyFile;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
