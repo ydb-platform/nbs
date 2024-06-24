@@ -236,6 +236,13 @@ public:
         return TVolumeProcessingPolicy::GetVolumeInfo(diskId, clientId);
     }
 
+    NProto::EStorageMediaKind GetStorageMediaKind(
+        const TString& diskId) const override
+    {
+        Y_UNUSED(diskId);
+        return NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
+    }
+
     ui32 GetBlockSize(const TString& diskId) const override
     {
         Y_UNUSED(diskId);
