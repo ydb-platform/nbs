@@ -385,7 +385,7 @@ static uint64_t xfrm_sa_compare(struct nl_object *_a, struct nl_object *_b,
 					diff |= 1;
 				else
 				{
-					uint32_t len = sizeof (struct xfrmnl_replay_state_esn)
+					uint32_t len = sizeof (struct xfrmnl_replay_state_esn) +
 					               (a->replay_state_esn->bmp_len * sizeof (uint32_t));
 					diff |= memcmp (a->replay_state_esn, b->replay_state_esn, len);
 				}

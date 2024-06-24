@@ -354,10 +354,10 @@ static int netem_msg_fill_raw(struct rtnl_tc *tc, void *data,
 	 * remainder of the message. That's just the way that sch_netem expects it.
 	 * Maybe there's a more succinct way to do this at a higher level.
 	 */
-	head = (struct nlattr *)(((char *) NLMSG_DATA(msg->nm_nlh))
+	head = (struct nlattr *)(((char *) NLMSG_DATA(msg->nm_nlh)) +
 	                         NLMSG_LENGTH(sizeof(struct tcmsg)) - NLMSG_ALIGNTO);
 
-	tail = (struct nlattr *)(((char *) (msg->nm_nlh))
+	tail = (struct nlattr *)(((char *) (msg->nm_nlh)) +
 	                         NLMSG_ALIGN(msg->nm_nlh->nlmsg_len));
 
 	old_len = head->nla_len;
