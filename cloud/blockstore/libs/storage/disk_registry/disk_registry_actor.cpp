@@ -387,6 +387,20 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
     ScheduleMakeBackup(ctx, ctx.Now());
 }
 
+bool TDiskRegistryActor::HasAnotherAgentWithSameAgentId(
+    const TString& agentId,
+    NActors::TActorId serverId,
+    bool requireConnected) const
+{
+    return AnyOf(
+        AgentRegInfo,
+        [&](const auto& info)
+        {
+            return info.first != serverId && info.second.AgentId == agentId &&
+                   (!requireConnected || info.second.Connected);
+        });
+}
+
 void TDiskRegistryActor::HandleServerConnected(
     const TEvTabletPipe::TEvServerConnected::TPtr& ev,
     const TActorContext& ctx)
@@ -404,26 +418,25 @@ void TDiskRegistryActor::HandleServerDisconnected(
     Y_ABORT_UNLESS(State);
     auto* msg = ev->Get();
 
-    TAgentRegInfo& info = AgentRegInfo[msg->ServerId];
-    const auto& agentId = info.AgentId;
+    TAgentRegInfo* info = AgentRegInfo.FindPtr(msg->ServerId);
+    if (!info) {
+        return;
+    }
+
+    const auto& agentId = info->AgentId;
     if (agentId.empty()) {
         AgentRegInfo.erase(msg->ServerId);
         return;
     }
 
-    info.Connected = false;
+    info->Connected = false;
     LOG_WARN_S(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "Agent " << agentId.Quote() << " disconnected");
 
-    const bool hasAnotherConnectedAgent = AnyOf(
-        AgentRegInfo,
-        [agentId, serverId = msg->ServerId](const auto& info)
-        {
-            return info.second.Connected && info.first != serverId &&
-                   info.second.AgentId == agentId;
-        });
+    const bool hasAnotherConnectedAgent =
+        HasAnotherAgentWithSameAgentId(agentId, msg->ServerId, true);
     if (!hasAnotherConnectedAgent) {
         ScheduleRejectAgent(ctx, agentId, msg->ServerId);
         State->OnAgentDisconnected(ctx.Now(), agentId);
@@ -473,11 +486,11 @@ void TDiskRegistryActor::HandleAgentConnectionLost(
     auto* msg = ev->Get();
     ScheduledAgentRejects.erase(msg->AgentId);
 
-    const bool anotherAgentIsPresent = AnyOf(
-        AgentRegInfo,
-        [agentId = msg->AgentId, serverId = msg->ServerId](const auto& info)
-        { return info.first != serverId && info.second.AgentId == agentId; });
-    if (anotherAgentIsPresent) {
+    const bool hasAnotherAgent = HasAnotherAgentWithSameAgentId(
+        msg->AgentId,
+        msg->ServerId.value_or(TActorId()),
+        false);
+    if (hasAnotherAgent) {
         LOG_DEBUG_S(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,

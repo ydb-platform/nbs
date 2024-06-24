@@ -253,6 +253,11 @@ private:
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig& config);
 
+    bool HasAnotherAgentWithSameAgentId(
+        const TString& agentId,
+        NActors::TActorId serverId,
+        bool requireConnected) const;
+
     void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
     void RenderDisks(IOutputStream& out, ui32 limit) const;
