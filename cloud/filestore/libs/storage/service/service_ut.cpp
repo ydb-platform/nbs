@@ -3089,6 +3089,61 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.DestroyHandle(headers, fsId, nodeId1, handle1);
         service.DestroyHandle(headers, fsId, nodeId2, handle2);
     }
+
+    Y_UNIT_TEST(ShouldNotFailOnLegacyHandlesWithHighBits)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+
+        // forcing fs to set high bits for handle ids
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetShardNo(111);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL)->Record;
+
+        const auto nodeId1 = createHandleResponse.GetNodeAttr().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(111, ExtractShardNo(nodeId1));
+
+        const auto handle1 = createHandleResponse.GetHandle();
+        UNIT_ASSERT_VALUES_EQUAL(111, ExtractShardNo(handle1));
+
+        auto data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data);
+        auto readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1,
+            0,
+            data.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
