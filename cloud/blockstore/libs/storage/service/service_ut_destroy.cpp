@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotDestroyDiskWithCloudId)
+    Y_UNIT_TEST(ShouldOnlyDestroyDisksWithSpecificDiskIdPrefix)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
