@@ -8,9 +8,11 @@
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/base.h>
+#include <util/system/thread.h>
 
 #include <pthread.h>
 #include <signal.h>
+#include <sys/prctl.h>
 
 using namespace NCloud::NBlockStore::NVHostServer;
 
@@ -150,35 +152,72 @@ int main(int argc, char** argv)
     EscapeFromParentProcessGroup();
     SetProcessMark(options.DiskId);
 
-    // tune the signal to block on waiting for "stop server" command
-    sigset_t sigset;
-    sigemptyset(&sigset);
-    sigaddset(&sigset, SIGINT);
-    sigaddset(&sigset, SIGUSR1);
-    pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
-
     auto logService = CreateLogService(options);
     auto backend = CreateBackend(options, logService);
     auto server = CreateServer(logService, backend);
+    auto Log = logService->CreateLog("SERVER");
 
     server->Start(options);
 
     TSimpleStats prevStats;
     TInstant ts = Now();
 
-    // wait for signal to stop the server (Ctrl+C)
-    int sig;
-    while (!sigwait(&sigset, &sig) && sig != SIGINT) {
-        auto stats = server->GetStats(prevStats);
-        auto now = Now();
-        DumpStats(
-            stats,
-            prevStats,
-            now - ts,
-            Cout,
-            GetCyclesPerMillisecond());
+    // Translate parent process exit to SIGUSR2
+    ::prctl(PR_SET_PDEATHSIG, SIGUSR2);
 
-        ts = now;
+    // Tune the signal to block on waiting for "stop server", "dump", "parent
+    // exit" signals.
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGINT);
+    sigaddset(&sigset, SIGUSR1);
+    sigaddset(&sigset, SIGUSR2);
+    pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
+
+    // wait for signal to stop the server (Ctrl+C) or dump statistics.
+    for (bool running = true, parentExit = false; running;) {
+        int sig = 0;
+        if (parentExit) {
+            // Wait for signal with timeout.
+            timespec timeout{
+                .tv_sec = options.WaitAfterParentExit,
+                .tv_nsec = 0};
+            siginfo_t info;
+            memset(&info, 0, sizeof(info));
+            sig = ::sigtimedwait(&sigset, &info, &timeout);
+        } else {
+            // Wait for signal without timeout.
+            sigwait(&sigset, &sig);
+        }
+        switch (sig) {
+            case SIGUSR1: {
+                auto stats = server->GetStats(prevStats);
+                auto now = Now();
+                DumpStats(
+                    stats,
+                    prevStats,
+                    now - ts,
+                    Cout,
+                    GetCyclesPerMillisecond());
+                ts = now;
+            } break;
+            case SIGINT: {
+                STORAGE_INFO("Exit. SIGINT");
+                running = false;
+            } break;
+            case SIGUSR2: {
+                STORAGE_INFO("Parent process exit.");
+                parentExit = true;
+            } break;
+            case -1: {
+                STORAGE_WARN("Exit. Timeout after parent process exit has expired.");
+                running = false;
+            } break;
+            default: {
+                STORAGE_ERROR("Exit. Unexpected signal: " << sig);
+                running = false;
+            }
+        }
     }
 
     server->Stop();
