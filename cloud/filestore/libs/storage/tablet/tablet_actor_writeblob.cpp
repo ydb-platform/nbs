@@ -221,7 +221,8 @@ void TWriteBlobActor::ReplyAndDie(
             Requests.size(),
             TotalSize,
             t,
-            std::move(WriteResults));
+            std::move(WriteResults),
+            RequestInfo->ExecCycles);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -273,6 +274,8 @@ void TIndexTabletActor::HandleWriteBlob(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    TRequestScope timer(*requestInfo);
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,
@@ -354,6 +357,10 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
         "%s WriteBlob completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
+    
+    UpdateNetworkStat(ctx.Now(), msg->Size, ctx);
+    UpdateCPUUsageStat(CyclesToDurationSafe(msg->ExecCycles).MicroSeconds(), ctx);
+    UpdateExecutorStats(ctx);
 
     WorkerActors.erase(ev->Sender);
 

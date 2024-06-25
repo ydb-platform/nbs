@@ -222,14 +222,17 @@ struct TEvIndexTabletPrivate
         const ui32 Count;
         const ui32 Size;
         const TDuration Time;
+        const ui64 ExecCycles;
 
         TDataOperationCompleted(
                 ui32 requestCount,
                 ui32 requestBytes,
-                TDuration d)
+                TDuration d,
+                ui64 cycles = 0)
             : Count(requestCount)
             , Size(requestBytes)
             , Time(d)
+            , ExecCycles(cycles)
         {
         }
     };
@@ -280,8 +283,9 @@ struct TEvIndexTabletPrivate
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
-                TVector<TWriteRequestResult> results)
-            : TDataOperationCompleted(requestCount, requestBytes, d)
+                TVector<TWriteRequestResult> results,
+                ui64 cycles)
+            : TDataOperationCompleted(requestCount, requestBytes, d, cycles)
             , Results(std::move(results))
         {
         }

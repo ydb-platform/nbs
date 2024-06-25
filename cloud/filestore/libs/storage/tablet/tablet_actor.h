@@ -229,6 +229,8 @@ private:
 
     ui32 BackpressureErrorCount = 0;
 
+    ui64 UserCPUConsumption = 0;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -248,6 +250,13 @@ public:
     void RebootTabletOnCommitOverflow(
         const NActors::TActorContext& ctx,
         const TString& request);
+
+    void UpdateNetworkStat(const TInstant& now, ui64 value, const NActors::TActorContext& ctx);
+    void UpdateStorageStat(i64 value, const NActors::TActorContext& ctx);
+    void UpdateCPUUsageStat(ui64 value, const NActors::TActorContext& ctx);
+    void UpdateExecutorStats(const NActors::TActorContext& ctx);
+
+    NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 
 private:
     void Enqueue(STFUNC_SIG) override;
