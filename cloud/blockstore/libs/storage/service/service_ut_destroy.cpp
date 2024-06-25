@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "with_prefix", "");
+            CreateSimpleSsdDisk(service, "with_prefix");
             response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
@@ -143,7 +143,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "with_prefix", "");
+            CreateSimpleSsdDisk(service, "with_prefix");
             response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
