@@ -252,7 +252,7 @@ void WaitForSecureErase(
 
 void RegisterAgent(NActors::TTestActorRuntime& runtime, int nodeIdx)
 {
-    auto sender = runtime.AllocateEdgeActor();
+    auto sender = runtime.AllocateEdgeActor(nodeIdx);
     auto nodeId = runtime.GetNodeId(nodeIdx);
 
     auto request = std::make_unique<TEvRegisterAgent>();
@@ -382,6 +382,7 @@ void KillAgent(NActors::TTestActorRuntime& runtime, int nodeIdx)
         MakeDiskAgentServiceId(nodeId),
         sender,
         request.release()));
+    runtime.DispatchEvents({}, TDuration::Seconds(1));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NDiskRegistryTest

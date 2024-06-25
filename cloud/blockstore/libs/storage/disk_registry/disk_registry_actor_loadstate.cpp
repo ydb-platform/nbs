@@ -196,7 +196,7 @@ void TDiskRegistryActor::CompleteLoadState(
     for (const auto& agent: args.Snapshot.Agents) {
         if (agent.GetState() != NProto::AGENT_STATE_UNAVAILABLE) {
             // this event will be scheduled using NonReplicatedAgentMaxTimeout
-            ScheduleRejectAgent(ctx, agent.GetAgentId(), 0);
+            ScheduleRejectAgent(ctx, agent.GetAgentId(), std::nullopt);
         }
     }
 

@@ -104,15 +104,16 @@ private:
     TInstant SecureEraseStartTs;
     TInstant StartMigrationStartTs;
 
-    THashMap<NActors::TActorId, TString> ServerToAgentId;
-
     struct TAgentRegInfo
     {
-        ui64 SeqNo = 0;
+        TString AgentId;
+        std::optional<bool> TemporaryAgent;
         bool Connected = false;
     };
 
-    THashMap<TString, TAgentRegInfo> AgentRegInfo;
+    THashMap<NActors::TActorId, TAgentRegInfo> AgentRegInfo;
+    THashMap<TString, std::unique_ptr<NActors::TSchedulerCookieHolder>>
+        ScheduledAgentRejects;
 
     // Requests in-progress
     THashSet<NActors::TActorId> Actors;
@@ -215,7 +216,7 @@ private:
     void ScheduleRejectAgent(
         const NActors::TActorContext& ctx,
         TString agentId,
-        ui64 seqNo);
+        std::optional<NActors::TActorId> serverId);
 
     void ScheduleSwitchAgentDisksToReadOnly(
         const NActors::TActorContext& ctx,
@@ -251,6 +252,11 @@ private:
     void SendCachedAcquireRequestsToAgent(
         const NActors::TActorContext& ctx,
         const NProto::TAgentConfig& config);
+
+    bool HasAnotherAgentWithSameAgentId(
+        const TString& agentId,
+        NActors::TActorId serverId,
+        bool requireConnected) const;
 
     void RenderHtmlInfo(TInstant now, IOutputStream& out) const;
     void RenderState(IOutputStream& out) const;
@@ -301,6 +307,10 @@ private:
         const NActors::TActorContext& ctx);
 
     void InitializeState(TDiskRegistryStateSnapshot snapshot);
+
+    void OnDiskAgentRegistered(
+        const NActors::TActorContext& ctx,
+        const NProto::TAgentConfig& config);
 
 private:
     STFUNC(StateBoot);

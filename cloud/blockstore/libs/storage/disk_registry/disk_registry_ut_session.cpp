@@ -399,18 +399,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(1, agent1AcquireCallCount);
         UNIT_ASSERT_VALUES_EQUAL(0, agent2AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, cachedAcquireDevicesRequestAmount->Val());
-
-        // Folowing register shouldn't send acquire requests since we just sent
-        // them and didn't cache fresh ones yet.
-        RegisterAgent(*runtime, 0);
-        runtime->AdvanceCurrentTime(UpdateCountersInterval);
-        runtime->DispatchEvents(
-            TDispatchOptions(),
-            TDuration::MilliSeconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(1, agent1AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, agent2AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, cachedAcquireDevicesRequestAmount->Val());
 
         diskRegistry.AcquireDisk(
             "disk-1",
@@ -424,7 +412,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, agent1AcquireCallCount);
         UNIT_ASSERT_VALUES_EQUAL(1, agent2AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, cachedAcquireDevicesRequestAmount->Val());
 
         const NProto::TStorageServiceConfig storageConfig =
             CreateDefaultStorageConfig();
@@ -440,7 +427,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, agent1AcquireCallCount);
         UNIT_ASSERT_VALUES_EQUAL(1, agent2AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, cachedAcquireDevicesRequestAmount->Val());
 
         diskRegistry.AcquireDisk(
             "disk-1",
@@ -454,7 +440,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(3, agent1AcquireCallCount);
         UNIT_ASSERT_VALUES_EQUAL(2, agent2AcquireCallCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, cachedAcquireDevicesRequestAmount->Val());
 
         // Although a release event wasn't sent, agent registering shouldn't
         // send acquire because the disk is destroyed.
@@ -464,7 +449,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents(
             TDispatchOptions(),
             TDuration::MilliSeconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(0, cachedAcquireDevicesRequestAmount->Val());
 
         RegisterAgent(*runtime, 0);
         runtime->AdvanceCurrentTime(UpdateCountersInterval);

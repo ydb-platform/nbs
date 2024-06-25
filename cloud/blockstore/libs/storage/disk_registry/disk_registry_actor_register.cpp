@@ -114,32 +114,23 @@ void TDiskRegistryActor::ExecuteAddAgent(
         &args.NotifiedDisks);
 
     if (!HasError(args.Error)) {
-        for (auto it = ServerToAgentId.begin(); it != ServerToAgentId.end(); ) {
-            const auto& agentId = it->second;
+        OnDiskAgentRegistered(ctx, args.Config);
 
-            if (agentId == args.Config.GetAgentId()) {
-                const auto& serverId = it->first;
-                NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
-
-                ServerToAgentId.erase(it++);
-            } else {
-                ++it;
-            }
-        }
-
-        ServerToAgentId[args.RegisterActorId] = args.Config.GetAgentId();
-
-        auto& info = AgentRegInfo[args.Config.GetAgentId()];
+        TAgentRegInfo& info = AgentRegInfo[args.RegisterActorId];
+        info.AgentId = args.Config.GetAgentId();
         info.Connected = true;
-        info.SeqNo += 1;
+        info.TemporaryAgent = args.Config.GetTemporaryAgent();
+        // Cancel rejection for the agent.
+        ScheduledAgentRejects.erase(info.AgentId);
 
         LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
-            ", SeqNo=%lu",
+            ", ActorId=%s, TemporaryAgent=%d",
             TabletID(),
             args.Config.GetNodeId(),
             args.Config.GetAgentId().c_str(),
-            info.SeqNo);
+            ToString(args.RegisterActorId).c_str(),
+            *info.TemporaryAgent);
     }
 }
 
@@ -188,6 +179,27 @@ void TDiskRegistryActor::CompleteAddAgent(
     PublishDiskStates(ctx);
     SecureErase(ctx);
     StartMigration(ctx);
+}
+
+void TDiskRegistryActor::OnDiskAgentRegistered(
+    const TActorContext& ctx,
+    const NProto::TAgentConfig& config)
+{
+    if (Config->GetAllowDRToManageMultipleDiskAgents()) {
+        return;
+    }
+
+    for (auto it = AgentRegInfo.begin(); it != AgentRegInfo.end();) {
+        const auto& agentId = it->second.AgentId;
+
+        if (agentId == config.GetAgentId()) {
+            const auto& serverId = it->first;
+            NCloud::Send<TEvents::TEvPoisonPill>(ctx, serverId);
+            AgentRegInfo.erase(it++);
+        } else {
+            ++it;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

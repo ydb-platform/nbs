@@ -1000,4 +1000,8 @@ message TStorageServiceConfig
 
     // Destroy disk only with empty CloudId field
     optional bool DisableDiskWithCloudIdDestruction = 374;
+
+    // Do not send poison pill to disk agent with an AgentId that matches an
+    // already connected one. This is necessary for blue-green deployment.
+    optional bool AllowDRToManageMultipleDiskAgents = 375;
 }

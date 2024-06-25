@@ -387,13 +387,27 @@ void TDiskRegistryActor::HandleBackupDiskRegistryStateResponse(
     ScheduleMakeBackup(ctx, ctx.Now());
 }
 
+bool TDiskRegistryActor::HasAnotherAgentWithSameAgentId(
+    const TString& agentId,
+    NActors::TActorId serverId,
+    bool requireConnected) const
+{
+    return AnyOf(
+        AgentRegInfo,
+        [&](const auto& info)
+        {
+            return info.first != serverId && info.second.AgentId == agentId &&
+                   (!requireConnected || info.second.Connected);
+        });
+}
+
 void TDiskRegistryActor::HandleServerConnected(
     const TEvTabletPipe::TEvServerConnected::TPtr& ev,
     const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
     auto* msg = ev->Get();
-    auto [it, inserted] = ServerToAgentId.emplace(msg->ServerId, TString());
+    auto [it, inserted] = AgentRegInfo.emplace(msg->ServerId, TAgentRegInfo());
     Y_DEBUG_ABORT_UNLESS(inserted);
 }
 
@@ -402,35 +416,39 @@ void TDiskRegistryActor::HandleServerDisconnected(
     const TActorContext& ctx)
 {
     Y_ABORT_UNLESS(State);
-
     auto* msg = ev->Get();
 
-    auto it = ServerToAgentId.find(msg->ServerId);
-    if (it == ServerToAgentId.end()) {
+    TAgentRegInfo* info = AgentRegInfo.FindPtr(msg->ServerId);
+    if (!info) {
         return;
     }
 
-    const auto& agentId = it->second;
-
-    if (agentId) {
-        auto& info = AgentRegInfo[agentId];
-        info.Connected = false;
-
-        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Agent " << agentId.Quote()
-            << " disconnected, SeqNo=" << info.SeqNo);
-
-        ScheduleRejectAgent(ctx, agentId, info.SeqNo);
-        State->OnAgentDisconnected(ctx.Now(), agentId);
+    const auto& agentId = info->AgentId;
+    if (agentId.empty()) {
+        AgentRegInfo.erase(msg->ServerId);
+        return;
     }
 
-    ServerToAgentId.erase(it);
+    info->Connected = false;
+    LOG_WARN_S(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Agent " << agentId.Quote() << " disconnected");
+
+    const bool hasAnotherConnectedAgent =
+        HasAnotherAgentWithSameAgentId(agentId, msg->ServerId, true);
+    if (hasAnotherConnectedAgent) {
+        AgentRegInfo.erase(msg->ServerId);
+    } else {
+        ScheduleRejectAgent(ctx, agentId, msg->ServerId);
+        State->OnAgentDisconnected(ctx.Now(), agentId);
+    }
 }
 
 void TDiskRegistryActor::ScheduleRejectAgent(
     const NActors::TActorContext& ctx,
     TString agentId,
-    ui64 seqNo)
+    std::optional<NActors::TActorId> serverId)
 {
     auto timeout = Config->GetNonReplicatedAgentMaxTimeout();
 
@@ -450,10 +468,15 @@ void TDiskRegistryActor::ScheduleRejectAgent(
         "Schedule reject agent " << agentId.Quote() << ": " << ctx.Now()
         << " -> " << deadline);
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>(
-        std::move(agentId), seqNo);
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvAgentConnectionLost>(
+            std::move(agentId),
+            serverId);
 
-    ctx.Schedule(deadline, request.release());
+    auto cookie =
+        std::make_unique<TSchedulerCookieHolder>(ISchedulerCookie::Make2Way());
+    ctx.Schedule(deadline, request.release(), cookie->Get());
+    ScheduledAgentRejects[agentId] = std::move(cookie);
 }
 
 void TDiskRegistryActor::HandleAgentConnectionLost(
@@ -461,13 +484,21 @@ void TDiskRegistryActor::HandleAgentConnectionLost(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
+    ScheduledAgentRejects.erase(msg->AgentId);
 
-    auto it = AgentRegInfo.find(msg->AgentId);
-    if (it != AgentRegInfo.end() && msg->SeqNo < it->second.SeqNo) {
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Agent " << msg->AgentId.Quote() << " is connected: "
-            << msg->SeqNo << " < SeqNo " << it->second.SeqNo);
+    const bool hasAnotherAgent = HasAnotherAgentWithSameAgentId(
+        msg->AgentId,
+        msg->ServerId.value_or(TActorId()),
+        false);
+    if (hasAnotherAgent) {
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "Another agent is present " << msg->AgentId.Quote());
 
+        if (msg->ServerId.has_value()) {
+            AgentRegInfo.erase(*msg->ServerId);
+        }
         return;
     }
 
@@ -894,16 +925,13 @@ void TDiskRegistryActor::SendCachedAcquireRequestsToAgent(
     const TActorContext& ctx,
     const NProto::TAgentConfig& config)
 {
-    auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
-    auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
+    const auto& acquireCacheByAgentId = State->GetAcquireCacheByAgentId();
+    const auto cacheIt = acquireCacheByAgentId.find(config.GetAgentId());
     if (cacheIt == acquireCacheByAgentId.end()) {
         return;
     }
-    // Since we will send all of the requests and they are non-copyable, just
-    // extract whole container.
-    TCachedAcquireRequests agentAcquireRequestCache =
-        std::move(cacheIt->second);
-    acquireCacheByAgentId.erase(cacheIt);
+    // Copy the data.
+    TCachedAcquireRequests agentAcquireRequestCache = cacheIt->second;
 
     TDuration lifetimeThreshold =
         Config->GetCachedAcquireRequestLifetime();
