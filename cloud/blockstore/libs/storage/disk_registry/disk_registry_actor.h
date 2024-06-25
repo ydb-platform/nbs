@@ -107,7 +107,7 @@ private:
     struct TAgentRegInfo
     {
         TString AgentId;
-        TMaybe<bool> TemporaryAgent;
+        std::optional<bool> TemporaryAgent;
         bool Connected = false;
     };
 

@@ -437,12 +437,12 @@ void TDiskRegistryActor::HandleServerDisconnected(
 
     const bool hasAnotherConnectedAgent =
         HasAnotherAgentWithSameAgentId(agentId, msg->ServerId, true);
-    if (!hasAnotherConnectedAgent) {
+    if (hasAnotherConnectedAgent) {
+        AgentRegInfo.erase(msg->ServerId);
+    } else {
         ScheduleRejectAgent(ctx, agentId, msg->ServerId);
         State->OnAgentDisconnected(ctx.Now(), agentId);
-        return;
     }
-    AgentRegInfo.erase(msg->ServerId);
 }
 
 void TDiskRegistryActor::ScheduleRejectAgent(
