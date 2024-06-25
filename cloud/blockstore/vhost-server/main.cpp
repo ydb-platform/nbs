@@ -18,6 +18,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr int MaxHandle = 1024;
+
 struct TCerrJsonLogBackend
     : public TLogBackend
 {
@@ -108,6 +110,27 @@ IBackendPtr CreateBackend(
         options.DeviceBackend.c_str());
 }
 
+void CloseAllFileHandlesExceptSTD()
+{
+    for (int h = 0; h < MaxHandle; ++h) {
+        if (h == STDIN_FILENO || h == STDOUT_FILENO || h == STDERR_FILENO) {
+            continue;
+        }
+        ::close(h);
+    }
+}
+
+void EscapeFromParentProcessGroup()
+{
+    ::setpgid(0, 0);
+}
+
+void SetProcessMark(const TString& diskId)
+{
+    TString id = "vhost-" + diskId;
+    TThread::SetCurrentThreadName(id.c_str());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,6 +145,10 @@ int main(int argc, char** argv)
         Cerr << CurrentExceptionMessage() << Endl;
         return 1;
     }
+
+    CloseAllFileHandlesExceptSTD();
+    EscapeFromParentProcessGroup();
+    SetProcessMark(options.DiskId);
 
     // tune the signal to block on waiting for "stop server" command
     sigset_t sigset;
