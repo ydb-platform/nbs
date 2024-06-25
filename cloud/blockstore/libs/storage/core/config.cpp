@@ -112,6 +112,7 @@ TDuration MSeconds(ui32 value)
     xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
     xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
     xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
+    xxx(DestructionAllowedOnlyForDisksWithIdPrefix, TString,    ""            )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
@@ -494,7 +495,6 @@ TDuration MSeconds(ui32 value)
                                                                                   \
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
-    xxx(DisableDiskWithCloudIdDestruction,              bool,      false         )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
