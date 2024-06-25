@@ -111,97 +111,81 @@ struct TTestEndpointListener final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSessionManager final
-    : public ISessionManager
+struct TTestEndpointSession final
+    : public IEndpointSession
+{
+    using TRemoveHandler = std::function<TFuture<NProto::TError>()>;
+
+    TRemoveHandler RemoveHandler = [] () {
+        return MakeFuture(NProto::TError());
+    };
+
+    TFuture<NProto::TError> Remove(
+        TCallContextPtr ctx,
+        NProto::THeaders headers) override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        return RemoveHandler();
+    }
+
+    TFuture<NProto::TMountVolumeResponse> Alter(
+        TCallContextPtr ctx,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode,
+        ui64 mountSeqNumber,
+        NProto::THeaders headers) override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
+        Y_UNUSED(mountSeqNumber);
+        return MakeFuture(NProto::TMountVolumeResponse());
+    }
+
+    TFuture<NProto::TMountVolumeResponse> Describe(
+        TCallContextPtr ctx,
+        NProto::THeaders headers) const override
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(headers);
+        return MakeFuture(NProto::TMountVolumeResponse());
+    }
+
+    NClient::ISessionPtr GetSession() const override
+    {
+        return nullptr;
+    }
+
+    NProto::TClientPerformanceProfile GetProfile() const override
+    {
+        return NProto::TClientPerformanceProfile();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestSessionFactory final
+    : public ISessionFactory
 {
     using TCreateSessionHandler
         = std::function<TFuture<TSessionOrError>()>;
 
-    using TRemoveSessionHandler
-        = std::function<TFuture<NProto::TError>()>;
-
-    using TAlterSessionHandler
-        = std::function<TFuture<NProto::TError>()>;
-
-    using TGetSessionHandler
-        = std::function<TFuture<TSessionOrError>()>;
-
-    using TGetProfileHandler
-        = std::function<TResultOrError<NProto::TClientPerformanceProfile>()>;
-
     TCreateSessionHandler CreateSessionHandler = [] () {
-        return MakeFuture<TSessionOrError>(TSessionInfo());
-    };
-
-    TRemoveSessionHandler RemoveSessionHandler = [] () {
-        return MakeFuture(NProto::TError());
-    };
-
-    TAlterSessionHandler AlterSessionHandler = [] () {
-        return MakeFuture(NProto::TError());
-    };
-
-    TGetSessionHandler GetSessionHandler = [] () {
-        return MakeFuture<TSessionOrError>(TSessionInfo());
-    };
-
-    TGetProfileHandler GetProfileHandler = [] () {
-        return NProto::TClientPerformanceProfile();
+        IEndpointSessionPtr session = std::make_shared<TTestEndpointSession>();
+        return MakeFuture<TSessionOrError>(session);
     };
 
     TFuture<TSessionOrError> CreateSession(
         TCallContextPtr callContext,
-        const NProto::TStartEndpointRequest& request) override
+        const NProto::TStartEndpointRequest& request,
+        NProto::TVolume& volume) override
     {
         Y_UNUSED(callContext);
         Y_UNUSED(request);
+        volume = {};
         return CreateSessionHandler();
-    }
-
-    TFuture<NProto::TError> RemoveSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(socketPath);
-        Y_UNUSED(headers);
-        return RemoveSessionHandler();
-    }
-
-    TFuture<NProto::TError> AlterSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode,
-        ui64 mountSeqNumber,
-        const NProto::THeaders& headers) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(socketPath);
-        Y_UNUSED(accessMode);
-        Y_UNUSED(mountMode);
-        Y_UNUSED(mountSeqNumber);
-        Y_UNUSED(headers);
-        return AlterSessionHandler();
-    }
-
-    TFuture<TSessionOrError> GetSession(
-        TCallContextPtr callContext,
-        const TString& socketPath,
-        const NProto::THeaders& headers) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(socketPath);
-        Y_UNUSED(headers);
-        return GetSessionHandler();
-    }
-
-    TResultOrError<NProto::TClientPerformanceProfile> GetProfile(
-        const TString& socketPath) override
-    {
-        Y_UNUSED(socketPath);
-        return GetProfileHandler();
     }
 };
 
@@ -271,7 +255,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ ipcType, listener }},
             nullptr,    // nbdDeviceFactory
@@ -340,14 +324,15 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             scheduler->Stop();
         };
 
-        auto startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
+        auto startEndpointPromise = NewPromise<ISessionFactory::TSessionOrError>();
         auto stopEndpointPromise = NewPromise<NProto::TError>();
 
-        auto sessionManager = std::make_shared<TTestSessionManager>();
-        sessionManager->CreateSessionHandler = [&] () {
+        auto sessionFactory = std::make_shared<TTestSessionFactory>();
+        sessionFactory->CreateSessionHandler = [&] () {
             return startEndpointPromise;
         };
-        sessionManager->RemoveSessionHandler = [&] () {
+        auto session = std::make_shared<TTestEndpointSession>();
+        session->RemoveHandler = [&] () {
             return stopEndpointPromise;
         };
 
@@ -363,7 +348,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            sessionManager,
+            sessionFactory,
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
             nullptr,    // nbdDeviceFactory
@@ -413,7 +398,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 response.GetError().GetCode(),
                 response);
 
-            startEndpointPromise.SetValue(NProto::TError{});
+            startEndpointPromise.SetValue(IEndpointSessionPtr(session));
 
             auto future2 = endpointService->StopEndpoint(
                 MakeIntrusive<TCallContext>(),
@@ -427,7 +412,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         }
 
         {
-            startEndpointPromise = NewPromise<ISessionManager::TSessionOrError>();
+            startEndpointPromise = NewPromise<ISessionFactory::TSessionOrError>();
 
             NProto::TStartEndpointRequest startRequest;
             startRequest.SetDiskId(diskId);
@@ -469,7 +454,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
                 response2.GetError().GetCode(),
                 response2);
 
-            startEndpointPromise.SetValue(NProto::TError{});
+            startEndpointPromise.SetValue(IEndpointSessionPtr(session));
 
             request->MutableHeaders()->SetRequestTimeout(3000);
             auto future3 = endpointService->KickEndpoint(
@@ -573,7 +558,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
@@ -614,7 +599,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {},         // listeners
             nullptr,    // nbdDeviceFactory
@@ -651,7 +636,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {},         // listeners
             nullptr,    // nbdDeviceFactory
@@ -718,7 +703,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
@@ -798,7 +783,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, std::make_shared<TTestEndpointListener>() }},
             nullptr,    // nbdDeviceFactory
@@ -957,7 +942,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory
@@ -1075,7 +1060,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             CreateServerStatsStub(),
             executor,
             CreateEndpointEventProxy(),
-            std::make_shared<TTestSessionManager>(),
+            std::make_shared<TTestSessionFactory>(),
             endpointStorage,
             {{ NProto::IPC_GRPC, listener }},
             nullptr,    // nbdDeviceFactory

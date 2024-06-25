@@ -13,8 +13,11 @@ constexpr size_t UnixSocketPathLengthLimit = 107;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISessionManager;
-using ISessionManagerPtr = std::shared_ptr<ISessionManager>;
+struct IEndpointSession;
+using IEndpointSessionPtr = std::shared_ptr<IEndpointSession>;
+
+struct ISessionFactory;
+using ISessionFactoryPtr = std::shared_ptr<ISessionFactory>;
 
 struct IEndpointManager;
 using IEndpointManagerPtr = std::shared_ptr<IEndpointManager>;

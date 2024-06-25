@@ -393,8 +393,8 @@ struct TRequestState
 struct TEndpoint
 {
     std::shared_ptr<NProto::TStartEndpointRequest> Request;
+    IEndpointSessionPtr Session;
     NBD::IDevicePtr Device;
-    NProto::TVolume Volume;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -408,7 +408,7 @@ private:
     const ILoggingServicePtr Logging;
     const IServerStatsPtr ServerStats;
     const TExecutorPtr Executor;
-    const ISessionManagerPtr SessionManager;
+    const ISessionFactoryPtr SessionFactory;
     const IEndpointStoragePtr EndpointStorage;
     const THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     const NBD::IDeviceFactoryPtr NbdDeviceFactory;
@@ -448,7 +448,7 @@ public:
             IVolumeStatsPtr volumeStats,
             IServerStatsPtr serverStats,
             TExecutorPtr executor,
-            ISessionManagerPtr sessionManager,
+            ISessionFactoryPtr sessionFactory,
             IEndpointStoragePtr endpointStorage,
             THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
             NBD::IDeviceFactoryPtr nbdDeviceFactory,
@@ -456,7 +456,7 @@ public:
         : Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
         , Executor(std::move(executor))
-        , SessionManager(std::move(sessionManager))
+        , SessionFactory(std::move(sessionFactory))
         , EndpointStorage(std::move(endpointStorage))
         , EndpointListeners(std::move(listeners))
         , NbdDeviceFactory(std::move(nbdDeviceFactory))
@@ -578,24 +578,28 @@ private:
 
     NProto::TError SwitchEndpointImpl(
         TCallContextPtr ctx,
-        std::shared_ptr<TSwitchEndpointRequest> request);
+        std::shared_ptr<TSwitchEndpointRequest> request,
+        const IEndpointSession& session);
 
     NProto::TError AlterEndpoint(
+        const TEndpoint& endpoint,
         TCallContextPtr ctx,
-        NProto::TStartEndpointRequest newReq,
-        NProto::TStartEndpointRequest oldReq);
+        NProto::TStartEndpointRequest newReq);
 
     NProto::TError RestartListenerEndpoint(
+        const TEndpoint& endpoint,
         TCallContextPtr ctx,
-        const NProto::TStartEndpointRequest& request);
+        const NProto::THeaders& headers);
 
     NProto::TError OpenAllEndpointSockets(
         const NProto::TStartEndpointRequest& request,
-        const TSessionInfo& sessionInfo);
+        const NProto::TVolume& volume,
+        const IEndpointSession& session);
 
     NProto::TError OpenEndpointSocket(
         const NProto::TStartEndpointRequest& request,
-        const TSessionInfo& sessionInfo);
+        const NProto::TVolume& volume,
+        const IEndpointSession& session);
 
     void CloseAllEndpointSockets(const NProto::TStartEndpointRequest& request);
     void CloseEndpointSocket(const NProto::TStartEndpointRequest& request);
@@ -612,13 +616,14 @@ private:
 
     void DetachFileDevice(const TString& device);
 
-    template <typename T>
-    void RemoveSession(TCallContextPtr ctx, const T& request)
+    void RemoveSession(
+        IEndpointSession& session,
+        TCallContextPtr ctx,
+        const NProto::THeaders& headers)
     {
-        auto future = SessionManager->RemoveSession(
+        auto future = session.Remove(
             std::move(ctx),
-            request.GetUnixSocketPath(),
-            request.GetHeaders());
+            headers);
 
         if (const auto& error = Executor->WaitFor(future); HasError(error)) {
             STORAGE_ERROR("Failed to remove session: " << FormatError(error));
@@ -756,11 +761,11 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
 
     auto it = Endpoints.find(socketPath);
     if (it != Endpoints.end()) {
-        const auto& endpoint = it->second;
+        auto endpoint = it->second;
 
         if (!NFs::Exists(socketPath)) {
             // restart listener endpoint to recreate the socket
-            auto error = RestartListenerEndpoint(ctx, *endpoint.Request);
+            auto error = RestartListenerEndpoint(endpoint, ctx, request->GetHeaders());
             if (HasError(error)) {
                 return TErrorResponse(error);
             }
@@ -771,35 +776,42 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
             }
         }
 
-        auto error = AlterEndpoint(std::move(ctx), *request, *endpoint.Request);
+        auto error = AlterEndpoint(endpoint, ctx, *request);
         if (HasError(error)) {
             return TErrorResponse(error);
         }
 
+        auto describeFuture = endpoint.Session->Describe(ctx, request->GetHeaders());
+        auto mountResponse = Executor->WaitFor(describeFuture);
+        if (HasError(mountResponse)) {
+            return TErrorResponse(mountResponse.GetError());
+        }
+
         NProto::TStartEndpointResponse response;
         response.MutableError()->CopyFrom(error);
-        response.MutableVolume()->CopyFrom(endpoint.Volume);
+        response.MutableVolume()->CopyFrom(mountResponse.GetVolume());
         response.SetNbdDeviceFile(endpoint.Request->GetNbdDeviceFile());
         return response;
     }
 
-    auto future = SessionManager->CreateSession(ctx, *request);
-    auto [sessionInfo, error] = Executor->WaitFor(future);
+    NProto::TVolume volume;
+    auto future = SessionFactory->CreateSession(ctx, *request, volume);
+    auto [session, error] = Executor->WaitFor(future);
     if (HasError(error)) {
         return TErrorResponse(error);
     }
 
-    error = OpenAllEndpointSockets(*request, sessionInfo);
+    error = OpenAllEndpointSockets(*request, volume, *session);
     if (HasError(error)) {
-        RemoveSession(std::move(ctx), *request);
+        RemoveSession(*session, std::move(ctx), request->GetHeaders());
         return TErrorResponse(error);
     }
 
-    auto deviceOrError = StartNbdDevice(request, restoring, sessionInfo.Volume);
+    auto deviceOrError = StartNbdDevice(request, restoring, volume);
     error = deviceOrError.GetError();
     if (HasError(error)) {
         CloseAllEndpointSockets(*request);
-        RemoveSession(std::move(ctx), *request);
+        RemoveSession(*session, std::move(ctx), request->GetHeaders());
         return TErrorResponse(error);
     }
     auto device = deviceOrError.ExtractResult();
@@ -814,15 +826,15 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
             }
             ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             CloseAllEndpointSockets(*request);
-            RemoveSession(std::move(ctx), *request);
+            RemoveSession(*session, std::move(ctx), request->GetHeaders());
             return TErrorResponse(error);
         }
     }
 
     TEndpoint endpoint = {
         .Request = request,
+        .Session = session,
         .Device = device,
-        .Volume = sessionInfo.Volume,
     };
 
     if (auto c = ServerStats->GetEndpointCounter(request->GetIpcType())) {
@@ -832,16 +844,17 @@ NProto::TStartEndpointResponse TEndpointManager::StartEndpointImpl(
     STORAGE_VERIFY(inserted, TWellKnownEntityTypes::ENDPOINT, socketPath);
 
     NProto::TStartEndpointResponse response;
-    response.MutableVolume()->CopyFrom(sessionInfo.Volume);
+    response.MutableVolume()->CopyFrom(volume);
     response.SetNbdDeviceFile(request->GetNbdDeviceFile());
     return response;
 }
 
 NProto::TError TEndpointManager::AlterEndpoint(
+    const TEndpoint& endpoint,
     TCallContextPtr ctx,
-    NProto::TStartEndpointRequest newReq,
-    NProto::TStartEndpointRequest oldReq)
+    NProto::TStartEndpointRequest newReq)
 {
+    auto oldReq = *endpoint.Request;
     const auto& socketPath = newReq.GetUnixSocketPath();
 
     // NBS-3018
@@ -880,25 +893,16 @@ NProto::TError TEndpointManager::AlterEndpoint(
             << " has already been started with other args");
     }
 
-    auto future = SessionManager->AlterSession(
+    auto future = endpoint.Session->Alter(
         ctx,
-        socketPath,
         newReq.GetVolumeAccessMode(),
         newReq.GetVolumeMountMode(),
         newReq.GetMountSeqNumber(),
         newReq.GetHeaders());
 
-    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        return error;
-    }
-
-    auto getSessionFuture =
-        SessionManager->GetSession(ctx, socketPath, newReq.GetHeaders());
-
-    const auto& [sessionInfo, error] = Executor->WaitFor(getSessionFuture);
-
-    if (HasError(error)) {
-        return error;
+    const auto& mountResponse = Executor->WaitFor(future);
+    if (HasError(mountResponse)) {
+        return mountResponse.GetError();
     }
 
     auto listenerIt = EndpointListeners.find(oldReq.GetIpcType());
@@ -911,26 +915,23 @@ NProto::TError TEndpointManager::AlterEndpoint(
 
     auto alterFuture = listener->AlterEndpoint(
         oldReq,
-        sessionInfo.Volume,
-        sessionInfo.Session);
-
+        mountResponse.GetVolume(),
+        endpoint.Session->GetSession());
     return Executor->WaitFor(alterFuture);
 }
 
 NProto::TError TEndpointManager::RestartListenerEndpoint(
+    const TEndpoint& endpoint,
     TCallContextPtr ctx,
-    const NProto::TStartEndpointRequest& request)
+    const NProto::THeaders& headers)
 {
+    const auto& request = *endpoint.Request;
     STORAGE_INFO("Restart listener endpoint: " << request);
 
-    auto sessionFuture = SessionManager->GetSession(
-        ctx,
-        request.GetUnixSocketPath(),
-        request.GetHeaders());
-
-    auto [sessionInfo, error] = Executor->WaitFor(sessionFuture);
-    if (HasError(error)) {
-        return error;
+    auto describeFuture = endpoint.Session->Describe(ctx, headers);
+    auto mountResponse = Executor->WaitFor(describeFuture);
+    if (HasError(mountResponse)) {
+        return mountResponse.GetError();
     }
 
     auto listenerIt = EndpointListeners.find(request.GetIpcType());
@@ -942,7 +943,7 @@ NProto::TError TEndpointManager::RestartListenerEndpoint(
     auto& listener = listenerIt->second;
 
     auto future = listener->StopEndpoint(request.GetUnixSocketPath());
-    error = Executor->WaitFor(future);
+    auto error = Executor->WaitFor(future);
     if (HasError(error)) {
         STORAGE_ERROR("Failed to stop endpoint while restarting it: "
             << FormatError(error));
@@ -950,8 +951,8 @@ NProto::TError TEndpointManager::RestartListenerEndpoint(
 
     future = listener->StartEndpoint(
         request,
-        sessionInfo.Volume,
-        sessionInfo.Session);
+        mountResponse.GetVolume(),
+        endpoint.Session->GetSession());
     error = Executor->WaitFor(future);
     if (HasError(error)) {
         STORAGE_ERROR("Failed to start endpoint while recreating it: "
@@ -1008,7 +1009,7 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
     }
     ReleaseNbdDevice(endpoint.Request->GetNbdDeviceFile(), false);
     CloseAllEndpointSockets(*endpoint.Request);
-    RemoveSession(std::move(ctx), *request);
+    RemoveSession(*endpoint.Session, std::move(ctx), request->GetHeaders());
 
     if (auto error = EndpointStorage->RemoveEndpoint(socketPath);
         HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
@@ -1122,15 +1123,17 @@ NProto::TDescribeEndpointResponse TEndpointManager::DoDescribeEndpoint(
         return TErrorResponse(E_REJECTED, "endpoint is restoring now");
     }
 
-    NProto::TDescribeEndpointResponse response;
-
-    auto [profile, err] = SessionManager->GetProfile(socketPath);
-    if (HasError(err)) {
-        response.MutableError()->CopyFrom(err);
-    } else {
-        response.MutablePerformanceProfile()->CopyFrom(profile);
+    auto it = Endpoints.find(socketPath);
+    if (it == Endpoints.end()) {
+        return TErrorResponse(S_FALSE, TStringBuilder()
+            << "endpoint " << socketPath.Quote()
+            << " hasn't been started yet");
     }
 
+    auto profile = it->second.Session->GetProfile();
+
+    NProto::TDescribeEndpointResponse response;
+    response.MutablePerformanceProfile()->CopyFrom(profile);
     return response;
 }
 
@@ -1167,8 +1170,9 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(S_FALSE, TStringBuilder()
             << "endpoint " << socketPath.Quote() << " not started");
     }
+    auto endpoint = it->second;
 
-    auto ipcType = it->second.Request->GetIpcType();
+    auto ipcType = endpoint.Request->GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -1176,22 +1180,22 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         socketPath);
     const auto& listener = listenerIt->second;
 
-    auto future = SessionManager->GetSession(std::move(ctx), socketPath, headers);
-    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(future);
-
-    if (HasError(getSessionError)) {
-        return TErrorResponse(getSessionError);
+    auto future = endpoint.Session->Describe(std::move(ctx), headers);
+    const auto& response = Executor->WaitFor(future);
+    if (HasError(response)) {
+        return TErrorResponse(response.GetError());
     }
 
-    const auto refreshError = listener->RefreshEndpoint(socketPath, sessionInfo.Volume);
+    const auto refreshError = listener->RefreshEndpoint(socketPath, response.GetVolume());
     return TErrorResponse(refreshError);
 }
 
 NProto::TError TEndpointManager::OpenAllEndpointSockets(
     const NProto::TStartEndpointRequest& request,
-    const TSessionInfo& sessionInfo)
+    const NProto::TVolume& volume,
+    const IEndpointSession& session)
 {
-    auto error = OpenEndpointSocket(request, sessionInfo);
+    auto error = OpenEndpointSocket(request, volume, session);
     if (HasError(error)) {
         return error;
     }
@@ -1199,7 +1203,7 @@ NProto::TError TEndpointManager::OpenAllEndpointSockets(
     auto nbdRequest = CreateNbdStartEndpointRequest(request);
     if (nbdRequest) {
         STORAGE_INFO("Start additional endpoint: " << *nbdRequest);
-        auto error = OpenEndpointSocket(*nbdRequest, sessionInfo);
+        auto error = OpenEndpointSocket(*nbdRequest, volume, session);
 
         if (HasError(error)) {
             CloseEndpointSocket(request);
@@ -1211,7 +1215,8 @@ NProto::TError TEndpointManager::OpenAllEndpointSockets(
 
 NProto::TError TEndpointManager::OpenEndpointSocket(
     const NProto::TStartEndpointRequest& request,
-    const TSessionInfo& sessionInfo)
+    const NProto::TVolume& volume,
+    const IEndpointSession& session)
 {
     auto ipcType = request.GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
@@ -1230,8 +1235,8 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
 
     auto future = listener->StartEndpoint(
         request,
-        sessionInfo.Volume,
-        sessionInfo.Session);
+        volume,
+        session.GetSession());
 
     return Executor->WaitFor(future);
 }
@@ -1316,7 +1321,10 @@ NProto::TError TEndpointManager::DoSwitchEndpoint(
         return promise.ExtractValue();
     }
 
-    auto response = SwitchEndpointImpl(std::move(ctx), std::move(request));
+    auto response = SwitchEndpointImpl(
+        std::move(ctx),
+        std::move(request),
+        *it->second.Session);
     promise.SetValue(response);
 
     RemoveProcessingSocket(socketPath);
@@ -1325,7 +1333,8 @@ NProto::TError TEndpointManager::DoSwitchEndpoint(
 
 NProto::TError TEndpointManager::SwitchEndpointImpl(
     TCallContextPtr ctx,
-    std::shared_ptr<TSwitchEndpointRequest> request)
+    std::shared_ptr<TSwitchEndpointRequest> request,
+    const IEndpointSession& session)
 {
     const auto& socketPath = request->GetUnixSocketPath();
 
@@ -1343,32 +1352,31 @@ NProto::TError TEndpointManager::SwitchEndpointImpl(
         socketPath);
     IEndpointListenerPtr listener = listenerIt->second;
 
-    auto getSessionFuture = SessionManager->GetSession(
+    auto future = session.Describe(
         std::move(ctx),
-        startRequest->GetUnixSocketPath(),
         startRequest->GetHeaders());
 
-    const auto& [sessionInfo, getSessionError] = Executor->WaitFor(getSessionFuture);
-    if (HasError(getSessionError)) {
-        return getSessionError;
+    auto response = Executor->WaitFor(future);
+    if (HasError(response)) {
+        return response.GetError();
     }
 
     STORAGE_INFO("Switching endpoint"
         << ", reason=" << request->GetReason()
-        << ", volume=" << sessionInfo.Volume.GetDiskId()
-        << ", IsFastPathEnabled=" << sessionInfo.Volume.GetIsFastPathEnabled()
-        << ", Migrations=" << sessionInfo.Volume.GetMigrations().size());
+        << ", volume=" << response.GetVolume().GetDiskId()
+        << ", IsFastPathEnabled=" << response.GetVolume().GetIsFastPathEnabled()
+        << ", Migrations=" << response.GetVolume().GetMigrations().size());
 
     auto switchFuture = listener->SwitchEndpoint(
         *startRequest,
-        sessionInfo.Volume,
-        sessionInfo.Session);
+        response.GetVolume(),
+        session.GetSession());
 
     const auto& switchError = Executor->WaitFor(switchFuture);
     if (HasError(switchError)) {
         ReportEndpointSwitchFailure(TStringBuilder()
             << "Failed to switch endpoint for volume "
-            << sessionInfo.Volume.GetDiskId()
+            << response.GetVolume().GetDiskId()
             << ", " << switchError.GetMessage());
     }
 
@@ -1601,7 +1609,7 @@ IEndpointManagerPtr CreateEndpointManager(
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
     IEndpointEventProxyPtr eventProxy,
-    ISessionManagerPtr sessionManager,
+    ISessionFactoryPtr sessionFactory,
     IEndpointStoragePtr endpointStorage,
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> listeners,
     NBD::IDeviceFactoryPtr nbdDeviceFactory,
@@ -1615,7 +1623,7 @@ IEndpointManagerPtr CreateEndpointManager(
         std::move(volumeStats),
         std::move(serverStats),
         std::move(executor),
-        std::move(sessionManager),
+        std::move(sessionFactory),
         std::move(endpointStorage),
         std::move(listeners),
         std::move(nbdDeviceFactory),
