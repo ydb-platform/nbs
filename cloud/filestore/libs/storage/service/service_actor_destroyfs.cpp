@@ -94,6 +94,7 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
         ReplyAndDie(
             ctx,
             MakeError(E_REJECTED, "FileStore has active sessions"));
+        return;
     }
 
     DestroyFileStore(ctx);
