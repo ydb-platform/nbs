@@ -715,7 +715,7 @@ void TIndexTabletState::ReleaseLocks(
 
 #define FILESTORE_IMPLEMENT_DUPCACHE(name, ...)                                \
 void TIndexTabletState::AddDupCacheEntry(                                      \
-    TIndexTabletDatabase& db,                                                  \
+    IIndexTabletDatabase& db,                                                  \
     TSession* session,                                                         \
     ui64 requestId,                                                            \
     const NProto::T##name##Response& response,                                 \

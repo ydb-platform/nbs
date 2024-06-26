@@ -463,7 +463,7 @@ public:
         TString* next = nullptr);
 
     bool PrechargeNodeRefs(
-        IIndexTabletDatabase& db,
+        IIndexState& db,
         ui64 nodeId,
         const TString& cookie,
         ui32 bytesToPrecharge);
@@ -614,7 +614,7 @@ private:
 #define FILESTORE_DECLARE_DUPCACHE(name, ...)                                   \
 public:                                                                         \
     void AddDupCacheEntry(                                                      \
-        TIndexTabletDatabase& db,                                               \
+        IIndexTabletDatabase& db,                                               \
         TSession* session,                                                      \
         ui64 requestId,                                                         \
         const NProto::T##name##Response& response,                              \

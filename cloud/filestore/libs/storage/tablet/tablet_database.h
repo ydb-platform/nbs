@@ -248,8 +248,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
     // SessionDuplicateCache
     //
 
-    void WriteSessionDupCacheEntry(const NProto::TDupCacheEntry& entry);
-    void DeleteSessionDupCacheEntry(const TString& sessionId, ui64 entryId);
+    void WriteSessionDupCacheEntry(const NProto::TDupCacheEntry& entry) override;
+    void DeleteSessionDupCacheEntry(const TString& sessionId, ui64 entryId) override;
     bool ReadSessionDupCacheEntries(TVector<NProto::TDupCacheEntry>& entries);
 
 

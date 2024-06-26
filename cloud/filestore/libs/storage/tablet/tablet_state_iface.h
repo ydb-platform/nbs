@@ -288,6 +288,17 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
 
     virtual void DeleteCheckpointNode(ui64 checkpointId, ui64 nodeId) = 0;
 
+    //
+    // DupCache
+    //
+
+    virtual void WriteSessionDupCacheEntry(
+        const NProto::TDupCacheEntry& entry) = 0;
+
+    virtual void DeleteSessionDupCacheEntry(
+        const TString& sessionId,
+        ui64 entryId) = 0;
+
     // Following methods are needed because UnlinkNode calls Truncate, which
     // in turn modifies tables, which modifies tables that are not related to
     // the inode index.
@@ -337,7 +348,6 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
         ui32 rangeId,
         ui32 blobsCount,
         ui32 deletionsCount) = 0;
-
 };
 
 }   // namespace NCloud::NFileStore::NStorage
