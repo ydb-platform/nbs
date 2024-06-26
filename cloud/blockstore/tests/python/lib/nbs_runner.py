@@ -554,7 +554,9 @@ ModifyScheme {
         ]
 
         if not self.__use_secure_registration or self.__grpc_ssl_port is None:
-            command.append("--node-broker localhost:" + str(self.__grpc_port))
+            command += [
+                "--node-broker", "localhost:" + str(self.__grpc_port),
+            ]
         else:
             command += [
                 "--node-broker", "localhost:" + str(self.__grpc_ssl_port),
