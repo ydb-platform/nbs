@@ -105,7 +105,6 @@ TString GetCertPrivateKeyFileFromConfig(const TServerAppConfig& serverConfig)
     return certs.front().CertPrivateKeyFile;
 }
 
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
