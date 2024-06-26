@@ -248,11 +248,6 @@ void TIndexTabletActor::OnTabletDead(
     Die(ctx);
 }
 
-NKikimr::NMetrics::TResourceMetrics* TIndexTabletActor::GetResourceMetrics()
-{
-    return Executor()->GetResourceMetrics();
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::AddTransaction(
@@ -529,51 +524,50 @@ void TIndexTabletActor::HandleSessionDisconnected(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NKikimr::NMetrics::TResourceMetrics* TIndexTabletActor::GetResourceMetrics()
+{
+    return Executor()->GetResourceMetrics();
+}
 
-
-void TIndexTabletActor::UpdateNetworkStat(const TInstant& now, ui64 value, const TActorContext& ctx)
+void TIndexTabletActor::UpdateNetworkStat(
+    const TInstant& now,
+    ui64 value,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
-
     GetResourceMetrics()->Network.Increment(value, now);
-
 
     std::ostringstream oss;
     oss << "Network + " << value;
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-    oss.str());
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
 }
 
 void TIndexTabletActor::UpdateStorageStat(i64 value, const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
-
     GetResourceMetrics()->StorageUser.Increment(value);
 
     std::ostringstream oss;
     oss << "StorageUsed + " << value;
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-    oss.str());
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
 }
 
 void TIndexTabletActor::UpdateCPUUsageStat(ui64 value, const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
-    
     UserCPUConsumption += value;
     GetResourceMetrics()->CPU.Increment(value);
 
-
     std::ostringstream oss;
     oss << "CPU + " << value;
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
-        oss.str());
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
 }
 
 void TIndexTabletActor::UpdateExecutorStats(const TActorContext& ctx)
 {
     GetResourceMetrics()->TryUpdate(ctx);
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::HandleGetFileSystemConfig(
