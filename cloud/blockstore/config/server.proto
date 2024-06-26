@@ -194,6 +194,9 @@ message TServerConfig
 
     // Causes E_NOT_IMPLEMENTED errors in endpoint storages to be logged.
     optional bool EndpointStorageNotImplementedErrorIsFatal = 116;
+
+    // auth token for node registration via ydb discovery api.
+    optional string NodeRegistrationToken = 117;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

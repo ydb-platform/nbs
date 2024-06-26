@@ -40,6 +40,8 @@ struct TRegisterDynamicNodeOptions
     TString PathToGrpcCaFile;
     TString PathToGrpcCertFile;
     TString PathToGrpcPrivateKeyFile;
+
+    TString NodeRegistrationToken;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -252,7 +252,9 @@ void TBootstrapYdb::InitKikimrService()
         .PathToGrpcCertFile = GetCertFileFromConfig(*Configs->ServerConfig),
         .PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(
             *Configs->ServerConfig),
+        .NodeRegistrationToken = Configs->ServerConfig->GetNodeRegistrationToken(),
     };
+
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
         ParseProtoTextFromFile(Configs->Options->LocationFile, location);

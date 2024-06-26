@@ -34,10 +34,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr const char* DefaultToken = "root@builtin";
-
-////////////////////////////////////////////////////////////////////////////////
-
 TString ReadFile(const TString& name)
 {
     return TFileInput(name).ReadAll();
@@ -154,7 +150,7 @@ TDriverConfig CreateDriverConfig(
         config.UseClientCertificate(certificate.c_str(), privateKey.c_str());
     }
 
-    config.SetAuthToken(DefaultToken);
+    config.SetAuthToken(options.NodeRegistrationToken);
     config.SetEndpoint(addr);
 
     return config;
@@ -239,6 +235,7 @@ struct TLegacyNodeRegistrant
         NsConfig.ClearNode();
         for (const auto& node: result.Record().GetNodes()) {
             if (node.GetNodeId() == result.GetNodeId()) {
+                // update node information based on registration response
                 DnConfig.MutableNodeInfo()->CopyFrom(node);
             } else {
                 auto& info = *NsConfig.AddNode();
@@ -271,6 +268,7 @@ struct TLegacyNodeRegistrant
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct TDiscoveryNodeRegistrant
     : public INodeRegistrant
 {
@@ -325,6 +323,7 @@ struct TDiscoveryNodeRegistrant
         NsConfig.ClearNode();
         for (const auto& node: result.GetNodes()) {
             if (node.NodeId == result.GetNodeId()) {
+                // update node information based on registration response
                 auto& configNode = *DnConfig.MutableNodeInfo();
                 configNode.SetNodeId(node.NodeId);
                 configNode.SetAddress(node.Address);
