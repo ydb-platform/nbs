@@ -8,6 +8,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void Print(const NProto::TCreateSessionResponse& response, bool jsonOutput) {
+    if (jsonOutput) {
+        Cout << response.AsJSON() << Endl;
+    } else {
+        Cout << response.DebugString() << Endl;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TCreateSessionCommand final
     : public TFileStoreCommand
 {
@@ -42,6 +52,7 @@ public:
         TCallContextPtr ctx = MakeIntrusive<TCallContext>();
         auto response = WaitFor(Client->CreateSession(ctx, std::move(request)));
         CheckResponse(response);
+        Print(response, JsonOutput);
 
         return true;
     }
