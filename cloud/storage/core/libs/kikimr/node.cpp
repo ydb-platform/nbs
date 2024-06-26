@@ -206,7 +206,7 @@ struct TLegacyNodeRegistrant
         , Options(options)
         , NsConfig(nsConfig)
         , DnConfig(dnConfig)
-        , Location(Options.DataCenter, "", Options.Rack, ToString(Options.Body))
+        , Location(Options.DataCenter, {}, {}, {})
     {
     }
 
@@ -294,8 +294,6 @@ struct TDiscoveryNodeRegistrant
     {
         NDiscovery::TNodeLocation location;
         location.DataCenter = Options.DataCenter;
-        location.Rack = Options.Rack;
-        location.Unit = ToString(Options.Body);
 
         Settings.Location(location);
         Settings.Address(HostAddress);
