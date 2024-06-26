@@ -1002,6 +1002,11 @@ void TServer::Start()
         builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, arg);
     }
 
+    builder.AddChannelArgument(GRPC_ARG_MAX_CONNECTION_IDLE_MS, 10000);
+    builder.AddChannelArgument(GRPC_ARG_MAX_CONNECTION_AGE_MS, 22000);
+    builder.AddChannelArgument(GRPC_ARG_MAX_CONNECTION_AGE_GRACE_MS, 24000);
+    builder.AddChannelArgument(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS, 26000);
+
     if (auto arg = Config->GetGrpcKeepAliveTimeout()) {
         builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, arg);
     }

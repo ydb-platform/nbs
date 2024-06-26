@@ -1,0 +1,3 @@
+- source_filter: "^contrib/libs/systemd"
+  includes:
+    - util.h:        contrib/libs/systemd/src/basic/util.h
