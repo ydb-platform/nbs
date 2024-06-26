@@ -1,5 +1,6 @@
 #include "command.h"
 
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/system/align.h>
 
@@ -39,6 +40,9 @@ public:
     bool Execute() override
     {
         CreateSession();
+        Y_DEFER {
+            DestroySession();
+        };
 
         const auto resolved = ResolvePath(Path, false);
 

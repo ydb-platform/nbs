@@ -140,6 +140,7 @@ public:
     void Stop() override;
 
     void CreateSession();
+    void DestroySession();
 
 protected:
     template <typename T>

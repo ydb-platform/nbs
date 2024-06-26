@@ -7,6 +7,7 @@
 #include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/string_utils/base64/base64.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/format.h>
 
 #include <sys/stat.h>
@@ -285,6 +286,9 @@ public:
         Y_ENSURE(CliArgs.Mode != EModeType::Unknown, "Mode type is not set");
 
         CreateSession();
+        Y_DEFER {
+            DestroySession();
+        };
 
         TPageInfo page;
         switch (CliArgs.Mode) {

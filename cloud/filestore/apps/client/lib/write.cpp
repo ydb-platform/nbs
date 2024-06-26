@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/file.h>
 
 namespace NCloud::NFileStore::NClient {
@@ -41,6 +42,9 @@ public:
         TString data = TIFStream(DataPath).ReadAll();
 
         CreateSession();
+        Y_DEFER {
+            DestroySession();
+        };
 
         const auto resolved = ResolvePath(Path, true);
 

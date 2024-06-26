@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/file.h>
 #include <util/system/sysstat.h>
 
@@ -34,6 +35,9 @@ public:
     bool Execute() override
     {
         CreateSession();
+        Y_DEFER {
+            DestroySession();
+        };
 
         auto makeDir = [&] (ui64 nodeId, TStringBuf name) {
             auto request = CreateRequest<NProto::TCreateNodeRequest>();
@@ -82,7 +86,6 @@ public:
         );
 
         makeDir(parent.Node.GetId(), resolved.back().Name);
-
         return true;
     }
 };

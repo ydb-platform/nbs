@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/file.h>
 
 namespace NCloud::NFileStore::NClient {
@@ -33,6 +34,9 @@ public:
     bool Execute() override
     {
         CreateSession();
+        Y_DEFER {
+            DestroySession();
+        };
 
         const auto resolved = ResolvePath(Path, false);
 
