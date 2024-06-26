@@ -1,0 +1,11 @@
+Id Type Name Mode Uid Gid ATime MTime CTime Size Links FollowerFileSystemId FollowerNodeName
+
+[
+    {
+        "Type": 1,
+        "Links": 1,
+        "Size": 9,
+        "Name": "xxx",
+        "Id": 2
+    }
+][]

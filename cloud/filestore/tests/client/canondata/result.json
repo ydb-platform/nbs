@@ -16,5 +16,8 @@
     },
     "test.test_stat": {
         "uri": "file://test.test_stat/results.txt"
+    },
+    "test.test_write_ls_rm_ls": {
+        "uri": "file://test.test_write_ls_rm_ls/results.txt"
     }
 }
