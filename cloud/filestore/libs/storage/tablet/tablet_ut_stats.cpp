@@ -69,7 +69,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Stats)
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, count);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, network);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, network);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpu);
 
     }
