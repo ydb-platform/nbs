@@ -40,18 +40,20 @@ public:
             throw TServiceError(E_FAIL) << "unable to allocate netlink socket";
         }
 
-        if (genl_connect(Socket)) {
+        if (int err = genl_connect(Socket)) {
             nl_socket_free(Socket);
             throw TServiceError(E_FAIL)
-                << "unable to connect to generic netlink socket";
+                << "unable to connect to generic netlink socket: "
+                << nl_geterror(-err);
         }
 
         Family = genl_ctrl_resolve(Socket, "nbd");
+
         if (Family < 0) {
             nl_socket_free(Socket);
             throw TServiceError(E_FAIL)
-                << "unable to resolve nbd netlink "
-                   "family, make sure nbd module is loaded";
+                << "unable to resolve nbd netlink family: "
+                << nl_geterror(-Family);
         }
     }
 
@@ -132,9 +134,9 @@ public:
     template <typename T>
     void Put(int attribute, T data)
     {
-        if (nla_put(Message, attribute, sizeof(T), &data) < 0) {
+        if (int err = nla_put(Message, attribute, sizeof(T), &data)) {
             throw TServiceError(E_FAIL) << "unable to put attribute "
-                << attribute;
+                << attribute << ": " << nl_geterror(-err);
         }
     }
 
@@ -148,8 +150,9 @@ public:
         // send will free message even if it fails
         auto* message = Message;
         Message = nullptr;
-        if (nl_send_sync(socket, message) < 0) {
-            throw TServiceError(E_FAIL) << "unable to send message";
+        if (int err = nl_send_sync(socket, message)) {
+            throw TServiceError(E_FAIL)
+                << "unable to send message: " << nl_geterror(-err);
         }
     }
 };
@@ -370,12 +373,16 @@ void TNetlinkDevice::ConnectDevice()
         TNetlinkSocket socket;
         auto context = std::make_unique<THandlerContext>(shared_from_this());
 
-        nl_socket_modify_cb(
-            socket,
-            NL_CB_VALID,
-            NL_CB_CUSTOM,
-            TNetlinkDevice::StatusHandler,
-            context.release()); // libnl doesn't throw
+        if (int err = nl_socket_modify_cb(
+                socket,
+                NL_CB_VALID,
+                NL_CB_CUSTOM,
+                TNetlinkDevice::StatusHandler,
+                context.release())) // libnl doesn't throw
+        {
+            throw TServiceError(E_FAIL)
+                << "unable to set socket callback: " << nl_geterror(-err);
+        }
 
         TNetlinkMessage message(socket.GetFamily(), NBD_CMD_STATUS);
         message.Put(NBD_ATTR_INDEX, DeviceIndex);
@@ -415,8 +422,8 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "unable to parse NBD_CMD_STATUS response: " << err));
+            TStringBuilder() << "unable to parse NBD_CMD_STATUS response: "
+                             << nl_geterror(-err)));
         return NL_STOP;
     }
 
@@ -435,15 +442,16 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "unable to parse NBD_ATTR_DEVICE_LIST: " << err));
+            TStringBuilder() << "unable to parse NBD_ATTR_DEVICE_LIST: "
+                             << nl_geterror(-err)));
         return NL_STOP;
     }
 
     if (!deviceItem[NBD_DEVICE_ITEM]) {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            "did not receive NBD_DEVICE_ITEM"));
+            TStringBuilder() << "did not receive NBD_DEVICE_ITEM"
+                             << nl_geterror(-err)));
         return NL_STOP;
     }
 
@@ -455,8 +463,8 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder()
-                << "unable to parse NBD_DEVICE_ITEM: " << err));
+            TStringBuilder() << "unable to parse NBD_DEVICE_ITEM: "
+                             << nl_geterror(-err)));
         return NL_STOP;
     }
 
