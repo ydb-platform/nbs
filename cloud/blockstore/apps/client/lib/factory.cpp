@@ -9,6 +9,7 @@
 #include "create_volume.h"
 #include "create_volume_from_device.h"
 #include "delete_checkpoint.h"
+#include "query_agents_info.h"
 #include "describe_disk_registry_config.h"
 #include "describe_endpoint.h"
 #include "describe_placement_group.h"
@@ -79,6 +80,7 @@ struct THandlerFactory
         { "listplacementgroups", NewListPlacementGroupsCommand },
         { "listvolumes", NewListVolumesCommand },
         { "ping", NewPingCommand },
+        { "queryagentsinfo", NewQueryAgentsInfoCommand },
         { "queryavailablestorage", NewQueryAvailableStorageCommand },
         { "readblocks", NewReadBlocksCommand },
         { "refreshendpoint", NewRefreshEndpointCommand },

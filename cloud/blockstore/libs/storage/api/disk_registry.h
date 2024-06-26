@@ -65,6 +65,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(CmsAction,                      __VA_ARGS__)                           \
     xxx(QueryAvailableStorage,          __VA_ARGS__)                           \
     xxx(ResumeDevice,                   __VA_ARGS__)                           \
+    xxx(QueryAgentsInfo,                __VA_ARGS__)                           \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE
 
 #define BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, ...)                            \
@@ -206,6 +207,9 @@ struct TEvDiskRegistry
 
         EvGetAgentNodeIdRequest = EvBegin + 73,
         EvGetAgentNodeIdResponse = EvBegin + 74,
+
+        EvQueryAgentsInfoRequest = EvBegin + 75,
+        EvQueryAgentsInfoResponse = EvBegin + 76,
 
         EvEnd
     };

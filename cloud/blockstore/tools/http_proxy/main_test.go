@@ -512,6 +512,16 @@ func (s *mockBlockstoreServer) CmsAction(
 	return res, args.Error(1)
 }
 
+func (s *mockBlockstoreServer) QueryAgentsInfo(
+	ctx context.Context,
+	req *blockstore_protos.TQueryAgentsInfoRequest,
+) (*blockstore_protos.TQueryAgentsInfoResponse, error) {
+
+	args := s.Called(ctx, req)
+	res, _ := args.Get(0).(*blockstore_protos.TQueryAgentsInfoResponse)
+	return res, args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func runMockBlockstoreServer(

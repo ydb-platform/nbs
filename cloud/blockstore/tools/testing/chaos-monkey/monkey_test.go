@@ -314,6 +314,14 @@ func (n nbsService) ResumeDevice(
 	panic("implement me")
 }
 
+func (n nbsService) QueryAgentsInfo(
+	ctx context.Context,
+	request *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (n nbsService) ExecuteAction(
 	ctx context.Context,
 	request *protos.TExecuteActionRequest,

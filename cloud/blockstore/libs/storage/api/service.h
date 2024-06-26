@@ -314,6 +314,9 @@ struct TEvService
 
         EvVolumeMountStateChanged = EvBegin + 88,
 
+        EvQueryAgentsInfoRequest = EvBegin + 89,
+        EvQueryAgentsInfoResponse = EvBegin + 90,
+
         EvEnd
     };
 
