@@ -14,6 +14,19 @@ bool TInMemoryIndexState::ReadNode(
 }
 
 //
+// Nodes_Ver
+//
+
+bool TInMemoryIndexState::ReadNodeVer(
+    ui64 nodeId,
+    ui64 commitId,
+    TMaybe<TNode>& node)
+{
+    Y_UNUSED(nodeId, commitId, node);
+    return false;
+}
+
+//
 // NodeAttrs
 //
 
@@ -28,6 +41,29 @@ bool TInMemoryIndexState::ReadNodeAttr(
 }
 
 bool TInMemoryIndexState::ReadNodeAttrs(
+    ui64 nodeId,
+    ui64 commitId,
+    TVector<TNodeAttr>& attrs)
+{
+    Y_UNUSED(nodeId, commitId, attrs);
+    return false;
+}
+
+//
+// NodeAttrs_Ver
+//
+
+bool TInMemoryIndexState::ReadNodeAttrVer(
+    ui64 nodeId,
+    ui64 commitId,
+    const TString& name,
+    TMaybe<TNodeAttr>& attr)
+{
+    Y_UNUSED(nodeId, commitId, name, attr);
+    return false;
+}
+
+bool TInMemoryIndexState::ReadNodeAttrVers(
     ui64 nodeId,
     ui64 commitId,
     TVector<TNodeAttr>& attrs)
@@ -62,39 +98,12 @@ bool TInMemoryIndexState::ReadNodeRefs(
     return false;
 }
 
-//
-// Nodes_Ver
-//
-
-bool TInMemoryIndexState::ReadNodeVer(
+bool TInMemoryIndexState::PrechargeNodeRefs(
     ui64 nodeId,
-    ui64 commitId,
-    TMaybe<TNode>& node)
+    const TString& cookie,
+    ui32 bytesToPrecharge)
 {
-    Y_UNUSED(nodeId, commitId, node);
-    return false;
-}
-
-//
-// NodeAttrs_Ver
-//
-
-bool TInMemoryIndexState::ReadNodeAttrVer(
-    ui64 nodeId,
-    ui64 commitId,
-    const TString& name,
-    TMaybe<TNodeAttr>& attr)
-{
-    Y_UNUSED(nodeId, commitId, name, attr);
-    return false;
-}
-
-bool TInMemoryIndexState::ReadNodeAttrVers(
-    ui64 nodeId,
-    ui64 commitId,
-    TVector<TNodeAttr>& attrs)
-{
-    Y_UNUSED(nodeId, commitId, attrs);
+    Y_UNUSED(nodeId, cookie, bytesToPrecharge);
     return false;
 }
 
@@ -118,6 +127,19 @@ bool TInMemoryIndexState::ReadNodeRefVers(
     TVector<TNodeRef>& refs)
 {
     Y_UNUSED(nodeId, commitId, refs);
+    return false;
+}
+
+//
+// CheckpointNodes
+//
+
+bool TInMemoryIndexState::ReadCheckpointNodes(
+    ui64 checkpointId,
+    TVector<ui64>& nodes,
+    size_t maxCount)
+{
+    Y_UNUSED(checkpointId, nodes, maxCount);
     return false;
 }
 

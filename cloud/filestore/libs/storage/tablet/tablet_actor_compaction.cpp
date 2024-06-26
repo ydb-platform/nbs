@@ -490,7 +490,7 @@ bool TIndexTabletActor::PrepareTx_Compaction(
 
     bool ready = true;
     for (auto nodeId: nodes) {
-        TMaybe<IIndexTabletDatabase::TNode> node;
+        TMaybe<IIndexState::TNode> node;
         if (!ReadNode(db, nodeId, args.CommitId, node)) {
             ready = false;
             continue;

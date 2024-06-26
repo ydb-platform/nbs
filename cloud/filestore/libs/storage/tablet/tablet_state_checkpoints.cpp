@@ -100,7 +100,7 @@ void TIndexTabletState::RemoveCheckpoint(
 }
 
 void TIndexTabletState::AddCheckpointNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 checkpointId,
     ui64 nodeId)
 {

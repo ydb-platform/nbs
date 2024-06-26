@@ -172,7 +172,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             }
 
             // 1 entry is enough to prevent rename
-            TVector<IIndexTabletDatabase::TNodeRef> refs;
+            TVector<IIndexState::TNodeRef> refs;
             if (!ReadNodeRefs(db, args.NewChildNode->NodeId, args.CommitId, {}, refs, 1)) {
                 return false;
             }

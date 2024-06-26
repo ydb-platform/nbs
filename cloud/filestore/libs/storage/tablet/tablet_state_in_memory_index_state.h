@@ -1,14 +1,17 @@
 #pragma once
 #include "public.h"
 
-#include <cloud/filestore/libs/storage/tablet/tablet_database.h>
+#include "tablet_state_iface.h"
 
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Stores a subset of the actual index state for caching purposes.
-class TInMemoryIndexState: public IIndexTabletDatabase
+/**
+ * @brief Stores the state of the index tables in memory. Can be used to perform
+ * read-only operations.
+ */
+class TInMemoryIndexState : public IIndexState
 {
 public:
     TInMemoryIndexState() = default;
@@ -17,7 +20,13 @@ public:
     // Nodes
     //
 
-    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) override;
+    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<IIndexState::TNode>& node) override;
+
+    //
+    // Nodes_Ver
+    //
+
+    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<IIndexState::TNode>& node) override;
 
     //
     // NodeAttrs
@@ -27,36 +36,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeAttr>& attr) override;
+        TMaybe<IIndexState::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
-        TVector<TNodeAttr>& attrs) override;
-
-    //
-    // NodeRefs
-    //
-
-    bool ReadNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        TMaybe<TNodeRef>& ref) override;
-
-    bool ReadNodeRefs(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& cookie,
-        TVector<TNodeRef>& refs,
-        ui32 maxBytes,
-        TString* next) override;
-
-    //
-    // Nodes_Ver
-    //
-
-    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) override;
+        TVector<IIndexState::TNodeAttr>& attrs) override;
 
     //
     // NodeAttrs_Ver
@@ -66,12 +51,35 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeAttr>& attr) override;
+        TMaybe<IIndexState::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<TNodeAttr>& attrs) override;
+        TVector<IIndexState::TNodeAttr>& attrs) override;
+
+    //
+    // NodeRefs
+    //
+
+    bool ReadNodeRef(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& name,
+        TMaybe<IIndexState::TNodeRef>& ref) override;
+
+    bool ReadNodeRefs(
+        ui64 nodeId,
+        ui64 commitId,
+        const TString& cookie,
+        TVector<IIndexState::TNodeRef>& refs,
+        ui32 maxBytes,
+        TString* next = nullptr) override;
+
+    bool PrechargeNodeRefs(
+        ui64 nodeId,
+        const TString& cookie,
+        ui32 bytesToPrecharge) override;
 
     //
     // NodeRefs_Ver
@@ -81,12 +89,21 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref) override;
+        TMaybe<IIndexState::TNodeRef>& ref) override;
 
     bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<TNodeRef>& refs) override;
+        TVector<IIndexState::TNodeRef>& refs) override;
+
+    //
+    // CheckpointNodes
+    //
+
+    bool ReadCheckpointNodes(
+        ui64 checkpointId,
+        TVector<ui64>& nodes,
+        size_t maxCount) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

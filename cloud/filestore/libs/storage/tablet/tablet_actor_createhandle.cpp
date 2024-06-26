@@ -307,7 +307,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
 
         // check whether child node exists
-        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
+        TMaybe<IIndexState::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
             return false;   // not ready
         }
@@ -409,7 +409,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 args.WriteCommitId,
                 attrs);
 
-            args.TargetNode = IIndexTabletDatabase::TNode {
+            args.TargetNode = IIndexState::TNode {
                 args.TargetNodeId,
                 attrs,
                 args.WriteCommitId,
