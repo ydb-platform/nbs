@@ -4,9 +4,13 @@ import logging
 import threading
 
 from concurrent import futures
+from datetime import datetime
+from logging import Logger
+from typing import Callable
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
+from .client import SessionInfo
 from .error import ClientError, _handle_errors
 from .error_codes import EResult
 from .scheduler import Scheduler
@@ -25,14 +29,14 @@ class Session(object):
     def __init__(
             self,
             client,
-            disk_id,
-            mount_token,
-            access_mode=protos.EVolumeAccessMode.Value("VOLUME_ACCESS_READ_WRITE"),
-            mount_mode=protos.EVolumeMountMode.Value("VOLUME_MOUNT_LOCAL"),
-            throttling_disabled=False,
-            mount_seq_number=0,
-            log=None,
-            scheduler=None):
+            disk_id: str,
+            mount_token: str,
+            access_mode: protos.EVolumeAccessMode = protos.EVolumeAccessMode.Value("VOLUME_ACCESS_READ_WRITE"),
+            mount_mode: protos.EVolumeAccessMode = protos.EVolumeMountMode.Value("VOLUME_MOUNT_LOCAL"),
+            throttling_disabled: bool = False,
+            mount_seq_number: int = 0,
+            log: Logger | None = None,
+            scheduler : Scheduler | None = None):
 
         self.__client = client
         self.__disk_id = disk_id
@@ -45,8 +49,8 @@ class Session(object):
         self.__mount_lock = threading.Lock()
 
         self.__state = _EMountState.UNINITIALIZED
-        self.__volume = None
-        self.__session_info = None
+        self.__volume: protos.TVolume | None = None
+        self.__session_info: SessionInfo | None = None
 
         self.__mount_headers = None
 
@@ -61,19 +65,19 @@ class Session(object):
             self.log = logging.getLogger("session")
 
     @property
-    def disk_id(self):
+    def disk_id(self) -> str:
         return self.__disk_id
 
     @property
-    def access_mode(self):
+    def access_mode(self) -> protos.EVolumeAccessMode:
         return self.__access_mode
 
     @property
-    def mount_mode(self):
+    def mount_mode(self) -> protos.EVolumeMountMode:
         return self.__mount_mode
 
     @property
-    def throttling_disabled(self):
+    def throttling_disabled(self) -> bool:
         return self.__throttling_disabled
 
     @property
@@ -81,14 +85,14 @@ class Session(object):
         return self.__client
 
     @property
-    def volume(self):
+    def volume(self) -> protos.TVolume:
         with self.__mount_lock:
             if self.__volume is None:
                 return None
             return copy.deepcopy(self.__volume)
 
     @property
-    def info(self):
+    def info(self) -> SessionInfo | None:
         with self.__mount_lock:
             if self.__session_info is None:
                 return None
@@ -97,10 +101,10 @@ class Session(object):
     @_handle_errors
     def mount_volume_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         result = futures.Future()
 
@@ -158,10 +162,10 @@ class Session(object):
     @_handle_errors
     def mount_volume(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> dict:
 
         return self.mount_volume_async(
             idempotence_id,
@@ -172,10 +176,10 @@ class Session(object):
     @_handle_errors
     def unmount_volume_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         session_id = ""
         result = futures.Future()
@@ -236,10 +240,10 @@ class Session(object):
     @_handle_errors
     def unmount_volume(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> dict:
 
         return self.unmount_volume_async(
             idempotence_id,
@@ -250,13 +254,13 @@ class Session(object):
     @_handle_errors
     def read_blocks_async(
             self,
-            start_index,
-            blocks_count,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks_count: int,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         def read_blocks_impl(session_id):
             return self.__client.read_blocks_async(
@@ -277,13 +281,13 @@ class Session(object):
     @_handle_errors
     def read_blocks(
             self,
-            start_index,
-            blocks_count,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks_count: int,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> list[bytes]:
 
         return self.read_blocks_async(
             start_index,
@@ -297,12 +301,12 @@ class Session(object):
     @_handle_errors
     def write_blocks_async(
             self,
-            start_index,
-            blocks,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks: bytes,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         def write_blocks_impl(session_id):
             return self.__client.write_blocks_async(
@@ -322,12 +326,12 @@ class Session(object):
     @_handle_errors
     def write_blocks(
             self,
-            start_index,
-            blocks,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks: bytes,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         return self.write_blocks_async(
             start_index,
@@ -340,12 +344,12 @@ class Session(object):
     @_handle_errors
     def zero_blocks_async(
             self,
-            start_index,
-            blocks_count,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks_count: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         def zero_blocks_impl(session_id):
             return self.__client.zero_blocks_async(
@@ -365,12 +369,12 @@ class Session(object):
     @_handle_errors
     def zero_blocks(
             self,
-            start_index,
-            blocks_count,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            start_index: int,
+            blocks_count: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         return self.zero_blocks_async(
             start_index,
@@ -381,7 +385,7 @@ class Session(object):
             request_timeout).result()
 
     @_handle_errors
-    def _process_mount_response(self, volume, session_info):
+    def _process_mount_response(self, volume: protos.TVolume, session_info: SessionInfo) -> None:
         if self.__volume is not None:
             # validate volume geometry
             if self.__volume.BlockSize != volume.BlockSize:
@@ -404,7 +408,7 @@ class Session(object):
                 remount)
 
     @_handle_errors
-    def _remount_volume(self):
+    def _remount_volume(self) -> futures.Future | None:
         unmounted = False
         idempotence_id = None
         trace_id = None
@@ -444,14 +448,14 @@ class Session(object):
         future.add_done_callback(process_mount_response)
         return future
 
-    def _reset_state(self):
+    def _reset_state(self) -> None:
         self.__state = _EMountState.UNINITIALIZED
         self.__volume = None
         self.__session_info = None
         self.__scheduler.cancel_all()
 
     @_handle_errors
-    def _process_request(self, result, call, request_name):
+    def _process_request(self, result: futures.Future, call: Callable[[str], futures.Future], request_name: str) -> None:
         session_id_future = self._ensure_volume_mounted()
 
         def process_session_id_ready(f):
@@ -485,7 +489,7 @@ class Session(object):
         session_id_future.add_done_callback(process_session_id_ready)
 
     @_handle_errors
-    def _ensure_volume_mounted(self):
+    def _ensure_volume_mounted(self) -> futures.Future:
         session_id = ""
         needs_remount = False
 

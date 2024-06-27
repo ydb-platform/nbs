@@ -1,5 +1,6 @@
 import grpc
 import os
+import typing
 
 
 _MAX_CERT_FILE_SIZE = 8 * 1024 * 1024
@@ -9,11 +10,11 @@ _AUTH_METHOD = "Bearer"
 
 class _AuthMetadataPlugin(grpc.AuthMetadataPlugin):
 
-    def __init__(self, auth_token):
+    def __init__(self, auth_token: str):
         super(grpc.AuthMetadataPlugin, self).__init__()
         self._auth_token = auth_token
 
-    def __call__(self, context, callback):
+    def __call__(self, context : typing.Any, callback: typing.Callable):
         callback(((_AUTH_HEADER, _AUTH_METHOD + " " + self._auth_token),), None)
 
 
@@ -21,17 +22,17 @@ class ClientCredentials(object):
 
     def __init__(
             self,
-            root_certs_file=None,
-            cert_file=None,
-            cert_private_key_file=None,
-            auth_token=None):
+            root_certs_file: str | None = None,
+            cert_file: str | None = None,
+            cert_private_key_file: str | None = None,
+            auth_token: str | None = None):
 
         self.root_certs_file = root_certs_file
         self.cert_file = cert_file
         self.cert_private_key_file = cert_private_key_file
         self.auth_token = auth_token
 
-    def get_ssl_channel_credentials(self):
+    def get_ssl_channel_credentials(self) -> grpc.ChannelCredentials:
         credentials = grpc.ssl_channel_credentials(
             root_certificates=self._read_file_optional(self.root_certs_file),
             private_key=self._read_file_optional(self.cert_private_key_file),
@@ -48,7 +49,7 @@ class ClientCredentials(object):
         return credentials
 
     @staticmethod
-    def _read_file_optional(filename=None):
+    def _read_file_optional(filename: str | None = None) -> bytes | None:
         if filename is None:
             return None
 

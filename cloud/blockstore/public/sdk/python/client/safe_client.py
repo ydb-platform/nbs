@@ -1,4 +1,5 @@
 from concurrent import futures
+from datetime import datetime
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
@@ -22,10 +23,10 @@ class _SafeClient(object):
     @_handle_errors
     def ping_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
         request = protos.TPingRequest()
         return self.__impl.ping_async(
             request,
@@ -37,10 +38,10 @@ class _SafeClient(object):
     @_handle_errors
     def ping(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
         request = protos.TPingRequest()
         self.__impl.ping(
             request,
@@ -52,23 +53,23 @@ class _SafeClient(object):
     @_handle_errors
     def create_volume_async(
             self,
-            disk_id,
-            block_size,
-            blocks_count,
-            channels_count=1,
-            storage_media_kind=protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
-            project_id="",
-            folder_id="",
-            cloud_id="",
-            tablet_version=1,
-            base_disk_id="",
-            base_disk_checkpoint_id="",
-            partitions_count=1,
-            storage_pool_name=None,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            block_size: int,
+            blocks_count: int,
+            channels_count: int = 1,
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
+            project_id: str = "",
+            folder_id: str = "",
+            cloud_id: str = "",
+            tablet_version: int = 1,
+            base_disk_id: str = "",
+            base_disk_checkpoint_id: str = "",
+            partitions_count: int = 1,
+            storage_pool_name: str | None = None,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TCreateVolumeRequest(
             DiskId=disk_id,
@@ -95,23 +96,23 @@ class _SafeClient(object):
     @_handle_errors
     def create_volume(
             self,
-            disk_id,
-            block_size,
-            blocks_count,
-            channels_count=1,
-            storage_media_kind=protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
-            project_id="",
-            folder_id="",
-            cloud_id="",
-            tablet_version=1,
-            base_disk_id="",
-            base_disk_checkpoint_id="",
-            partitions_count=1,
-            storage_pool_name=None,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            block_size: int,
+            blocks_count: int,
+            channels_count: int = 1,
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
+            project_id: str = "",
+            folder_id: str = "",
+            cloud_id: str = "",
+            tablet_version: int = 1,
+            base_disk_id: str = "",
+            base_disk_checkpoint_id: str = "",
+            partitions_count: int = 1,
+            storage_pool_name: str | None = None,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TCreateVolumeRequest(
             DiskId=disk_id,
@@ -138,12 +139,12 @@ class _SafeClient(object):
     @_handle_errors
     def destroy_volume_async(
             self,
-            disk_id,
-            sync=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            sync: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TDestroyVolumeRequest(
             DiskId=disk_id,
@@ -159,12 +160,12 @@ class _SafeClient(object):
     @_handle_errors
     def destroy_volume(
             self,
-            disk_id,
-            sync=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            sync: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TDestroyVolumeRequest(
             DiskId=disk_id,
@@ -180,16 +181,16 @@ class _SafeClient(object):
     @_handle_errors
     def resize_volume_async(
             self,
-            disk_id,
-            blocks_count,
-            channels_count,
-            config_version,
-            flags=protos.TResizeVolumeRequestFlags(),
-            performance_profile=protos.TVolumePerformanceProfile(),
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            blocks_count: int,
+            channels_count: int,
+            config_version: int,
+            flags: protos.TResizeVolumeRequestFlags = protos.TResizeVolumeRequestFlags(),
+            performance_profile: protos.TVolumePerformanceProfile = protos.TVolumePerformanceProfile(),
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TResizeVolumeRequest(
             DiskId=disk_id,
@@ -209,16 +210,16 @@ class _SafeClient(object):
     @_handle_errors
     def resize_volume(
             self,
-            disk_id,
-            blocks_count,
-            channels_count,
-            config_version,
-            flags=protos.TResizeVolumeRequestFlags(),
-            performance_profile=protos.TVolumePerformanceProfile(),
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            blocks_count: int,
+            channels_count: int,
+            config_version: int,
+            flags: protos.TResizeVolumeRequestFlags = protos.TResizeVolumeRequestFlags(),
+            performance_profile: protos.TVolumePerformanceProfile = protos.TVolumePerformanceProfile(),
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TResizeVolumeRequest(
             DiskId=disk_id,
@@ -238,15 +239,15 @@ class _SafeClient(object):
     @_handle_errors
     def alter_volume_async(
             self,
-            disk_id,
-            project_id,
-            folder_id,
-            cloud_id,
-            config_version,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            project_id: str,
+            folder_id: str,
+            cloud_id: str,
+            config_version: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TAlterVolumeRequest(
             DiskId=disk_id,
@@ -265,15 +266,15 @@ class _SafeClient(object):
     @_handle_errors
     def alter_volume(
             self,
-            disk_id,
-            project_id,
-            folder_id,
-            cloud_id,
-            config_version,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            project_id: str,
+            folder_id: str,
+            cloud_id: str,
+            config_version: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TAlterVolumeRequest(
             DiskId=disk_id,
@@ -292,15 +293,15 @@ class _SafeClient(object):
     @_handle_errors
     def assign_volume_async(
             self,
-            disk_id,
-            instance_id,
-            token,
-            host,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None,
-            token_version=None):
+            disk_id: str,
+            instance_id: str,
+            token: str,
+            host: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None,
+            token_version: int | None = None) -> futures.Future:
 
         request = protos.TAssignVolumeRequest(
             DiskId=disk_id,
@@ -330,15 +331,15 @@ class _SafeClient(object):
     @_handle_errors
     def assign_volume(
             self,
-            disk_id,
-            instance_id,
-            token,
-            host,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None,
-            token_version=None):
+            disk_id: str,
+            instance_id: str,
+            token: str,
+            host: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None,
+            token_version: int | None = None):
 
         request = protos.TAssignVolumeRequest(
             DiskId=disk_id,
@@ -358,12 +359,12 @@ class _SafeClient(object):
     @_handle_errors
     def stat_volume_async(
             self,
-            disk_id,
-            flags=0,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            flags: int = 0,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TStatVolumeRequest(DiskId=disk_id, Flags=flags)
 
@@ -393,12 +394,12 @@ class _SafeClient(object):
     @_handle_errors
     def stat_volume(
             self,
-            disk_id,
-            flags=0,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            flags: int = 0,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> dict:
 
         request = protos.TStatVolumeRequest(DiskId=disk_id, Flags=flags)
         response = self.__impl.stat_volume(
@@ -416,12 +417,12 @@ class _SafeClient(object):
     @_handle_errors
     def create_checkpoint_async(
             self,
-            disk_id,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TCreateCheckpointRequest(
             DiskId=disk_id,
@@ -437,12 +438,12 @@ class _SafeClient(object):
     @_handle_errors
     def create_checkpoint(
             self,
-            disk_id,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TCreateCheckpointRequest(
             DiskId=disk_id,
@@ -458,12 +459,12 @@ class _SafeClient(object):
     @_handle_errors
     def delete_checkpoint_async(
             self,
-            disk_id,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TDeleteCheckpointRequest(
             DiskId=disk_id,
@@ -479,12 +480,12 @@ class _SafeClient(object):
     @_handle_errors
     def delete_checkpoint(
             self,
-            disk_id,
-            checkpoint_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            checkpoint_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TDeleteCheckpointRequest(
             DiskId=disk_id,
@@ -500,16 +501,16 @@ class _SafeClient(object):
     @_handle_errors
     def get_changed_blocks_async(
             self,
-            disk_id,
-            start_index,
-            blocks_count,
-            low_checkpoint_id,
-            high_checkpoint_id,
-            ignore_base_disk=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            start_index: int,
+            blocks_count: int,
+            low_checkpoint_id: str,
+            high_checkpoint_id: str,
+            ignore_base_disk: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TGetChangedBlocksRequest(
             DiskId=disk_id,
@@ -541,16 +542,16 @@ class _SafeClient(object):
     @_handle_errors
     def get_changed_blocks(
             self,
-            disk_id,
-            start_index,
-            blocks_count,
-            low_checkpoint_id,
-            high_checkpoint_id,
-            ignore_base_disk=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            start_index: int,
+            blocks_count: int,
+            low_checkpoint_id: str,
+            high_checkpoint_id: str,
+            ignore_base_disk: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> bytes:
 
         request = protos.TGetChangedBlocksRequest(
             DiskId=disk_id,
@@ -571,11 +572,11 @@ class _SafeClient(object):
     @_handle_errors
     def describe_volume_async(
             self,
-            disk_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TDescribeVolumeRequest(DiskId=disk_id)
 
@@ -600,11 +601,11 @@ class _SafeClient(object):
     @_handle_errors
     def describe_volume(
             self,
-            disk_id,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            disk_id: str,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TDescribeVolumeRequest(DiskId=disk_id)
         response = self.__impl.describe_volume(
@@ -618,14 +619,14 @@ class _SafeClient(object):
     @_handle_errors
     def describe_volume_model_async(
             self,
-            block_size,
-            blocks_count,
-            storage_media_kind=protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
-            tablet_version=1,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            block_size: int,
+            blocks_count: int,
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
+            tablet_version: int = 1,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TDescribeVolumeModelRequest(
             BlockSize=block_size,
@@ -655,14 +656,14 @@ class _SafeClient(object):
     @_handle_errors
     def describe_volume_model(
             self,
-            block_size,
-            blocks_count,
-            storage_media_kind=protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
-            tablet_version=1,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            block_size: int,
+            blocks_count: int,
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
+            tablet_version: int = 1,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> protos.TVolumeModel:
 
         request = protos.TDescribeVolumeModelRequest(
             BlockSize=block_size,
@@ -681,10 +682,10 @@ class _SafeClient(object):
     @_handle_errors
     def list_volumes_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TListVolumesRequest()
 
@@ -709,10 +710,10 @@ class _SafeClient(object):
     @_handle_errors
     def list_volumes(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> list[str]:
 
         request = protos.TListVolumesRequest()
         response = self.__impl.list_volumes(
@@ -726,11 +727,11 @@ class _SafeClient(object):
     @_handle_errors
     def discover_instances_async(
             self,
-            limit,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            limit: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TDiscoverInstancesRequest(
             Limit=limit,
@@ -745,11 +746,11 @@ class _SafeClient(object):
     @_handle_errors
     def discover_instances(
             self,
-            limit,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            limit: int,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TDiscoverInstancesRequest(
             Limit=limit,
@@ -764,13 +765,13 @@ class _SafeClient(object):
     @_handle_errors
     def query_available_storage_async(
             self,
-            agent_ids,
-            storage_pool_name=None,
-            storage_pool_kind=None,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            agent_ids: list[str],
+            storage_pool_name: str | None = None,
+            storage_pool_kind: protos.EStoragePoolKind = None,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
@@ -799,13 +800,13 @@ class _SafeClient(object):
     @_handle_errors
     def query_available_storage(
             self,
-            agent_ids,
-            storage_pool_name=None,
-            storage_pool_kind=None,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            agent_ids: list[str],
+            storage_pool_name: str | None = None,
+            storage_pool_kind: protos.EStoragePoolKind = None,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TQueryAvailableStorageRequest(
             AgentIds=agent_ids,
@@ -822,13 +823,13 @@ class _SafeClient(object):
     @_handle_errors
     def resume_device_async(
             self,
-            agent_id,
-            path,
-            dry_run=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            agent_id: str,
+            path: str,
+            dry_run: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TResumeDeviceRequest(
             AgentId=agent_id,
@@ -857,13 +858,13 @@ class _SafeClient(object):
     @_handle_errors
     def resume_device(
             self,
-            agent_id,
-            path,
-            dry_run=False,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            agent_id: str,
+            path: str,
+            dry_run: bool = False,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = protos.TResumeDeviceRequest(
             AgentId=agent_id,
@@ -880,12 +881,12 @@ class _SafeClient(object):
     @_handle_errors
     def execute_action(
             self,
-            action,
-            input_bytes,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            action: str,
+            input_bytes: bytes,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> bytes:
 
         request = protos.TExecuteActionRequest(
             Action=action,
@@ -902,11 +903,11 @@ class _SafeClient(object):
     @_handle_errors
     def cms_action(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: protos.TCmsActionRequest,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         response = self.__impl.cms_action(
             request,
@@ -919,10 +920,10 @@ class _SafeClient(object):
     @_handle_errors
     def query_agents_info_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = protos.TQueryAgentsInfoRequest()
 
@@ -947,10 +948,10 @@ class _SafeClient(object):
     @_handle_errors
     def query_agents_info(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> type[protos.TQueryAgentsInfoResponse]:
 
         request = protos.TQueryAgentsInfoRequest()
         return self.__impl.query_agents_info(
@@ -963,11 +964,11 @@ class _SafeClient(object):
     @_handle_errors
     def update_disk_registry_config_async(
             self,
-            config,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            config: dict,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         request = ParseDict(config, protos.TUpdateDiskRegistryConfigRequest())
 
@@ -981,11 +982,11 @@ class _SafeClient(object):
     @_handle_errors
     def update_disk_registry_config(
             self,
-            config,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            config: dict,
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         request = ParseDict(config, protos.TUpdateDiskRegistryConfigRequest())
 
@@ -999,10 +1000,10 @@ class _SafeClient(object):
     @_handle_errors
     def describe_disk_registry_config_async(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         return self.__impl.describe_disk_registry_config_async(
             protos.TDescribeDiskRegistryConfigRequest(),
@@ -1014,10 +1015,10 @@ class _SafeClient(object):
     @_handle_errors
     def describe_disk_registry_config(
             self,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         return self.__impl.describe_disk_registry_config(
             protos.TDescribeDiskRegistryConfigRequest(),

@@ -1,17 +1,22 @@
 import logging
+import typing
 
 from concurrent import futures
+from datetime import datetime
 from threading import Timer
 from functools import partial
 
+from google.protobuf.message import Message
+
 import cloud.blockstore.public.sdk.python.protos as protos
 
+from .credentials import ClientCredentials
 from .error_codes import EResult
 from .error import ClientError, _handle_errors, client_error_from_response
 from .grpc_client import GrpcClient
 from .http_client import HttpClient
 from .durable import DurableClient
-from .base_client import dispatch_nbs_client_methods
+from .base_client import _BaseClient, dispatch_nbs_client_methods
 from .safe_client import _SafeClient
 from .future import unit, bind
 
@@ -21,7 +26,14 @@ DEFAULT_DISCOVERY_LIMIT = 3
 
 
 class _Executor(object):
-    def __init__(self, method, balancer, factory, limit, secure, log):
+    def __init__(
+            self,
+            method: str,
+            balancer: futures.Future,
+            factory: typing.Callable,
+            limit: int,
+            secure: bool,
+            log: type[logging.Logger]):
         self.__response = futures.Future()
         self.__method = method
         self.__balancer = balancer
@@ -39,7 +51,13 @@ class _Executor(object):
         self.__main_timer = None
         self.__hedged_timer = None
 
-    def run(self, impl, addr, timeout, soft_timeout, create_timer):
+    def run(
+            self,
+            impl,
+            addr,
+            timeout: int,
+            soft_timeout: int | None,
+            create_timer: typing.Callable) -> futures.Future:
         self.__main_timer = create_timer(timeout, self._on_main_timer)
         self.__main_timer.start()
 
@@ -199,13 +217,13 @@ class _DiscoveryClient(object):
 
     def __init__(
             self,
-            balancer,
-            factory,
-            discovery_limit=None,
-            hard_timeout=None,
-            soft_timeout=None,
-            log=None,
-            secure=False):
+            balancer: futures.Future,
+            factory: typing.Callable,
+            discovery_limit: int | None = None,
+            hard_timeout: int | None = None,
+            soft_timeout: int | None = None,
+            log: type[logging.Logger] | None = None,
+            secure: bool = False):
 
         self.__impl = None
         self.__addr = None
@@ -237,30 +255,30 @@ class _DiscoveryClient(object):
         if self.__balancer.done() and not self.__balancer.cancelled():
             self.__balancer.result().close()
 
-    def set_timer_factory(self, create_timer):
+    def set_timer_factory(self, create_timer: Timer):
         self.__create_timer = create_timer
 
     @property
-    def timeout(self):
+    def timeout(self) -> int:
         return self.__timeout
 
     @property
-    def soft_timeout(self):
+    def soft_timeout(self) -> int | None:
         return self.__soft_timeout
 
     @property
-    def limit(self):
+    def limit(self) -> int:
         return self.__limit
 
     @_handle_errors
     def _execute_request_async(
             self,
-            method_name,
-            request,
-            idempotence_id,
-            timestamp,
-            trace_id,
-            request_timeout):
+            method_name: str,
+            request: type[Message],
+            idempotence_id: str,
+            timestamp: datetime,
+            trace_id: str,
+            request_timeout: int) -> futures.Future:
 
         def method(impl):
             m = getattr(impl, method_name + '_async')
@@ -295,11 +313,11 @@ class _DiscoveryClient(object):
 
     def ping_async(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         def cb(client):
             return client.ping_async(
@@ -313,11 +331,11 @@ class _DiscoveryClient(object):
 
     def ping(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         return self.ping_async(
             request,
@@ -328,11 +346,11 @@ class _DiscoveryClient(object):
 
     def discover_instances_async(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None) -> futures.Future:
 
         def cb(client):
             return client.discover_instances_async(
@@ -346,11 +364,11 @@ class _DiscoveryClient(object):
 
     def discover_instances(
             self,
-            request,
-            idempotence_id=None,
-            timestamp=None,
-            trace_id=None,
-            request_timeout=None):
+            request: type[Message],
+            idempotence_id: str | None = None,
+            timestamp: datetime | None = None,
+            trace_id: str | None = None,
+            request_timeout: int | None = None):
 
         return self.discover_instances_async(
             request,
@@ -359,7 +377,7 @@ class _DiscoveryClient(object):
             trace_id,
             request_timeout).result()
 
-    def discover_instance_async(self):
+    def discover_instance_async(self) -> futures.Future:
         future = futures.Future()
 
         def ping_cb(f, impl, instances, i):
@@ -426,11 +444,13 @@ class DiscoveryClient(_SafeClient):
         return self._impl.discover_instance_async()
 
 
-def find_closest(clients, request_timeout=None):
+def find_closest(
+        clients: map,
+        request_timeout: int | None = None) -> futures.Future:
     result = futures.Future()
     requests = dict()
 
-    def done(c, f):
+    def done(c: DurableClient, f: futures.Future):
         if result.done():
             return
 
@@ -459,18 +479,18 @@ def find_closest(clients, request_timeout=None):
 
 
 def CreateDiscoveryClient(
-        endpoints,
-        credentials=None,
-        request_timeout=None,
-        retry_timeout=None,
-        retry_timeout_increment=None,
-        log=None,
-        executor=None,
-        hard_timeout=None,
-        soft_timeout=None,
-        discovery_limit=None):
+        endpoints: list[str] | str,
+        credentials: ClientCredentials | None = None,
+        request_timeout: int | None = None,
+        retry_timeout: int | None = None,
+        retry_timeout_increment: int | None = None,
+        log: type[logging.Logger] | None = None,
+        executor: futures.ThreadPoolExecutor | None = None,
+        hard_timeout: int | None = None,
+        soft_timeout: int | None = None,
+        discovery_limit: int | None = None) -> DiscoveryClient:
 
-    def make_http_backend(endpoint):
+    def make_http_backend(endpoint: str) -> HttpClient:
         return HttpClient(
             endpoint,
             credentials,
@@ -478,27 +498,27 @@ def CreateDiscoveryClient(
             log,
             executor)
 
-    def make_grpc_backend(endpoint):
+    def make_grpc_backend(endpoint: str) -> GrpcClient:
         return GrpcClient(
             endpoint,
             credentials,
             request_timeout,
             log)
 
-    def make_backend(endpoint):
+    def make_backend(endpoint: str) -> type[_BaseClient]:
         if endpoint.startswith('https://') or endpoint.startswith('http://'):
             return make_http_backend(endpoint)
         else:
             return make_grpc_backend(endpoint)
 
-    def make_client(endpoint):
+    def make_client(endpoint: str) -> DurableClient:
         return DurableClient(
             make_backend(endpoint),
             retry_timeout,
             retry_timeout_increment,
             log)
 
-    def factory(host, port):
+    def factory(host: str, port: str) -> DurableClient:
         return make_client(host + ':' + str(port))
 
     if not isinstance(endpoints, list):
