@@ -3,7 +3,6 @@
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/scope.h>
 #include <util/stream/file.h>
 #include <util/system/sysstat.h>
 
@@ -40,10 +39,7 @@ public:
 
     bool Execute() override
     {
-        CreateSession();
-        Y_DEFER {
-            DestroySession();
-        };
+        auto sessionGuard = CreateNewSession();
 
         const auto resolved = ResolvePath(Path, false);
         Y_ABORT_UNLESS(resolved.size() >= 2);

@@ -2,7 +2,6 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
-#include <util/generic/scope.h>
 #include <util/stream/file.h>
 #include <util/system/sysstat.h>
 
@@ -29,10 +28,7 @@ public:
 
     bool Execute() override
     {
-        CreateSession();
-        Y_DEFER {
-            DestroySession();
-        };
+        auto sessionGuard = CreateNewSession();
 
         auto resolved = ResolvePath(Path, true);
 
