@@ -100,7 +100,7 @@ protected:
     IBlockStorePtr Client;
 
 public:
-    TClientWrapper(IBlockStorePtr client)
+    explicit TClientWrapper(IBlockStorePtr client)
         : Client(std::move(client))
     {}
 
@@ -692,6 +692,8 @@ private:
     ILoggingServicePtr Logging;
     TLog Log;
 
+    bool Initialized = false;
+
 public:
     TDefaultEncryptionClient(
             IBlockStorePtr client,
@@ -747,6 +749,10 @@ private:
     NProto::TError HandleMountVolumeResponse(
         const NProto::TMountVolumeResponse& response)
     {
+        if (Initialized) {
+            return {};
+        }
+
         const auto& volume = response.GetVolume();
 
         if (!volume.HasEncryptionDesc()) {
@@ -766,6 +772,10 @@ private:
             return MakeError(E_ARGUMENT, "Invalid KeyHash");
         }
 
+        STORAGE_INFO(
+            "Use default AES XTS encryption for volume "
+            << volume.GetDiskId().Quote());
+
         // TODO(): use EncryptionKeyProvider
         TEncryptionKey key{desc.GetKeyHash()};
 
@@ -774,6 +784,8 @@ private:
             Logging,
             CreateAesXtsEncryptor(std::move(key)),
             volume);
+
+        Initialized = true;
 
         return {};
     }
