@@ -990,5 +990,5 @@ message TStorageServiceConfig
     optional uint32 ScrubbingChecksumMismatchTimeout = 370;
 
     // Enable default enctyption for NRD/Mirrored disks.
-    optional bool DefaultEncryptionEnabled = 371;
+    optional bool DefaultEncryptionForNonReplicatedDisksEnabled = 371;
 }

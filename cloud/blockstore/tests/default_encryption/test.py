@@ -3,8 +3,8 @@ import os
 import pytest
 import time
 
-from cloud.blockstore.public.api.protos.encryption_pb2 import TEncryptionSpec,\
-    ENCRYPTION_AES_XTS, TKeyPath
+# from cloud.blockstore.public.api.protos.encryption_pb2 import TEncryptionSpec,\
+#    ENCRYPTION_AES_XTS, TKeyPath
 from cloud.blockstore.public.sdk.python.client.session import Session
 from cloud.blockstore.public.sdk.python.client import CreateClient, \
     ClientError
@@ -91,9 +91,8 @@ def start_nbs_daemon(ydb):
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
-    cfg.files["storage"].NonReplicatedDontSuspendDevices = True
-    cfg.files["storage"].DefaultEncryptionEnabled = True
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
+    cfg.files["storage"].DefaultEncryptionForNonReplicatedDisksEnabled = True
 
     daemon = start_nbs(cfg)
 
@@ -160,28 +159,6 @@ def test_encryption(nbs):
 
     client = CreateClient(f"localhost:{nbs.port}")
 
-    data_encryption_key = os.urandom(32)
-
-    # encryption_spec = TEncryptionSpec(
-    #     Mode=ENCRYPTION_AES_XTS,
-    #     KeyData=data_encryption_key)
-
-    key_path = get_unique_path_for_current_test(
-        output_path=yatest_common.output_path(),
-        sub_folder="")
-
-    ensure_path_exists(key_path)
-    key_path = os.path.join(key_path, "dek.bin")
-
-    with open(key_path, 'wb') as f:
-        f.write(data_encryption_key)
-
-    encryption_spec = TEncryptionSpec(
-        Mode=ENCRYPTION_AES_XTS,
-        KeyPath=TKeyPath(
-            FilePath=key_path.encode('utf-8')
-        ))
-
     @retry(max_times=10, exception=ClientError)
     def create_vol0():
         client.create_volume(
@@ -189,8 +166,7 @@ def test_encryption(nbs):
             block_size=DEFAULT_BLOCK_SIZE,
             blocks_count=2*DEVICE_SIZE//DEFAULT_BLOCK_SIZE,
             storage_media_kind=STORAGE_MEDIA_SSD_NONREPLICATED,
-            storage_pool_name="",
-            encryption_spec=encryption_spec)
+            storage_pool_name="")
 
     create_vol0()
 
@@ -200,7 +176,7 @@ def test_encryption(nbs):
         mount_token='',
         log=logger)
 
-    volume = session.mount_volume(encryption_spec=encryption_spec)["Volume"]
+    volume = session.mount_volume()["Volume"]
 
     assert len(volume.Devices) == 2
     device = volume.Devices[0]
@@ -224,15 +200,14 @@ def test_encryption(nbs):
         checkpoint_id='')
 
     assert len(blocks) == 2
-    # assert all(len(b) == DEFAULT_BLOCK_SIZE for b in blocks)
     assert len(blocks[0]) == DEFAULT_BLOCK_SIZE
-    assert len(blocks[1]) == 0
+    assert len(blocks[1]) == DEFAULT_BLOCK_SIZE
 
     # first block must be with data
     assert test_data == blocks[0]
 
     # second block must be zeroed
-    # assert all(x == 0 for x in blocks[1])
+    assert all(x == 0 for x in blocks[1])
 
     # read data bypass the volume
 
