@@ -471,6 +471,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
+    // XXX TABLET_PROXY KILLS PIPES! SHARDS WILL DESTROY SESSIONS!!!
 
     Y_UNUSED(actorId);
     // TODO(#1350): register actorId in WorkerActors, erase upon completion
