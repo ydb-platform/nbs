@@ -4992,6 +4992,16 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
+
+        TVector<TString> freeDevices;
+        freeDevices.reserve(agent->GetDevices().size());
+        for (const auto& device : agent->GetDevices()) {
+            auto diskId = DeviceList.FindDiskId(device.GetDeviceUUID());
+            if (diskId.empty()) {
+                freeDevices.push_back(device.GetDeviceUUID());
+            }
+        }
+        ForgetDevices(db, freeDevices);
     }
 
     if (newState == NProto::AGENT_STATE_ONLINE && !HasError(result)) {

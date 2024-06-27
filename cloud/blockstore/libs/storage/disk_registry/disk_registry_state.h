@@ -573,8 +573,8 @@ public:
     NProto::TError UpdateAgentState(
         TDiskRegistryDatabase& db,
         const TString& agentId,
-        NProto::EAgentState state,
-        TInstant now,
+        NProto::EAgentState newState,
+        TInstant timestamp,
         TString reason,
         TVector<TDiskId>& affectedDisks);
 

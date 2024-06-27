@@ -92,6 +92,10 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
             return out.Str();
         }().c_str());
 
+    if (!args.DryRun && args.State == NProto::AGENT_STATE_WARNING && !HasError(args.Error)) {
+
+    }
+
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
