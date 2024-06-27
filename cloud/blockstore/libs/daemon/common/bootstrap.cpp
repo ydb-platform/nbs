@@ -537,15 +537,11 @@ void TBootstrapBase::Init()
     NBD::IDeviceFactoryPtr nbdDeviceFactory;
 
     if (Configs->ServerConfig->GetNbdNetlink()) {
-#ifdef NETLINK
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
             Configs->ServerConfig->GetNbdConnectionTimeout(),
             true);  // reconfigure
-#else
-        STORAGE_ERROR("built without netlink support, falling back to ioctl");
-#endif
     }
 
     if (!nbdDeviceFactory && EndpointProxyClient) {

@@ -58,10 +58,4 @@ PEERDIR(
     library/cpp/sighandler
 )
 
-IF(NETLINK)
-    CFLAGS(
-        -DNETLINK
-    )
-ENDIF()
-
 END()
