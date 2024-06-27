@@ -180,7 +180,6 @@ protected:
         explicit TSessionGuard(TFileStoreCommand& fileStoreCmd)
             : FileStoreCmd(fileStoreCmd)
         {
-            FileStoreCmd.CreateSession();
         }
 
         ~TSessionGuard()
@@ -189,13 +188,9 @@ protected:
         }
     };
 
-    TSessionGuard CreateNewSession()
-    {
-        return TSessionGuard(*this);
-    }
+    [[nodiscard]] TSessionGuard CreateSession();
 
 private:
-    void CreateSession();
     void DestroySession();
 };
 

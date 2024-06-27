@@ -38,7 +38,7 @@ public:
 
     bool Execute() override
     {
-        auto sessionGuard = CreateNewSession();
+        auto sessionGuard = CreateSession();
 
         const auto resolved = ResolvePath(Path, false);
 

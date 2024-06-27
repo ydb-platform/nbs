@@ -33,7 +33,7 @@ public:
 
     bool Execute() override
     {
-        auto sessionGuard = CreateNewSession();
+        auto sessionGuard = CreateSession();
 
         auto makeDir = [&] (ui64 nodeId, TStringBuf name) {
             auto request = CreateRequest<NProto::TCreateNodeRequest>();

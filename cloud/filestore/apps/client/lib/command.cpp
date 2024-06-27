@@ -293,7 +293,7 @@ void TFileStoreCommand::Stop()
     TFileStoreServiceCommand::Stop();
 }
 
-void TFileStoreCommand::CreateSession()
+TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateSession()
 {
     // TODO use ISession instead
     auto request = std::make_shared<NProto::TCreateSessionRequest>();
@@ -309,6 +309,8 @@ void TFileStoreCommand::CreateSession()
 
     Headers.SetClientId(ClientId);
     Headers.SetSessionId(sessionId);
+
+    return TSessionGuard(*this);
 }
 
 void TFileStoreCommand::DestroySession()

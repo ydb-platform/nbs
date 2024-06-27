@@ -284,7 +284,7 @@ public:
     {
         Y_ENSURE(CliArgs.Mode != EModeType::Unknown, "Mode type is not set");
 
-        auto sessionGuard = CreateNewSession();
+        auto sessionGuard = CreateSession();
 
         TPageInfo page;
         switch (CliArgs.Mode) {
