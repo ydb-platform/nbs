@@ -589,9 +589,9 @@ struct TServer: IEndpointProxyServer
                             Logging,
                             *ep.ListenAddress,
                             request.GetNbdDevice(),
-                            TDuration::Minutes(1),  // request timeout
-                            TDuration::Days(1),     // connection timeout
-                            true);                  // reconfigure existing device
+                            Config.NbdRequestTimeout,
+                            TDuration::Days(1),         // connection timeout
+                            true);                      // reconfigure existing device
 
                     } catch (const std::exception& e) {
                         STORAGE_ERROR(request.ShortDebugString().Quote()
@@ -604,6 +604,9 @@ struct TServer: IEndpointProxyServer
                         << ", falling back to ioctl");
 #endif
                 }
+                // request timeout is mainly useful as a tool to retry requests
+                // in kernel, but since devices configured via ioctl can't be
+                // reconnected to, there is little reason to configure it
                 if (ep.NbdDevice == nullptr) {
                     ep.NbdDevice = NBD::CreateDevice(
                         Logging,
