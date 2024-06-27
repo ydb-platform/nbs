@@ -62,6 +62,7 @@ private:
     TDeviceClientPtr DeviceClient;
 
     ui32 InitErrorsCount = 0;
+    bool PartiallySuspended = false;
 
 public:
     TDiskAgentState(
@@ -145,6 +146,9 @@ public:
     void ReportDisabledDeviceError(const TString& uuid);
 
     void StopTarget();
+
+    void SetPartiallySuspended(bool partiallySuspended);
+    bool GetPartiallySuspended() const;
 
 private:
     const TDeviceState& GetDeviceState(

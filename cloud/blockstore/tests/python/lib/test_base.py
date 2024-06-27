@@ -25,6 +25,8 @@ from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
 from cloud.blockstore.public.sdk.python.client.error import ClientError
 from cloud.blockstore.public.sdk.python.client.error_codes import EFacility
 
+from google.protobuf import text_format
+
 
 def get_restart_interval():
     if common.context.sanitize is not None:
@@ -453,3 +455,69 @@ def wait_for_secure_erase(mon_port, pool='default'):
         assert bytes != 0
 
         break
+
+
+################################################################################
+# result comparison utils
+
+def files_equal(path_0, path_1, block_size=4096, cb=None):
+    file_0 = open(path_0, "rb")
+    file_1 = open(path_1, "rb")
+
+    block_no = 0
+    while True:
+        block_0 = file_0.read(block_size)
+        block_1 = file_1.read(block_size)
+
+        if block_0 != block_1:
+            if cb is None or not cb(block_no, block_0, block_1):
+                return False
+
+        if not block_0:
+            break
+
+        block_no += 1
+
+    return True
+
+
+def compare_bitmaps(path_0, path_1, block_size=4096):
+    errors = []
+
+    def cb(block_no, block_0, block_1):
+        per_block = block_size * 8
+        offset = per_block * block_no
+
+        for i in range(block_size):
+            byte_offset = offset + i * 8
+            byte_0 = ord(block_0[i])
+            byte_1 = ord(block_1[i])
+            for j in range(8):
+                bit_offset = byte_offset + j
+                bit_0 = (byte_0 >> j) & 1
+                bit_1 = (byte_1 >> j) & 1
+                if bit_0 != bit_1:
+                    errors.append("bit %s: %s -> %s" % (bit_offset, bit_0, bit_1))
+
+    files_equal(path_0, path_1, cb)
+
+    return errors
+
+
+def file_equal(file_path, str):
+    file_content = ''
+    with open(file_path, 'r') as file:
+        file_content = file.read()
+    return file_content == str
+
+
+def file_parse(file_path, proto_type):
+    file_content = ''
+    with open(file_path, 'r') as file:
+        file_content = file.read()
+    return text_format.Parse(file_content, proto_type)
+
+
+def file_parse_as_json(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)

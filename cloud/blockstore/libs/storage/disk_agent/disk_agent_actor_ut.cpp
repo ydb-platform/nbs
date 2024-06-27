@@ -586,6 +586,129 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT(response->GetErrorReason().Contains(uuids.back()));
     }
 
+    Y_UNIT_TEST(ShouldRejectAcquireAndReleaseWhenPartiallySuspended)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(DiskAgentConfig({
+                "MemoryDevice1",
+                "MemoryDevice2",
+                "MemoryDevice3",
+            }))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        const TVector<TString> uuids{
+            "MemoryDevice1",
+            "MemoryDevice2"
+        };
+
+        const TString writerClientId1 = "writer-1";
+        const TString writerClientId2 = "writer-2";
+
+        diskAgent.AcquireDevices(
+            uuids,
+            writerClientId1,
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+
+        constexpr auto BlocksCount = 10;
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(
+            blocks,
+            BlocksCount,
+            TString(DefaultBlockSize, 'X'));
+
+        const auto response = WriteDeviceBlocks(
+            runtime,
+            diskAgent,
+            uuids[0],
+            0,
+            sglist,
+            writerClientId1);
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        constexpr auto CancelSuspensionDelay = TDuration::Minutes(1);
+        diskAgent.PartiallySuspendAgent(CancelSuspensionDelay);
+
+        // Acquire of an already existing session works fine.
+        diskAgent.AcquireDevices(
+            uuids,
+            writerClientId1,
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+
+        // Can't acquire a new session when an agent is partially suspended.
+        diskAgent.SendAcquireDevicesRequest(
+            TVector<TString>{"MemoryDevice3"},
+            writerClientId2,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        {
+            auto response = diskAgent.RecvAcquireDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "Disk agent is partially suspended"));
+        }
+
+        // Can't re-acquire existing session with a new one.
+        diskAgent.SendAcquireDevicesRequest(
+            uuids,
+            writerClientId2,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        {
+            auto response = diskAgent.RecvAcquireDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "Disk agent is partially suspended"));
+        }
+
+        // Can't release a session when an agent is partially suspended.
+        diskAgent.SendReleaseDevicesRequest(
+            uuids,
+            writerClientId1);
+        {
+            auto response = diskAgent.RecvReleaseDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "Disk agent is partially suspended"));
+        }
+
+        runtime.AdvanceCurrentTime(CancelSuspensionDelay / 2);
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // Still can't re-acquire existing session with a new one.
+        diskAgent.SendAcquireDevicesRequest(
+            uuids,
+            writerClientId2,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+        {
+            auto response = diskAgent.RecvAcquireDevicesResponse();
+            UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_REJECTED);
+            UNIT_ASSERT(response->GetErrorReason().Contains(
+                "Disk agent is partially suspended"));
+        }
+
+        runtime.AdvanceCurrentTime(CancelSuspensionDelay);
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        // After a delay disk agent returns to normal work.
+        diskAgent.AcquireDevices(
+            TVector<TString>{"MemoryDevice3"},
+            writerClientId2,
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+        diskAgent.AcquireDevices(
+            uuids,
+            writerClientId1,
+            NProto::VOLUME_ACCESS_READ_WRITE
+        );
+    }
+
     Y_UNIT_TEST(ShouldPerformIo)
     {
         TTestBasicRuntime runtime;
