@@ -92,7 +92,10 @@ def start_nbs_daemon(ydb):
     cfg.generate_default_nbs_configs()
 
     cfg.files["storage"].AllocationUnitNonReplicatedSSD = 1
-    cfg.files["storage"].DefaultEncryptionForNonReplicatedDisksEnabled = True
+
+    encryption_feature = cfg.files["features"].Features.add()
+    encryption_feature.Name = 'DefaultEncryptionForNonReplicatedDisks'
+    encryption_feature.Whitelist.EntityIds.append("vol0")
 
     daemon = start_nbs(cfg)
 
