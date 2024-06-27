@@ -5,6 +5,8 @@ from contrib.ydb.tests.library.common.yatest_common import PortManager
 from google.protobuf.json_format import ParseDict
 from google.protobuf.text_format import MessageToString
 
+from cloud.storage.core.config.features_pb2 import TFeaturesConfig
+
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig, \
     TDiskAgentConfig, TFileDeviceArgs, TStorageDiscoveryConfig, \
@@ -77,6 +79,7 @@ class NbsConfigurator:
         self.files["dr-proxy"] = generate_dr_proxy_txt()
         self.files["domains"] = self.__ydb.config.domains_txt
         self.files["location"] = generate_location_txt()
+        self.files["features"] = TFeaturesConfig()
 
     def install(self, config_folder):
 
