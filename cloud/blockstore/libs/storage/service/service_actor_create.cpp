@@ -231,9 +231,16 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
              Request.GetFolderId(),
              Request.GetDiskId())))
     {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Create volume " << Request.GetDiskId().Quote()
+                             << " with default AES XTS encryption");
+
         auto& desc = *config.MutableEncryptionDesc();
         desc.SetMode(NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED);
 
+        // XXX: use EncryptionKeyProvider?
         TString key;
         key.resize(32);
         EntropyPool().Read(key.Detach(), key.size());

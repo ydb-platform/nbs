@@ -55,7 +55,8 @@ class TestCase(object):
             agent_count=1,
             storage_pool_name=None,
             dump_block_digests=False,
-            reject_late_requests_at_disk_agent=False):
+            reject_late_requests_at_disk_agent=False,
+            enable_default_encryption=False):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -69,6 +70,7 @@ class TestCase(object):
         self.storage_pool_name = storage_pool_name
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
+        self.enable_default_encryption = enable_default_encryption
 
 
 TESTS = [
@@ -123,6 +125,11 @@ TESTS = [
     TestCase(
         "local-encryption-overlay",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-encryption-overlay.txt",
+    ),
+    TestCase(
+        "default-encryption",
+        "cloud/blockstore/tests/loadtest/local-nonrepl/default-encryption.txt",
+        enable_default_encryption=True,
     ),
     TestCase(
         "local-nonrepl-overlay",
@@ -242,6 +249,7 @@ def __run_test(test_case):
         storage.AgentRequestTimeout = 5000      # 5 sec
         storage.RejectLateRequestsAtDiskAgentEnabled = test_case.reject_late_requests_at_disk_agent
         storage.AssignIdToWriteAndZeroRequestsEnabled = test_case.reject_late_requests_at_disk_agent
+        storage.DefaultEncryptionForNonReplicatedDisksEnabled = test_case.enable_default_encryption
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True
