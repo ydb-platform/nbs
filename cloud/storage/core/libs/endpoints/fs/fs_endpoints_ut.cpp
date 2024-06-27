@@ -38,13 +38,13 @@ struct TFixture: public NUnitTest::TBaseFixture
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
         const auto ret = CreateEndpointsDirectory(DirPath);
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
     }
 
     void TearDown(NUnitTest::TTestContext& /*testContext*/) override
     {
         const auto ret = CleanUpEndpointsDirectory(DirPath);
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
     }
 };
 
@@ -66,7 +66,7 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
 
             auto ret =
                 endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
             loadedEndpoints.emplace(diskId, request);
         }
 
@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
         auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
 
         auto requestOrError = endpointStorage->GetEndpoint(diskId);
         UNIT_ASSERT_C(!HasError(requestOrError), requestOrError.GetError());
@@ -125,7 +125,7 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
         auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
 
         const TString wrongKeyringId = "WrongTestDiskId";
 
@@ -146,13 +146,13 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
         auto ret = endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-        UNIT_ASSERT_EQUAL(ret.GetCode(), S_OK);
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
 
         auto endpointOrError = endpointStorage->GetEndpoint(diskId);
         UNIT_ASSERT_C(!HasError(endpointOrError), endpointOrError.GetError());
 
         ret = endpointStorage->RemoveEndpoint(diskId);
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
 
         endpointOrError = endpointStorage->GetEndpoint(diskId);
         UNIT_ASSERT(HasError(endpointOrError));
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
         const TString diskId = "TestDiskId";
 
         auto ret = endpointStorage->RemoveEndpoint(diskId);
-        UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
     }
 
     Y_UNIT_TEST_F(AddEndpointTwice, TFixture)
@@ -178,7 +178,7 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
 
             auto ret =
                 endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
         }
 
         {
@@ -188,17 +188,17 @@ Y_UNIT_TEST_SUITE(TFileEndpointsTest)
 
             auto ret =
                 endpointStorage->AddEndpoint(diskId, strOrError.GetResult());
-            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
 
             auto requestOrError = endpointStorage->GetEndpoint(diskId);
             UNIT_ASSERT_EQUAL_C(
-                requestOrError.GetError().GetCode(),
                 S_OK,
+                requestOrError.GetError().GetCode(),
                 requestOrError.GetError().GetMessage());
 
             UNIT_ASSERT_EQUAL(
-                requestOrError.ExtractResult(),
-                strOrError.GetResult());
+                strOrError.GetResult(),
+                requestOrError.ExtractResult());
         }
     }
 }

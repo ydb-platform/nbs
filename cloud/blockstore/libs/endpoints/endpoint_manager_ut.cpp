@@ -1677,7 +1677,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
@@ -1756,7 +1756,7 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_EQUAL_C(ret.GetCode(), S_OK, ret.GetMessage());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
