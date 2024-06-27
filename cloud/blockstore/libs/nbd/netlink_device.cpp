@@ -450,8 +450,7 @@ int TNetlinkDevice::StatusHandler(nl_msg* message, void* argument)
     if (!deviceItem[NBD_DEVICE_ITEM]) {
         context->Device->StartResult.SetValue(MakeError(
             E_FAIL,
-            TStringBuilder() << "did not receive NBD_DEVICE_ITEM"
-                             << nl_geterror(err)));
+            "did not receive NBD_DEVICE_ITEM"));
         return NL_STOP;
     }
 
