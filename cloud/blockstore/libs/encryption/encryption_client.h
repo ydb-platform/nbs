@@ -13,6 +13,10 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IBlockStorePtr CreateDefaultEncryptionClient(
+    IBlockStorePtr client,
+    ILoggingServicePtr logging);
+
 IBlockStorePtr CreateEncryptionClient(
     IBlockStorePtr client,
     ILoggingServicePtr logging,

@@ -11,7 +11,16 @@ enum EEncryptionMode
 {
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
+    ENCRYPTION_AES_XTS_NO_TRACK_UNUSED = 2;
 }
+
+/*
+enum EEncryptionAlgo
+{
+    ENCRYPTION_ALGO_AES_XTS = 0;
+    ENCRYPTION_ALGO_CAESAR = 1;
+    ENCRYPTION_ALGO_NOOP = 2;
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////
 // KMS key options

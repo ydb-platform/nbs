@@ -16,6 +16,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/size_literals.h>
+#include <util/random/entropy.h>
 #include <util/string/ascii.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -220,6 +221,24 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         auto& desc = *config.MutableEncryptionDesc();
         desc.SetMode(encryptionSpec.GetMode());
         desc.SetKeyHash(encryptionSpec.GetKeyHash());
+    }
+
+    if (IsDiskRegistryMediaKind(volumeParams.MediaKind) &&
+        encryptionSpec.GetMode() == NProto::NO_ENCRYPTION &&
+        (Config->GetDefaultEncryptionForNonReplicatedDisksEnabled() ||
+         Config->IsDefaultEncryptionForNonReplicatedDisksFeatureEnabled(
+             Request.GetCloudId(),
+             Request.GetFolderId(),
+             Request.GetDiskId())))
+    {
+        auto& desc = *config.MutableEncryptionDesc();
+        desc.SetMode(NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED);
+
+        TString key;
+        key.resize(32);
+        EntropyPool().Read(key.Detach(), key.size());
+        // XXX: store key in KeyHash for now
+        desc.SetKeyHash(std::move(key));
     }
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(

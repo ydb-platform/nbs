@@ -499,7 +499,7 @@ TDuration MSeconds(ui32 value)
     xxx(OptimizeVoidBuffersTransferForReadsEnabled,     bool,      false         )\
     xxx(VolumeHistoryCleanupItemCount,                  ui32,      100'000       )\
     xxx(IdleAgentDeployByCmsDelay,                      TDuration, Hours(1)      )\
-    xxx(DefaultEncryptionEnabled,                       bool,      false         )\
+    xxx(DefaultEncryptionForNonReplicatedDisksEnabled,  bool,      false      )\
 
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
@@ -531,6 +531,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(ReplaceDevice)                                                         \
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
+    xxx(DefaultEncryptionForNonReplicatedDisks)                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

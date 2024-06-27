@@ -352,6 +352,10 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
+    [[nodiscard]] bool IsDefaultEncryptionForNonReplicatedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
 
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
@@ -589,7 +593,7 @@ public:
 
     TDuration GetIdleAgentDeployByCmsDelay() const;
 
-    [[nodiscard]] bool GetDefaultEncryptionEnabled() const;
+    [[nodiscard]] bool GetDefaultEncryptionForNonReplicatedDisksEnabled() const;
 };
 
 ui64 GetAllocationUnit(
