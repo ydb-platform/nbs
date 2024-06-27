@@ -27,6 +27,7 @@ struct TEndpointProxyServerConfig
     TString UnixSocketPath;
     bool Netlink;
     TString StoredEndpointsPath;
+    TDuration NbdRequestTimeout;
 
     TEndpointProxyServerConfig(
             ui16 port,
@@ -36,7 +37,8 @@ struct TEndpointProxyServerConfig
             TString certFile,
             TString unixSocketPath,
             bool netlink,
-            TString storedEndpointsPath)
+            TString storedEndpointsPath,
+            TDuration nbdRequestTimeout)
         : Port(port)
         , SecurePort(securePort)
         , RootCertsFile(std::move(rootCertsFile))
@@ -45,6 +47,7 @@ struct TEndpointProxyServerConfig
         , UnixSocketPath(std::move(unixSocketPath))
         , Netlink(netlink)
         , StoredEndpointsPath(std::move(storedEndpointsPath))
+        , NbdRequestTimeout(nbdRequestTimeout)
     {
     }
 };
