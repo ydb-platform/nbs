@@ -512,6 +512,12 @@ void TIndexTabletActor::ExecuteTx_Compaction(
     Y_UNUSED(ctx);
     Y_UNUSED(tx);
 
+    if (!args.CompactionBlobs) {
+        TIndexTabletDatabase db(tx.DB);
+        UpdateCompactionMap(args.RangeId, 0, 0);
+        db.WriteCompactionMap(args.RangeId, 0, 0);
+    }
+
     for (const ui64 nodeId: args.Nodes) {
         InvalidateReadAheadCache(nodeId);
     }
