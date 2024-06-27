@@ -4,6 +4,8 @@
 
 #include <cloud/blockstore/libs/daemon/common/options.h>
 
+#include <util/datetime/base.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,7 @@ struct TOptions final: TOptionsBase
     TString UnixSocketPath;
     bool Netlink = false;
     TString StoredEndpointsPath;
+    TDuration NbdRequestTimeout = TDuration::Minutes(10);
 
     TOptions();
 
