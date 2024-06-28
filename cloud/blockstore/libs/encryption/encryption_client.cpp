@@ -636,8 +636,8 @@ NProto::TError TEncryptionClient::Encrypt(
             return MakeError(E_INVALID_STATE, "Failed to encrypt blocks");
         }
 
-        if (IsAllZeroes(dst[i].Data(), dst[i].Size())) {
-            return MakeError(E_INVALID_STATE, "No way!");
+        if (IsAllZeroes(dst[i])) {
+            return MakeError(E_FAIL, "Encryptor has generated a zero block!");
         }
     }
 
@@ -656,8 +656,8 @@ bool TEncryptionClient::Decrypt(
     }
 
     for (size_t i = 0; i < src.size(); ++i) {
-        const bool encrypted = !GetBitValue(unencryptedBlockMask, i)
-            && !IsAllZeroes(src[i].Data(), src[i].Size());
+        const bool encrypted =
+            !GetBitValue(unencryptedBlockMask, i) && !IsAllZeroes(src[i]);
 
         if (encrypted) {
             if (!Encryptor->Decrypt(src[i], dst[i], startIndex + i)) {
@@ -775,7 +775,7 @@ private:
             "Use default AES XTS encryption for volume "
             << volume.GetDiskId().Quote());
 
-        // TODO(): use EncryptionKeyProvider
+        // XXX: use EncryptionKeyProvider?
         TEncryptionKey key{Base64Decode(desc.GetKeyHash())};
 
         Client = std::make_shared<TEncryptionClient>(

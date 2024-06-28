@@ -186,4 +186,9 @@ bool IsAllZeroes(const char* src, size_t size)
     return !memcmp(src, src + sizeof(TBigNumber), size - sizeof(TBigNumber));
 }
 
+bool IsAllZeroes(TBlockDataRef block)
+{
+    return block.Data() == nullptr || IsAllZeroes(block.Data(), block.Size());
+}
+
 }   // namespace NCloud::NBlockStore
