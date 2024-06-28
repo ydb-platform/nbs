@@ -768,10 +768,6 @@ private:
     NProto::TError HandleMountVolumeResponse(
         const NProto::TMountVolumeResponse& response)
     {
-        if (Initialized) {
-            return {};
-        }
-
         const auto& volume = response.GetVolume();
 
         if (!volume.HasEncryptionDesc()) {
@@ -784,11 +780,15 @@ private:
         }
 
         if (desc.GetMode() != NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED) {
-            return MakeError(E_ARGUMENT, "Invalid encription mode");
+            return MakeError(E_ARGUMENT, "Unexpected encription mode");
         }
 
         if (desc.GetKeyHash().empty()) {
-            return MakeError(E_ARGUMENT, "Invalid KeyHash");
+            return MakeError(E_ARGUMENT, "Empty KeyHash");
+        }
+
+        if (Initialized) {
+            return {};
         }
 
         STORAGE_INFO(
