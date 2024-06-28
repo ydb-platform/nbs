@@ -71,11 +71,9 @@ void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
 {
-    NProtoPrivate::TDescribeSessionsRequest request;
-    request.SetFileSystemId(FileSystemId);
     auto requestToTablet =
         std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
-    requestToTablet->Record = std::move(request);
+    requestToTablet->Record.SetFileSystemId(FileSystemId);
 
     NCloud::Send(
         ctx,
