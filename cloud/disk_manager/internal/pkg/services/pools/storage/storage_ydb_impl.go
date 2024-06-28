@@ -1480,19 +1480,22 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		slot.targetAllottedSlots = 0
 		slot.targetAllottedUnits = 0
 
-		baseDiskOldState := *found
-		err = releaseTargetUnitsAndSlots(ctx, tx, found, slotOldState)
-		if err != nil {
-			return err
+		baseDiskTransition := baseDiskTransition{}
+		if found != nil {
+			baseDiskOldState := *found
+			err = releaseTargetUnitsAndSlots(ctx, tx, found, slotOldState)
+			if err != nil {
+				return err
+			}
+
+			baseDiskTransition.oldState = &baseDiskOldState
+			baseDiskTransition.state = found
 		}
 
 		err = s.updateBaseDiskAndSlot(
 			ctx,
 			tx,
-			baseDiskTransition{
-				oldState: &baseDiskOldState,
-				state:    found,
-			},
+			baseDiskTransition,
 			slotTransition{
 				oldState: &slotOldState,
 				state:    &slot,
