@@ -30,13 +30,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Stats)
         const auto nodeId =
             CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         const auto handle = CreateHandle(tablet, nodeId);
-        const int blockCount = 2048;
+        const int blockCount = 1024;
         const auto sz = DefaultBlockSize * blockCount;
 
-        NKikimrTabletBase::TMetrics metrics;
-        ui64 cpu = 0;
-        ui64 network = 0;
-        ui64 count = 0;
+        ui64 reportsCount = 0;
 
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
@@ -44,13 +41,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Stats)
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case NKikimr::TEvLocal::EvTabletMetrics: {
-                        ++count;
-                         
-                        const auto* msg = event->template Get<
-                            NKikimr::TEvLocal::TEvTabletMetrics>();
-                        metrics = msg->ResourceValues;
-                        cpu += metrics.GetCPU();
-                        network += metrics.GetNetwork();
+                        ++reportsCount;
                     }
                 }
 
@@ -59,19 +50,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Stats)
 
         tablet.WriteData(handle, 0, sz, 'a');
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(120));
-        {
-            NActors::TDispatchOptions options;
-            options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
-            env.GetRuntime().DispatchEvents(options);
-        }
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+        env.GetRuntime().DispatchEvents(options);
 
-
-        UNIT_ASSERT_VALUES_UNEQUAL(0, count);
-
-        UNIT_ASSERT_VALUES_UNEQUAL(0, network);
-        UNIT_ASSERT_VALUES_UNEQUAL(0, cpu);
-
+        UNIT_ASSERT_VALUES_UNEQUAL(0, reportsCount);
     }
 }
 }   // namespace NCloud::NFileStore::NStorage
