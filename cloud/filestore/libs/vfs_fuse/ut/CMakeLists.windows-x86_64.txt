@@ -44,7 +44,7 @@ set_yunittest_property(
   cloud-filestore-libs-vfs_fuse-ut
   PROPERTY
   LABELS
-  SMALL
+  MEDIUM
 )
 set_yunittest_property(
   TEST
