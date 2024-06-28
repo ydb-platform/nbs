@@ -643,8 +643,8 @@ NProto::TError TEncryptionClient::Encrypt(
             return err;
         }
 
-        if (IsAllZeroes(dst[i].Data(), dst[i].Size())) {
-            return MakeError(E_INVALID_STATE, "No way!");
+        if (IsAllZeroes(dst[i])) {
+            return MakeError(E_FAIL, "Encryptor has generated a zero block!");
         }
     }
 
@@ -675,21 +675,18 @@ NProto::TError TEncryptionClient::Decrypt(
                                  << " != " << src[i].Size());
         }
 
-        const bool encrypted = !GetBitValue(unencryptedBlockMask, i) &&
-                               !IsAllZeroes(src[i].Data(), src[i].Size());
-        auto* dstPtr = const_cast<char*>(dst[i].Data());
-        const size_t blockSize = dst[i].Size();
-
+        // XXX: можно ли тут обойтись только IsAllZeroes?
+        const bool encrypted = !GetBitValue(unencryptedBlockMask, i) /* &&
+                               !IsAllZeroes(src[i]) */;
         if (encrypted) {
-            if (src[i].Data() && IsAllZeroes(src[i].Data(), blockSize)) {
-                memset(dstPtr, 0, blockSize);
-            } else if (auto err =
-                           Encryptor->Decrypt(src[i], dst[i], startIndex + i);
-                       HasError(err))
-            {
+            auto err = Encryptor->Decrypt(src[i], dst[i], startIndex + i);
+            if (HasError(err)) {
                 return err;
             }
         } else {
+            auto* dstPtr = const_cast<char*>(dst[i].Data());
+            const size_t blockSize = dst[i].Size();
+
             if (src[i].Data()) {
                 memcpy(dstPtr, src[i].Data(), blockSize);
             } else {
@@ -795,7 +792,7 @@ private:
             "Use default AES XTS encryption for volume "
             << volume.GetDiskId().Quote());
 
-        // TODO(): use EncryptionKeyProvider
+        // XXX: use EncryptionKeyProvider?
         TEncryptionKey key{Base64Decode(desc.GetKeyHash())};
 
         Client = std::make_shared<TEncryptionClient>(
