@@ -162,6 +162,11 @@ private:
         const NProto::EVolumeAccessMode accessMode) const;
     const TDeviceState& GetDeviceStateImpl(const TString& uuid) const;
 
+    void EnsureAccessToDevices(
+        const TVector<TString>& uuids,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) const;
+
     template <typename T>
     void WriteProfileLog(
         TInstant now,

@@ -777,17 +777,7 @@ bool TDiskAgentState::AcquireDevices(
     ui32 volumeGeneration)
 {
     if (PartiallySuspended) {
-        for (const TString& uuid: uuids) {
-            auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
-            if (HasError(error)) {
-                ythrow TServiceError(MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "Disk agent is partially suspended. "
-                                        "Can't acquire previously not acquired "
-                                        "devices. Access returned an error: "
-                                     << FormatError(error)));
-            }
-        }
+        EnsureAccessToDevices(uuids, clientId, accessMode);
     }
 
     auto [updated, error] = DeviceClient->AcquireDevices(
@@ -936,6 +926,24 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
         STORAGE_ERROR("Can't restore sessions from the cache: "
             << CurrentExceptionMessage());
         ReportDiskAgentSessionCacheRestoreError();
+    }
+}
+
+void TDiskAgentState::EnsureAccessToDevices(
+    const TVector<TString>& uuids,
+    const TString& clientId,
+    NProto::EVolumeAccessMode accessMode) const
+{
+    for (const TString& uuid: uuids) {
+        auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
+        if (HasError(error)) {
+            ythrow TServiceError(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Disk agent is partially suspended. "
+                                    "Can't acquire previously not acquired "
+                                    "devices. Access returned an error: "
+                                 << FormatError(error)));
+        }
     }
 }
 
