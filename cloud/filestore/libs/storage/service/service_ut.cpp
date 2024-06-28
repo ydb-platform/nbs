@@ -3167,7 +3167,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto headers = service.InitSession(fsId, "client");
 
-        const auto error = MakeError(E_FS_INVALID_SESSION, "bad session");
+        auto error = MakeError(E_FS_INVALID_SESSION, "bad session");
 
         env.GetRuntime().SetEventFilter(
             [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
@@ -3175,7 +3175,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                     case TEvService::EvCreateNodeResponse: {
                         auto* msg =
                             event->Get<TEvService::TEvCreateNodeResponse>();
-                        msg->Record.MutableError()->CopyFrom(error);
+                        if (error.GetCode()) {
+                            msg->Record.MutableError()->CopyFrom(error);
+                        }
 
                         break;
                     }
@@ -3184,14 +3186,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 return false;
             });
 
+        const ui64 requestId = 111;
+
         service.SendCreateHandleRequest(
             headers,
             fsId,
             RootNodeId,
             "file1",
-            TCreateHandleArgs::CREATE_EXL);
+            TCreateHandleArgs::CREATE_EXL,
+            "",
+            requestId);
 
         auto response = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            error.GetCode(),
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        error = {};
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL,
+            "",
+            requestId);
+
+        response = service.RecvCreateHandleResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             error.GetCode(),
             response->GetError().GetCode(),

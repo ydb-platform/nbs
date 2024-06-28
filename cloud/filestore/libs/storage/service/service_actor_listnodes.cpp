@@ -198,7 +198,7 @@ void TListNodesActor::HandleGetNodeAttrResponse(
         return;
     }
 
-    LOG_INFO(
+    LOG_DEBUG(
         ctx,
         TFileStoreComponents::SERVICE,
         "GetNodeAttrResponse from follower: %s",
