@@ -460,7 +460,7 @@ def wait_for_secure_erase(mon_port, pool='default'):
 ################################################################################
 # result comparison utils
 
-def files_equal(path_0, path_1, block_size=4096, cb=None):
+def files_equal(path_0, path_1, cb=None, block_size=4096):
     file_0 = open(path_0, "rb")
     file_1 = open(path_1, "rb")
 
