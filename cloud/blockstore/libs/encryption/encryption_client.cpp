@@ -628,11 +628,10 @@ NProto::TError TEncryptionClient::Encrypt(
 {
     Y_DEBUG_ABORT_UNLESS(dst.size() >= src.size());
     if (dst.size() < src.size()) {
-        return MakeError(E_ARGUMENT, "dst less than src");
+        return MakeError(E_ARGUMENT, "The destination buffer is too small");
     }
 
     for (size_t i = 0; i < src.size(); ++i) {
-        // XXX: Encrypt should return TError
         if (!Encryptor->Encrypt(src[i], dst[i], startIndex + i)) {
             return MakeError(E_INVALID_STATE, "Failed to encrypt blocks");
         }
@@ -749,10 +748,6 @@ private:
     NProto::TError HandleMountVolumeResponse(
         const NProto::TMountVolumeResponse& response)
     {
-        if (Initialized) {
-            return {};
-        }
-
         const auto& volume = response.GetVolume();
 
         if (!volume.HasEncryptionDesc()) {
@@ -765,11 +760,15 @@ private:
         }
 
         if (desc.GetMode() != NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED) {
-            return MakeError(E_ARGUMENT, "Invalid encription mode");
+            return MakeError(E_ARGUMENT, "Unexpected encription mode");
         }
 
         if (desc.GetKeyHash().empty()) {
-            return MakeError(E_ARGUMENT, "Invalid KeyHash");
+            return MakeError(E_ARGUMENT, "Empty KeyHash");
+        }
+
+        if (Initialized) {
+            return {};
         }
 
         STORAGE_INFO(
