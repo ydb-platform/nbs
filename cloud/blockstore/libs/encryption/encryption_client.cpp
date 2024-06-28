@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/threading/future/future.h>
 
 namespace NCloud::NBlockStore {
@@ -635,9 +636,8 @@ NProto::TError TEncryptionClient::Encrypt(
         if (!Encryptor->Encrypt(src[i], dst[i], startIndex + i)) {
             return MakeError(E_INVALID_STATE, "Failed to encrypt blocks");
         }
-        // XXX
+
         if (IsAllZeroes(dst[i].Data(), dst[i].Size())) {
-            // XXX: crit
             return MakeError(E_INVALID_STATE, "No way!");
         }
     }
@@ -777,7 +777,7 @@ private:
             << volume.GetDiskId().Quote());
 
         // TODO(): use EncryptionKeyProvider
-        TEncryptionKey key{desc.GetKeyHash()};
+        TEncryptionKey key{Base64Decode(desc.GetKeyHash())};
 
         Client = std::make_shared<TEncryptionClient>(
             std::move(Client),
@@ -987,8 +987,9 @@ public:
         }
 
         auto future = EncryptionKeyProvider->GetKey(encryptionSpec, diskId);
+        auto logging = Logging;
 
-        return future.Apply([=] (auto f) -> TResponse {
+        return future.Apply([=] (auto f) mutable -> TResponse {
             auto response = f.ExtractValue();
             if (HasError(response)) {
                 return response.GetError();
@@ -1013,7 +1014,7 @@ public:
 
             return NBlockStore::CreateEncryptionClient(
                 std::move(client),
-                Logging,
+                std::move(logging),
                 std::move(encryptor),
                 std::move(encryptionDesc));
         });

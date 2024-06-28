@@ -19,6 +19,8 @@
 #include <util/random/entropy.h>
 #include <util/string/ascii.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -245,7 +247,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         key.resize(32);
         EntropyPool().Read(key.Detach(), key.size());
         // XXX: store key in KeyHash for now
-        desc.SetKeyHash(std::move(key));
+        desc.SetKeyHash(Base64Encode(key));
     }
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(

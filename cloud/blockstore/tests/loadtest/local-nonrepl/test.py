@@ -128,12 +128,23 @@ TESTS = [
     ),
     TestCase(
         "default-encryption",
-        "cloud/blockstore/tests/loadtest/local-nonrepl/default-encryption.txt",
+        "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl.txt",
         enable_default_encryption=True,
     ),
     TestCase(
         "local-nonrepl-overlay",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl-overlay.txt",
+    ),
+    TestCase(
+        "default-encryption-overlay",
+        "cloud/blockstore/tests/loadtest/local-nonrepl/local-nonrepl-overlay.txt",
+        enable_default_encryption=True,
+    ),
+    TestCase(
+        "default-encryption-migration",
+        "cloud/blockstore/tests/loadtest/local-nonrepl/local-migration.txt",
+        dump_block_digests=True,
+        enable_default_encryption=True,
     ),
     TestCase(
         "load-hdd",
