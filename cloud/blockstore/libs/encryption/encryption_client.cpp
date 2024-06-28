@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/string_utils/base64/base64.h>
 #include <library/cpp/threading/future/future.h>
 
 namespace NCloud::NBlockStore {
@@ -643,7 +644,6 @@ NProto::TError TEncryptionClient::Encrypt(
         }
 
         if (IsAllZeroes(dst[i].Data(), dst[i].Size())) {
-            // TODO: raise a critevent
             return MakeError(E_INVALID_STATE, "No way!");
         }
     }
@@ -796,7 +796,7 @@ private:
             << volume.GetDiskId().Quote());
 
         // TODO(): use EncryptionKeyProvider
-        TEncryptionKey key{desc.GetKeyHash()};
+        TEncryptionKey key{Base64Decode(desc.GetKeyHash())};
 
         Client = std::make_shared<TEncryptionClient>(
             std::move(Client),
@@ -1006,6 +1006,7 @@ public:
         }
 
         auto future = EncryptionKeyProvider->GetKey(encryptionSpec, diskId);
+        auto logging = Logging;
 
         return future.Apply(
             [client = std::move(client),
