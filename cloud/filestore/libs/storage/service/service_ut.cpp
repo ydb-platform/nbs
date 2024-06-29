@@ -3144,6 +3144,82 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             data.Size())->Record;
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResponse.GetBuffer());
     }
+
+    Y_UNIT_TEST(ShouldHandleCreateNodeErrorFromFollowerUponCreateHandleViaLeader)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto error = MakeError(E_FS_INVALID_SESSION, "bad session");
+
+        env.GetRuntime().SetEventFilter(
+            [&] (TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvCreateNodeResponse: {
+                        auto* msg =
+                            event->Get<TEvService::TEvCreateNodeResponse>();
+                        if (error.GetCode()) {
+                            msg->Record.MutableError()->CopyFrom(error);
+                        }
+
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        const ui64 requestId = 111;
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL,
+            "",
+            requestId);
+
+        auto response = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            error.GetCode(),
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        error = {};
+
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE_EXL,
+            "",
+            requestId);
+
+        response = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            error.GetCode(),
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

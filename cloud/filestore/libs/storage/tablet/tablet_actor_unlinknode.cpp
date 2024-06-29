@@ -152,6 +152,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
 
     // TODO(#1350): unlink external nodes
     if (args.ChildRef->FollowerId) {
+        // XXX ref not unlinked as well
         return;
     }
 

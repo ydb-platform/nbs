@@ -52,9 +52,6 @@ class TIndexTabletProxyActor final
         TString Path;
 
         TDeque<NActors::IEventHandlePtr> Requests;
-        TInstant LastActivity;
-        ui64 RequestsInflight = 0;
-        bool ActivityCheckScheduled = false;
 
         TConnection(ui64 id, TString fileSystemId)
             : Id(id)
@@ -114,9 +111,7 @@ private:
         const NActors::TActorContext& ctx,
         TConnection& conn);
 
-    void CancelActiveRequests(
-        const NActors::TActorContext& ctx,
-        TConnection& conn);
+    void CancelActiveRequests(TConnection& conn);
 
     void PostponeRequest(
         const NActors::TActorContext& ctx,
@@ -134,10 +129,6 @@ private:
         TConnection& conn);
 
 private:
-    void ScheduleConnectionShutdown(
-        const NActors::TActorContext& ctx,
-        TConnection& conn);
-
     void HandleClientConnected(
         NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -148,10 +139,6 @@ private:
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleWakeup(
-        const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

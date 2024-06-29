@@ -836,6 +836,13 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
+
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
             break;
@@ -868,6 +875,13 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
