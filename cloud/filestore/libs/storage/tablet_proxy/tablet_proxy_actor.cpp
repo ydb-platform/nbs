@@ -15,10 +15,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration PipeInactivityTimeout = TDuration::Minutes(1);
-
-////////////////////////////////////////////////////////////////////////////////
-
 std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     const TStorageConfig& config)
 {
@@ -122,7 +118,7 @@ void TIndexTabletProxyActor::OnConnectionError(
     // will wait for tablet to recover
     conn.State = FAILED;
 
-    CancelActiveRequests(ctx, conn);
+    CancelActiveRequests(conn);
     ProcessPendingRequests(ctx, conn);
 }
 
@@ -138,9 +134,7 @@ void TIndexTabletProxyActor::ProcessPendingRequests(
     }
 }
 
-void TIndexTabletProxyActor::CancelActiveRequests(
-    const TActorContext& ctx,
-    TConnection& conn)
+void TIndexTabletProxyActor::CancelActiveRequests(TConnection& conn)
 {
     for (auto it = ActiveRequests.begin(); it != ActiveRequests.end(); ) {
         if (it->second.ConnectionId == conn.Id) {
@@ -152,9 +146,6 @@ void TIndexTabletProxyActor::CancelActiveRequests(
             ++it;
         }
     }
-
-    conn.RequestsInflight = 0;
-    conn.LastActivity = ctx.Now();
 }
 
 void TIndexTabletProxyActor::PostponeRequest(
@@ -199,7 +190,6 @@ void TIndexTabletProxyActor::ForwardRequest(
     ActiveRequests.emplace(
         requestId,
         TActiveRequest(conn.Id, IEventHandlePtr(ev.Release())));
-    ++conn.RequestsInflight;
 }
 
 void TIndexTabletProxyActor::DescribeFileStore(
@@ -218,56 +208,6 @@ void TIndexTabletProxyActor::DescribeFileStore(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-void TIndexTabletProxyActor::ScheduleConnectionShutdown(
-    const TActorContext& ctx,
-    TConnection& conn)
-{
-    if (!conn.ActivityCheckScheduled &&
-        conn.Requests.empty() &&
-        !conn.RequestsInflight)
-    {
-        conn.ActivityCheckScheduled = true;
-        ctx.Schedule(PipeInactivityTimeout, new TEvents::TEvWakeup(conn.Id));
-    }
-}
-
-void TIndexTabletProxyActor::HandleWakeup(
-    const TEvents::TEvWakeup::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    auto it = ConnectionById.find(msg->Tag);
-    if (it == ConnectionById.end()) {
-        // connection is already closed, nothing to do
-        return;
-    }
-
-    TConnection* conn = it->second;
-    conn->ActivityCheckScheduled = false;
-    auto now = ctx.Now();
-
-    if (conn->Requests.empty() &&
-        !conn->RequestsInflight &&
-        conn->LastActivity < now - PipeInactivityTimeout)
-    {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET_PROXY,
-            "Remove connection to tablet %lu for file system %s",
-            conn->TabletId,
-            conn->FileSystemId.c_str());
-        ClientCache->Shutdown(ctx, conn->TabletId);
-        ConnectionById.erase(conn->Id);
-        ConnectionByTablet.erase(conn->TabletId);
-        Connections.erase(conn->FileSystemId);
-    } else {
-        if (conn->LastActivity >= now - PipeInactivityTimeout) {
-            auto timeEstimate = conn->LastActivity + PipeInactivityTimeout - now;
-            ctx.Schedule(timeEstimate, new TEvents::TEvWakeup(conn->Id));
-            conn->ActivityCheckScheduled = true;
-        }
-    }
-}
 
 void TIndexTabletProxyActor::HandleClientConnected(
     TEvTabletPipe::TEvClientConnected::TPtr& ev,
@@ -290,7 +230,7 @@ void TIndexTabletProxyActor::HandleClientConnected(
             msg->TabletId,
             FormatError(error).c_str());
 
-        CancelActiveRequests(ctx, *conn);
+        CancelActiveRequests(*conn);
         DestroyConnection(ctx, *conn, error);
         return;
     }
@@ -446,13 +386,6 @@ void TIndexTabletProxyActor::HandleResponse(
     auto* conn = ConnectionById[it->second.ConnectionId];
     Y_ABORT_UNLESS(conn);
 
-    conn->LastActivity = ctx.Now();
-    --conn->RequestsInflight;
-    if (conn->Requests.empty() &&
-        !conn->RequestsInflight) {
-        ScheduleConnectionShutdown(ctx, *conn);
-    }
-
     ctx.Send(event);
     ActiveRequests.erase(it);
 }
@@ -461,13 +394,13 @@ void TIndexTabletProxyActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     for (const auto& conn: Connections) {
         ClientCache->Shutdown(ctx, conn.second.TabletId);
     }
 
-    Die(ctx);
+    LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,
+        "Someone tried to kill me: %s",
+        ev->Sender.ToString().c_str());
 }
 
 bool TIndexTabletProxyActor::HandleRequests(STFUNC_SIG)
@@ -534,7 +467,6 @@ bool TIndexTabletProxyActor::LogLateMessage(STFUNC_SIG)
 STFUNC(TIndexTabletProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvTabletPipe::TEvClientConnected, HandleClientConnected);

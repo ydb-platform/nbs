@@ -165,6 +165,8 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 {
     RemoveTransaction(*args.RequestInfo);
 
+    // TODO(#1350): destroy follower sessions
+
     auto response = std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

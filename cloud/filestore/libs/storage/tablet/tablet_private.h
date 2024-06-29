@@ -502,15 +502,12 @@ struct TEvIndexTabletPrivate
     struct TNodeCreatedInFollower
     {
         TRequestInfoPtr RequestInfo;
-        NProto::TCreateNodeResponse FollowerCreateNodeResponse;
         NProto::TCreateNodeResponse CreateNodeResponse;
 
         TNodeCreatedInFollower(
                 TRequestInfoPtr requestInfo,
-                NProto::TCreateNodeResponse followerCreateNodeResponse,
                 NProto::TCreateNodeResponse createNodeResponse)
             : RequestInfo(std::move(requestInfo))
-            , FollowerCreateNodeResponse(std::move(followerCreateNodeResponse))
             , CreateNodeResponse(std::move(createNodeResponse))
         {
         }
@@ -523,15 +520,12 @@ struct TEvIndexTabletPrivate
     struct TNodeCreatedInFollowerUponCreateHandle
     {
         TRequestInfoPtr RequestInfo;
-        NProto::TCreateNodeResponse FollowerCreateNodeResponse;
         NProto::TCreateHandleResponse CreateHandleResponse;
 
         TNodeCreatedInFollowerUponCreateHandle(
                 TRequestInfoPtr requestInfo,
-                NProto::TCreateNodeResponse followerCreateNodeResponse,
                 NProto::TCreateHandleResponse createHandleResponse)
             : RequestInfo(std::move(requestInfo))
-            , FollowerCreateNodeResponse(std::move(followerCreateNodeResponse))
             , CreateHandleResponse(std::move(createHandleResponse))
         {
         }
