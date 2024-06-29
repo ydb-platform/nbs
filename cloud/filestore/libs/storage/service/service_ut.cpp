@@ -3034,6 +3034,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             0,
             listNodesResponse.GetNodes(1).GetSize());
 
+        service.UnlinkNode(headers, RootNodeId, "file1");
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse.GetNodes(0).GetSize());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+
         // TODO(#1350): test XAttr requests
     }
 
