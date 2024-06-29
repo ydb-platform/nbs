@@ -1,7 +1,9 @@
 #include "fs.h"
 
 #include "fs_impl.h"
+
 #include <cloud/filestore/libs/vfs/probes.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 namespace NCloud::NFileStore::NFuse {
 
