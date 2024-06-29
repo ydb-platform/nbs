@@ -2658,6 +2658,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle2,
             0,
             TString(1_MB, 'a'));
+
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(shardId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+        }
+
+        service.DestroySession(headers);
+
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(shardId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, sessions.size());
+        }
     }
 
     Y_UNIT_TEST(ShouldCreateNodeInFollowerViaLeader)
