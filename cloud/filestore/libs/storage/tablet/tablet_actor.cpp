@@ -746,6 +746,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -784,6 +787,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -842,6 +848,9 @@ STFUNC(TIndexTabletActor::StateZombie)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
@@ -882,6 +891,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);

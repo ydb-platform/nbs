@@ -466,16 +466,19 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const TString SessionId;
         const ui64 SessionSeqNo;
+        NProtoPrivate::TDestroySessionRequest Request;
 
         TNodeSet Nodes;
 
         TDestroySession(
                 TRequestInfoPtr requestInfo,
                 TString sessionId,
-                ui64 sessionSeqNo)
+                ui64 sessionSeqNo,
+                NProtoPrivate::TDestroySessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
+            , Request(std::move(request))
         {}
 
         void Clear()
