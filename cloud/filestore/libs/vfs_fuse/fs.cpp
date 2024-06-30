@@ -1,7 +1,9 @@
 #include "fs.h"
 
 #include "fs_impl.h"
+
 #include <cloud/filestore/libs/vfs/probes.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -360,12 +362,12 @@ void CancelRequest(
         req,
         static_cast<fuse_cancelation_code>(callContext.CancellationCode));
 
+    ui32 flags = 0;
+    SetProtoFlag(flags, NCloud::NProto::EF_SILENT);
     requestStats.RequestCompleted(
         log,
         callContext,
-        MakeError(
-            MAKE_FILESTORE_ERROR(E_CANCELLED),
-            "Driver is stopping"));
+        MakeError(E_CANCELLED, "Driver is stopping", flags));
 
     const ui64 now = GetCycleCount();
     const auto ts = callContext.CalcRequestTime(now);

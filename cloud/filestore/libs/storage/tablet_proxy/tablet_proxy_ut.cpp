@@ -76,6 +76,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletProxyTest)
         RebootTablet(runtime, fsTabletId, tabletProxy1.GetSender(), nodeIdx1);
         UNIT_ASSERT_VALUES_EQUAL(2, disconnections);
     }
+
+    Y_UNIT_TEST(ShouldNotDie)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TSSProxyClient ssProxy(
+            env.GetStorageConfig(),
+            env.GetRuntime(),
+            nodeIdx);
+        ssProxy.CreateFileStore("test", 1000);
+
+        TIndexTabletProxyClient tabletProxy(env.GetRuntime(), nodeIdx);
+        tabletProxy.WaitReady("test");
+        tabletProxy.SendRequest(
+            MakeIndexTabletProxyServiceId(),
+            std::make_unique<TEvents::TEvPoisonPill>());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        tabletProxy.WaitReady("test");
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

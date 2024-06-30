@@ -471,6 +471,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleNodeUnlinkedInFollower(
+        const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);
     bool RejectRequestsByBrokenTablet(STFUNC_SIG);

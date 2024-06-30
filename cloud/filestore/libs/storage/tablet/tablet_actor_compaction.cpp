@@ -323,12 +323,34 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
     const auto cleanupInfo = GetCleanupInfo();
 
     if (BlobIndexOps.Empty()) {
-        if (compactionInfo.ShouldCompact) {
-            BlobIndexOps.Push(EBlobIndexOp::Compaction);
-        }
+        switch (Config->GetBlobIndexOpsPriority()) {
+            case NProto::BIOP_CLEANUP_FIRST: {
+                if (cleanupInfo.ShouldCleanup) {
+                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                } else if (compactionInfo.ShouldCompact) {
+                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                }
+                break;
+            }
 
-        if (cleanupInfo.ShouldCleanup) {
-            BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+            case NProto::BIOP_COMPACTION_FIRST: {
+                if (compactionInfo.ShouldCompact) {
+                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                } else if (cleanupInfo.ShouldCleanup) {
+                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
+
+            case NProto::BIOP_FAIR: {
+                if (compactionInfo.ShouldCompact) {
+                    BlobIndexOps.Push(EBlobIndexOp::Compaction);
+                }
+                if (cleanupInfo.ShouldCleanup) {
+                    BlobIndexOps.Push(EBlobIndexOp::Cleanup);
+                }
+                break;
+            }
         }
 
         if (GetFreshBytesCount() >= Config->GetFlushBytesThreshold()
