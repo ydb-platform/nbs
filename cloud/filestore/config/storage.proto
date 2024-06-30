@@ -8,6 +8,15 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EBlobIndexOpsPriority
+{
+    BIOP_CLEANUP_FIRST = 0;
+    BIOP_COMPACTION_FIRST = 1;
+    BIOP_FAIR = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TStorageConfig
 {
     // Schemeshard directory for tablets.
@@ -286,4 +295,7 @@ message TStorageConfig
     // Forwarding is done based on the NodeId and Handle high bits.
     // Disabling this thing shouldn't really be needed apart from tests.
     optional bool MultiTabletForwardingEnabled = 355;
+
+    // Controls BlobIndexOps' priority over each other.
+    optional EBlobIndexOpsPriority BlobIndexOpsPriority = 356;
 }
