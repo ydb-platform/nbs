@@ -48,6 +48,7 @@ target_sources(filestore-apps-client-lib PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/resize.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/rm.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/start_endpoint.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/stat.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/stop_endpoint.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/text_table.cpp
   ${CMAKE_SOURCE_DIR}/cloud/filestore/apps/client/lib/touch.cpp
