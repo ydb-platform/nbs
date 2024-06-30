@@ -993,6 +993,31 @@ void TIndexTabletActor::HandleHttpInfo_Default(
         }
         DIV() { out << "Tablet host: " << FQDNHostName(); }
 
+        const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+        if (followerIds.size()) {
+            TAG(TH3) { out << "Shards"; }
+            TABLE_CLASS("table table-bordered") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "ShardNo"; }
+                        TABLEH() { out << "FileSystemId"; }
+                    }
+                }
+
+                ui32 shardNo = 0;
+                for (const auto& followerId: followerIds) {
+                    TABLER() {
+                        TABLED() { out << ++shardNo; }
+                        TABLED() {
+                            out << "<a href='../filestore/service?action=search"
+                                << "&Filesystem=" << followerId << "'>"
+                                << followerId << "</a>";
+                        }
+                    }
+                }
+            }
+        }
+
         TAG(TH3) { out << "State"; }
         DIV() { out << "Current commitId: " << GetCurrentCommitId(); }
         DIV() { DumpOperationState("Flush", FlushState, out); }
