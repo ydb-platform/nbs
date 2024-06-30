@@ -1,5 +1,4 @@
 #include "tablet_actor.h"
-#include "cloud/filestore/config/storage.pb.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
