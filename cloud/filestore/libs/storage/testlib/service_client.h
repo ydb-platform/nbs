@@ -228,6 +228,21 @@ public:
         return request;
     }
 
+    auto CreateUnlinkNodeRequest(
+        const THeaders& headers,
+        const ui64 parent,
+        const TString& name,
+        bool unlinkDirectory = false)
+    {
+        auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
+        request->Record.SetFileSystemId(headers.FileSystemId);
+        headers.Fill(request->Record);
+        request->Record.SetNodeId(parent);
+        request->Record.SetName(name);
+        request->Record.SetUnlinkDirectory(unlinkDirectory);
+        return request;
+    }
+
     static auto CreateWriteDataRequest(
         const THeaders& headers,
         const TString& fileSystemId,

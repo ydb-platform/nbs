@@ -532,6 +532,24 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // NodeUnlinkedInFollower
+    //
+
+    struct TNodeUnlinkedInFollower
+    {
+        TRequestInfoPtr RequestInfo;
+        NProto::TUnlinkNodeResponse UnlinkNodeResponse;
+
+        TNodeUnlinkedInFollower(
+                TRequestInfoPtr requestInfo,
+                NProto::TUnlinkNodeResponse unlinkNodeResponse)
+            : RequestInfo(std::move(requestInfo))
+            , UnlinkNodeResponse(std::move(unlinkNodeResponse))
+        {
+        }
+    };
+
+    //
     // DumpCompactionRange
     //
 
@@ -749,6 +767,7 @@ struct TEvIndexTabletPrivate
 
         EvNodeCreatedInFollower,
         EvNodeCreatedInFollowerUponCreateHandle,
+        EvNodeUnlinkedInFollower,
 
         EvEnd
     };
@@ -778,6 +797,9 @@ struct TEvIndexTabletPrivate
     using TEvNodeCreatedInFollowerUponCreateHandle = TRequestEvent<
         TNodeCreatedInFollowerUponCreateHandle,
         EvNodeCreatedInFollowerUponCreateHandle>;
+
+    using TEvNodeUnlinkedInFollower =
+        TRequestEvent<TNodeUnlinkedInFollower, EvNodeUnlinkedInFollower>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

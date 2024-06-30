@@ -1,11 +1,172 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDestroyFollowerSessionsActor final
+    : public TActorBootstrapped<TDestroyFollowerSessionsActor>
+{
+private:
+    const TString LogTag;
+    const TRequestInfoPtr RequestInfo;
+    const NProtoPrivate::TDestroySessionRequest Request;
+    const google::protobuf::RepeatedPtrField<TString> FollowerIds;
+    std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> Response;
+    int DestroyedSessions = 0;
+
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
+
+public:
+    TDestroyFollowerSessionsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TDestroySessionRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequests(const TActorContext& ctx);
+
+    void HandleDestroySessionResponse(
+        const TEvIndexTablet::TEvDestroySessionResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TDestroyFollowerSessionsActor::TDestroyFollowerSessionsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TDestroySessionRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvDestroySessionResponse> response)
+    : LogTag(std::move(logTag))
+    , RequestInfo(std::move(requestInfo))
+    , Request(std::move(request))
+    , FollowerIds(std::move(followerIds))
+    , Response(std::move(response))
+{}
+
+void TDestroyFollowerSessionsActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequests(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TDestroyFollowerSessionsActor::SendRequests(const TActorContext& ctx)
+{
+    ui32 cookie = 0;
+    for (const auto& followerId: FollowerIds) {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
+        request->Record = Request;
+        request->Record.SetFileSystemId(followerId);
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Sending DestroySessionRequest to follower %s",
+            LogTag.c_str(),
+            followerId.c_str());
+
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            {}, // flags
+            cookie++);
+    }
+}
+
+void TDestroyFollowerSessionsActor::HandleDestroySessionResponse(
+    const TEvIndexTablet::TEvDestroySessionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Follower session destruction  failed for %s with error %s",
+            LogTag.c_str(),
+            FollowerIds[ev->Cookie].c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Follower session destroyed for %s",
+        LogTag.c_str(),
+        FollowerIds[ev->Cookie].c_str());
+
+    if (++DestroyedSessions == FollowerIds.size()) {
+        ReplyAndDie(ctx, {});
+    }
+}
+
+void TDestroyFollowerSessionsActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TDestroyFollowerSessionsActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    if (HasError(error)) {
+        Response =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(error);
+    }
+    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
+
+    Die(ctx);
+}
+
+STFUNC(TDestroyFollowerSessionsActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvDestroySessionResponse,
+            HandleDestroySessionResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            break;
+    }
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -63,7 +224,8 @@ void TIndexTabletActor::HandleDestroySession(
         ctx,
         std::move(requestInfo),
         sessionId,
-        sessionSeqNo);
+        sessionSeqNo,
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,10 +327,33 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    // TODO(#1350): destroy follower sessions
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
 
-    auto response = std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>();
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+    if (followerIds.empty()) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s DestroySession completed",
+            LogTag.c_str());
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s DestroySession completed - local"
+        ", destroying follower sessions (%s)",
+        LogTag.c_str(),
+        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+
+    auto actor = std::make_unique<TDestroyFollowerSessionsActor>(
+        LogTag,
+        args.RequestInfo,
+        args.Request,
+        followerIds,
+        std::move(response));
+
+    NCloud::Register(ctx, std::move(actor));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

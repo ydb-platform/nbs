@@ -2659,6 +2659,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle2,
             0,
             TString(1_MB, 'a'));
+
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(shardId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.size());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                sessions[0].GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.ClientId,
+                sessions[0].GetClientId());
+        }
+
+        service.DestroySession(headers);
+
+        for (const auto& shardId: {shard1Id, shard2Id}) {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(shardId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            const auto& sessions = response.GetSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, sessions.size());
+        }
     }
 
     Y_UNIT_TEST(ShouldCreateNodeInFollowerViaLeader)
@@ -2995,6 +3034,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             listNodesResponse.GetNodes(1).GetSize());
+
+        service.UnlinkNode(headers, RootNodeId, "file1");
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse.GetNodes(0).GetSize());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
         // TODO(#1350): test XAttr requests
     }
