@@ -13,10 +13,6 @@ SRCS(
     service.go
 )
 
-GO_TEST_SRCS(
-    delete_image_task_test.go
-)
-
 END()
 
 RECURSE(

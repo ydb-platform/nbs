@@ -10,10 +10,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
-	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,11 +50,6 @@ func (t *deleteImageTask) Run(
 		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 	}
 
-	err = t.scheduleRetireBaseDisksTasks(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -91,35 +84,10 @@ func (t *deleteImageTask) deleteImage(
 	return deleteImage(
 		ctx,
 		execCtx,
+		t.config,
 		t.scheduler,
 		t.storage,
 		t.poolService,
 		t.request.ImageId,
 	)
-}
-
-func (t *deleteImageTask) scheduleRetireBaseDisksTasks(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	for _, c := range t.config.GetDefaultDiskPoolConfigs() {
-		_, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_"+c.GetZoneId()),
-			"pools.RetireBaseDisks",
-			"",
-			&pools_protos.RetireBaseDisksRequest{
-				ImageId:          t.request.ImageId,
-				ZoneId:           c.GetZoneId(),
-				UseBaseDiskAsSrc: true,
-			},
-			t.request.OperationCloudId,
-			t.request.OperationFolderId,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
