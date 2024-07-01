@@ -2282,6 +2282,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(0, DefaultBlockSize * BlockGroupSize * 3, 3);
         // Currently the data is written from 0th to (1 + BlockGroupSize * 10) = 641th block
         // Therefore, the next write should fail
+        auto stat =
+            service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(641 * DefaultBlockSize, stat.GetSize());
 
         auto data =
             GenerateValidateData(DefaultBlockSize * 360);
@@ -2366,7 +2369,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto& runtime = env.GetRuntime();
 
-        auto validateWriteData = [&](ui64 offset, ui64 size)
+        auto validateWriteData =
+            [&](ui64 offset, ui64 size, ui64 expectedFilesize)
         {
             auto data = GenerateValidateData(size);
 
@@ -2381,11 +2385,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataRequest));
             // clang-format on
             runtime.ClearCounters();
+
+            auto stat =
+                service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(expectedFilesize, stat.GetSize());
         };
 
-        validateWriteData(0, 4_KB);
-        validateWriteData(4_KB, 4_KB);
-        validateWriteData(1, 128_KB);
+        validateWriteData(0, 4_KB, 4_KB);
+        validateWriteData(4_KB, 4_KB, 8_KB);
+        validateWriteData(1, 128_KB, 1 + 128_KB);
     }
 
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)

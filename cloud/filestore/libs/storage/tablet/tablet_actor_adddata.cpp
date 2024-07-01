@@ -108,6 +108,11 @@ void TIndexTabletActor::ExecuteTx_AddData(
     TTxIndexTablet::TAddData& args)
 {
     Y_UNUSED(ctx, tx, args);
+
+    // Note: unlike ExecuteTx_WriteData, we do not need to call UpdateNode here,
+    // as it is done in AddBlob operation. If unaligned data is to be supported
+    // for AddData, UpdateNode should be called here as well, analogously to
+    // WriteData.
 }
 
 void TIndexTabletActor::CompleteTx_AddData(
