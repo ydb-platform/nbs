@@ -66,7 +66,7 @@ bool TIndexTabletActor::PrepareTx_FilterAliveNodes(
     TIndexTabletDatabase db(tx.DB);
 
     args.CommitId = GetCurrentCommitId();
-    TMaybe<IIndexState::TNode> node;
+    TMaybe<IIndexTabletDatabase::TNode> node;
 
     bool ready = true;
 

@@ -72,7 +72,7 @@ bool TIndexTabletState::GenerateBlobId(
 }
 
 void TIndexTabletState::Truncate(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     ui64 currentSize,
@@ -93,7 +93,7 @@ void TIndexTabletState::Truncate(
 }
 
 void TIndexTabletState::TruncateRange(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     TByteRange range)
@@ -160,7 +160,7 @@ void TIndexTabletState::ZeroRange(
 }
 
 void TIndexTabletState::DeleteRange(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TByteRange& range)
@@ -309,7 +309,7 @@ void TIndexTabletState::FindFreshBytes(
 }
 
 void TIndexTabletState::WriteFreshBytes(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     ui64 offset,
@@ -333,7 +333,7 @@ void TIndexTabletState::WriteFreshBytes(
 }
 
 void TIndexTabletState::WriteFreshBytesDeletionMarker(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     ui64 offset,
@@ -460,7 +460,7 @@ void TIndexTabletState::WriteFreshBlock(
 }
 
 void TIndexTabletState::MarkFreshBlocksDeleted(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,
@@ -752,7 +752,7 @@ TMixedBlobMeta TIndexTabletState::FindBlob(ui32 rangeId, TPartialBlobId blobId) 
 }
 
 void TIndexTabletState::MarkMixedBlocksDeleted(
-    IIndexTabletDatabase& db,
+    TIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     ui32 blockIndex,

@@ -45,7 +45,7 @@ namespace NCloud::NFileStore::NStorage {
  *  - NodeRefs_Ver
  *  - CheckpointNodes
  */
-class IIndexState
+class IIndexTabletDatabase
 {
 public:
     struct TNode
@@ -77,7 +77,7 @@ public:
         ui64 Version;
     };
 
-    virtual ~IIndexState() = default;
+    virtual ~IIndexTabletDatabase() = default;
 
     //
     // Nodes
@@ -170,184 +170,6 @@ public:
         ui64 checkpointId,
         TVector<ui64>& nodes,
         size_t maxCount = 100) = 0;
-};
-
-///////////////////////////////////////////////////////////////////////////////
-
-/**
- * @brief This interface contains all the methods that are needed for RW
- * transactions that modify inode index-related tables.
- */
-class IIndexTabletDatabase : public IIndexState
-{
-public:
-    virtual ~IIndexTabletDatabase() = default;
-
-    //
-    // FileSystem stats
-    //
-
-#define FILESTORE_DECLARE_STATS(name, ...)                                     \
-    virtual void Write##name(ui64 value) = 0;                                  \
-// FILESTORE_DECLARE_STATS
-
-FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
-
-#undef FILESTORE_DECLARE_STATS
-
-    //
-    // Nodes
-    //
-
-    virtual void WriteNode(
-        ui64 nodeId,
-        ui64 commitId,
-        const NProto::TNode& attrs) = 0;
-
-    virtual void DeleteNode(ui64 nodeId) = 0;
-
-    //
-    // Nodes_Ver
-    //
-
-    virtual void WriteNodeVer(
-        ui64 nodeId,
-        ui64 minCommitId,
-        ui64 maxCommitId,
-        const NProto::TNode& attrs) = 0;
-
-    virtual void DeleteNodeVer(ui64 nodeId, ui64 commitId) = 0;
-
-    //
-    // NodeAttrs
-    //
-
-    virtual void WriteNodeAttr(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        const TString& value,
-        ui64 version) = 0;
-
-    virtual void DeleteNodeAttr(ui64 nodeId, const TString& name) = 0;
-
-    //
-    // NodeAttrs_Ver
-    //
-
-    virtual void WriteNodeAttrVer(
-        ui64 nodeId,
-        ui64 minCommitId,
-        ui64 maxCommitId,
-        const TString& name,
-        const TString& value,
-        ui64 version) = 0;
-
-    virtual void DeleteNodeAttrVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name) = 0;
-
-    //
-    // NodeRefs
-    //
-
-    virtual void WriteNodeRef(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& followerId,
-        const TString& followerName) = 0;
-
-    virtual void DeleteNodeRef(ui64 nodeId, const TString& name) = 0;
-
-    //
-    // NodeRefs_Ver
-    //
-
-    virtual void WriteNodeRefVer(
-        ui64 nodeId,
-        ui64 minCommitId,
-        ui64 maxCommitId,
-        const TString& name,
-        ui64 childNode,
-        const TString& followerId,
-        const TString& followerName) = 0;
-
-    virtual void DeleteNodeRefVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name) = 0;
-
-    //
-    // CheckpointNodes
-    //
-
-    virtual void WriteCheckpointNode(ui64 checkpointId, ui64 nodeId) = 0;
-
-    virtual void DeleteCheckpointNode(ui64 checkpointId, ui64 nodeId) = 0;
-
-    //
-    // DupCache
-    //
-
-    virtual void WriteSessionDupCacheEntry(
-        const NProto::TDupCacheEntry& entry) = 0;
-
-    virtual void DeleteSessionDupCacheEntry(
-        const TString& sessionId,
-        ui64 entryId) = 0;
-
-    // Following methods are needed because UnlinkNode calls Truncate, which
-    // in turn modifies tables, which modifies tables that are not related to
-    // the inode index.
-
-    //
-    // FreshBytes
-    //
-
-    virtual void WriteFreshBytes(
-        ui64 nodeId,
-        ui64 commitId,
-        ui64 offset,
-        TStringBuf data) = 0;
-
-    virtual void WriteFreshBytesDeletionMarker(
-        ui64 nodeId,
-        ui64 commitId,
-        ui64 offset,
-        ui64 len) = 0;
-
-    //
-    // FreshBlocks
-    //
-
-    virtual void MarkFreshBlockDeleted(
-        ui64 nodeId,
-        ui64 minCommitId,
-        ui64 maxCommitId,
-        ui32 blockIndex) = 0;
-
-    //
-    // DeletionMarkers
-    //
-
-    virtual void WriteDeletionMarkers(
-        ui32 rangeId,
-        ui64 nodeId,
-        ui64 commitId,
-        ui32 blockIndex,
-        ui32 blocksCount) = 0;
-
-    //
-    // CompactionMap
-    //
-
-    virtual void WriteCompactionMap(
-        ui32 rangeId,
-        ui32 blobsCount,
-        ui32 deletionsCount) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

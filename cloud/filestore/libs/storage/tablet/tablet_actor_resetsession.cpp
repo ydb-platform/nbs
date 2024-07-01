@@ -86,7 +86,7 @@ bool TIndexTabletActor::PrepareTx_ResetSession(
             continue;
         }
 
-        TMaybe<IIndexState::TNode> node;
+        TMaybe<IIndexTabletDatabase::TNode> node;
         if (!ReadNode(db, handle.GetNodeId(), commitId, node)) {
             ready = false;
         } else {

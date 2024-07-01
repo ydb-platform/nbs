@@ -11,7 +11,7 @@ namespace NCloud::NFileStore::NStorage {
  * @brief Stores the state of the index tables in memory. Can be used to perform
  * read-only operations.
  */
-class TInMemoryIndexState : public IIndexState
+class TInMemoryIndexState : public IIndexTabletDatabase
 {
 public:
     TInMemoryIndexState() = default;
@@ -20,13 +20,13 @@ public:
     // Nodes
     //
 
-    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<IIndexState::TNode>& node) override;
+    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // Nodes_Ver
     //
 
-    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<IIndexState::TNode>& node) override;
+    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // NodeAttrs
@@ -36,12 +36,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexState::TNodeAttr>& attr) override;
+        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrs(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexState::TNodeAttr>& attrs) override;
+        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeAttrs_Ver
@@ -51,12 +51,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexState::TNodeAttr>& attr) override;
+        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexState::TNodeAttr>& attrs) override;
+        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeRefs
@@ -66,13 +66,13 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexState::TNodeRef>& ref) override;
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<IIndexState::TNodeRef>& refs,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
         TString* next = nullptr) override;
 
@@ -89,12 +89,12 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<IIndexState::TNodeRef>& ref) override;
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<IIndexState::TNodeRef>& refs) override;
+        TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
 
     //
     // CheckpointNodes
