@@ -1,0 +1,5 @@
+RECURSE(
+    fs
+    iface
+    keyring
+)

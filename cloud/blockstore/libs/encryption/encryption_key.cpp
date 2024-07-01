@@ -1,6 +1,6 @@
 #include "encryption_key.h"
 
-#include <cloud/storage/core/libs/keyring/keyring.h>
+#include <cloud/storage/core/libs/endpoints/keyring/keyring.h>
 
 #include <library/cpp/string_utils/base64/base64.h>
 

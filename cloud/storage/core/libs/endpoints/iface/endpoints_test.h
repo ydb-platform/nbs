@@ -1,9 +1,5 @@
 #pragma once
 
-#include "public.h"
-
-#include "keyring.h"
-
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/generic/string.h>
@@ -26,13 +22,5 @@ struct IMutableEndpointStorage
     virtual NProto::TError RemoveEndpoint(
         const TString& key) = 0;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-IMutableEndpointStoragePtr CreateKeyringMutableEndpointStorage(
-    TString rootKeyringDesc,
-    TString endpointsKeyringDesc);
-
-IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath);
 
 }   // namespace NCloud

@@ -19,7 +19,7 @@ target_link_libraries(blockstore-libs-encryption PUBLIC
   blockstore-libs-diagnostics
   blockstore-libs-service
   core-libs-common
-  core-libs-keyring
+  core-libs-endpoints-keyring
   OpenSSL::OpenSSL
 )
 target_sources(blockstore-libs-encryption PRIVATE

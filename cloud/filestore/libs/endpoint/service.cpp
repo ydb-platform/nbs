@@ -10,7 +10,7 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 
 #include <util/generic/map.h>
 #include <util/system/sysstat.h>

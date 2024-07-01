@@ -1,6 +1,6 @@
-#include "endpoints.h"
+#include "fs_endpoints.h"
 
-#include "endpoints_test.h"
+#include "fs_endpoints_test.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -38,25 +38,6 @@ struct TStorages
     IMutableEndpointStoragePtr MutableEndpointStorage;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-TStorages InitKeyringStorages()
-{
-    const TString guid = CreateGuidAsString();
-    const TString nbsDesc = "nbs_" + guid;
-    const TString endpointsDesc = "nbs_endpoints_" + guid;
-
-    auto endpointStorage = CreateKeyringEndpointStorage(
-        nbsDesc,
-        endpointsDesc,
-        true /* notImplementedErrorIsFatal */);
-
-    auto mutableEndpointStorage = CreateKeyringMutableEndpointStorage(
-        nbsDesc,
-        endpointsDesc);
-
-    return {endpointStorage, mutableEndpointStorage};
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,7 +56,7 @@ TStorages InitFileStorages()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TEndpointsTest)
+Y_UNIT_TEST_SUITE(TFileEndpointsTest)
 {
     void ShouldGetStoredEndpoints(const TStorages& storages)
     {
@@ -125,11 +106,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointsFromKeyring)
-    {
-        ShouldGetStoredEndpoints(InitKeyringStorages());
-    }
-
     Y_UNIT_TEST(ShouldGetStoredEndpointsFromFiles)
     {
         ShouldGetStoredEndpoints(InitFileStorages());
@@ -170,11 +146,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         UNIT_ASSERT(comparator.Equals(*storedRequest, request));
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointByIdFromKeyring)
-    {
-        ShouldGetStoredEndpointById(InitKeyringStorages());
-    }
-
     Y_UNIT_TEST(ShouldGetStoredEndpointByIdFromFiles)
     {
         ShouldGetStoredEndpointById(InitFileStorages());
@@ -212,11 +183,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
             E_INVALID_STATE,
             requestOrError.GetError().GetCode(),
             requestOrError.GetError());
-    }
-
-    Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromKeyring)
-    {
-        ShouldNotGetStoredEndpointByWrongId(InitKeyringStorages());
     }
 
     Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromFiles)

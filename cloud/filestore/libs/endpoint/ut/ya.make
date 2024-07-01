@@ -7,7 +7,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/storage/core/libs/keyring
+    cloud/storage/core/libs/endpoints/fs
 )
 
 END()

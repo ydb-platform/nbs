@@ -8,7 +8,7 @@ TAG(
 SIZE(MEDIUM)
 
 DEPENDS(
-    cloud/storage/core/libs/keyring/ut/bin
+    cloud/storage/core/libs/endpoints/keyring/ut/bin
 )
 
 TEST_SRCS(
