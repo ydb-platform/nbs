@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -21,6 +22,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromSnapshotTask struct {
+	config            *config.ImagesConfig
 	performanceConfig *performance_config.PerformanceConfig
 	scheduler         tasks.Scheduler
 	storage           resources.Storage
@@ -194,6 +196,7 @@ func (t *createImageFromSnapshotTask) Cancel(
 	return deleteImage(
 		ctx,
 		execCtx,
+		t.config,
 		t.scheduler,
 		t.storage,
 		t.poolService,
