@@ -1498,7 +1498,12 @@ func TestStorageYDBRetiringOverlayDiskDuringRelocating(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(ctx, relocateInfo.TargetBaseDiskID, nil)
+	_, err = storage.RetireBaseDisk(
+		ctx,
+		relocateInfo.TargetBaseDiskID,
+		nil, // srcDisk
+		0,   // useImageSize
+	)
 	require.NoError(t, err)
 
 	// Should be idempotent.
@@ -1788,7 +1793,12 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 		})
 	}
 
-	rebaseInfos, err := storage.RetireBaseDisk(ctx, "unexisting", nil)
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		"unexisting",
+		nil, // srcDisk
+		0,   // useImageSize
+	)
 	require.NoError(t, err)
 	require.Empty(t, rebaseInfos)
 
@@ -1842,7 +1852,12 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 	newBaseDisks := make([]BaseDisk, 0)
 
 	for _, baseDisk := range oldBaseDisks {
-		rebaseInfos, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil)
+		rebaseInfos, err := storage.RetireBaseDisk(
+			ctx,
+			baseDisk.ID,
+			nil, // srcDisk
+			0,   // useImageSize
+		)
 		require.NoError(t, err)
 		require.NotEmpty(t, rebaseInfos)
 
@@ -1855,7 +1870,12 @@ func TestStorageYDBRetireBaseDisks(t *testing.T) {
 		}
 
 		// Check idempotency.
-		actual, err := storage.RetireBaseDisk(ctx, baseDisk.ID, nil)
+		actual, err := storage.RetireBaseDisk(
+			ctx,
+			baseDisk.ID,
+			nil, // srcDisk
+			0,   // useImageSize
+		)
 		require.NoError(t, err)
 		require.ElementsMatch(t, rebaseInfos, actual)
 
@@ -1984,7 +2004,12 @@ func TestStorageYDBBaseDiskShouldNotBeFreeAfterRetireStarted(t *testing.T) {
 	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot2)
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil)
+	_, err = storage.RetireBaseDisk(
+		ctx,
+		baseDisks[0].ID,
+		nil, // srcDisk
+		0,   // useImageSize
+	)
 	require.NoError(t, err)
 
 	_, err = storage.AcquireBaseDiskSlot(ctx, "image", slot3)
@@ -2155,7 +2180,12 @@ func TestStorageYDBRetireBaseDiskForPoolWithImageSize(t *testing.T) {
 	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(ctx, baseDisks[0].ID, nil)
+	_, err = storage.RetireBaseDisk(
+		ctx,
+		baseDisks[0].ID,
+		nil, // srcDisk
+		0,   // useImageSize
+	)
 	require.NoError(t, err)
 
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
@@ -2177,14 +2207,13 @@ func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
-	imageSize := uint64(10)
-	err = storage.ConfigurePool(ctx, "image", "zone", 1, imageSize)
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
 	require.NoError(t, err)
 
 	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(baseDisks))
-	require.Equal(t, baseDiskUnitSize, baseDisks[0].Size)
+	require.Equal(t, uint64(0), baseDisks[0].Size)
 
 	baseDisks[0].CreateTaskID = "create"
 	err = storage.BaseDisksScheduled(ctx, baseDisks)
@@ -2196,30 +2225,112 @@ func TestStorageYDBRetireBaseDiskForDeletedPool(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, len(actual))
 
-	_, err = storage.AcquireBaseDiskSlot(
-		ctx,
-		"image",
-		Slot{
-			OverlayDisk: &types.Disk{
-				ZoneId: "zone",
-				DiskId: "disk",
+	for i := 0; i < 2; i++ {
+		_, err = storage.AcquireBaseDiskSlot(
+			ctx,
+			"image",
+			Slot{
+				OverlayDisk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk" + string(i),
+				},
 			},
-		},
-	)
-	require.NoError(t, err)
+		)
+		require.NoError(t, err)
+	}
 
 	err = storage.DeletePool(ctx, "image", "zone")
 	require.NoError(t, err)
 
-	_, err = storage.RetireBaseDisk(
+	rebaseInfos, err := storage.RetireBaseDisk(
 		ctx,
 		baseDisks[0].ID,
 		&types.Disk{
 			ZoneId: baseDisks[0].ZoneID,
 			DiskId: baseDisks[0].ID,
 		},
+		0, // useImageSize
 	)
 	require.NoError(t, err)
+
+	require.Equal(t, 2, len(rebaseInfos))
+	require.Equal(
+		t,
+		rebaseInfos[0].TargetBaseDiskID,
+		rebaseInfos[1].TargetBaseDiskID,
+	)
+
+	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, uint64(0), baseDisks[0].Size)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBRetireBaseDiskForDeletedPoolUsingImageSize(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.Equal(t, uint64(0), baseDisks[0].Size)
+
+	baseDisks[0].CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, baseDisks)
+	require.NoError(t, err)
+	err = storage.BaseDiskCreated(ctx, baseDisks[0])
+	require.NoError(t, err)
+
+	actual, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(actual))
+
+	for i := 0; i < 2; i++ {
+		_, err = storage.AcquireBaseDiskSlot(
+			ctx,
+			"image",
+			Slot{
+				OverlayDisk: &types.Disk{
+					ZoneId: "zone",
+					DiskId: "disk" + string(i),
+				},
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	err = storage.DeletePool(ctx, "image", "zone")
+	require.NoError(t, err)
+
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		baseDisks[0].ID,
+		&types.Disk{
+			ZoneId: baseDisks[0].ZoneID,
+			DiskId: baseDisks[0].ID,
+		},
+		1, // useImageSize
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, len(rebaseInfos))
+	require.Equal(
+		t,
+		rebaseInfos[0].TargetBaseDiskID,
+		rebaseInfos[1].TargetBaseDiskID,
+	)
 
 	baseDisks, err = storage.TakeBaseDisksToSchedule(ctx)
 	require.NoError(t, err)
@@ -2467,6 +2578,7 @@ func TestStorageYDBDeletePoolWhenRetiringIsInFlight(t *testing.T) {
 			ZoneId: baseDisks[0].ZoneID,
 			DiskId: baseDisks[0].ID,
 		},
+		0, // useImageSize
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(rebaseInfos))

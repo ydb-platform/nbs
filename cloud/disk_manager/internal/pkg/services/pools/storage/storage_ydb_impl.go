@@ -3027,7 +3027,6 @@ func (s *storageYDB) getNotRetiringBaseDisks(
 	zoneID string,
 ) ([]baseDisk, error) {
 
-	// TODO: use join here.
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
