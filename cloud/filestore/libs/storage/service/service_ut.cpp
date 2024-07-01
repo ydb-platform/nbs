@@ -2386,8 +2386,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             // clang-format on
             runtime.ClearCounters();
 
-            auto stat = service.GetNodeAttr(headers, fs, RootNodeId, "file")
-                            ->Record.GetNode();
+            auto stat =
+                service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
             UNIT_ASSERT_VALUES_EQUAL(expectedFilesize, stat.GetSize());
         };
 
