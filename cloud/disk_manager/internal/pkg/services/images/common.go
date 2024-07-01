@@ -6,6 +6,7 @@ import (
 
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -19,6 +20,7 @@ import (
 func deleteImage(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	config *config.ImagesConfig,
 	scheduler tasks.Scheduler,
 	storage resources.Storage,
 	poolService pools.Service,
@@ -59,6 +61,17 @@ func deleteImage(
 		)
 	}
 
+	err = scheduleRetireBaseDisksTasks(
+		ctx,
+		execCtx,
+		config,
+		scheduler,
+		*imageMeta,
+	)
+	if err != nil {
+		return err
+	}
+
 	// Hack for NBS-2225.
 	if imageMeta.DeleteTaskID != selfTaskID {
 		return scheduler.WaitTaskEnded(ctx, imageMeta.DeleteTaskID)
@@ -84,7 +97,35 @@ func deleteImage(
 	return storage.ImageDeleted(ctx, imageID, time.Now())
 }
 
-////////////////////////////////////////////////////////////////////////////////
+func scheduleRetireBaseDisksTasks(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	config *config.ImagesConfig,
+	scheduler tasks.Scheduler,
+	imageMeta resources.ImageMeta,
+) error {
+
+	for _, c := range config.GetDefaultDiskPoolConfigs() {
+		_, err := scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_"+c.GetZoneId()),
+			"pools.RetireBaseDisks",
+			"",
+			&pools_protos.RetireBaseDisksRequest{
+				ImageId:          imageMeta.ID,
+				ZoneId:           c.GetZoneId(),
+				UseBaseDiskAsSrc: true,
+				UseImageSize:     imageMeta.Size,
+			},
+			"",
+			"",
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func configureImagePools(
 	ctx context.Context,

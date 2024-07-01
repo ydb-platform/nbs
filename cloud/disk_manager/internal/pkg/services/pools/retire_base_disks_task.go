@@ -114,8 +114,9 @@ func (t *retireBaseDisksTask) Run(
 				zoneID,
 			),
 			&protos.RetireBaseDiskRequest{
-				BaseDiskId: baseDiskID,
-				SrcDisk:    srcDisk,
+				BaseDiskId:   baseDiskID,
+				SrcDisk:      srcDisk,
+				UseImageSize: t.request.UseImageSize,
 			},
 		)
 		if err != nil {

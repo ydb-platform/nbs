@@ -51,6 +51,7 @@ func (t *retireBaseDiskTask) Run(
 		ctx,
 		baseDiskID,
 		t.request.SrcDisk,
+		t.request.UseImageSize,
 	)
 	if err != nil {
 		return err
