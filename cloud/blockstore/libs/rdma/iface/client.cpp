@@ -38,6 +38,7 @@ TClientConfig::TClientConfig(const NProto::TRdmaClient& config)
 {
     SET(QueueSize);
     SET(MaxBufferSize);
+    MaxBufferSize = 16 << 20;
     SET(WaitMode, Convert);
     SET(PollerThreads);
     SET(AdaptiveWaitSleepDelay, TDuration::MicroSeconds);

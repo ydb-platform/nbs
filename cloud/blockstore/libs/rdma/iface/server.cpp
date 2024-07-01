@@ -39,6 +39,7 @@ TServerConfig::TServerConfig(const NProto::TRdmaServer& config)
     SET(Backlog);
     SET(QueueSize);
     SET(MaxBufferSize);
+    MaxBufferSize = 16 << 20;
     SET(KeepAliveTimeout, TDuration::MilliSeconds);
     SET(WaitMode, Convert);
     SET(PollerThreads);
