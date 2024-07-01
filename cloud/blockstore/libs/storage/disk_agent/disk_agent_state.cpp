@@ -852,11 +852,13 @@ void TDiskAgentState::StopTarget()
     }
 }
 
-void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended) {
+void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended)
+{
     PartiallySuspended = partiallySuspended;
 }
 
-bool TDiskAgentState::GetPartiallySuspended() const {
+bool TDiskAgentState::GetPartiallySuspended() const
+{
     return PartiallySuspended;
 }
 

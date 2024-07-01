@@ -49,9 +49,7 @@ void TDiskAgentActor::HandlePartiallySuspendAgent(
     ctx.Schedule(delay, new TEvDiskAgentPrivate::TEvCancelSuspensionRequest());
     State->SetPartiallySuspended(true);
 
-    // There is no need in updating session cache for the primary agent since it
-    // updates cache on every change anyway.
-    if (SessionCacheActor && AgentConfig->GetTemporaryAgent()) {
+    if (SessionCacheActor) {
         PartiallySuspendAgentRequestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
         NCloud::Send<TEvDiskAgentPrivate::TEvUpdateSessionCacheRequest>(
