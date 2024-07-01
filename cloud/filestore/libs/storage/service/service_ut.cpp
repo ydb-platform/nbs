@@ -2282,8 +2282,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(0, DefaultBlockSize * BlockGroupSize * 3, 3);
         // Currently the data is written from 0th to (1 + BlockGroupSize * 10) = 641th block
         // Therefore, the next write should fail
-        auto stat = service.GetNodeAttr(headers, fs, RootNodeId, "file")
-                        ->Record.GetNode();
+        auto stat =
+            service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
         UNIT_ASSERT_VALUES_EQUAL(641 * DefaultBlockSize, stat.GetSize());
 
         auto data =
