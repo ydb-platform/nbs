@@ -61,7 +61,7 @@ func deleteImage(
 		)
 	}
 
-	err = scheduleRetireBaseDisksTasks(
+	err = scheduleRetireBaseDisks(
 		ctx,
 		execCtx,
 		config,
@@ -97,7 +97,7 @@ func deleteImage(
 	return storage.ImageDeleted(ctx, imageID, time.Now())
 }
 
-func scheduleRetireBaseDisksTasks(
+func scheduleRetireBaseDisks(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	config *config.ImagesConfig,
@@ -107,7 +107,11 @@ func scheduleRetireBaseDisksTasks(
 
 	for _, c := range config.GetDefaultDiskPoolConfigs() {
 		_, err := scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_"+c.GetZoneId()),
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				"retire_base_disks_"+execCtx.GetTaskID()+
+					":"+c.GetZoneId()+":"+imageMeta.ID,
+			),
 			"pools.RetireBaseDisks",
 			"",
 			&pools_protos.RetireBaseDisksRequest{
