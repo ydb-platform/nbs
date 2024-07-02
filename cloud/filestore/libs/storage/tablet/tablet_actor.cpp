@@ -524,6 +524,41 @@ void TIndexTabletActor::HandleSessionDisconnected(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NKikimr::NMetrics::TResourceMetrics* TIndexTabletActor::GetResourceMetrics()
+{
+    return Executor()->GetResourceMetrics();
+}
+
+void TIndexTabletActor::UpdateNetworkStat(
+    const TInstant& now,
+    ui64 value,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    GetResourceMetrics()->Network.Increment(value, now);
+
+    std::ostringstream oss;
+    oss << "Network + " << value;
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
+}
+
+void TIndexTabletActor::UpdateStorageStat(i64 value, const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    GetResourceMetrics()->StorageUser.Increment(value);
+
+    std::ostringstream oss;
+    oss << "StorageUsed + " << value;
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
+}
+
+void TIndexTabletActor::UpdateExecutorStats(const TActorContext& ctx)
+{
+    GetResourceMetrics()->TryUpdate(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::HandleGetFileSystemConfig(
     const TEvIndexTablet::TEvGetFileSystemConfigRequest::TPtr& ev,
     const TActorContext& ctx)

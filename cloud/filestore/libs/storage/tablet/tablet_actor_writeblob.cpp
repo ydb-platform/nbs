@@ -354,6 +354,9 @@ void TIndexTabletActor::HandleWriteBlobCompleted(
         "%s WriteBlob completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
+    
+    UpdateNetworkStat(ctx.Now(), msg->Size, ctx);
+    UpdateExecutorStats(ctx);
 
     WorkerActors.erase(ev->Sender);
 

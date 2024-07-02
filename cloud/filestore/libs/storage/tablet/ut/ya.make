@@ -20,6 +20,7 @@ SRCS(
     tablet_ut_nodes_filteralivenodes.cpp
     tablet_ut_sessions.cpp
     tablet_ut_subsessions.cpp
+    tablet_ut_stats.cpp
     tablet_ut_throttling.cpp
 )
 
