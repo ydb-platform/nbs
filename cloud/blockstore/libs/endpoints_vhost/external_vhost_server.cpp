@@ -1,5 +1,6 @@
 #include "external_vhost_server.h"
 
+#include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/common/device_path.h>
@@ -44,6 +45,16 @@ using namespace std::chrono_literals;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// When the process starts, there may be a delay until it can process the
+// signals. Therefore, it is possible that the child process will miss our first
+// SIGUSR1 signal. When requesting the first block of statistics, it is
+// necessary to make a reasonable number of repetitions.
+constexpr ui64 ReadFirstStatRetryCount = 10;
+
+// It doesn't make sense to make the delay less than
+// COMPLETION_STATS_WAIT_DURATION.
+constexpr auto StatReadDuration = TDuration::Seconds(1);
 
 enum class EEndpointType
 {
@@ -248,6 +259,9 @@ TChild SpawnChild(
     stdOut.LinkToWriteEnd(STDOUT_FILENO);
     stdErr.LinkToWriteEnd(STDERR_FILENO);
 
+    //freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w", stdout);
+    //freopen((TString("/tmp/err.") + ToString(::getpid())).c_str(), "w", stderr);
+
     // Following "const_cast"s are safe:
     // http://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
 
@@ -352,40 +366,65 @@ public:
 private:
     void ReadStats(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder {this};
+        TIntrusivePtr<TEndpointProcess> holder{this};
+        // Since it is not guaranteed that the vhost-server will receive a
+        // signal to generate statistics, we need to read the response with a
+        // timeout.
+        TContIOWithTimeout io{Process.StdOut, c, StatReadDuration * 2};
 
-        try {
-            ReadStatsImpl(c);
-        } catch (...) {
-            const auto logPriority = ShouldStop
-                ? TLOG_INFO
-                : TLOG_ERR;
+        bool firstRead = true;
+        for (ui64 i = 0; !ShouldStop; ++i) {
+            const auto startReadStatAt = TInstant::Now();
 
-            STORAGE_LOG(logPriority, "[" << ClientId << "] Read stats error: "
-                << CurrentExceptionMessage());
+            try {
+                ReadStatsImpl(io);
+                firstRead = false;
+            } catch (...) {
+                if (ShouldStop) {
+                    STORAGE_INFO(
+                        "[" << ClientId << "] Read stats error: "
+                            << CurrentExceptionMessage());
+                    break;
+                }
+
+                if (firstRead) {
+                    if (i < ReadFirstStatRetryCount) {
+                        STORAGE_WARN(
+                            "[" << ClientId << "] Retying read first stat #"
+                                << i + 1
+                                << ". Error: " << CurrentExceptionMessage());
+                    } else {
+                        STORAGE_ERROR(
+                            "[" << ClientId
+                                << "] Stop retying read first stat. Error: "
+                                << CurrentExceptionMessage());
+                        break;
+                    }
+                } else {
+                    STORAGE_ERROR(
+                        "[" << ClientId << "] Stop read stat. On #" << i
+                            << ". Error: " << CurrentExceptionMessage());
+                    break;
+                }
+            }
+
+            auto elapsedTime = TInstant::Now() - startReadStatAt;
+            if (elapsedTime < StatReadDuration) {
+                c->SleepT(StatReadDuration - elapsedTime);
+            }
         }
     }
 
-    void ReadStatsImpl(TCont* c)
+    void ReadStatsImpl(TContIOWithTimeout& io)
     {
-        TContIO io {Process.StdOut, c};
+        Process.SendSignal(SIGUSR1);
 
-        for (;;) {
-            c->SleepT(1s);
+        NJson::TJsonValue stats;
+        NJson::ReadJsonTree(io.ReadLine(), &stats, true);
 
-            if (ShouldStop) {
-                break;
-            }
+        STORAGE_DEBUG("[" << ClientId << "] " << stats);
 
-            Process.SendSignal(SIGUSR1);
-
-            NJson::TJsonValue stats;
-            NJson::ReadJsonTree(io.ReadLine(), &stats, true);
-
-            STORAGE_DEBUG("[" << ClientId << "] " << stats);
-
-            Stats.Update(stats);
-        }
+        Stats.Update(stats);
     }
 
     void ReadStdErr(TCont* c)
