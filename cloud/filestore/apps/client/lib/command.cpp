@@ -293,7 +293,7 @@ void TFileStoreCommand::Stop()
     TFileStoreServiceCommand::Stop();
 }
 
-void TFileStoreCommand::CreateSession()
+TFileStoreCommand::TSessionGuard TFileStoreCommand::CreateSession()
 {
     // TODO use ISession instead
     auto request = std::make_shared<NProto::TCreateSessionRequest>();
@@ -309,6 +309,24 @@ void TFileStoreCommand::CreateSession()
 
     Headers.SetClientId(ClientId);
     Headers.SetSessionId(sessionId);
+
+    return TSessionGuard(*this);
+}
+
+void TFileStoreCommand::DestroySession()
+{
+    if (Headers.GetSessionId().Empty()) {
+        return;
+    }
+
+    auto request = std::make_shared<NProto::TDestroySessionRequest>();
+    request->SetFileSystemId(FileSystemId);
+    request->MutableHeaders()->SetSessionId(Headers.GetSessionId());
+    request->MutableHeaders()->SetClientId(Headers.GetClientId());
+
+    TCallContextPtr ctx = MakeIntrusive<TCallContext>();
+    auto response = WaitFor(Client->DestroySession(ctx, std::move(request)));
+    CheckResponse(response);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

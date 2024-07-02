@@ -39,7 +39,7 @@ public:
 
     bool Execute() override
     {
-        CreateSession();
+        auto sessionGuard = CreateSession();
 
         const auto resolved = ResolvePath(Path, false);
         Y_ABORT_UNLESS(resolved.size() >= 2);
