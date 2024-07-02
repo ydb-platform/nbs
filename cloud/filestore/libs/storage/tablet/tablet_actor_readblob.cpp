@@ -450,6 +450,9 @@ void TIndexTabletActor::HandleReadBlobCompleted(
 
     WorkerActors.erase(ev->Sender);
 
+    UpdateNetworkStat(ctx.Now(), msg->Size, ctx);
+    UpdateExecutorStats(ctx);
+
     Metrics.ReadBlob.Update(msg->Count, msg->Size, msg->Time);
 }
 

@@ -552,17 +552,6 @@ void TIndexTabletActor::UpdateStorageStat(i64 value, const TActorContext& ctx)
     LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
 }
 
-void TIndexTabletActor::UpdateCPUUsageStat(ui64 value, const TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-    UserCPUConsumption += value;
-    GetResourceMetrics()->CPU.Increment(value);
-
-    std::ostringstream oss;
-    oss << "CPU + " << value;
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET, oss.str());
-}
-
 void TIndexTabletActor::UpdateExecutorStats(const TActorContext& ctx)
 {
     GetResourceMetrics()->TryUpdate(ctx);
