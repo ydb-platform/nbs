@@ -17,6 +17,7 @@ namespace NCloud::NFileStore{
     xxx(MissingSessionId)                                                      \
     xxx(CreateSessionError)                                                    \
     xxx(DescribeFileStoreError)                                                \
+    xxx(NodeNotFoundInFollower)                                                \
 // FILESTORE_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
