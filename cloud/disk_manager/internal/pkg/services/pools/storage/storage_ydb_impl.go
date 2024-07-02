@@ -3020,7 +3020,7 @@ func (s *storageYDB) getFreeBaseDisks(
 	return s.findBaseDisksTx(ctx, tx, ids)
 }
 
-func (s *storageYDB) getNotRetiringBaseDisks(
+func (s *storageYDB) getNonRetiringBaseDisks(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	imageID string,
@@ -3125,9 +3125,9 @@ func (s *storageYDB) retireBaseDisk(
 			return nil, err
 		}
 	} else {
-		// If pool is deleted then all not retiring disks is suitable for
+		// If pool is deleted then all non retiring base disks are suitable for
 		// rebasing.
-		freeBaseDisks, err = s.getNotRetiringBaseDisks(ctx, tx, imageID, zoneID)
+		freeBaseDisks, err = s.getNonRetiringBaseDisks(ctx, tx, imageID, zoneID)
 		if err != nil {
 			return nil, err
 		}
