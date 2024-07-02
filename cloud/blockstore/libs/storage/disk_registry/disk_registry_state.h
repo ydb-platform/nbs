@@ -497,7 +497,7 @@ public:
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDeviceId& uuid);
-    TVector<TDiskId> MarkDeviceAsClean(
+    TVector<TDiskId> MarkDevicesAsClean(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);

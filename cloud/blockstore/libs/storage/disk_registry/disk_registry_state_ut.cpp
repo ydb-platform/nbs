@@ -11602,7 +11602,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const auto& cleanDisks = state.MarkDeviceAsClean(
+                const auto& cleanDisks = state.MarkDevicesAsClean(
                     Now(),
                     db,
                     TVector<TString>{"uuid-1", "uuid-2"});
@@ -11641,7 +11641,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                const auto& cleanDisks = state.MarkDeviceAsClean(
+                const auto& cleanDisks = state.MarkDevicesAsClean(
                     Now(),
                     db,
                     TVector<TString>{"uuid-1", "uuid-2"});

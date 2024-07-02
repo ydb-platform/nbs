@@ -275,7 +275,7 @@ void TDiskRegistryActor::ExecuteCleanupDevices(
 {
     TDiskRegistryDatabase db(tx.DB);
     args.SyncDeallocatedDisks =
-        State->MarkDeviceAsClean(ctx.Now(), db, args.Devices);
+        State->MarkDevicesAsClean(ctx.Now(), db, args.Devices);
 }
 
 void TDiskRegistryActor::CompleteCleanupDevices(

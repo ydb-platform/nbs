@@ -3590,11 +3590,11 @@ TDiskRegistryState::TDiskId TDiskRegistryState::MarkDeviceAsClean(
     TDiskRegistryDatabase& db,
     const TDeviceId& uuid)
 {
-    auto ret = MarkDeviceAsClean(now, db, TVector<TDeviceId>{uuid});
+    auto ret = MarkDevicesAsClean(now, db, TVector<TDeviceId>{uuid});
     return ret.empty() ? "" : ret[0];
 }
 
-TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDeviceAsClean(
+TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDevicesAsClean(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TVector<TDeviceId>& uuids)
