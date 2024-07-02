@@ -31,7 +31,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
-#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -270,23 +269,18 @@ struct TBootstrap
     IServerStatsPtr ServerStats = CreateServerStatsStub();
     ISessionManagerPtr SessionManager;
     IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
-    IMutableEndpointStoragePtr MutableStorage = CreateFileMutableEndpointStorage(DirPath);
+    TTempDir EndpointsDir = TTempDir(DirPath);
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     NBD::IDeviceFactoryPtr NbdDeviceFactory;
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
     IEndpointManagerPtr EndpointManager;
 
-    TBootstrap()
-    {
-        MutableStorage->Init();
-    }
+    TBootstrap() = default;
 
     ~TBootstrap()
     {
         Stop();
-
-        MutableStorage->Remove();
     }
 
     void Start()
@@ -1675,10 +1669,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto [str, error] = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(error), error);
 
-            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+            auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
@@ -1754,10 +1748,10 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
             auto [str, error] = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(error), error);
 
-            auto keyOrError = bootstrap.MutableStorage->AddEndpoint(
+            auto ret = bootstrap.EndpointStorage->AddEndpoint(
                 request.GetUnixSocketPath(),
                 str);
-            UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
+            UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
         }
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
