@@ -143,6 +143,7 @@ type Storage interface {
 		ctx context.Context,
 		baseDiskID string,
 		srcDisk *types.Disk,
+		useImageSize uint64,
 	) ([]RebaseInfo, error)
 
 	IsBaseDiskRetired(ctx context.Context, baseDiskID string) (bool, error)

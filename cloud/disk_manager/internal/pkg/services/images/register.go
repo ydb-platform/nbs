@@ -41,6 +41,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromURL", func() tasks.Task {
 		return &createImageFromURLTask{
+			config:            config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
@@ -53,6 +54,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromImage", func() tasks.Task {
 		return &createImageFromImageTask{
+			config:            config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
@@ -65,6 +67,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromSnapshot", func() tasks.Task {
 		return &createImageFromSnapshotTask{
+			config:            config,
 			performanceConfig: performanceConfig,
 			scheduler:         taskScheduler,
 			storage:           storage,
@@ -90,6 +93,7 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.DeleteImage", func() tasks.Task {
 		return &deleteImageTask{
+			config:      config,
 			scheduler:   taskScheduler,
 			storage:     storage,
 			poolService: poolService,
