@@ -54,7 +54,9 @@ class LocalNbs(Daemon):
             kms_config=None,
             ping_path='/blockstore',
             rack="the_rack",
-            use_ic_version_check=False):
+            use_ic_version_check=False,
+            use_secure_registration=False,
+            grpc_ssl_port=None):
 
         if dynamic_storage_pools is not None:
             assert len(dynamic_storage_pools) >= 2
@@ -68,6 +70,7 @@ class LocalNbs(Daemon):
         self.__port_manager = yatest_common.PortManager()
         self.__grpc_port = grpc_port
         self.__grpc_trace = grpc_trace
+        self.__grpc_ssl_port = grpc_ssl_port
         if nbs_port is None:
             self.__nbs_port = self.__port_manager.get_port()
         else:
@@ -157,6 +160,7 @@ class LocalNbs(Daemon):
         self.__use_ic_version_check = use_ic_version_check
         self.__restart_interval = restart_interval
         self.__ping_path = ping_path
+        self.__use_secure_registration = use_secure_registration
 
         self.__init_daemon()
 
@@ -544,11 +548,20 @@ ModifyScheme {
 
         command += [
             "--domain", "Root",
-            "--node-broker", "localhost:" + str(self.__grpc_port),
             "--ic-port", str(self.__ic_port),
             "--scheme-shard-dir", "nbs",
             "--load-configs-from-cms",
         ]
+
+        if not self.__use_secure_registration or self.__grpc_ssl_port is None:
+            command += [
+                "--node-broker", "localhost:" + str(self.__grpc_port),
+            ]
+        else:
+            command += [
+                "--node-broker", "localhost:" + str(self.__grpc_ssl_port),
+                "--use-secure-registration",
+            ]
 
         if not self.__use_ic_version_check:
             command.append("--suppress-version-check")

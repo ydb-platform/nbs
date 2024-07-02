@@ -66,6 +66,12 @@ TOptionsYdbBase::TOptionsYdbBase()
         .RequiredArgument("PORT")
         .StoreResult(&NodeBrokerPort);
 
+    Opts.AddLongOption(
+        "use-secure-registration",
+        "Use secure connection to node broker")
+        .NoArgument()
+        .StoreTrue(&UseNodeBrokerSsl);
+
     Opts.AddLongOption("naming-file")
         .RequiredArgument("FILE")
         .StoreResult(&NameServiceConfig);

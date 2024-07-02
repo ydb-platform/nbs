@@ -98,6 +98,7 @@ constexpr TDuration Seconds(int s)
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
+    xxx(NodeRegistrationToken,       TString,               "root@builtin"    )\
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
 // BLOCKSTORE_SERVER_CONFIG
 
