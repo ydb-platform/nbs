@@ -78,17 +78,14 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
-    void CreateSimpleSsdDisk(
-        TServiceClient& service,
-        const TString& diskId,
-        const TString& cloudId)
+    void CreateSimpleSsdDisk(TServiceClient& service, const TString& diskId)
     {
         service.CreateVolume(
             diskId,
             2_GB / DefaultBlockSize,
             DefaultBlockSize,
             "",         // folderId
-            cloudId,    // cloudId
+            "",    // cloudId
             NCloud::NProto::STORAGE_MEDIA_SSD,
             NProto::TVolumePerformanceProfile(),
             TString(),  // placementGroupId
@@ -108,21 +105,21 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         TServiceClient service(runtime, nodeIdx);
 
         {
-            CreateSimpleSsdDisk(service, "disk_with_cloud_id", "cloud.id");
-            auto response = service.DescribeVolume("disk_with_cloud_id");
+            CreateSimpleSsdDisk(service, "without_prefix");
+            auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "disk_without_cloud_id", "");
-            response = service.DescribeVolume("disk_without_cloud_id");
+            CreateSimpleSsdDisk(service, "with_prefix");
+            response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            service.SendDestroyVolumeRequest("disk_with_cloud_id");
+            service.SendDestroyVolumeRequest("without_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             }
 
-            service.SendDestroyVolumeRequest("disk_without_cloud_id");
+            service.SendDestroyVolumeRequest("with_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -130,11 +127,11 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotDestroyDiskWithCloudId)
+    Y_UNIT_TEST(ShouldOnlyDestroyDisksWithSpecificDiskIdPrefix)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        config.SetDisableDiskWithCloudIdDestruction(true);
+        config.SetDestructionAllowedOnlyForDisksWithIdPrefix("with_prefix");
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         auto& runtime = env.GetRuntime();
@@ -142,21 +139,21 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         TServiceClient service(runtime, nodeIdx);
 
         {
-            CreateSimpleSsdDisk(service, "disk_with_cloud_id", "cloud.id");
-            auto response = service.DescribeVolume("disk_with_cloud_id");
+            CreateSimpleSsdDisk(service, "without_prefix");
+            auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "disk_without_cloud_id", "");
-            response = service.DescribeVolume("disk_without_cloud_id");
+            CreateSimpleSsdDisk(service, "with_prefix");
+            response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            service.SendDestroyVolumeRequest("disk_with_cloud_id");
+            service.SendDestroyVolumeRequest("without_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             }
 
-            service.SendDestroyVolumeRequest("disk_without_cloud_id");
+            service.SendDestroyVolumeRequest("with_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());

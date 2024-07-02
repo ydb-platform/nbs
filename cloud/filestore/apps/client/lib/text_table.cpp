@@ -44,6 +44,10 @@ void PrintRows(IOutputStream& out, const TTextTable& table)
         out << row.back();
     };
     const auto& rows = table.GetRows();
+    if (rows.empty()) {
+        return;
+    }
+
     for (size_t i = 0; i < rows.size() - 1; ++i) {
         printRow(rows[i]);
         out << Endl;

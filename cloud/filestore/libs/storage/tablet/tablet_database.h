@@ -22,6 +22,34 @@
 
 namespace NCloud::NFileStore::NStorage {
 
+////////////////////////////////////////////////////////////////////////////////
+
+#define FILESTORE_FILESYSTEM_STATS(xxx, ...)                                   \
+    xxx(LastNodeId,             __VA_ARGS__)                                   \
+    xxx(LastLockId,             __VA_ARGS__)                                   \
+    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
+    xxx(LastXAttr,              __VA_ARGS__)                                   \
+                                                                               \
+    xxx(UsedNodesCount,         __VA_ARGS__)                                   \
+    xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
+    xxx(UsedHandlesCount,       __VA_ARGS__)                                   \
+    xxx(UsedLocksCount,         __VA_ARGS__)                                   \
+    xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
+                                                                               \
+    xxx(FreshBlocksCount,       __VA_ARGS__)                                   \
+    xxx(MixedBlocksCount,       __VA_ARGS__)                                   \
+    xxx(MixedBlobsCount,        __VA_ARGS__)                                   \
+    xxx(DeletionMarkersCount,   __VA_ARGS__)                                   \
+    xxx(GarbageQueueSize,       __VA_ARGS__)                                   \
+    xxx(GarbageBlocksCount,     __VA_ARGS__)                                   \
+    xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
+    xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
+    xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
+    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
+    xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
+    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
+// FILESTORE_FILESYSTEM_STATS
+
 #define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
     xxx(CreateHandle,   __VA_ARGS__)                                           \
     xxx(CreateNode,     __VA_ARGS__)                                           \
@@ -57,7 +85,7 @@ public:
     void Write##name(ui64 value);                                              \
 // FILESTORE_DECLARE_STATS
 
-FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
+FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
 #undef FILESTORE_DECLARE_STATS
 
@@ -70,14 +98,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
     // Nodes
     //
 
-    void WriteNode(
+    void WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
+    void DeleteNode(ui64 nodeId);
+    bool ReadNode(
         ui64 nodeId,
         ui64 commitId,
-        const NProto::TNode& attrs);
-
-    void DeleteNode(ui64 nodeId);
-
-    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<IIndexTabletDatabase::TNode>& node) override;
+        TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // Nodes_Ver
@@ -132,10 +158,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS);
         const TString& value,
         ui64 version);
 
-    void DeleteNodeAttrVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name);
+    void DeleteNodeAttrVer(ui64 nodeId, ui64 commitId, const TString& name);
 
     bool ReadNodeAttrVer(
         ui64 nodeId,

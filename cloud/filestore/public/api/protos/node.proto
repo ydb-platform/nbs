@@ -371,6 +371,7 @@ message TSetNodeAttrRequest
     uint64 NodeId = 3;
 
     // IO handle.
+    // XXX seems to be unneeded
     uint64 Handle = 4;
 
     // Update.
@@ -415,6 +416,7 @@ message TGetNodeAttrRequest
     bytes Name = 4;
 
     // IO handle.
+    // XXX seems to be unneeded
     uint64 Handle = 5;
 
     // Specifies information to get.

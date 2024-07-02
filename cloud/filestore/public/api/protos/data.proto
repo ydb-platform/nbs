@@ -231,6 +231,7 @@ message TAllocateDataResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 // TruncateData request/response
+// XXX unused
 
 message TTruncateDataRequest
 {

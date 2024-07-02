@@ -349,6 +349,15 @@ public:
         ui64 minCommitId,
         ui64 maxCommitId);
 
+    void UnlinkExternalNode(
+        TIndexTabletDatabase& db,
+        ui64 parentNodeId,
+        const TString& name,
+        const TString& followerId,
+        const TString& followerName,
+        ui64 minCommitId,
+        ui64 maxCommitId);
+
     bool ReadNode(
         IIndexTabletDatabase& db,
         ui64 nodeId,

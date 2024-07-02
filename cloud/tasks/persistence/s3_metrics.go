@@ -83,7 +83,7 @@ func (m *s3Metrics) StatCall(
 					canceledCounter.Inc()
 				}
 			} else {
-				logging.Warn(ctx, "failed to process aws go sdk error %v", err)
+				logging.Warn(ctx, "failed to process aws go sdk error %v", *err)
 			}
 
 			return
@@ -100,6 +100,23 @@ func (m *s3Metrics) StatCall(
 		timeHistogram.RecordDuration(time.Since(start))
 		successCounter.Inc()
 	}
+}
+
+func (m *s3Metrics) OnRetry(req *request.Request) {
+	logging.Info(
+		req.Context(),
+		"retrying request %v for a %v time",
+		req.Operation.Name,
+		req.RetryCount+1,
+	)
+
+	subRegistry := m.registry.WithTags(map[string]string{
+		"call": req.Operation.Name,
+	})
+
+	// Should initialize all counters before using them, to avoid 'no data'.
+	retryCounter := subRegistry.Counter("retry")
+	retryCounter.Inc()
 }
 
 func newS3Metrics(registry metrics.Registry, callTimeout time.Duration) *s3Metrics {

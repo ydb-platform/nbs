@@ -5,34 +5,6 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_FILESYSTEM_STATS(xxx, ...)                                   \
-    xxx(LastNodeId,             __VA_ARGS__)                                   \
-    xxx(LastLockId,             __VA_ARGS__)                                   \
-    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
-    xxx(LastXAttr,              __VA_ARGS__)                                   \
-                                                                               \
-    xxx(UsedNodesCount,         __VA_ARGS__)                                   \
-    xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
-    xxx(UsedHandlesCount,       __VA_ARGS__)                                   \
-    xxx(UsedLocksCount,         __VA_ARGS__)                                   \
-    xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
-                                                                               \
-    xxx(FreshBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlocksCount,       __VA_ARGS__)                                   \
-    xxx(MixedBlobsCount,        __VA_ARGS__)                                   \
-    xxx(DeletionMarkersCount,   __VA_ARGS__)                                   \
-    xxx(GarbageQueueSize,       __VA_ARGS__)                                   \
-    xxx(GarbageBlocksCount,     __VA_ARGS__)                                   \
-    xxx(CheckpointNodesCount,   __VA_ARGS__)                                   \
-    xxx(CheckpointBlocksCount,  __VA_ARGS__)                                   \
-    xxx(CheckpointBlobsCount,   __VA_ARGS__)                                   \
-    xxx(FreshBytesCount,        __VA_ARGS__)                                   \
-    xxx(AttrsUsedBytesCount,    __VA_ARGS__)                                   \
-    xxx(DeletedFreshBytesCount, __VA_ARGS__)                                   \
-// FILESTORE_FILESYSTEM_STATS
-
-////////////////////////////////////////////////////////////////////////////////
-
 /**
  * @brief This interface contains a subset of the methods that can be performed over
  * the localDB tables. Those are all the operations, that are performed with

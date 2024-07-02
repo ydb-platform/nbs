@@ -20,4 +20,10 @@ inline ui64 ShardedId(ui64 id, ui32 shardNo)
     return (static_cast<ui64>(shardNo) << realBits) | (realMask & id);
 }
 
+inline ui32 ExtractShardNo(ui64 id)
+{
+    const auto realBits = 56U;
+    return id >> realBits;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

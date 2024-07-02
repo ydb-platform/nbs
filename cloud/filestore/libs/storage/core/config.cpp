@@ -43,6 +43,9 @@ namespace {
     xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
     xxx(MaxTruncateTxInflight,              ui32,   10                        )\
     xxx(CompactionRetryTimeout,             TDuration, TDuration::Seconds(1)  )\
+    xxx(BlobIndexOpsPriority,                                                  \
+            NProto::EBlobIndexOpsPriority,                                     \
+            NProto::BIOP_CLEANUP_FIRST                                        )\
                                                                                \
     xxx(FlushThresholdForBackpressure,      ui32,      128_MB                 )\
     xxx(CleanupThresholdForBackpressure,    ui32,      32768                  )\
@@ -159,6 +162,7 @@ namespace {
         TDuration,                                                             \
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
+    xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
@@ -194,6 +198,13 @@ IOutputStream& operator <<(
     NCloud::NProto::EAuthorizationMode mode)
 {
     return out << EAuthorizationMode_Name(mode);
+}
+
+IOutputStream& operator <<(
+    IOutputStream& out,
+    NProto::EBlobIndexOpsPriority biopp)
+{
+    return out << EBlobIndexOpsPriority_Name(biopp);
 }
 
 template <typename T>

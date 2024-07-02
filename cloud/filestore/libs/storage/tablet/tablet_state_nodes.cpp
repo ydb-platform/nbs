@@ -163,6 +163,26 @@ void TIndexTabletState::UnlinkNode(
     );
 }
 
+void TIndexTabletState::UnlinkExternalNode(
+    TIndexTabletDatabase& db,
+    ui64 parentNodeId,
+    const TString& name,
+    const TString& followerId,
+    const TString& followerName,
+    ui64 minCommitId,
+    ui64 maxCommitId)
+{
+    RemoveNodeRef(
+        db,
+        parentNodeId,
+        minCommitId,
+        maxCommitId,
+        name,
+        InvalidNodeId, // prevChildNodeId
+        followerId,
+        followerName);
+}
+
 bool TIndexTabletState::ReadNode(
     IIndexTabletDatabase& db,
     ui64 nodeId,

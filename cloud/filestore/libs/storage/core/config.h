@@ -206,6 +206,10 @@ public:
 
     bool GetNewLocalDBCompactionPolicyEnabled() const;
 
+    bool GetMultiTabletForwardingEnabled() const;
+
+    NProto::EBlobIndexOpsPriority GetBlobIndexOpsPriority() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;

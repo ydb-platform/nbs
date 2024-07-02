@@ -746,6 +746,9 @@ STFUNC(TIndexTabletActor::StateInit)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         FILESTORE_HANDLE_REQUEST(WaitReady, TEvIndexTablet)
 
@@ -784,6 +787,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(
             TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
             HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -836,6 +842,16 @@ STFUNC(TIndexTabletActor::StateZombie)
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
+
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);
             break;
@@ -868,6 +884,16 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollower,
+            HandleNodeCreatedInFollower);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle,
+            HandleNodeCreatedInFollowerUponCreateHandle);
+        HFunc(
+            TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower,
+            HandleNodeUnlinkedInFollower);
 
         default:
             HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET);

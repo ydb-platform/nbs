@@ -214,6 +214,10 @@ class NfsCliClient:
     def touch(self, cmd):
         return common.execute(cmd).stdout
 
+    @standard_command("rm")
+    def rm(self, cmd):
+        return common.execute(cmd).stdout
+
 
 def create_endpoint(client, filesystem, socket_path, socket_prefix, endpoint_storage_dir, mount_seqno=0, readonly=False):
     _uid = str(uuid.uuid4())

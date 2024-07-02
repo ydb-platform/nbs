@@ -54,7 +54,6 @@ private:
     const NProto::TNode Attrs;
     NProto::THeaders Headers;
     NProto::TCreateHandleResponse Response;
-    NProto::TCreateNodeResponse FollowerResponse;
 
 public:
     TCreateNodeInFollowerUponCreateHandleActor(
@@ -165,8 +164,7 @@ void TCreateNodeInFollowerUponCreateHandleActor::HandleCreateNodeResponse(
         FollowerId.c_str(),
         FollowerName.c_str());
 
-    FollowerResponse = std::move(msg->Record);
-    Response.MutableNodeAttr()->CopyFrom(FollowerResponse.GetNode());
+    *Response.MutableNodeAttr() = std::move(*msg->Record.MutableNode());
 
     ReplyAndDie(ctx, {});
 }
@@ -188,13 +186,15 @@ void TCreateNodeInFollowerUponCreateHandleActor::ReplyAndDie(
         *Response.MutableError() = std::move(error);
     }
 
+    // TODO(#1350): reply directly to the client (not to the tablet) upon
+    // poisoning
+    // or keep this RequestInfo in the ActiveTransactions list until this event
+    // gets processed by the tablet
     using TResponse =
         TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle;
     ctx.Send(ParentId, std::make_unique<TResponse>(
         std::move(RequestInfo),
-        std::move(FollowerResponse),
-        std::move(Response)
-    ));
+        std::move(Response)));
 
     Die(ctx);
 }
@@ -248,8 +248,16 @@ void TIndexTabletActor::HandleCreateHandle(
             auto error = MakeError(E_ARGUMENT, TStringBuilder() <<
                 "invalid follower id: "
                 << msg->Record.GetFollowerFileSystemId());
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Can't create handle: %s",
+                LogTag.c_str(),
+                FormatError(error).Quote().c_str());
+
             auto response = std::make_unique<TResponse>(std::move(error));
             NCloud::Reply(ctx, *ev, std::move(response));
+            return;
         }
     }
 
@@ -492,6 +500,10 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
 {
     RemoveTransaction(*args.RequestInfo);
 
+    if (!HasError(args.Error)) {
+        CommitDupCacheEntry(args.SessionId, args.RequestId);
+    }
+
     if (args.IsNewFollowerNode && !HasError(args.Error)) {
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
             "%s Creating node in follower upon CreateHandle: %s, %s",
@@ -519,7 +531,6 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
 
     if (!HasError(args.Error)) {
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
     }
 
@@ -539,12 +550,8 @@ void TIndexTabletActor::HandleNodeCreatedInFollowerUponCreateHandle(
 {
     auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvService::TEvCreateHandleResponse>(
-        msg->FollowerCreateNodeResponse.GetError());
-
-    if (!HasError(response->GetError())) {
-        response->Record = std::move(msg->CreateHandleResponse);
-    }
+    auto response = std::make_unique<TEvService::TEvCreateHandleResponse>();
+    response->Record = std::move(msg->CreateHandleResponse);
 
     CompleteResponse<TEvService::TCreateHandleMethod>(
         response->Record,

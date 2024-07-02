@@ -55,7 +55,6 @@ struct TIndexTabletState::TImpl
     TNodeIndexCache NodeIndexCache;
     TInMemoryIndexState InMemoryIndexState;
 
-
     TCheckpointStore Checkpoints;
     TChannels Channels;
 

@@ -144,3 +144,30 @@ def test_stat():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_write_ls_rm_ls():
+    client, results_path = __init_test()
+
+    data_file = os.path.join(common.output_path(), "data.txt")
+    with open(data_file, "w") as f:
+        f.write("some data")
+
+    out = client.create(
+        "fs0",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    out += client.ls("fs0", "/")
+    client.write("fs0", "/xxx", "--data", data_file)
+    out += __exec_ls(client, "fs0", "/")
+    out += client.rm("fs0", "/xxx")
+    out += __exec_ls(client, "fs0", "/")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret

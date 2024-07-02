@@ -998,6 +998,6 @@ message TStorageServiceConfig
     // Min scrubbing bandwidth in MiB/s.
     optional uint64 MinScrubbingBandwidth = 373;
 
-    // Destroy disk only with empty CloudId field
-    optional bool DisableDiskWithCloudIdDestruction = 374;
+    // Allow destruction only for those disks whose ids match a specific prefix.
+    optional string DestructionAllowedOnlyForDisksWithIdPrefix = 374;
 }
