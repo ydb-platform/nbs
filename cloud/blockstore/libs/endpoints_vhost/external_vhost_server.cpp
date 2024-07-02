@@ -138,7 +138,9 @@ struct TChild
     TFileHandle StdErr;
 
 public:
-    TChild() = default;
+    explicit TChild(pid_t pid)
+        : Pid{pid}
+    {}
 
     TChild(pid_t pid, TFileHandle stdIn, TFileHandle stdOut, TFileHandle stdErr)
         : Pid{pid}
@@ -170,14 +172,39 @@ public:
         StdErr.Swap(rhs.StdErr);
     }
 
-    int SendSignal(int sig) noexcept
+    int SendSignal(int sig) const noexcept
     {
         return ::kill(Pid, sig);
     }
 
-    void Terminate() noexcept
+    void Terminate() const noexcept
     {
         SendSignal(SIGTERM);
+    }
+
+    [[nodiscard]] NProto::TError Wait() const
+    {
+        int status = 0;
+
+        if (::waitpid(Pid, &status, 0) == -1) {
+            int err = errno;
+            return MakeError(
+                MAKE_SYSTEM_ERROR(err),
+                TStringBuilder() << "waitpid: " << ::strerror(err));
+        }
+
+        if (WIFSIGNALED(status)) {
+            const char* message =
+                WCOREDUMP(status) ? "core dump" : "terminated by a signal";
+
+            return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
+        }
+
+        if (WIFEXITED(status) && WEXITSTATUS(status)) {
+            return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
+        }
+
+        return {};
     }
 };
 
@@ -283,34 +310,6 @@ TChild SpawnChild(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError WaitPid(pid_t pid)
-{
-    int status = 0;
-
-    if (::waitpid(pid, &status, 0) == -1) {
-        int err = errno;
-        return MakeError(
-            MAKE_SYSTEM_ERROR(err),
-            TStringBuilder() << "waitpid: " << ::strerror(err));
-    }
-
-    if (WIFSIGNALED(status)) {
-        const char* message = WCOREDUMP(status)
-            ? "core dump"
-            : "terminated by a signal";
-
-        return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
-    }
-
-    if (WIFEXITED(status) && WEXITSTATUS(status)) {
-        return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
-    }
-
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TEndpointProcess final
     : public TThrRefBase
 {
@@ -360,7 +359,7 @@ public:
 
     NProto::TError Wait()
     {
-        return WaitPid(Process.Pid);
+        return Process.Wait();
     }
 
 private:
@@ -683,6 +682,7 @@ private:
     TLog Log;
 
     THashMap<TString, IExternalEndpointPtr> Endpoints;
+    THashMap<TString, i32> OldEndpoints;
 
 public:
     TExternalVhostEndpointListener(
@@ -1018,6 +1018,7 @@ private:
             std::move(cgroups)
         );
 
+        ShutdownOldEndpoint(request.GetDiskId());
         ep->Start();
 
         Endpoints[socketPath] = std::move(ep);
@@ -1079,13 +1080,31 @@ private:
             TString processCmd = ReadFromFile(dir / "cmdline");
             try {
                 auto diskId = ParseDiskIdFormCmdLine(processCmd);
+                ui32 pid = FromString<i32>(dir.Basename());
+                OldEndpoints[diskId] = pid;
                 STORAGE_INFO(
-                    "Find running external-vhost-server PID:"
-                    << dir.Basename() << " for disk-id: " << diskId.Quote());
+                        "Find running external-vhost-server PID:"
+                        << pid << " for disk-id: " << diskId.Quote());
             } catch (...) {
                 STORAGE_ERROR(CurrentExceptionMessage());
             }
         }
+    }
+
+    void ShutdownOldEndpoint(const TString& diskId) {
+        const auto* oldEndpoint = OldEndpoints.FindPtr(diskId);
+        if (!oldEndpoint) {
+            return;
+        }
+
+        const i32 pid = *oldEndpoint;
+        TChild child(pid);
+
+        STORAGE_WARN(
+            "Send SIGINT to external-vhost-server with PID:"
+            << pid << " for disk-id: " << diskId.Quote());
+        child.SendSignal(SIGINT);
+        OldEndpoints.erase(diskId);
     }
 };
 
