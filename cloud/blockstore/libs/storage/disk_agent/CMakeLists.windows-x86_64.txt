@@ -49,6 +49,7 @@ target_sources(libs-storage-disk_agent PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_init.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_io.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_monitoring.cpp
+  ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_partial_suspend.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_register.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_release.cpp
   ${CMAKE_SOURCE_DIR}/cloud/blockstore/libs/storage/disk_agent/disk_agent_actor_secure_erase.cpp

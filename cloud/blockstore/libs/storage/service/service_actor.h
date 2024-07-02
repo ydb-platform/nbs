@@ -395,6 +395,10 @@ private:
     TResultOrError<NActors::IActorPtr> CreateWaitDependentDisksToSwitchNodeActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    TResultOrError<NActors::IActorPtr> CreatePartiallySuspendDiskAgentActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

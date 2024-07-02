@@ -115,7 +115,9 @@ void TDiskAgentActor::UpdateActorStats()
 
 void TDiskAgentActor::UpdateSessionCache(const TActorContext& ctx)
 {
-    if (!SessionCacheActor) {
+    // Temporary agent shouldn't change sessions cache to avoid race conditions
+    // with the primary agent.
+    if (!SessionCacheActor || AgentConfig->GetTemporaryAgent()) {
         return;
     }
 
@@ -262,7 +264,6 @@ STFUNC(TDiskAgentActor::StateWork)
 
         HFunc(TEvDiskAgentPrivate::TEvSecureEraseCompleted, HandleSecureEraseCompleted);
 
-        HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevices);
         HFunc(TEvDiskAgentPrivate::TEvRegisterAgentResponse,
             HandleRegisterAgentResponse);
 
@@ -276,7 +277,13 @@ STFUNC(TDiskAgentActor::StateWork)
             TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch,
             HandleReportDelayedDiskAgentConfigMismatch);
 
-        IgnoreFunc(TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse);
+        HFunc(
+            TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse,
+            HandleUpdateSessionCacheResponse);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvCancelSuspensionRequest,
+            HandleCancelSuspension);
 
         default:
             if (!HandleRequests(ev)) {

@@ -208,7 +208,8 @@ def setup_disk_agent_config(
         device_erase_method,
         dedicated_disk_agent=False,
         agent_id="localhost",
-        node_type='disk-agent'):
+        node_type='disk-agent',
+        cached_sessions_path=None):
 
     config = TDiskAgentConfig()
     config.Enabled = True
@@ -216,10 +217,11 @@ def setup_disk_agent_config(
     config.Backend = DISK_AGENT_BACKEND_AIO
     config.DirectIoFlagDisabled = True
     config.AgentId = agent_id
-    config.NvmeTarget.Nqn = "nqn.2018-09.io.spdk:cnode1"
     config.AcquireRequired = True
     config.RegisterRetryTimeout = 1000  # 1 second
     config.ShutdownTimeout = get_shutdown_agent_interval()
+    if cached_sessions_path is not None:
+        config.CachedSessionsPath = cached_sessions_path
     if device_erase_method is not None:
         config.DeviceEraseMethod = device_erase_method
 
@@ -248,6 +250,12 @@ def make_agent_node_type(i):
 
 def make_agent_id(i):
     return "localhost-%s" % i if i > 0 else "localhost"
+
+
+def make_agent_session_cache_path(cached_sessions_dir_path, i):
+    if cached_sessions_dir_path is None:
+        return None
+    return os.path.join(cached_sessions_dir_path, "sessions-%s.cache.txt" % i)
 
 
 class DeviceInfo:
@@ -339,7 +347,8 @@ def setup_nonreplicated(
         devices_per_agent,
         device_erase_method=None,
         dedicated_disk_agent=False,
-        agent_count=1):
+        agent_count=1,
+        cached_sessions_dir_path=None):
     enable_custom_cms_configs(kikimr_client)
     setup_disk_registry_proxy_config(kikimr_client)
     for i in range(agent_count):
@@ -349,4 +358,5 @@ def setup_nonreplicated(
             device_erase_method,
             dedicated_disk_agent,
             agent_id=make_agent_id(i),
-            node_type=make_agent_node_type(i))
+            node_type=make_agent_node_type(i),
+            cached_sessions_path=make_agent_session_cache_path(cached_sessions_dir_path, i))

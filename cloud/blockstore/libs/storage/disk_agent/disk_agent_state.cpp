@@ -776,6 +776,10 @@ bool TDiskAgentState::AcquireDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
+    if (PartiallySuspended) {
+        EnsureAccessToDevices(uuids, clientId, accessMode);
+    }
+
     auto [updated, error] = DeviceClient->AcquireDevices(
         uuids,
         clientId,
@@ -784,6 +788,11 @@ bool TDiskAgentState::AcquireDevices(
         mountSeqNumber,
         diskId,
         volumeGeneration);
+
+    Y_DEBUG_ABORT_UNLESS(
+        !PartiallySuspended || !updated,
+        "We shouldn't update the sessions config if disk agent is in partially "
+        "suspended state.");
 
     CheckError(error);
 
@@ -796,6 +805,13 @@ void TDiskAgentState::ReleaseDevices(
     const TString& diskId,
     ui32 volumeGeneration)
 {
+    if (PartiallySuspended) {
+        ythrow TServiceError(MakeError(
+            E_REJECTED,
+            TStringBuilder() << "Disk agent is partially suspended. Can't "
+                                "release any sessions at this state."));
+    }
+
     CheckError(DeviceClient->ReleaseDevices(
         uuids,
         clientId,
@@ -834,6 +850,16 @@ void TDiskAgentState::StopTarget()
     if (RdmaTarget) {
         RdmaTarget->Stop();
     }
+}
+
+void TDiskAgentState::SetPartiallySuspended(bool partiallySuspended)
+{
+    PartiallySuspended = partiallySuspended;
+}
+
+bool TDiskAgentState::GetPartiallySuspended() const
+{
+    return PartiallySuspended;
 }
 
 void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
@@ -902,6 +928,24 @@ void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
         STORAGE_ERROR("Can't restore sessions from the cache: "
             << CurrentExceptionMessage());
         ReportDiskAgentSessionCacheRestoreError();
+    }
+}
+
+void TDiskAgentState::EnsureAccessToDevices(
+    const TVector<TString>& uuids,
+    const TString& clientId,
+    NProto::EVolumeAccessMode accessMode) const
+{
+    for (const TString& uuid: uuids) {
+        auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
+        if (HasError(error)) {
+            ythrow TServiceError(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Disk agent is partially suspended. "
+                                    "Can't acquire previously not acquired "
+                                    "devices. Access returned an error: "
+                                 << FormatError(error)));
+        }
     }
 }
 

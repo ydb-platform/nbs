@@ -77,6 +77,8 @@ private:
 
     NActors::TActorId SessionCacheActor;
 
+    TRequestInfoPtr PartiallySuspendAgentRequestInfo;
+
 public:
     TDiskAgentActor(
         TStorageConfigPtr config,
@@ -190,6 +192,14 @@ private:
     void HandleReportDelayedDiskAgentConfigMismatch(
         const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::
             TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateSessionCacheResponse(
+        const TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleCancelSuspension(
+        const TEvDiskAgentPrivate::TEvCancelSuspensionRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
