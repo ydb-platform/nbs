@@ -32,22 +32,27 @@ namespace {
 
 bool VolumeUsesNode(const NProto::TVolume& volume, ui32 nodeId)
 {
+    Cerr << "VolumeUsesNode " << nodeId << Endl;
     auto containsNodeIdPred = [nodeId](const NProto::TDevice& device)
     {
+        Cerr << device.GetDeviceUUID() << ": " << device.GetNodeId() << Endl;
         return device.GetNodeId() == nodeId;
     };
 
     bool foundNodeId = AnyOf(volume.GetDevices(), containsNodeIdPred);
     if (foundNodeId) {
+        Cerr << "--------------------------------------------------" << Endl;
         return true;
     }
 
     for (const auto& replica: volume.GetReplicas()) {
         foundNodeId = AnyOf(replica.GetDevices(), containsNodeIdPred);
         if (foundNodeId) {
+            Cerr << "--------------------------------------------------" << Endl;
             return true;
         }
     }
+    Cerr << "--------------------------------------------------" << Endl;
     return false;
 }
 
@@ -171,6 +176,7 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
     const TActorContext& ctx,
     ui64 cookie)
 {
+    Cerr << "ScheduleGetVolumeInfoRequest" << Endl;
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(cookie));
     LOG_DEBUG(
         ctx,
@@ -194,6 +200,7 @@ void TWaitDependentDisksToSwitchNodeActor::ScheduleGetVolumeInfoRequest(
 void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreSwitched(
     const TActorContext& ctx)
 {
+    Cerr << "CheckAllVolumesAreSwitched" << Endl;
     if (DependentDiskStates.empty()) {
         HandleSuccess(ctx);
         return;
@@ -224,6 +231,7 @@ void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreSwitched(
 void TWaitDependentDisksToSwitchNodeActor::CheckAllVolumesAreReady(
     const TActorContext& ctx)
 {
+    Cerr << "CheckAllVolumesAreReady" << Endl;
     if (DependentDiskStates.empty()) {
         HandleSuccess(ctx);
         return;
@@ -249,6 +257,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetDependentDisksResponse(
     const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "HandleGetDependentDisksResponse" << Endl;
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         LOG_WARN(
@@ -308,6 +317,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleGetVolumeInfoResponse(
     const TEvVolume::TEvGetVolumeInfoResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "HandleGetVolumeInfoResponse" << Endl;
     const auto* msg = ev->Get();
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(ev->Cookie));
     STORAGE_CHECK_PRECONDITION_C(
@@ -359,6 +369,7 @@ void TWaitDependentDisksToSwitchNodeActor::HandleWaitReadyResponse(
     const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Cerr << "HandleWaitReadyResponse" << Endl;
     const auto* msg = ev->Get();
     STORAGE_CHECK_PRECONDITION(DependentDiskStates.contains(ev->Cookie));
     STORAGE_CHECK_PRECONDITION_C(

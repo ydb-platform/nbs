@@ -152,6 +152,16 @@ struct TEvDiskAgentPrivate
     struct TCancelSuspensionRequest
     {};
 
+    struct TConfigCacheDeletionResult
+    {
+        // NProto::TError Error;
+
+        // explicit TConfigCacheDeletionResult(NProto::TError error)
+        //     : Error(std::move(error))
+        // {}
+        // ~TConfigCacheDeletionResult() = default;
+    };
+
     //
     // Events declaration
     //
@@ -167,6 +177,7 @@ struct TEvDiskAgentPrivate
         EvWriteOrZeroCompleted,
         EvReportDelayedDiskAgentConfigMismatch,
         EvCancelSuspensionRequest,
+        EvConfigCacheDeletionResult,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -197,6 +208,10 @@ struct TEvDiskAgentPrivate
     using TEvCancelSuspensionRequest = TRequestEvent<
         TCancelSuspensionRequest,
         EvCancelSuspensionRequest>;
+
+    using TEvConfigCacheDeletionResult = TResponseEvent<
+        TConfigCacheDeletionResult,
+        EvConfigCacheDeletionResult>;
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };

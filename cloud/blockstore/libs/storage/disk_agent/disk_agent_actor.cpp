@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/storage/disk_agent/actors/config_cache_actor.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -203,6 +204,46 @@ void TDiskAgentActor::HandlePoisonPill(
     }
 
     Die(ctx);
+}
+
+void TDiskAgentActor::HandleDeleteDevices(
+    const TEvDiskAgent::TEvDeleteDevicesRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    auto* msg = ev->Get();
+
+    TVector<TString> currentDevices;
+    currentDevices.reserve(AgentConfig->GetFileDevices().size());
+    // currentDevices.assign(AgentConfig->GetFileDevices().begin(), AgentConfig->GetFileDevices().end())
+    for (const auto& device: AgentConfig->GetFileDevices()) {
+        currentDevices.push_back(device.GetDeviceId());
+    }
+    Sort(currentDevices);
+
+    TVector<TString> removingDevices;
+    removingDevices.assign(
+        msg->Record.GetDeviceUUID().begin(),
+        msg->Record.GetDeviceUUID().end());
+    Sort(removingDevices);
+
+    if (currentDevices == removingDevices) {
+        Become(&TThis::StateIdle);
+    } else {
+        // ?
+    }
+
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    auto actor = NDiskAgent::CreateConfigCacheActor(
+        AgentConfig->GetCachedConfigPath(),
+        std::move(requestInfo));
+    ctx.Register(
+        actor.release(),
+        TMailboxType::HTSwap,
+        NKikimr::AppData()->IOPoolId);
 }
 
 void TDiskAgentActor::HandleWakeup(
