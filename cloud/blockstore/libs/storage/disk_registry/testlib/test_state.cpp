@@ -561,16 +561,9 @@ TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDisks(
 }
 
 TDiskRegistryStateBuilder& TDiskRegistryStateBuilder::WithDirtyDevices(
-    TVector<TString> dirtyDevices)
+    TVector<TDirtyDevice> dirtyDevices)
 {
-    DirtyDevices.clear();
-    DirtyDevices.reserve(dirtyDevices.size());
-    for (auto& s: dirtyDevices) {
-        DirtyDevices.emplace_back(TDirtyDevice {
-            .Id = std::move(s)
-        });
-    }
-
+    DirtyDevices = std::move(dirtyDevices);
     return *this;
 }
 

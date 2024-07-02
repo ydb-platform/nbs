@@ -110,7 +110,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                         return config;
                     }())
                 .WithAgents(agents)
-                .WithDirtyDevices({"uuid-1.1"})
+                .WithDirtyDevices({TDirtyDevice{"uuid-1.1", {}}})
                 .Build();
 
         auto agentsInfo = state.QueryAgentsInfo();

@@ -59,11 +59,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCreateTest)
             })
         };
 
-        TDiskRegistryState state = TDiskRegistryStateBuilder()
-            .WithKnownAgents(agents)
-            .WithDisks({ Disk("disk-1", {"uuid-1.1"}) })
-            .WithDirtyDevices({"uuid-2.1"})
-            .Build();
+        TDiskRegistryState state =
+            TDiskRegistryStateBuilder()
+                .WithKnownAgents(agents)
+                .WithDisks({Disk("disk-1", {"uuid-1.1"})})
+                .WithDirtyDevices({TDirtyDevice{"uuid-2.1", {}}})
+                .Build();
 
         auto deviceByName = [] (auto agentId, auto name) {
             NProto::TDeviceConfig config;
