@@ -670,7 +670,9 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
-            volume->Volume.GetBlockSize());
+            volume->Volume.GetBlockSize(),
+            {} // no data buffer
+        );
     });
 }
 
@@ -727,7 +729,9 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
-            volume->Volume.GetBlockSize());
+            volume->Volume.GetBlockSize(),
+            {} // no data buffer
+        );
     });
 }
 

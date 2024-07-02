@@ -39,6 +39,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString binaryPath,
     TString localAgentId,
     ui32 socketAccessMode,
+    bool isZeroCopyEnabled,
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
@@ -47,6 +48,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString localAgentId,
     ui32 socketAccessMode,
+    bool isZeroCopyEnabled,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory);
 

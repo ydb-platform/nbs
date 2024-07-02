@@ -547,7 +547,9 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
-        request.GetBlockSize());
+        request.GetBlockSize(),
+        {} // no data buffer
+    );
 
     return result.Apply(
         [] (auto future) {
@@ -610,7 +612,8 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(writeRequest),
-        request.GetBlockSize());
+        request.GetBlockSize(),
+        {});
 
     return result.Apply(
         [] (const auto& future) {
@@ -727,7 +730,9 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
-        request.GetBlockSize());
+        request.GetBlockSize(),
+        {} // no data buffer
+    );
 
     return result.Apply(
         [] (auto future) {

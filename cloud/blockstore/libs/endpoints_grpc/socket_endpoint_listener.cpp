@@ -153,7 +153,9 @@ public:
             Now(),
             std::move(callContext),
             std::move(request),
-            BlockSize);
+            BlockSize,
+            {}   // no data buffer
+        );
     }
 
     TFuture<NProto::TWriteBlocksResponse> WriteBlocks(
@@ -169,7 +171,9 @@ public:
             Now(),
             std::move(callContext),
             std::move(request),
-            BlockSize);
+            BlockSize,
+            {}   // no data buffer
+        );
     }
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(

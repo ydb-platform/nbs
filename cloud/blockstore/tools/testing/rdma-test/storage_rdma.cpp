@@ -85,6 +85,7 @@ public:
         Serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadBlocksRequest,
+            0, // flags
             *Request,
             TContIOVector(nullptr, 0));
 
@@ -176,6 +177,7 @@ public:
         Serializer->Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteBlocksRequest,
+            0, // flags
             *Request,
             TContIOVector((IOutputStream::TPart*)sglist.begin(), sglist.size()));
 
