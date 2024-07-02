@@ -2,7 +2,6 @@ LIBRARY()
 
 SRCS(
     fs_endpoints.cpp
-    fs_endpoints_test.cpp
 )
 
 PEERDIR(

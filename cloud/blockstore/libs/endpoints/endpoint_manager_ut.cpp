@@ -31,7 +31,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
-#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -270,22 +269,18 @@ struct TBootstrap
     IServerStatsPtr ServerStats = CreateServerStatsStub();
     ISessionManagerPtr SessionManager;
     IEndpointStoragePtr EndpointStorage = CreateFileEndpointStorage(DirPath);
+    TTempDir EndpointsDir = TTempDir(DirPath);
     THashMap<NProto::EClientIpcType, IEndpointListenerPtr> EndpointListeners;
     NBD::IDeviceFactoryPtr NbdDeviceFactory;
     IEndpointEventProxyPtr EndpointEventHandler = CreateEndpointEventProxy();
     TEndpointManagerOptions Options;
     IEndpointManagerPtr EndpointManager;
 
-    TBootstrap()
-    {
-        CreateEndpointsDirectory(DirPath);
-    }
+    TBootstrap() = default;
 
     ~TBootstrap()
     {
         Stop();
-
-        CleanUpEndpointsDirectory(DirPath);
     }
 
     void Start()

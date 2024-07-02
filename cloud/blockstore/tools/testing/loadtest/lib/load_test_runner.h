@@ -35,6 +35,7 @@ private:
     IClientFactory& ClientFactory;
     TTestContext& TestContext;
     IEndpointStoragePtr EndpointStorage;
+    std::unique_ptr<TTempDir> EndpointsDir;
 
     TString EndpointSocketPath;
 

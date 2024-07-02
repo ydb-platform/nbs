@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
-#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -16,6 +15,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 #include <util/system/sysstat.h>
+#include <util/folder/tempdir.h>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -159,15 +159,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-
-        auto initError = CreateEndpointsDirectory(dirPath);
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = CleanUpEndpointsDirectory(dirPath);
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        TTempDir endpointDir(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         auto listener = std::make_shared<TTestEndpointListener>();
         listener->CreateEndpointHandler =
@@ -239,15 +231,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-
-        auto initError = CreateEndpointsDirectory(dirPath);
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = CleanUpEndpointsDirectory(dirPath);
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        TTempDir endpointDir(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         auto listener = std::make_shared<TTestEndpointListener>();
         listener->CreateEndpointHandler =
@@ -358,15 +342,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-
-        auto initError = CreateEndpointsDirectory(dirPath);
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = CleanUpEndpointsDirectory(dirPath);
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        TTempDir endpointDir(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         endpoint->Start.SetValue(NProto::TError{});
 

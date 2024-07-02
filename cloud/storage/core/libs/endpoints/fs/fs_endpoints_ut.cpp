@@ -1,12 +1,11 @@
 #include "fs_endpoints.h"
 
-#include "fs_endpoints_test.h"
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/folder/tempdir.h>
 
 #include <google/protobuf/util/message_differencer.h>
 
@@ -34,17 +33,11 @@ const TString& GetProtoMessageId(const TProtoMessage& msg)
 struct TFixture: public NUnitTest::TBaseFixture
 {
     const TString DirPath = "./" + CreateGuidAsString();
+    std::unique_ptr<TTempDir> EndpointsDir;
 
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
-        const auto ret = CreateEndpointsDirectory(DirPath);
-        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
-    }
-
-    void TearDown(NUnitTest::TTestContext& /*testContext*/) override
-    {
-        const auto ret = CleanUpEndpointsDirectory(DirPath);
-        UNIT_ASSERT_EQUAL_C(S_OK, ret.GetCode(), ret.GetMessage());
+        EndpointsDir = std::make_unique<TTempDir>(DirPath);
     }
 };
 

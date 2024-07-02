@@ -16,7 +16,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
-#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -259,8 +258,8 @@ void TLoadTestRunner::SetupTest(
             << ", endpointsDir: " << ClientFactory.GetEndpointStorageDir());
 
         if (EndpointStorage) {
-            auto error = CreateEndpointsDirectory(ClientFactory.GetEndpointStorageDir());
-            Y_ABORT_UNLESS(!HasError(error));
+            EndpointsDir = std::make_unique<TTempDir>(
+                ClientFactory.GetEndpointStorageDir());
 
             auto strOrError = SerializeEndpoint(*request);
             Y_ABORT_UNLESS(!HasError(strOrError));
@@ -539,9 +538,8 @@ void TLoadTestRunner::TeardownTest(
         if (EndpointStorage) {
             auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
             Y_ABORT_UNLESS(!HasError(error));
+            EndpointsDir.reset();
         }
-
-        CleanUpEndpointsDirectory(ClientFactory.GetEndpointStorageDir());
 
         WaitForCompletion(
             "StopEndpoint",
