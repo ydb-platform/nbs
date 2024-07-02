@@ -338,9 +338,14 @@ void TBootstrapBase::Init()
         KmsKeyProvider = CreateKmsKeyProviderStub();
     }
 
+    auto encryptionKeyProvider = CreateEncryptionKeyProvider(KmsKeyProvider);
+
     auto encryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateEncryptionKeyProvider(KmsKeyProvider));
+        encryptionKeyProvider,
+        CreateVolumeEncryptionClientFactory(
+            Logging,
+            encryptionKeyProvider));
 
     auto sessionManager = CreateSessionManager(
         Timer,

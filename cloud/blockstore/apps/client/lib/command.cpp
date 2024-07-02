@@ -480,7 +480,10 @@ void TCommand::Init()
 
     EncryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
-        CreateDefaultEncryptionKeyProvider());
+        CreateDefaultEncryptionKeyProvider(),
+        CreateVolumeEncryptionClientFactory(
+            Logging,
+            CreateDefaultEncryptionKeyProvider()));
 
     if (!ClientEndpoint) {
         ClientStats = CreateClientStats(

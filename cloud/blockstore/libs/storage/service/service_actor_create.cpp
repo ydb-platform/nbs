@@ -71,6 +71,8 @@ private:
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvCreateVolumeResponse> response);
 
+    bool ShouldCreateEncryptedVolume() const;
+
 private:
     STFUNC(StateWork);
 };
@@ -124,6 +126,19 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
     } else {
         CreateVolume(ctx);
     }
+}
+
+bool TCreateVolumeActor::ShouldCreateEncryptedVolume() const
+{
+    return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
+        GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL &&    // XXX
+        Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
+        (Config->GetDefaultEncryptionForNonReplicatedDisksEnabled() ||
+         Config->IsDefaultEncryptionForNonReplicatedDisksFeatureEnabled(
+             Request.GetCloudId(),
+             Request.GetFolderId(),
+             Request.GetDiskId()));
+
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
@@ -225,14 +240,7 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
         desc.SetKeyHash(encryptionSpec.GetKeyHash());
     }
 
-    if (IsDiskRegistryMediaKind(volumeParams.MediaKind) &&
-        encryptionSpec.GetMode() == NProto::NO_ENCRYPTION &&
-        (Config->GetDefaultEncryptionForNonReplicatedDisksEnabled() ||
-         Config->IsDefaultEncryptionForNonReplicatedDisksFeatureEnabled(
-             Request.GetCloudId(),
-             Request.GetFolderId(),
-             Request.GetDiskId())))
-    {
+    if (ShouldCreateEncryptedVolume()) {
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -240,13 +248,14 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
                              << " with default AES XTS encryption");
 
         auto& desc = *config.MutableEncryptionDesc();
-        desc.SetMode(NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED);
+        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
 
         // XXX: use EncryptionKeyProvider?
         TString key;
         key.resize(32);
+        // XXX: generate key in background thread
         EntropyPool().Read(key.Detach(), key.size());
-        // XXX: store key in KeyHash for now
+
         desc.SetKeyHash(Base64Encode(key));
     }
 

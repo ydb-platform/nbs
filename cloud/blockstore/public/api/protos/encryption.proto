@@ -11,16 +11,11 @@ enum EEncryptionMode
 {
     NO_ENCRYPTION = 0;
     ENCRYPTION_AES_XTS = 1;
-    ENCRYPTION_AES_XTS_NO_TRACK_UNUSED = 2;
-}
 
-/*
-enum EEncryptionAlgo
-{
-    ENCRYPTION_ALGO_AES_XTS = 0;
-    ENCRYPTION_ALGO_CAESAR = 1;
-    ENCRYPTION_ALGO_NOOP = 2;
-}*/
+    // Default AES XTS encryption. DEK is stored in
+    // VolumeConfig.EncryptionDesc.KeyHash as base64.
+    ENCRYPTION_DEFAULT_AES_XTS_INSECURE = 2;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // KMS key options

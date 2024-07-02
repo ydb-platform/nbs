@@ -700,25 +700,27 @@ NProto::TError TEncryptionClient::Decrypt(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDefaultEncryptionClient final
+class TVolumeEncryptionClient final
     : public TClientWrapper
-    , public std::enable_shared_from_this<TDefaultEncryptionClient>
+    , public std::enable_shared_from_this<TVolumeEncryptionClient>
 {
 private:
+    const IVolumeEncryptionClientFactoryPtr Factory;
     ILoggingServicePtr Logging;
     TLog Log;
 
     bool Initialized = false;
 
 public:
-    TDefaultEncryptionClient(
+    TVolumeEncryptionClient(
+            IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactoryPtr,
             IBlockStorePtr client,
             ILoggingServicePtr logging)
         : TClientWrapper(std::move(client))
+        , Factory(std::move(volumeEncryptionClientFactoryPtr))
         , Logging(std::move(logging))
         , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
-    {
-    }
+    {}
 
     TFuture<NProto::TMountVolumeResponse> MountVolume(
         TCallContextPtr callContext,
@@ -736,74 +738,57 @@ public:
             std::move(callContext),
             std::move(request));
 
-        auto weakPtr = weak_from_this();
-
-        return future.Apply([weakPtr = std::move(weakPtr)] (const auto& f) {
+        return future.Apply([weakPtr = weak_from_this()] (const auto& f) {
             const auto& response = f.GetValue();
 
             if (HasError(response)) {
-                return response;
+                return MakeFuture(response);
             }
 
             auto ptr = weakPtr.lock();
             if (!ptr) {
-                return static_cast<NProto::TMountVolumeResponse>(TErrorResponse(
+                return FutureErrorResponse<NProto::TMountVolumeResponse>(
                     E_REJECTED,
-                    "Encryption client is destroyed"));
+                    "Encryption client is destroyed");
             }
 
-            auto error = ptr->HandleMountVolumeResponse(response);
-            if (HasError(error)) {
-                return static_cast<NProto::TMountVolumeResponse>(TErrorResponse(
-                    error));
-            }
-            return response;
+            return ptr->HandleMountVolumeResponse(response);
         });
     }
 
 private:
-    NProto::TError HandleMountVolumeResponse(
+    TFuture<NProto::TMountVolumeResponse> HandleMountVolumeResponse(
         const NProto::TMountVolumeResponse& response)
     {
-        const auto& volume = response.GetVolume();
-
-        if (!volume.HasEncryptionDesc()) {
-            return {};
-        }
-
-        const auto& desc = volume.GetEncryptionDesc();
-        if (desc.GetMode() == NProto::NO_ENCRYPTION) {
-            return {};
-        }
-
-        if (desc.GetMode() != NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED) {
-            return MakeError(E_ARGUMENT, "Unexpected encription mode");
-        }
-
-        if (desc.GetKeyHash().empty()) {
-            return MakeError(E_ARGUMENT, "Empty KeyHash");
-        }
-
         if (Initialized) {
-            return {};
+            return MakeFuture(response);
         }
 
-        STORAGE_INFO(
-            "Use default AES XTS encryption for volume "
-            << volume.GetDiskId().Quote());
-
-        // XXX: use EncryptionKeyProvider?
-        TEncryptionKey key{Base64Decode(desc.GetKeyHash())};
-
-        Client = std::make_shared<TEncryptionClient>(
+        auto future = Factory->CreateEncryptionClient(
             std::move(Client),
-            Logging,
-            CreateAesXtsEncryptor(std::move(key)),
-            volume);
+            response.GetVolume());
 
-        Initialized = true;
+        return future.Apply(
+            [weakPtr = weak_from_this(), response = response](const auto& f) mutable
+            {
+                auto [client, error] = f.GetValue();
+                if (HasError(error)) {
+                    return FutureErrorResponse<NProto::TMountVolumeResponse>(
+                        error);
+                }
 
-        return {};
+                auto ptr = weakPtr.lock();
+                if (!ptr) {
+                    return FutureErrorResponse<NProto::TMountVolumeResponse>(
+                        E_REJECTED,
+                        "Encryption client is destroyed");
+                }
+
+                ptr->Client = std::move(client);
+                ptr->Initialized = true;
+
+                return MakeFuture(std::move(response));
+            });
     }
 };
 
@@ -972,13 +957,17 @@ class TEncryptionClientFactory
 private:
     const ILoggingServicePtr Logging;
     const IEncryptionKeyProviderPtr EncryptionKeyProvider;
+    const IVolumeEncryptionClientFactoryPtr VolumeEncryptionClientFactory;
 
 public:
     TEncryptionClientFactory(
             ILoggingServicePtr logging,
-            IEncryptionKeyProviderPtr encryptionKeyProvider)
+            IEncryptionKeyProviderPtr encryptionKeyProvider,
+            IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactory)
         : Logging(std::move(logging))
         , EncryptionKeyProvider(std::move(encryptionKeyProvider))
+        , VolumeEncryptionClientFactory(
+              std::move(volumeEncryptionClientFactory))
     {}
 
     NThreading::TFuture<TResponse> CreateEncryptionClient(
@@ -987,8 +976,10 @@ public:
         const TString& diskId) override
     {
         if (encryptionSpec.GetMode() == NProto::NO_ENCRYPTION) {
-            return MakeFuture<TResponse>(
-                CreateDefaultEncryptionClient(std::move(client), Logging));
+            return MakeFuture<TResponse>(CreateVolumeEncryptionClient(
+                VolumeEncryptionClientFactory,
+                std::move(client),
+                Logging));
         }
 
         if (encryptionSpec.GetKeyHash()) {
@@ -1042,15 +1033,74 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TVolumeEncryptionClientFactory final
+    : public IVolumeEncryptionClientFactory
+{
+    const ILoggingServicePtr Logging;
+    const IEncryptionKeyProviderPtr EncryptionKeyProvider;
+
+    TLog Log;
+
+public:
+    TVolumeEncryptionClientFactory(
+            ILoggingServicePtr logging,
+            IEncryptionKeyProviderPtr encryptionKeyProvider)
+        : Logging(std::move(logging))
+        , EncryptionKeyProvider(std::move(encryptionKeyProvider))
+        , Log(Logging->CreateLog("BLOCKSTORE_CLIENT"))
+    {}
+
+    TFuture<TResponse> CreateEncryptionClient(
+        IBlockStorePtr client,
+        const NProto::TVolume& volume) override
+    {
+        const auto& desc = volume.GetEncryptionDesc();
+        if (desc.GetMode() == NProto::NO_ENCRYPTION) {
+            return MakeFuture<TResponse>(client);
+        }
+
+        if (desc.GetMode() != NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE) {
+            return MakeFuture<TResponse>(
+                MakeError(E_ARGUMENT, "Unexpected encryption mode"));
+        }
+
+        if (desc.GetKeyHash().empty()) {
+            return MakeFuture<TResponse>(
+                MakeError(E_ARGUMENT, "Empty KeyHash"));
+        }
+
+        STORAGE_INFO(
+            "Use default AES XTS encryption for volume "
+            << volume.GetDiskId().Quote());
+
+        // XXX: use EncryptionKeyProvider
+        Y_UNUSED(EncryptionKeyProvider);
+
+        TEncryptionKey key{Base64Decode(volume.GetEncryptionDesc().GetKeyHash())};
+
+        IBlockStorePtr encryptionClient = std::make_shared<TEncryptionClient>(
+            std::move(client),
+            Logging,
+            CreateAesXtsEncryptor(std::move(key)),
+            volume);
+
+        return MakeFuture<TResponse>(std::move(encryptionClient));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr CreateDefaultEncryptionClient(
+IBlockStorePtr CreateVolumeEncryptionClient(
+    IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactoryPtr,
     IBlockStorePtr client,
     ILoggingServicePtr logging)
 {
-    return std::make_shared<TDefaultEncryptionClient>(
+    return std::make_shared<TVolumeEncryptionClient>(
+        std::move(volumeEncryptionClientFactoryPtr),
         std::move(client),
         std::move(logging));
 }
@@ -1081,9 +1131,20 @@ IBlockStorePtr CreateSnapshotEncryptionClient(
 
 IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
     ILoggingServicePtr logging,
-    IEncryptionKeyProviderPtr encryptionKeyProvider)
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactory)
 {
     return std::make_shared<TEncryptionClientFactory>(
+        std::move(logging),
+        std::move(encryptionKeyProvider),
+        std::move(volumeEncryptionClientFactory));
+}
+
+IVolumeEncryptionClientFactoryPtr CreateVolumeEncryptionClientFactory(
+    ILoggingServicePtr logging,
+    IEncryptionKeyProviderPtr encryptionKeyProvider)
+{
+    return std::make_shared<TVolumeEncryptionClientFactory>(
         std::move(logging),
         std::move(encryptionKeyProvider));
 }

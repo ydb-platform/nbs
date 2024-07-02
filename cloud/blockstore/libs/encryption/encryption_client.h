@@ -13,8 +13,9 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Create an encryption client which uses EncryptionDesc from the Volume config.
-IBlockStorePtr CreateDefaultEncryptionClient(
+// Create an encryption client that uses EncryptionDesc from the Volume config.
+IBlockStorePtr CreateVolumeEncryptionClient(
+    IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactory,
     IBlockStorePtr client,
     ILoggingServicePtr logging);
 
@@ -45,7 +46,25 @@ struct IEncryptionClientFactory
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IVolumeEncryptionClientFactory
+{
+    using TResponse = TResultOrError<IBlockStorePtr>;
+
+    virtual ~IVolumeEncryptionClientFactory() = default;
+
+    virtual NThreading::TFuture<TResponse> CreateEncryptionClient(
+        IBlockStorePtr client,
+        const NProto::TVolume& volume) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IEncryptionClientFactoryPtr CreateEncryptionClientFactory(
+    ILoggingServicePtr logging,
+    IEncryptionKeyProviderPtr encryptionKeyProvider,
+    IVolumeEncryptionClientFactoryPtr volumeEncryptionClientFactory);
+
+IVolumeEncryptionClientFactoryPtr CreateVolumeEncryptionClientFactory(
     ILoggingServicePtr logging,
     IEncryptionKeyProviderPtr encryptionKeyProvider);
 

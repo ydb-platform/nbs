@@ -46,6 +46,9 @@ NProto::TEncryptionDesc GetDefaultEncryption()
 struct TTestEncryptor final
     : public IEncryptor
 {
+    // This is necessary so that there is no buffer that is filled with zeros.
+    static constexpr char Mask = 0b1000101;
+
     NProto::TError Encrypt(
         TBlockDataRef srcRef,
         TBlockDataRef dstRef,
@@ -53,12 +56,13 @@ struct TTestEncryptor final
     {
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
         UNIT_ASSERT(srcRef.Data() != nullptr);
+        UNIT_ASSERT(Mask != blockIndex);
 
         const char* srcPtr = srcRef.Data();
         char* dstPtr = const_cast<char*>(dstRef.Data());
 
         for (size_t i = 0; i < srcRef.Size(); ++i) {
-            *dstPtr = *srcPtr + static_cast<char>(blockIndex);
+            *dstPtr = (*srcPtr + static_cast<char>(blockIndex)) ^ Mask;
             ++srcPtr;
             ++dstPtr;
         }
@@ -74,7 +78,10 @@ struct TTestEncryptor final
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
 
         if (srcRef.Data() == nullptr) {
-            memset(const_cast<char*>(dstRef.Data()), 0, srcRef.Size());
+            memset(
+                const_cast<char*>(dstRef.Data()),
+                Mask - static_cast<char>(blockIndex),
+                srcRef.Size());
             return {};
         }
 
@@ -82,7 +89,7 @@ struct TTestEncryptor final
         char* dstPtr = const_cast<char*>(dstRef.Data());
 
         for (size_t i = 0; i < srcRef.Size(); ++i) {
-            *dstPtr = *srcPtr - static_cast<char>(blockIndex);
+            *dstPtr = (*srcPtr ^ Mask) - static_cast<char>(blockIndex);
             ++srcPtr;
             ++dstPtr;
         }
@@ -1231,6 +1238,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         };
 
         auto logging = CreateLoggingService("console");
+        auto factory = CreateVolumeEncryptionClientFactory(
+            logging, CreateDefaultEncryptionKeyProvider());
+
         auto testClient = std::make_shared<TTestService>();
 
         // Mount a volume with an unexpected encription mode
@@ -1246,7 +1256,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         {
             auto encryptionClient =
-                CreateDefaultEncryptionClient(testClient, logging);
+                CreateVolumeEncryptionClient(factory, testClient, logging);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1265,7 +1275,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 volume.SetBlockSize(blockSize);
 
                 auto& desc = *volume.MutableEncryptionDesc();
-                desc.SetMode(NProto::ENCRYPTION_AES_XTS_NO_TRACK_UNUSED);
+                desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
                 desc.SetKeyHash(Base64Encode(key));
 
                 return MakeFuture(std::move(response));
@@ -1300,7 +1310,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         {
             auto encryptionClient =
-                CreateDefaultEncryptionClient(testClient, logging);
+                CreateVolumeEncryptionClient(factory, testClient, logging);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_C(
@@ -1391,7 +1401,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         {
             auto encryptionClient =
-                CreateDefaultEncryptionClient(testClient, logging);
+                CreateVolumeEncryptionClient(factory, testClient, logging);
 
             auto response = MountVolume(*encryptionClient);
             UNIT_ASSERT_C(
