@@ -3307,6 +3307,76 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             response->GetError().GetCode(),
             FormatError(response->GetError()));
     }
+
+    Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"));
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        auto listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        const auto shard1NodeName = listNodesResponse.GetNames(0);
+
+        // "breaking" one node - deleting it directly from the shard
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+
+        // ListNodes should still succeed
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+        // zero node id is expected - we failed to fetch attrs for this file
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            listNodesResponse.GetNodes(1).GetId());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
