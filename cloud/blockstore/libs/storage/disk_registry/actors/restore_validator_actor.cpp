@@ -98,7 +98,6 @@ bool NormalizeLoadState(
     auto& [
         config,
         dirtyDevices,
-        oldAgents,
         agents,
         disks,
         placementGroups,
@@ -116,7 +115,6 @@ bool NormalizeLoadState(
         diskRegistryAgentListParams
     ] = state;
 
-    Y_UNUSED(oldAgents);
     Y_UNUSED(lastDiskStateSeqNo);
     Y_UNUSED(diskAllocationAllowed);
     Y_UNUSED(diskStateChanges);

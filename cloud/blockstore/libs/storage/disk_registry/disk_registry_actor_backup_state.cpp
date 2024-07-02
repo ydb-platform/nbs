@@ -89,7 +89,6 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     auto& [
         config,
         dirtyDevices,
-        oldAgents,
         agents,
         disks,
         placementGroups,
@@ -138,7 +137,6 @@ void TDiskRegistryActor::CompleteBackupDiskRegistryState(
     copy(disks, backup.MutableDisks());
     copy(suspendedDevices, backup.MutableSuspendedDevices());
 
-    Y_UNUSED(oldAgents);
     copy(agents, backup.MutableAgents());
 
     copy(placementGroups, backup.MutablePlacementGroups());

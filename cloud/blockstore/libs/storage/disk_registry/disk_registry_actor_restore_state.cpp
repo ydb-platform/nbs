@@ -40,7 +40,6 @@ TDiskRegistryStateSnapshot MakeNewLoadState(
     auto& [
         config,
         dirtyDevices,
-        oldAgents,
         agents,
         disks,
         placementGroups,
@@ -161,20 +160,6 @@ void RestoreDirtyDevices(
                 db.UpdateDirtyDevice(dd.Id, dd.DiskId);
             });
     }
-}
-
-void RestoreOldAgents(
-    TVector<NProto::TAgentConfig> newOldAgents,
-    TVector<NProto::TAgentConfig> currentOldAgents,
-    TOperations& operations)
-{
-    for (auto&& agent: currentOldAgents) {
-        operations.push(
-            [agent = std::move(agent)](TDiskRegistryDatabase& db) {
-                db.DeleteOldAgent(agent.GetNodeId());
-            });
-    }
-    Y_UNUSED(newOldAgents);
 }
 
 void RestoreAgents(
@@ -552,7 +537,6 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     auto&& [
         newConfig,
         newDirtyDevices,
-        newOldAgents,
         newAgents,
         newDisks,
         newPlacementGroups,
@@ -573,7 +557,6 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     auto&& [
         currentConfig,
         currentDirtyDevices,
-        currentOldAgents,
         currentAgents,
         currentDisks,
         currentPlacementGroups,
@@ -598,10 +581,6 @@ void TDiskRegistryActor::CompleteRestoreDiskRegistryState(
     RestoreDirtyDevices(
         std::move(newDirtyDevices),
         std::move(currentDirtyDevices),
-        operations);
-    RestoreOldAgents(
-        std::move(newOldAgents),
-        std::move(currentOldAgents),
         operations);
     RestoreAgents(
         std::move(newAgents),

@@ -82,11 +82,6 @@ bool TDiskRegistryDatabase::ReadDirtyDevices(TVector<TDirtyDevice>& dirtyDevices
     return true;
 }
 
-bool TDiskRegistryDatabase::ReadOldAgents(TVector<NProto::TAgentConfig>& agents)
-{
-    return LoadConfigs<TDiskRegistrySchema::Agents>(agents);
-}
-
 bool TDiskRegistryDatabase::ReadAgents(TVector<NProto::TAgentConfig>& agents)
 {
     return LoadConfigs<TDiskRegistrySchema::AgentById>(agents);
@@ -178,30 +173,12 @@ void TDiskRegistryDatabase::DeleteDisk(const TString& diskId)
         .Delete();
 }
 
-void TDiskRegistryDatabase::UpdateOldAgent(const NProto::TAgentConfig& config)
-{
-    Y_DEBUG_ABORT_UNLESS(config.GetNodeId() != 0);
-
-    using TTable = TDiskRegistrySchema::Agents;
-    Table<TTable>()
-        .Key(config.GetNodeId())
-        .Update<TTable::Config>(config);
-}
-
 void TDiskRegistryDatabase::UpdateAgent(const NProto::TAgentConfig& config)
 {
     using TTable = TDiskRegistrySchema::AgentById;
     Table<TTable>()
         .Key(config.GetAgentId())
         .Update<TTable::Config>(config);
-}
-
-void TDiskRegistryDatabase::DeleteOldAgent(ui32 nodeId)
-{
-    using TTable = TDiskRegistrySchema::Agents;
-    Table<TTable>()
-        .Key(nodeId)
-        .Delete();
 }
 
 void TDiskRegistryDatabase::DeleteAgent(const TString& id)

@@ -865,7 +865,6 @@ void TDiskRegistryState::RemoveAgentFromNode(
     }
 
     db.UpdateAgent(agent);
-    db.DeleteOldAgent(nodeId);
 
     ApplyAgentStateChange(db, agent, timestamp, *affectedDisks);
 }
@@ -968,8 +967,6 @@ NProto::TError TDiskRegistryState::RegisterAgent(
         }
 
         if (r.PrevNodeId != agent.GetNodeId()) {
-            db.DeleteOldAgent(r.PrevNodeId);
-
             for (const auto& id: diskIds) {
                 AddReallocateRequest(db, id);
                 disksToReallocate->push_back(id);
@@ -3431,7 +3428,6 @@ void TDiskRegistryState::RemoveAgent(
     DeviceList.RemoveDevices(agent);
     AgentList.RemoveAgent(nodeId);
 
-    db.DeleteOldAgent(nodeId);
     db.DeleteAgent(agentId);
 }
 
@@ -5946,7 +5942,7 @@ TString TDiskRegistryState::GetAgentId(TNodeId nodeId) const
 NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 {
     static_assert(
-        TTableCount<TDiskRegistrySchema::TTables>::value == 16,
+        TTableCount<TDiskRegistrySchema::TTables>::value == 15,
         "not all fields are processed"
     );
 
@@ -6602,10 +6598,6 @@ void TDiskRegistryState::UpdateAgent(
     TDiskRegistryDatabase& db,
     NProto::TAgentConfig config)
 {
-    if (config.GetNodeId() != 0) {
-        db.UpdateOldAgent(config);
-    }
-
     // don't persist unknown devices
     config.MutableUnknownDevices()->Clear();
 
