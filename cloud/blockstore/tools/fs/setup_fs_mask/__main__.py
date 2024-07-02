@@ -404,7 +404,6 @@ def main():
 
     descr = cli.describe_volume(args.disk_id)
 
-    cli.enable_track_used_blocks(args.disk_id)
     cli.enable_read_only_mode(args.disk_id)
 
     try:
@@ -424,14 +423,7 @@ def main():
 
     if used_blocks is None:
         logging.warning(f'empty used blocks map for {args.disk_id}')
-        if not args.always_track:
-            cli.disable_track_used_blocks(args.disk_id)
         return 1
-
-    cli.update_used_blocks(args.disk_id, used_blocks, args.max_batch_size)
-
-    if args.mask_unused:
-        cli.enable_mask_unused_blocks(args.disk_id)
 
     return 0
 
