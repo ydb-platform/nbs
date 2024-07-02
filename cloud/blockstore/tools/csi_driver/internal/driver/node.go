@@ -370,7 +370,7 @@ func (s *nodeService) startNbsEndpoint(
 	return s.nbsClient.StartEndpoint(ctx, &nbsapi.TStartEndpointRequest{
 		UnixSocketPath:   filepath.Join(endpointDir, nbsSocketName),
 		DiskId:           volumeId,
-		ClientId:         s.clientID,
+		ClientId:         fmt.Sprintf("%s-%s", s.clientID, podId),
 		DeviceName:       volumeId,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,

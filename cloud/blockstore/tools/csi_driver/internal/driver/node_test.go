@@ -32,7 +32,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 	ctx := context.Background()
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
-	nfsClientId := "testClientId-test-pod-id-13"
+	actualClientId := "testClientId-test-pod-id-13"
 	diskID := "test-disk-id-42"
 	socketsDir := filepath.Join(tempDir, "sockets")
 	sourcePath := filepath.Join(socketsDir, podID, diskID)
@@ -66,7 +66,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 			UnixSocketPath:   nbsSocketPath,
 			DiskId:           diskID,
-			ClientId:         clientID,
+			ClientId:         actualClientId,
 			DeviceName:       diskID,
 			IpcType:          nbs.EClientIpcType_IPC_VHOST,
 			VhostQueuesCount: 8,
@@ -87,7 +87,7 @@ func doTestPublishUnpublishVolumeForKubevirt(t *testing.T, backend string) {
 			Endpoint: &nfs.TEndpointConfig{
 				SocketPath:       nfsSocketPath,
 				FileSystemId:     diskID,
-				ClientId:         nfsClientId,
+				ClientId:         actualClientId,
 				VhostQueuesCount: 8,
 				Persistent:       true,
 			},
@@ -188,6 +188,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
+	actualClientId := "testClientId-test-pod-id-13"
 	targetPath := filepath.Join(tempDir, "pods", podID, "volumes", diskID, "mount")
 	targetFsPathPattern := filepath.Join(tempDir, "pods/([a-z0-9-]+)/volumes/([a-z0-9-]+)/mount")
 	socketsDir := filepath.Join(tempDir, "sockets")
@@ -217,7 +218,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskID,
-		ClientId:         clientID,
+		ClientId:         actualClientId,
 		DeviceName:       diskID,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
@@ -310,6 +311,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	clientID := "testClientId"
 	podID := "test-pod-id-13"
 	diskID := "test-disk-id-42"
+	actualClientId := "testClientId-test-pod-id-13"
 	targetPath := filepath.Join(tempDir, "volumeDevices", "publish", diskID, podID)
 	targetBlkPathPattern := filepath.Join(tempDir, "volumeDevices/publish/([a-z0-9-]+)/([a-z0-9-]+)")
 	socketsDir := filepath.Join(tempDir, "sockets")
@@ -339,7 +341,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
 		UnixSocketPath:   socketPath,
 		DiskId:           diskID,
-		ClientId:         clientID,
+		ClientId:         actualClientId,
 		DeviceName:       diskID,
 		IpcType:          ipcType,
 		VhostQueuesCount: 8,
