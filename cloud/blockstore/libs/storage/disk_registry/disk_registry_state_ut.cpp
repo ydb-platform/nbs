@@ -7701,17 +7701,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
             UNIT_ASSERT_VALUES_EQUAL(1000, agents[1].GetNodeId());
             UNIT_ASSERT_VALUES_EQUAL("agent-2", agents[1].GetAgentId());
         });
-
-        executor.ReadTx([&] (TDiskRegistryDatabase db) mutable {
-            TVector<NProto::TAgentConfig> agents;
-
-            db.ReadOldAgents(agents);
-
-            UNIT_ASSERT_VALUES_EQUAL(1, agents.size());
-
-            UNIT_ASSERT_VALUES_EQUAL(1000, agents[0].GetNodeId());
-            UNIT_ASSERT_VALUES_EQUAL("agent-2", agents[0].GetAgentId());
-        });
     }
 
     Y_UNIT_TEST(ShouldBackupState)
@@ -10859,21 +10848,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         executor.ReadTx([&] (TDiskRegistryDatabase db) {
             NProto::TDiskRegistryConfig config;
             UNIT_ASSERT(db.ReadDiskRegistryConfig(config));
-
-            TVector<NProto::TAgentConfig> oldAgents;
-            UNIT_ASSERT(db.ReadOldAgents(oldAgents));
-            UNIT_ASSERT_VALUES_EQUAL(2, oldAgents.size());
-            Sort(oldAgents, TByAgentId());
-            if (agentToAbuse.GetAgentId() == "agent-1") {
-                UNIT_ASSERT_VALUES_EQUAL("agent-2", oldAgents[0].GetAgentId());
-                UNIT_ASSERT_VALUES_EQUAL(2, oldAgents[0].GetNodeId());
-            } else {
-                UNIT_ASSERT_VALUES_EQUAL("agent-1", oldAgents[0].GetAgentId());
-                UNIT_ASSERT_VALUES_EQUAL(1, oldAgents[0].GetNodeId());
-            }
-
-            UNIT_ASSERT_VALUES_EQUAL("agent-3", oldAgents[1].GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(agentToAbuse.GetNodeId(), oldAgents[1].GetNodeId());
 
             TVector<NProto::TAgentConfig> agents;
             UNIT_ASSERT(db.ReadAgents(agents));
