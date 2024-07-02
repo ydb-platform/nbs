@@ -62,6 +62,7 @@ private:
     TDeviceClientPtr DeviceClient;
 
     ui32 InitErrorsCount = 0;
+    bool PartiallySuspended = false;
 
 public:
     TDiskAgentState(
@@ -146,6 +147,9 @@ public:
 
     void StopTarget();
 
+    void SetPartiallySuspended(bool partiallySuspended);
+    bool GetPartiallySuspended() const;
+
 private:
     const TDeviceState& GetDeviceState(
         const TString& uuid,
@@ -157,6 +161,11 @@ private:
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
     const TDeviceState& GetDeviceStateImpl(const TString& uuid) const;
+
+    void EnsureAccessToDevices(
+        const TVector<TString>& uuids,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) const;
 
     template <typename T>
     void WriteProfileLog(

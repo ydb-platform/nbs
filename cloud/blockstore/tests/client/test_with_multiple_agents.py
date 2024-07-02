@@ -1,6 +1,9 @@
+from enum import Enum
 import json
 import logging
 import os
+import pytest
+import time
 from subprocess import TimeoutExpired
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, \
@@ -10,14 +13,30 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
-from cloud.blockstore.tests.python.lib.test_base import thread_count, \
-    wait_for_nbs_server, wait_for_disk_agent, wait_for_secure_erase
-from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
-    create_devices, setup_disk_registry_config, \
-    enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.blockstore.tests.python.lib.test_base import (
+    thread_count,
+    wait_for_nbs_server,
+    wait_for_disk_agent,
+    wait_for_secure_erase,
+    files_equal
+)
+from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
+    setup_nonreplicated,
+    create_devices,
+    setup_disk_registry_config,
+    enable_writable_state,
+    make_agent_node_type,
+    make_agent_id,
+    AgentInfo,
+    DeviceInfo
+)
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import \
+    kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import \
+    KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_runner import \
+    get_unique_path_for_current_test, ensure_path_exists
 
 import yatest.common as yatest_common
 
@@ -28,6 +47,20 @@ DEFAULT_ALLOCATION_UNIT_SIZE = 1
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 NBD_SOCKET_SUFFIX = "_nbd"
 NRD_BLOCKS_COUNT = 1024**3
+DATA_FILE = "random.bin"
+
+################################################################################
+
+
+def cache_dir_path():
+    cache_dir_path = get_unique_path_for_current_test(
+        output_path=yatest_common.output_path(),
+        sub_folder="disk_agents_cache"
+    )
+    ensure_path_exists(cache_dir_path)
+    return cache_dir_path
+
+################################################################################
 
 
 class TestWithMultipleAgents(object):
@@ -60,7 +93,8 @@ class TestWithMultipleAgents(object):
         self.server_app_config.ServerConfig.NodeType = 'main'
         self.server_app_config.ServerConfig.NbdEnabled = True
         self.server_app_config.ServerConfig.NbdSocketSuffix = NBD_SOCKET_SUFFIX
-        self.server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
+        self.server_app_config.KikimrServiceConfig.CopyFrom(
+            TKikimrServiceConfig())
 
         self.storage_config = TStorageServiceConfig()
         self.storage_config.AllocationUnitNonReplicatedSSD = self.allocation_unit_size
@@ -76,7 +110,7 @@ class TestWithMultipleAgents(object):
         self.storage_config.UseMirrorResync = True
         self.storage_config.MirroredMigrationStartAllowed = True
 
-    def run_disk_agent(self, index):
+    def run_disk_agent(self, index, temporary=False):
         storage = TStorageServiceConfig()
         storage.CopyFrom(self.storage_config)
         storage.DisableLocalService = True
@@ -91,7 +125,8 @@ class TestWithMultipleAgents(object):
             kikimr_binary_path=self.kikimr_binary_path,
             disk_agent_binary_path=self.disk_agent_binary_path,
             rack="rack-%s" % index,
-            node_type=make_agent_node_type(index))
+            node_type=make_agent_node_type(index),
+            temporary_agent=temporary)
 
         disk_agent.start()
         wait_for_disk_agent(disk_agent.mon_port)
@@ -131,7 +166,8 @@ class TestWithMultipleAgents(object):
             device_infos = []
             agent_devices = []
             for _ in range(self.device_count):
-                device_infos.append(DeviceInfo(self.__devices[device_idx].uuid))
+                device_infos.append(DeviceInfo(
+                    self.__devices[device_idx].uuid))
                 agent_devices.append(self.__devices[device_idx])
                 device_idx += 1
             agent_infos.append(AgentInfo(make_agent_id(i), device_infos))
@@ -142,6 +178,7 @@ class TestWithMultipleAgents(object):
             devices_per_agent,
             dedicated_disk_agent=True,
             agent_count=self.agent_count,
+            cached_sessions_dir_path=cache_dir_path()
         )
 
         self.nbs = LocalNbs(
@@ -184,7 +221,8 @@ def test_wait_dependent_disks_to_switch_node_timeout():
         wait_for_secure_erase(env.nbs.mon_port)
 
         client = NbsClient(env.nbs.nbs_port)
-        client.create_volume("nrd0", "nonreplicated", str(DEFAULT_BLOCK_COUNT_PER_DEVICE))
+        client.create_volume("nrd0", "nonreplicated",
+                             DEFAULT_BLOCK_COUNT_PER_DEVICE)
 
         agent_id = make_agent_id(0)
         node_id_response = json.loads(client.get_disk_agent_node_id(agent_id))
@@ -224,6 +262,121 @@ def test_wait_dependent_disks_to_switch_node_timeout():
         else:
             assert False, "blockstore-client shouldn't have exited."\
                 " stdout: {}\nstderr: {}".format(out, err)
+
+    finally:
+        env.cleanup_file_devices()
+
+
+class DiskType(Enum):
+    NRD = {
+        "agent_count": 1,
+        "storage_media_kind": "nonreplicated",
+    }
+    MIRROR3 = {
+        "agent_count": 3,
+        "storage_media_kind": "mirror3",
+    }
+
+
+@pytest.mark.parametrize("disk_type", [dt for dt in DiskType], ids=[dt.name for dt in DiskType])
+def test_disk_agent_partial_suspend_cancellation(disk_type: DiskType):
+    env = TestWithMultipleAgents(agent_count=disk_type.value["agent_count"])
+    try:
+        env.setup()
+        for i in range(disk_type.value["agent_count"]):
+            env.run_disk_agent(i)
+        wait_for_secure_erase(env.nbs.mon_port)
+
+        client = NbsClient(env.nbs.nbs_port)
+        DISK_ID = "diskid"
+        client.create_volume(DISK_ID, disk_type.value["storage_media_kind"],
+                             DEFAULT_BLOCK_COUNT_PER_DEVICE)
+
+        agent_id = make_agent_id(0)
+        da_node_id = json.loads(
+            client.get_disk_agent_node_id(agent_id))["NodeId"]
+        assert da_node_id > 50000
+
+        BLOCK_COUNT = 100
+        with open("/dev/urandom", "rb") as r:
+            with open(DATA_FILE, "wb") as w:
+                block = r.read(DEFAULT_BLOCK_SIZE * BLOCK_COUNT)
+                w.write(block)
+
+        client.write_blocks(DISK_ID, 0, DATA_FILE)
+        client.read_blocks(DISK_ID, 0, BLOCK_COUNT, "read.data")
+        assert files_equal(DATA_FILE, "read.data")
+
+        SUSPENSION_DELAY_MS = 180000  # 3 min
+        client.partially_suspend_disk_agent(da_node_id, SUSPENSION_DELAY_MS)
+
+        # Client will try to create new session, but it's now blocked by
+        # rejects from the suspended agent.
+        read_data_process = client.read_blocks_async(
+            DISK_ID, 0, BLOCK_COUNT, "read2.data")
+        try:
+            out, err = read_data_process.communicate(timeout=20)
+        except TimeoutExpired:
+            pass
+        else:
+            assert False, "blockstore-client shouldn't have exited."\
+                " stdout: {}\nstderr: {}".format(out, err)
+
+        env.run_disk_agent(0, True)
+
+        # Now we wait for disk to switch to the temporary agent.
+        logging.info("wait for switch")
+        wait_response = client.wait_dependent_disks_to_switch_node(
+            agent_id, da_node_id)
+        assert json.loads(wait_response) == {
+            "DependentDiskStates": [
+                {
+                    "DiskId": DISK_ID,
+                    "DiskState": "DISK_STATE_READY"
+                }
+            ]
+        }, f"wait_response = {wait_response}"
+
+        # Temporary agent read the data.
+        out, err = read_data_process.communicate()
+        assert read_data_process.returncode == 0
+        assert files_equal(DATA_FILE, "read2.data")
+
+        # Node id of the temporary agent differs from the primary one.
+        temp_da_node_id = json.loads(
+            client.get_disk_agent_node_id(agent_id))["NodeId"]
+        assert temp_da_node_id > 50000
+        assert temp_da_node_id != da_node_id
+
+        logging.info("da_node_id: {}".format(da_node_id))
+        logging.info("temp_da_node_id: {}".format(temp_da_node_id))
+
+        # We need to suspend the temporary agent to allow primary agent to
+        # register in the DR.
+        client.partially_suspend_disk_agent(
+            temp_da_node_id, SUSPENSION_DELAY_MS * 2)
+
+        # Partial suspend should be canceled after a delay.
+        time.sleep(SUSPENSION_DELAY_MS / 1000)
+
+        # Now we wait for disk to switch to the primary agent.
+        wait_response = client.wait_dependent_disks_to_switch_node(
+            agent_id, temp_da_node_id)
+        assert json.loads(wait_response) == {
+            "DependentDiskStates": [
+                {
+                    "DiskId": DISK_ID,
+                    "DiskState": "DISK_STATE_READY"
+                }
+            ]
+        }, f"wait_response = {wait_response}"
+
+        node_id = json.loads(client.get_disk_agent_node_id(agent_id))["NodeId"]
+        assert node_id == da_node_id
+
+        # IO still works fine.
+        client.read_blocks(DISK_ID, 0, BLOCK_COUNT, "read3.data")
+        assert files_equal(DATA_FILE, "read3.data")
 
     finally:
         env.cleanup_file_devices()

@@ -29,7 +29,8 @@ class NbsClient:
             "--port", str(self.__port),
             "--verbose", "error",
             "--timeout", str(timeout_sec),
-        ], stdout=PIPE, check=True, text=True)
+        ], stdout=PIPE, stderr=PIPE, text=True)
+        assert p.returncode == 0, "stderr: {}".format(p.stderr)
 
         return p.stdout
 
@@ -52,14 +53,59 @@ class NbsClient:
             self.__binary_path,
             "createvolume",
             "--disk-id", disk_id,
-            "--blocks-count", blocks_count,
+            "--blocks-count", str(blocks_count),
             "--storage-media-kind", kind,
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error"
+        ], stdout=PIPE, stderr=PIPE, text=True)
+        assert p.returncode == 0, "stderr: {}".format(p.stderr)
+
+        return p.stdout
+
+    def write_blocks(self, disk_id, start_index, input_path):
+        p = subprocess.run([
+            self.__binary_path,
+            "writeblocks",
+            "--disk-id", disk_id,
+            "--start-index", str(start_index),
+            "--input", input_path,
             "--host", "localhost",
             "--port", str(self.__port),
             "--verbose", "error"
         ], stdout=PIPE, check=True, text=True)
 
         return p.stdout
+
+    def read_blocks(self, disk_id, start_index, blocks_count, output_path, io_depth=1):
+        p = subprocess.run([
+            self.__binary_path,
+            "readblocks",
+            "--disk-id", disk_id,
+            "--start-index", str(start_index),
+            "--blocks-count", str(blocks_count),
+            "--output", output_path,
+            "--io-depth", str(io_depth),
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error"
+        ], stdout=PIPE, check=True, text=True)
+
+        return p.stdout
+
+    def read_blocks_async(self, disk_id, start_index, blocks_count, output_path, io_depth=1):
+        return subprocess.Popen([
+            self.__binary_path,
+            "readblocks",
+            "--disk-id", disk_id,
+            "--start-index", str(start_index),
+            "--blocks-count", str(blocks_count),
+            "--output", output_path,
+            "--io-depth", str(io_depth),
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error"
+        ], stdout=PIPE, stderr=PIPE, text=True)
 
     def disk_registry_set_writable_state(self, state=True):
         req = {"State": state}
@@ -114,3 +160,9 @@ class NbsClient:
         req = {"AgentId": agentd_id}
 
         return self.__execute_action('GetDiskAgentNodeId', req)
+
+    def partially_suspend_disk_agent(self, node_id, cancel_suspension_delay_ms=30000):
+        req = {"NodeId": node_id,
+               "CancelSuspensionDelay": cancel_suspension_delay_ms}
+
+        return self.__execute_action('PartiallySuspendDiskAgent', req)

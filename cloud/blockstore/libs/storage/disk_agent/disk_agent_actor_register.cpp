@@ -200,6 +200,10 @@ void TDiskAgentActor::HandleConnectionLost(
 {
     Y_UNUSED(ev);
 
+    if (State->GetPartiallySuspended()) {
+        return;
+    }
+
     SendRegisterRequest(ctx);
 }
 

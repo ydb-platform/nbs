@@ -291,6 +291,15 @@ public:
         return std::make_unique<TEvDiskAgentPrivate::TEvCollectStatsRequest>();
     }
 
+    auto CreatePartiallySuspendAgentRequest(TDuration cancelSuspensionDelay)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvPartiallySuspendAgentRequest>();
+        request->Record.SetCancelSuspensionDelay(
+            cancelSuspensionDelay.MilliSeconds());
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \
