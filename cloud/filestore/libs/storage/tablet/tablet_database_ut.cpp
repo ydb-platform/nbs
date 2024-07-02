@@ -72,15 +72,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<TIndexTabletDatabase::TNode> node1;
+            TMaybe<IIndexTabletDatabase::TNode> node1;
             UNIT_ASSERT(db.ReadNode(nodeId1, commitId, node1));
             UNIT_ASSERT(node1);
 
-            TMaybe<TIndexTabletDatabase::TNode> node2;
+            TMaybe<IIndexTabletDatabase::TNode> node2;
             UNIT_ASSERT(db.ReadNode(nodeId2, commitId, node2));
             UNIT_ASSERT(node2);
 
-            TMaybe<TIndexTabletDatabase::TNode> node3;
+            TMaybe<IIndexTabletDatabase::TNode> node3;
             UNIT_ASSERT(db.ReadNode(12345, commitId, node3));
             UNIT_ASSERT(!node3);
         });
@@ -146,19 +146,19 @@ Y_UNIT_TEST_SUITE(TIndexTabletDatabaseTest)
         });
 
         executor.ReadTx([&] (TIndexTabletDatabase db) {
-            TMaybe<TIndexTabletDatabase::TNodeRef> ref1;
+            TMaybe<IIndexTabletDatabase::TNodeRef> ref1;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child1", ref1));
             UNIT_ASSERT_EQUAL(ref1->ChildNodeId, childNodeId1);
             UNIT_ASSERT_EQUAL(ref1->FollowerId, "");
             UNIT_ASSERT_EQUAL(ref1->FollowerName, "");
 
-            TMaybe<TIndexTabletDatabase::TNodeRef> ref2;
+            TMaybe<IIndexTabletDatabase::TNodeRef> ref2;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child2", ref2));
             UNIT_ASSERT_EQUAL(ref2->ChildNodeId, childNodeId2);
             UNIT_ASSERT_EQUAL(ref2->FollowerId, "follower");
             UNIT_ASSERT_EQUAL(ref2->FollowerName, "name");
 
-            TMaybe<TIndexTabletDatabase::TNodeRef> ref3;
+            TMaybe<IIndexTabletDatabase::TNodeRef> ref3;
             UNIT_ASSERT(db.ReadNodeRef(nodeId, commitId, "child3", ref3));
             UNIT_ASSERT(!ref3);
         });

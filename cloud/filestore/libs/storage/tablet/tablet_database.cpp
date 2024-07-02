@@ -155,7 +155,7 @@ void TIndexTabletDatabase::DeleteNode(ui64 nodeId)
 bool TIndexTabletDatabase::ReadNode(
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<TIndexTabletDatabase::TNode>& node)
+    TMaybe<TNode>& node)
 {
     using TTable = TIndexTabletSchema::Nodes;
 
@@ -215,7 +215,7 @@ void TIndexTabletDatabase::DeleteNodeVer(ui64 nodeId, ui64 commitId)
 bool TIndexTabletDatabase::ReadNodeVer(
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<TIndexTabletDatabase::TNode>& node)
+    TMaybe<TNode>& node)
 {
     using TTable = TIndexTabletSchema::Nodes_Ver;
 
@@ -511,7 +511,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
@@ -652,7 +652,7 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<TNodeRef>& ref)
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
@@ -699,7 +699,7 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
 bool TIndexTabletDatabase::ReadNodeRefVers(
     ui64 nodeId,
     ui64 commitId,
-    TVector<TIndexTabletDatabase::TNodeRef>& refs)
+    TVector<TNodeRef>& refs)
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
