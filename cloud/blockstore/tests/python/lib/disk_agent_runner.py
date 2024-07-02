@@ -48,7 +48,8 @@ class LocalDiskAgent(Daemon):
             features_config_patch=None,
             rack="rack",
             node_type=None,
-            grpc_trace=None):
+            grpc_trace=None,
+            temporary_agent=False):
         if dynamic_storage_pools is not None:
             assert len(dynamic_storage_pools) >= 2
             self.__dynamic_storage_pools = dynamic_storage_pools
@@ -63,6 +64,7 @@ class LocalDiskAgent(Daemon):
         self.__grpc_trace = grpc_trace
         self.__ic_port = self.__port_manager.get_port()
         self.__mon_port = self.__port_manager.get_port()
+        self.__temporary_agent = temporary_agent
         if disk_agent_binary_path is not None:
             self.__binary_path = disk_agent_binary_path
         else:
@@ -153,8 +155,10 @@ class LocalDiskAgent(Daemon):
             cwd=self.__cwd,
             timeout=180,
             core_pattern=cp,
-            stdout_file=os.path.join(self.log_path(), 'agent_stdout.txt'),
-            stderr_file=os.path.join(self.log_path(), 'agent_stderr.txt'),
+            stdout_file=os.path.join(self.log_path(
+            ), 'temporary_agent_stdout.txt' if self.__temporary_agent else 'agent_stdout.txt'),
+            stderr_file=os.path.join(self.log_path(
+            ), 'temporary_agent_stderr.txt' if self.__temporary_agent else 'agent_stderr.txt'),
         )
 
     @staticmethod
@@ -470,6 +474,9 @@ ModifyScheme {
             "--mon-port", str(self.__mon_port),
             "--scheme-shard-dir", "nbs",
             "--load-configs-from-cms"]
+
+        if self.__temporary_agent:
+            command += ["--temporary-agent"]
 
         if self.__node_type is not None:
             command += ["--node-type", self.__node_type]

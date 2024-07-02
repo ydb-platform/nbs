@@ -84,6 +84,7 @@ void TServiceActor::HandleExecuteAction(
         {"flushprofilelog",                   &TServiceActor::CreateFlushProfileLogActor                   },
         {"getdiskagentnodeid",                &TServiceActor::CreateGetDiskAgentNodeIdActor                },
         {"waitdependentdiskstoswitchnode",    &TServiceActor::CreateWaitDependentDisksToSwitchNodeActor    },
+        {"partiallysuspenddiskagent",         &TServiceActor::CreatePartiallySuspendDiskAgentActor         },
     };
 
     NProto::TError error;

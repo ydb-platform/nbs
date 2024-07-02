@@ -37,7 +37,16 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     enable_writable_state,
     setup_disk_registry_config_simple,
 )
-from cloud.blockstore.tests.python.lib.test_base import thread_count, get_nbs_counters, get_sensor_by_name
+from cloud.blockstore.tests.python.lib.test_base import (
+    thread_count,
+    get_nbs_counters,
+    get_sensor_by_name,
+    files_equal,
+    compare_bitmaps,
+    file_equal,
+    file_parse,
+    file_parse_as_json
+)
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
@@ -68,72 +77,6 @@ def run_async(job, stdout, stderr, cwd=None):
         stdout=open(os.path.join(common.output_path(), stdout), "w"),
         stderr=open(os.path.join(common.output_path(), stderr), "w"),
         cwd=cwd)
-
-
-################################################################################
-# result comparison utils
-
-def files_equal(path_0, path_1, cb=None):
-    file_0 = open(path_0, "rb")
-    file_1 = open(path_1, "rb")
-
-    block_no = 0
-    while True:
-        block_0 = file_0.read(BLOCK_SIZE)
-        block_1 = file_1.read(BLOCK_SIZE)
-
-        if block_0 != block_1:
-            if cb is None or not cb(block_no, block_0, block_1):
-                return False
-
-        if not block_0:
-            break
-
-        block_no += 1
-
-    return True
-
-
-def compare_bitmaps(path_0, path_1):
-    errors = []
-
-    def cb(block_no, block_0, block_1):
-        per_block = BLOCK_SIZE * 8
-        offset = per_block * block_no
-
-        for i in range(BLOCK_SIZE):
-            byte_offset = offset + i * 8
-            byte_0 = ord(block_0[i])
-            byte_1 = ord(block_1[i])
-            for j in range(8):
-                bit_offset = byte_offset + j
-                bit_0 = (byte_0 >> j) & 1
-                bit_1 = (byte_1 >> j) & 1
-                if bit_0 != bit_1:
-                    errors.append("bit %s: %s -> %s" % (bit_offset, bit_0, bit_1))
-
-    files_equal(path_0, path_1, cb)
-
-    return errors
-
-
-def file_equal(file_path, str):
-    file_content = ''
-    with open(file_path, 'r') as file:
-        file_content = file.read()
-    return file_content == str
-
-
-def file_parse(file_path, proto_type):
-    file_content = ''
-    with open(file_path, 'r') as file:
-        file_content = file.read()
-    return text_format.Parse(file_content, proto_type)
-
-
-def file_parse_as_json(file_path):
-    with open(file_path, 'r') as file:
-        return json.load(file)
 
 
 ################################################################################

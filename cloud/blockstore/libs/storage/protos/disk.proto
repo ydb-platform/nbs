@@ -1651,3 +1651,23 @@ message TWaitDependentDisksToSwitchNodeResponse
     // shutdown.
     repeated TDependentDiskState DependentDiskStates = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Partially suspend agent. Used for blue-green deployment.
+// We need to prepare a running instance that a new instance will be launched
+// soon.
+
+message TPartiallySuspendAgentRequest
+{
+    // Node that agent is running on.
+    uint32 NodeId = 1;
+
+    // Time in ms until Disk Agent goes back to working state.
+    uint32 CancelSuspensionDelay  = 2;
+}
+
+message TPartiallySuspendAgentResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
