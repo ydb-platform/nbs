@@ -5,6 +5,8 @@ package NCloud.NBlockStore.NProto;
 import "cloud/storage/core/protos/authorization_mode.proto";
 import "cloud/storage/core/protos/certificate.proto";
 
+import "contrib/ydb/core/protos/console_config.proto";
+
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1027,4 +1029,5 @@ message TStorageServiceConfig
 
     // Node type
     optional string NodeType = 384;
+    repeated string ConfigDispatcherTrackedConfigs = 375;
 }

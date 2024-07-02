@@ -1,6 +1,6 @@
 PROTO_LIBRARY()
 
-INCLUDE_TAGS(GO_PROTO)
+EXCLUDE_TAGS(GO_PROTO)
 EXCLUDE_TAGS(JAVA_PROTO)
 
 SRCS(
@@ -24,6 +24,7 @@ PEERDIR(
     cloud/blockstore/public/api/protos
     cloud/storage/core/config
     cloud/storage/core/protos
+    contrib/ydb/core/protos
 )
 
 END()

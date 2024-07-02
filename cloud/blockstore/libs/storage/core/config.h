@@ -7,6 +7,8 @@
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
+#include <contrib/ydb/core/protos/console_config.pb.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/stream/output.h>
@@ -604,6 +606,8 @@ public:
     TString GetNodeRegistrationRootCertsFile() const;
     TCertificate GetNodeRegistrationCert() const;
     TString GetNodeType() const;
+
+    TVector<ui32> GetConfigDispatcherTrackedConfigs() const;
 };
 
 ui64 GetAllocationUnit(
