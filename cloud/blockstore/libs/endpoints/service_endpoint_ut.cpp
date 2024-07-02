@@ -20,7 +20,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/endpoints/keyring/keyring_endpoints.h>
 #include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
-#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -234,16 +233,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
 
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        TTempDir endpointsDir(dirPath);
         TTempDir dir;
         TString unixSocket = (dir.Path() / "testSocket").GetPath();
         TString diskId = "testDiskId";
@@ -322,16 +313,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
-
+        TTempDir endpointsDir(dirPath);
         auto logging = CreateLoggingService("console");
 
         auto scheduler = CreateScheduler();
@@ -510,15 +492,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
+        TTempDir endpointsDir(dirPath);
 
         size_t counter = 0;
         size_t wrongDataCount = 3;
@@ -679,15 +653,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
+        TTempDir endpointsDir(dirPath);
 
         TTempDir dir;
         size_t endpointCount = 5;
@@ -754,15 +720,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
+        TTempDir endpointsDir(dirPath);
 
         TTempDir dir;
         ui32 endpointCount = 42;
@@ -1030,15 +988,7 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto keyringId = 13;
         const TString dirPath = "./" + CreateGuidAsString();
         auto endpointStorage = CreateFileEndpointStorage(dirPath);
-        auto mutableStorage = CreateFileMutableEndpointStorage(dirPath);
-
-        auto initError = mutableStorage->Init();
-        UNIT_ASSERT_C(!HasError(initError), initError);
-
-        Y_DEFER {
-            auto error = mutableStorage->Remove();
-            UNIT_ASSERT_C(!HasError(error), error);
-        };
+        TTempDir endpointsDir(dirPath);
 
         TAtomic trigger = 0;
         TManualEvent event;

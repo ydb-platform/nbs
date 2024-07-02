@@ -34,7 +34,8 @@ private:
     IVolumeStatsPtr VolumeStats;
     IClientFactory& ClientFactory;
     TTestContext& TestContext;
-    IMutableEndpointStoragePtr EndpointStorage;
+    IEndpointStoragePtr EndpointStorage;
+    std::unique_ptr<TTempDir> EndpointsDir;
 
     TString EndpointSocketPath;
 

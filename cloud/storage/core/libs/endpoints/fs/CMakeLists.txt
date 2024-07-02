@@ -9,5 +9,4 @@ target_link_libraries(core-libs-endpoints-fs PUBLIC
 )
 target_sources(core-libs-endpoints-fs PRIVATE
   ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/endpoints/fs/fs_endpoints.cpp
-  ${CMAKE_SOURCE_DIR}/cloud/storage/core/libs/endpoints/fs/fs_endpoints_test.cpp
 )
