@@ -66,10 +66,16 @@ public:
     NProto::TError Submit(iocb* io)
     {
         const int ret = io_submit(Context, 1, &io);
+        if (ret < 0) {
+            if (ret == -EAGAIN) {
+                // retry EAGAIN
+                return MakeError(E_REJECTED, "EAGAIN received");
+            }
 
-        return ret < 0
-            ? MakeSystemError(-ret, "unable to submit async IO operation")
-            : NProto::TError{};
+            return MakeSystemError(-ret, "unable to submit async IO operation");
+        }
+
+        return NProto::TError{};
     }
 
     TArrayRef<io_event> GetEvents(TArrayRef<io_event> events, timespec& timeout)
