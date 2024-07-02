@@ -3082,7 +3082,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
-        // TODO(#1350): test XAttr requests
+        auto setXAttrResponse = service.SetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr",
+            "some_value")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, setXAttrResponse.GetVersion());
+
+        auto getXAttrResponse = service.GetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, getXAttrResponse.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL("some_value", getXAttrResponse.GetValue());
+
+        service.SendSetNodeXAttrRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "user.some_attr",
+            "some_value");
+
+        auto setNodeXAttrResponseEvent = service.RecvSetNodeXAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            setNodeXAttrResponseEvent->GetStatus(),
+            setNodeXAttrResponseEvent->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldCreateDirectoryStructureInLeader)
