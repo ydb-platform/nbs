@@ -13,27 +13,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ResponseCode
-{
-    Success,
-    Retry,
-    Error,
-};
-
 template <typename T>
-ResponseCode GetResponseCode(const TFuture<T>& future)
+EErrorKind GetResponseErrorKind(const TFuture<T>& future)
 {
     if (future.HasException()) {
-        return ResponseCode::Error;
+        return EErrorKind::ErrorFatal;
     }
 
-    auto& error = future.GetValue().GetError();
-    if (HasError(error)) {
-        return error.GetCode() == E_REJECTED ? ResponseCode::Retry
-                                             : ResponseCode::Error;
-    }
-
-    return ResponseCode::Success;
+    return GetErrorKind(future.GetValue().GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,9 +57,7 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            auto rc = GetResponseCode(future);
-            if (rc != ResponseCode::Success) {
-                HandleIoError(rc);
+            if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }
 
@@ -95,9 +80,7 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            auto rc = GetResponseCode(future);
-            if (rc != ResponseCode::Success) {
-                HandleIoError(rc);
+            if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }
 
@@ -120,9 +103,7 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            auto rc = GetResponseCode(future);
-            if (rc != ResponseCode::Success) {
-                HandleIoError(rc);
+            if (HandleIoError(GetResponseErrorKind(future))) {
                 return;
             }
 
@@ -159,10 +140,16 @@ struct TStorageWithIoStats final
         Stats->OnError();
     }
 
-    void HandleIoError(ResponseCode rc) {
-        if (rc != ResponseCode::Retry) {
-            Stats->OnError();
+    bool HandleIoError(EErrorKind errorKind)
+    {
+        if (errorKind != EErrorKind::Success) {
+            if (errorKind != EErrorKind::ErrorRetriable) {
+                Stats->OnError();
+            }
+            return true;
         }
+
+        return false;
     }
 };
 

@@ -150,10 +150,10 @@ IStoragePtr CreateTestStorage(TStorageIoStatsPtr stats)
         DefaultBlockSize);
 }
 
-IStoragePtr CreateErrorStorage(TStorageIoStatsPtr stats)
+IStoragePtr CreateErrorStorage(TStorageIoStatsPtr stats, i32 code)
 {
     NProto::TError error;
-    error.SetCode(E_IO);
+    error.SetCode(code);
 
     return CreateStorageWithIoStats(
         std::make_shared<TTestStorage>(error),
@@ -224,10 +224,11 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCountErrors)
+    void CheckErrorsCount(bool isRetryableError)
     {
         auto stats = std::make_shared<TStorageIoStats>();
-        auto storage = CreateErrorStorage(stats);
+        auto storage =
+            CreateErrorStorage(stats, isRetryableError ? E_REJECTED : E_IO);
 
         const int requestCount = 100;
 
@@ -247,13 +248,25 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, AtomicGet(stats->BytesWritten));
         UNIT_ASSERT_VALUES_EQUAL(requestCount, AtomicGet(stats->NumReadOps));
         UNIT_ASSERT_VALUES_EQUAL(0, AtomicGet(stats->BytesRead));
-        UNIT_ASSERT_VALUES_EQUAL(requestCount * 3, AtomicGet(stats->Errors));
+        UNIT_ASSERT_VALUES_EQUAL(
+            isRetryableError ? 0 : requestCount * 3,
+            AtomicGet(stats->Errors));
+    }
+
+    Y_UNIT_TEST(ShouldCountErrors)
+    {
+        CheckErrorsCount(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotCountRetryableErrors)
+    {
+        CheckErrorsCount(true);
     }
 
     Y_UNIT_TEST(ShouldCountExplicitErrors)
     {
         auto stats = std::make_shared<TStorageIoStats>();
-        auto storage = CreateErrorStorage(stats);
+        auto storage = CreateErrorStorage(stats, E_IO);
 
         storage->ReportIOError();
         storage->ReportIOError();
