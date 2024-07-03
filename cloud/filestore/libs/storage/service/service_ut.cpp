@@ -3441,6 +3441,66 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             destroyFileStoreResponse->GetStatus(),
             destroyFileStoreResponse->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        // a request with FollowerId and without Name
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR,
+            shard1Id);
+
+        auto createHandleResponseEvent = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            createHandleResponseEvent->GetError().GetCode(),
+            createHandleResponseEvent->GetErrorReason());
+
+        // a request with FollowerId != the real FollowerId which owns the node
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR,
+            shard2Id);
+
+        createHandleResponseEvent = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            createHandleResponseEvent->GetError().GetCode(),
+            createHandleResponseEvent->GetErrorReason());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

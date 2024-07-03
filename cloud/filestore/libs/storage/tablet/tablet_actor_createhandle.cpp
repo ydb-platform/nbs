@@ -360,14 +360,30 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
     }
 
-    // TODO(#1350): proper validity checks for external node requests
-    if (args.TargetNodeId != InvalidNodeId && args.FollowerId.Empty()) {
+    if (args.TargetNodeId != InvalidNodeId) {
+        if (args.RequestFollowerId) {
+            const auto shardNo = ExtractShardNo(args.TargetNodeId);
+            const auto& followerIds =
+                GetFileSystem().GetFollowerFileSystemIds();
+            const ui32 followerCount = followerIds.size();
+            const auto& followerId = shardNo && shardNo <= followerCount
+                ? followerIds[shardNo - 1]
+                : Default<TString>();
+            if (args.RequestFollowerId != followerId) {
+                args.Error = MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "Invalid FollowerId in request: "
+                        << args.RequestFollowerId << ", shard mismatch: "
+                        << shardNo << ", real FollowerId: " << followerId);
+                return true;
+            }
+        }
+
         if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
             return false;   // not ready
         }
 
         if (!args.TargetNode) {
-            // TODO(#1350): try to extract shardNo from TargetNodeId?
             args.Error = ErrorInvalidTarget(args.TargetNodeId);
             return true;
         }
@@ -499,6 +515,16 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     RemoveTransaction(*args.RequestInfo);
+
+    if (args.Error.GetCode() == E_ARGUMENT) {
+        // service actor sent something inappropriate, we'd better log it
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Can't create handle: %s",
+            LogTag.c_str(),
+            FormatError(args.Error).Quote().c_str());
+    }
 
     if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
