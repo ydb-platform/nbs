@@ -88,6 +88,11 @@ void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
     if (msg->Record.SessionsSize() != 0) {
         ReplyAndDie(
             ctx,
