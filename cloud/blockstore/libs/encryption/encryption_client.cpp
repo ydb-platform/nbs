@@ -726,6 +726,7 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TMountVolumeRequest> request) override
     {
+        // XXX: wait for MountResponse?
         if (request->HasEncryptionSpec() &&
             request->GetEncryptionSpec().GetMode() != NProto::NO_ENCRYPTION)
         {
