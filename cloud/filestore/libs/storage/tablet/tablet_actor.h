@@ -229,6 +229,8 @@ private:
 
     ui32 BackpressureErrorCount = 0;
 
+    ui64 PastNetworkMetric = 0;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -470,6 +472,8 @@ private:
     void HandleNodeCreatedInFollowerUponCreateHandle(
         const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void SendMetricsToHive(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

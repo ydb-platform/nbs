@@ -327,6 +327,25 @@ void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
     }
 }
 
+void TIndexTabletActor::SendMetricsToHive(const TActorContext& ctx)
+{
+    ui64 sumRequestBytes =
+        Metrics.ReadBlob.RequestBytes + Metrics.DescribeData.RequestBytes +
+        Metrics.PatchBlob.RequestBytes + Metrics.ReadData.RequestBytes +
+        Metrics.DescribeData.RequestBytes + Metrics.WriteData.RequestBytes +
+        Metrics.AddData.RequestBytes + Metrics.GenerateBlobIds.RequestBytes +
+        Metrics.Cleanup.RequestBytes + Metrics.Flush.RequestBytes +
+        Metrics.FlushBytes.RequestBytes + Metrics.TrimBytes.RequestBytes +
+        Metrics.CollectGarbage.RequestBytes;
+
+    auto tmpBytes = sumRequestBytes - PastNetworkMetric;
+
+    Executor()->GetResourceMetrics()->Network.Increment(tmpBytes, ctx.Now());
+    PastNetworkMetric = sumRequestBytes;
+
+    Executor()->GetResourceMetrics()->TryUpdate(ctx);
+}
+
 void TIndexTabletActor::HandleUpdateCounters(
     const TEvIndexTabletPrivate::TEvUpdateCounters::TPtr& ev,
     const TActorContext& ctx)
@@ -343,6 +362,7 @@ void TIndexTabletActor::HandleUpdateCounters(
         CalculateChannelsStats(),
         CalculateReadAheadCacheStats(),
         CalculateNodeIndexCacheStats());
+    SendMetricsToHive(ctx);
 
     UpdateCountersScheduled = false;
     ScheduleUpdateCounters(ctx);
