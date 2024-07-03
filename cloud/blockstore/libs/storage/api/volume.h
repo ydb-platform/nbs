@@ -34,6 +34,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetVolumeInfo,            __VA_ARGS__)                                 \
     xxx(UpdateVolumeParams,       __VA_ARGS__)                                 \
     xxx(ChangeStorageConfig,      __VA_ARGS__)                                 \
+    xxx(GetStorageConfig,         __VA_ARGS__)                                 \
+
 // BLOCKSTORE_VOLUME_REQUESTS
 
 // requests forwarded from service to volume
@@ -325,6 +327,9 @@ struct TEvVolume
 
         EvPreparePartitionMigrationRequest = EvBegin + 56,
         EvPreparePartitionMigrationResponse = EvBegin + 57,
+
+        EvGetStorageConfigRequest = EvBegin + 58,
+        EvGetStorageConfigResponse = EvBegin + 59,
 
         EvEnd
     };

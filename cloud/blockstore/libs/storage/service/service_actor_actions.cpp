@@ -85,6 +85,7 @@ void TServiceActor::HandleExecuteAction(
         {"getdiskagentnodeid",                &TServiceActor::CreateGetDiskAgentNodeIdActor                },
         {"waitdependentdiskstoswitchnode",    &TServiceActor::CreateWaitDependentDisksToSwitchNodeActor    },
         {"partiallysuspenddiskagent",         &TServiceActor::CreatePartiallySuspendDiskAgentActor         },
+        {"getstorageconfig",                  &TServiceActor::CreateGetStorageConfigActor                  },
     };
 
     NProto::TError error;

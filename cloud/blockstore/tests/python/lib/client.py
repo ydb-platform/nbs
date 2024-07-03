@@ -166,3 +166,10 @@ class NbsClient:
                "CancelSuspensionDelay": cancel_suspension_delay_ms}
 
         return self.__execute_action('PartiallySuspendDiskAgent', req)
+
+    def get_storage_service_config(self, disk_id=None, timeout=300):
+        req = {"DiskId": "" if disk_id is None else disk_id}
+
+        resp = self.__execute_action('getstorageconfig', req, timeout)
+
+        return json.loads(resp)
