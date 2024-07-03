@@ -18,6 +18,12 @@ def start(argv):
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_SIZE", "67108864")
     set_env("DISK_MANAGER_RECIPE_RAW_IMAGE_CRC32", "3776401828")
 
+    vmdk_stub_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/broken_vmdk_image")
+    vmdk_broken_file_launcher = ImageFileServerLauncher(vmdk_stub_image_file_path)
+    vmdk_broken_file_launcher.start()
+    set_env("DISK_MANAGER_BROKEN_VMDK_PORT", str(vmdk_broken_file_launcher.port))
+    set_env("DISK_MANAGER_BROKEN_VMDK_IMAGE_SIZE", str(83886080))
+    set_env("DISK_MANAGER_BROKEN_VMDK_CRC32", str(4136957554))
     qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2.img")
     other_qcow2_image_file_path = yatest_common.source_path("cloud/disk_manager/test/images/recipe/data/qcow2_other.img")
     qcow2_image_file_server = ImageFileServerLauncher(qcow2_image_file_path, other_qcow2_image_file_path)

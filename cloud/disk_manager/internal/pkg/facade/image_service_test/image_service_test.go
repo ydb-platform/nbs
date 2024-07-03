@@ -517,6 +517,16 @@ func TestImageServiceCreateGeneratedVMDKImageFromURL(t *testing.T) {
 	)
 }
 
+// //////////////////////////////////////////////////////////////////////////////
+func TestImageServiceBrokenVMDK(t *testing.T) {
+	testCreateImageFromURL(
+		t,
+		testcommon.GetBrokenVMDKImageFileURL(),
+		testcommon.GetBrokenVMDKImageSize(t),
+		testcommon.GetBrokenVMDKImageCrc32(t),
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestImageServiceCancelCreateImageFromURL(t *testing.T) {
