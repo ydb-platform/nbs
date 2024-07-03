@@ -18,6 +18,12 @@ def __wait_message(f, msg):
             break
 
 
+def __read_comm(pid):
+    comm_path = os.path.join('/proc', str(pid), 'comm')
+    with open(comm_path, 'r') as f:
+        return f.readline()
+
+
 def test_vhost_server():
     binary_path = yatest_common.binary_path("cloud/blockstore/vhost-server/blockstore-vhost-server")
     data_file_size = 4096
@@ -47,6 +53,7 @@ def test_vhost_server():
             [
                 binary_path,
                 '-i', 'local0',
+                '--disk-id', 'volume_with_long_name',
                 '-s', socket_path,
                 '-q', '2',
                 '--device', f"{data_file_path}:{data_file_size}:0",
@@ -60,6 +67,8 @@ def test_vhost_server():
         __wait_message(err_r, 'Server started')
 
         assert os.path.exists(socket_path)
+
+        assert 'vhost-volume_wi\n' == __read_comm(server.pid)
 
         for _ in range(3):
             server.send_signal(signal.SIGUSR1)

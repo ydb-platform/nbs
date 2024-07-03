@@ -259,9 +259,8 @@ TChild SpawnChild(
     }
 
     // Child process.
-    stdIn.LinkToReadEnd(STDIN_FILENO);
-    stdOut.LinkToWriteEnd(STDOUT_FILENO);
-    stdErr.LinkToWriteEnd(STDERR_FILENO);
+    stdOut.LinkTo(STDOUT_FILENO);
+    stdErr.LinkTo(STDERR_FILENO);
 
     //freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w", stdout);
     //freopen((TString("/tmp/err.") + ToString(::getpid())).c_str(), "w", stderr);

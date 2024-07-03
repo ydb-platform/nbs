@@ -151,6 +151,15 @@ void SetProcessMark(const TString& diskId)
     TThread::SetCurrentThreadName(id.c_str());
 }
 
+void SetDefaultSigmask()
+{
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGINT);
+    sigaddset(&sigset, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,6 +178,7 @@ int main(int argc, char** argv)
     CloseAllFileHandlesExceptSTD();
     EscapeFromParentProcessGroup();
     SetProcessMark(options.DiskId);
+    SetDefaultSigmask();
 
     auto logService = CreateLogService(options);
     auto backend = CreateBackend(options, logService);
