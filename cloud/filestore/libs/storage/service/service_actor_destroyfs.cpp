@@ -2,6 +2,9 @@
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/actors/core/actor_bootstrapped.h>
 
@@ -32,6 +35,11 @@ public:
 private:
     STFUNC(StateWork);
 
+    void DescribeSessions(const TActorContext& ctx);
+    void HandleDescribeSessionsResponse(
+        const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void DestroyFileStore(const TActorContext& ctx);
     void HandleDestroyFileStoreResponse(
         const TEvSSProxy::TEvDestroyFileStoreResponse::TPtr& ev,
@@ -57,8 +65,42 @@ TDestroyFileStoreActor::TDestroyFileStoreActor(
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    DestroyFileStore(ctx);
+    DescribeSessions(ctx);
     Become(&TThis::StateWork);
+}
+
+void TDestroyFileStoreActor::DescribeSessions(const TActorContext& ctx)
+{
+    auto requestToTablet =
+        std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+    requestToTablet->Record.SetFileSystemId(FileSystemId);
+
+    NCloud::Send(
+        ctx,
+        MakeIndexTabletProxyServiceId(),
+        std::move(requestToTablet));
+
+    Become(&TThis::StateWork);
+}
+
+void TDestroyFileStoreActor::HandleDescribeSessionsResponse(
+    const TEvIndexTablet::TEvDescribeSessionsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (msg->Record.SessionsSize() != 0) {
+        ReplyAndDie(
+            ctx,
+            MakeError(E_REJECTED, "FileStore has active sessions"));
+        return;
+    }
+
+    DestroyFileStore(ctx);
 }
 
 void TDestroyFileStoreActor::DestroyFileStore(const TActorContext& ctx)
@@ -99,6 +141,10 @@ STFUNC(TDestroyFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvDescribeSessionsResponse,
+            HandleDescribeSessionsResponse);
 
         HFunc(TEvSSProxy::TEvDestroyFileStoreResponse, HandleDestroyFileStoreResponse);
 
