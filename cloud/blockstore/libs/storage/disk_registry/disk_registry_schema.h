@@ -15,6 +15,7 @@ namespace NCloud::NBlockStore::NStorage {
 struct TDiskRegistrySchema
     : public NKikimr::NIceDb::Schema
 {
+    /* obsolete
     struct Agents
         : public TTableSchema<1>
     {
@@ -32,6 +33,7 @@ struct TDiskRegistrySchema
         using TKey = TableKey<NodeId>;
         using TColumns = TableColumns<NodeId, Config>;
     };
+    */
 
     struct Disks
         : public TTableSchema<2>
@@ -314,7 +316,6 @@ struct TDiskRegistrySchema
     };
 
     using TTables = SchemaTables<
-        Agents,
         Disks,
         DiskRegistryConfig,
         DirtyDevices,

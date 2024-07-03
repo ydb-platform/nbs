@@ -201,7 +201,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
                 config.SetNodeId(i + 1);
                 config.SetAgentId(ToString(i + 1));
 
-                db.UpdateOldAgent(config);
                 db.UpdateAgent(config);
             });
         }
@@ -220,29 +219,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryDatabaseTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            db.DeleteOldAgent(2);
             db.DeleteAgent("2");
         });
 
         executor.ReadTx([&] (TDiskRegistryDatabase db) {
-            auto funcs = {
-                &TDiskRegistryDatabase::ReadOldAgents,
-                &TDiskRegistryDatabase::ReadAgents
-            };
+            TVector<NProto::TAgentConfig> items;
+            db.ReadAgents(items);
 
-            for (auto func: funcs) {
-                TVector<NProto::TAgentConfig> items;
-                std::invoke(func, db, items);
+            UNIT_ASSERT_VALUES_EQUAL(items.size(), 2);
 
-                UNIT_ASSERT_VALUES_EQUAL(items.size(), 2);
+            Sort(items, TByNodeId());
 
-                Sort(items, TByNodeId());
-
-                UNIT_ASSERT_VALUES_EQUAL(1, items[0].GetNodeId());
-                UNIT_ASSERT_VALUES_EQUAL("1", items[0].GetAgentId());
-                UNIT_ASSERT_VALUES_EQUAL(3, items[1].GetNodeId());
-                UNIT_ASSERT_VALUES_EQUAL("3", items[1].GetAgentId());
-            }
+            UNIT_ASSERT_VALUES_EQUAL(1, items[0].GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL("1", items[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(3, items[1].GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL("3", items[1].GetAgentId());
         });
     }
 

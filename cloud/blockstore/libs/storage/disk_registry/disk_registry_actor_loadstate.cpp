@@ -77,7 +77,6 @@ bool TDiskRegistryActor::LoadState(
     return AllSucceeded({
         db.ReadDiskRegistryConfig(args.Config),
         db.ReadDirtyDevices(args.DirtyDevices),
-        db.ReadOldAgents(args.OldAgents),
         db.ReadAgents(args.Agents),
         db.ReadDisks(args.Disks),
         db.ReadPlacementGroups(args.PlacementGroups),
@@ -118,30 +117,7 @@ void TDiskRegistryActor::ExecuteLoadState(
     TTransactionContext& tx,
     TTxDiskRegistry::TLoadState& args)
 {
-    // Move OldAgents to Agents
-
-    THashSet<TString> ids;
-    for (const auto& agent: args.Snapshot.Agents) {
-        ids.insert(agent.GetAgentId());
-    }
-
     TDiskRegistryDatabase db(tx.DB);
-
-    for (auto& agent: args.Snapshot.OldAgents) {
-        if (!ids.insert(agent.GetAgentId()).second) {
-            continue;
-        }
-
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Agent %s:%d moved to new table",
-            agent.GetAgentId().c_str(),
-            agent.GetNodeId());
-
-        args.Snapshot.Agents.push_back(agent);
-
-        db.UpdateAgent(agent);
-    }
-
     ProcessUserNotifications(
         ctx,
         db,
