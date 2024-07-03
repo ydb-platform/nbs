@@ -63,6 +63,7 @@ func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
 	}
 	ctx = logging.WithFields(ctx, toFields(fields)...)
 
+	logging.AddCallerSkip(ctx, 1)
 	switch ydb_log.LevelFromContext(ctx) {
 	case ydb_log.TRACE:
 		logging.Trace(ctx, msg)
