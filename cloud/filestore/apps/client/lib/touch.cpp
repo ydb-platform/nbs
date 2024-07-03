@@ -28,7 +28,7 @@ public:
 
     bool Execute() override
     {
-        CreateSession();
+        auto sessionGuard = CreateSession();
 
         auto resolved = ResolvePath(Path, true);
 

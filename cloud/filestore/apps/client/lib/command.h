@@ -139,8 +139,6 @@ public:
     void Start() override;
     void Stop() override;
 
-    void CreateSession();
-
 protected:
     template <typename T>
     std::shared_ptr<T> CreateRequest()
@@ -173,6 +171,27 @@ protected:
     TVector<TPathEntry> ResolvePath(
         TStringBuf path,
         bool ignoreMissing);
+
+    class TSessionGuard final
+    {
+        TFileStoreCommand& FileStoreCmd;
+
+    public:
+        explicit TSessionGuard(TFileStoreCommand& fileStoreCmd)
+            : FileStoreCmd(fileStoreCmd)
+        {
+        }
+
+        ~TSessionGuard()
+        {
+            FileStoreCmd.DestroySession();
+        }
+    };
+
+    [[nodiscard]] TSessionGuard CreateSession();
+
+private:
+    void DestroySession();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
