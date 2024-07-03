@@ -1,6 +1,5 @@
 import os
 import signal
-import requests
 
 from google.protobuf.text_format import MessageToString
 
