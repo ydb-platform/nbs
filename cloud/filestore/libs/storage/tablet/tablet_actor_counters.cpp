@@ -330,7 +330,7 @@ void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
 void TIndexTabletActor::SendMetricsToHive(const TActorContext& ctx)
 {
     ui64 sumRequestBytes =
-        Metrics.ReadBlob.RequestBytes + Metrics.DescribeData.RequestBytes +
+        Metrics.ReadBlob.RequestBytes + Metrics.WriteBlob.RequestBytes +
         Metrics.PatchBlob.RequestBytes + Metrics.ReadData.RequestBytes +
         Metrics.DescribeData.RequestBytes + Metrics.WriteData.RequestBytes +
         Metrics.AddData.RequestBytes + Metrics.GenerateBlobIds.RequestBytes +
