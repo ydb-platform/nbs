@@ -81,7 +81,6 @@ private:
     const TActorId ParentId;
     NProto::TCreateNodeRequest Request;
     NProto::TCreateNodeResponse Response;
-    NProto::TCreateNodeResponse FollowerResponse;
 
 public:
     TCreateNodeInFollowerActor(
@@ -186,7 +185,7 @@ void TCreateNodeInFollowerActor::HandleCreateNodeResponse(
         FollowerId.c_str(),
         FollowerName.c_str());
 
-    FollowerResponse = std::move(msg->Record);
+    *Response.MutableNode() = std::move(*msg->Record.MutableNode());
 
     ReplyAndDie(ctx, {});
 }
@@ -212,9 +211,7 @@ void TCreateNodeInFollowerActor::ReplyAndDie(
     using TResponse = TEvIndexTabletPrivate::TEvNodeCreatedInFollower;
     ctx.Send(ParentId, std::make_unique<TResponse>(
         std::move(RequestInfo),
-        std::move(FollowerResponse),
-        std::move(Response)
-    ));
+        std::move(Response)));
 
     Die(ctx);
 }
@@ -520,14 +517,8 @@ void TIndexTabletActor::HandleNodeCreatedInFollower(
 {
     auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
-        msg->FollowerCreateNodeResponse.GetError());
-
-    if (!HasError(response->GetError())) {
-        response->Record = std::move(msg->CreateNodeResponse);
-        *response->Record.MutableNode() =
-            std::move(*msg->FollowerCreateNodeResponse.MutableNode());
-    }
+    auto response = std::make_unique<TEvService::TEvCreateNodeResponse>();
+    response->Record = std::move(msg->CreateNodeResponse);
 
     CompleteResponse<TEvService::TCreateNodeMethod>(
         response->Record,

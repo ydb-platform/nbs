@@ -106,6 +106,13 @@ func (t *createSnapshotFromDiskTask) run(
 	baseSnapshotID := snapshotMeta.BaseSnapshotID
 	baseCheckpointID := snapshotMeta.BaseCheckpointID
 
+	if diskParams.IsDiskRegistryBasedDisk {
+		// Should perform full snapshot of disk.
+		// TODO: enable incremental snapshots for such disks.
+		baseSnapshotID = ""
+		baseCheckpointID = ""
+	}
+
 	if len(baseSnapshotID) != 0 {
 		// Lock base snapshot to prevent deletion.
 		locked, err := t.storage.LockSnapshot(

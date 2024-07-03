@@ -55,10 +55,10 @@ type PoolInfo struct {
 type PoolConsistencyCorrection struct {
 	ImageID               string `json:"image_id"`
 	ZoneID                string `json:"zone_id"`
-	SizeDiff              uint64 `json:"size_diff"`
-	FreeUnitsDiff         uint64 `json:"free_units_diff"`
-	AcquiredUnitsDiff     uint64 `json:"acquired_units_diff"`
-	BaseDisksInflightDiff uint64 `json:"base_disks_inflight_diff"`
+	SizeDiff              int64  `json:"size_diff"`
+	FreeUnitsDiff         int64  `json:"free_units_diff"`
+	AcquiredUnitsDiff     int64  `json:"acquired_units_diff"`
+	BaseDisksInflightDiff int64  `json:"base_disks_inflight_diff"`
 }
 
 ////////////////////////////////////////////////////////////////////////////////

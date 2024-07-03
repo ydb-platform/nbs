@@ -264,7 +264,7 @@ void TStorageServiceActor::HandleCreateHandle(
         ctx,
         TFileStoreComponents::SERVICE,
         "create handle in follower %s",
-        msg->Record.DebugString().c_str());
+        msg->Record.ShortDebugString().Quote().c_str());
 
     auto [cookie, inflight] = CreateInFlightRequest(
         TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),

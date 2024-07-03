@@ -148,6 +148,10 @@ struct TEvDiskAgentPrivate
     struct TUpdateSessionCacheResponse
     {};
 
+
+    struct TCancelSuspensionRequest
+    {};
+
     //
     // Events declaration
     //
@@ -162,6 +166,7 @@ struct TEvDiskAgentPrivate
         EvSecureEraseCompleted,
         EvWriteOrZeroCompleted,
         EvReportDelayedDiskAgentConfigMismatch,
+        EvCancelSuspensionRequest,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -188,6 +193,10 @@ struct TEvDiskAgentPrivate
     using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
         TReportDelayedDiskAgentConfigMismatch,
         EvReportDelayedDiskAgentConfigMismatch>;
+
+    using TEvCancelSuspensionRequest = TRequestEvent<
+        TCancelSuspensionRequest,
+        EvCancelSuspensionRequest>;
 
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
 };

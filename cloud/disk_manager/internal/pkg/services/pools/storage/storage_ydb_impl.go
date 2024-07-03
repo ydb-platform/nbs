@@ -1467,12 +1467,12 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		)
 	}
 
-	found, err := s.findBaseDisk(ctx, tx, info.TargetBaseDiskID)
+	found, err := s.getBaseDisk(ctx, tx, info.TargetBaseDiskID)
 	if err != nil {
 		return err
 	}
 
-	if found == nil || found.isDoomed() {
+	if found.isDoomed() {
 		slotOldState := slot
 
 		// Abort rebasing.
@@ -1480,8 +1480,8 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		slot.targetAllottedSlots = 0
 		slot.targetAllottedUnits = 0
 
-		baseDiskOldState := *found
-		err = releaseTargetUnitsAndSlots(ctx, tx, found, slotOldState)
+		baseDiskOldState := found
+		err = releaseTargetUnitsAndSlots(ctx, tx, &found, slotOldState)
 		if err != nil {
 			return err
 		}
@@ -1491,7 +1491,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 			tx,
 			baseDiskTransition{
 				oldState: &baseDiskOldState,
-				state:    found,
+				state:    &found,
 			},
 			slotTransition{
 				oldState: &slotOldState,
@@ -1513,7 +1513,7 @@ func (s *storageYDB) overlayDiskRebasingTx(
 		)
 	}
 
-	baseDisk := *found
+	baseDisk := found
 
 	if slot.baseDiskID == info.TargetBaseDiskID {
 		// Nothing to do.

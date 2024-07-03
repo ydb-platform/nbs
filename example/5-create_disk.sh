@@ -12,7 +12,7 @@ show_help() {
 Usage: ./5-create_disk.sh [-hkd]
 Creates disk with requested kind and attach it to device
 -h, --help         Display help
--k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3 (default: ssd)
+-k, --kind         Kind of disk ssd|nonreplicated|mirror2|mirror3|local (default: ssd)
 -d, --disk-id      disk-id
 EOF
 }
@@ -21,6 +21,7 @@ EOF
 kind="ssd"
 disk_id=""
 options=$(getopt -l "help,kind:,disk-id:" -o "hk:d:" -a -- "$@")
+block_size=4096
 
 if [ $? != 0 ] ; then
     echo "Incorrect options provided"
@@ -58,6 +59,8 @@ case $kind in
     default_id="mrr0"; blocks_count=262144;;
 "mirror3")
     default_id="mrr1"; blocks_count=262144;;
+"local")
+    default_id="lcl1"; blocks_count=2097152; block_size=512;;
 *)
     echo "$kind mode is not supported"
     show_help
@@ -72,7 +75,10 @@ fi
 # create disk
 echo "Creating disk $disk_id in $kind mode"
 blockstore-client createvolume \
-    --storage-media-kind $kind --blocks-count $blocks_count --disk-id $disk_id
+    --storage-media-kind $kind \
+    --blocks-count $blocks_count \
+    --block-size $block_size \
+    --disk-id $disk_id
 
 if [ $? -ne 0 ]; then
     echo "Disk $disk_id creation failed"

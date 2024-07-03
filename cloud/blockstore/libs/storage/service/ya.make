@@ -39,6 +39,7 @@ SRCS(
     service_actor_actions_set_user_id.cpp
     service_actor_actions_setup_channels.cpp
     service_actor_actions_suspend_device.cpp
+    service_actor_actions_suspend_disk_agent.cpp
     service_actor_actions_update_disk_block_size.cpp
     service_actor_actions_update_disk_replica_count.cpp
     service_actor_actions_update_disk_registry_params.cpp

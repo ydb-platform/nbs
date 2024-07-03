@@ -829,6 +829,25 @@ func (client *grpcClient) CmsAction(
 	return resp.(*protos.TCmsActionResponse), err
 }
 
+func (client *grpcClient) QueryAgentsInfo(
+	ctx context.Context,
+	req *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.QueryAgentsInfo(ctx, req)
+		})
+
+	return resp.(*protos.TQueryAgentsInfoResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type GrpcClientOpts struct {

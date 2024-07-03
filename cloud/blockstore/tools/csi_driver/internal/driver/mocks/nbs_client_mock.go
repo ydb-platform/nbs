@@ -352,6 +352,15 @@ func (c *NbsClientMock) CmsAction(
 	return args.Get(0).(*protos.TCmsActionResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) QueryAgentsInfo(
+	ctx context.Context,
+	req *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TQueryAgentsInfoResponse), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewNbsClientMock() *NbsClientMock {

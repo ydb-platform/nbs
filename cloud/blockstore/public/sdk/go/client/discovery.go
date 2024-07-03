@@ -988,6 +988,24 @@ func (client *discoveryClient) CmsAction(
 	return resp.(*protos.TCmsActionResponse), nil
 }
 
+func (client *discoveryClient) QueryAgentsInfo(
+	ctx context.Context,
+	req *protos.TQueryAgentsInfoRequest,
+) (*protos.TQueryAgentsInfoResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		func(ctx context.Context, impl ClientIface) (response, error) {
+			return impl.QueryAgentsInfo(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TQueryAgentsInfoResponse), err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createDurableClient(

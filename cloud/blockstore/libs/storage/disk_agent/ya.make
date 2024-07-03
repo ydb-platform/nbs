@@ -8,6 +8,7 @@ SRCS(
     disk_agent_actor_init.cpp
     disk_agent_actor_io.cpp
     disk_agent_actor_monitoring.cpp
+    disk_agent_actor_partial_suspend.cpp
     disk_agent_actor_register.cpp
     disk_agent_actor_release.cpp
     disk_agent_actor_secure_erase.cpp
@@ -37,12 +38,12 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/model
-    
+
     cloud/storage/core/libs/common
-    
+
     library/cpp/containers/stack_vector
     library/cpp/deprecated/atomic
-    
+
     contrib/ydb/core/base
     contrib/ydb/core/mind
     contrib/ydb/core/mon

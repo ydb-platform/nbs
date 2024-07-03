@@ -244,13 +244,17 @@ func (s *storageYDB) checkPoolConsistency(
 		expectedPoolState.acquiredUnits != actualPoolState.acquiredUnits ||
 		expectedPoolState.baseDisksInflight != actualPoolState.baseDisksInflight {
 
+		calculateDiff := func(a uint64, b uint64) int64 {
+			return int64(a) - int64(b)
+		}
+
 		return &PoolConsistencyCorrection{
 			ImageID:               expectedPoolState.imageID,
 			ZoneID:                expectedPoolState.zoneID,
-			SizeDiff:              actualPoolState.size - expectedPoolState.size,
-			FreeUnitsDiff:         actualPoolState.freeUnits - expectedPoolState.freeUnits,
-			AcquiredUnitsDiff:     actualPoolState.acquiredUnits - expectedPoolState.acquiredUnits,
-			BaseDisksInflightDiff: actualPoolState.baseDisksInflight - expectedPoolState.baseDisksInflight,
+			SizeDiff:              calculateDiff(actualPoolState.size, expectedPoolState.size),
+			FreeUnitsDiff:         calculateDiff(actualPoolState.freeUnits, expectedPoolState.freeUnits),
+			AcquiredUnitsDiff:     calculateDiff(actualPoolState.acquiredUnits, expectedPoolState.acquiredUnits),
+			BaseDisksInflightDiff: calculateDiff(actualPoolState.baseDisksInflight, expectedPoolState.baseDisksInflight),
 		}
 	}
 

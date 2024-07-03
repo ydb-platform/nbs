@@ -11,7 +11,7 @@ function run_test () {
     mkdir -p "$results_path"
 
     # shellcheck disable=SC2068
-    $d/yc-nbs-ci-fio-performance-test-suite --test-suite "$test_suite" $@ --cluster $cluster --profile-name "${cluster}-tests" --zone-id eu-north1-a --instance-cores 16 --instance-ram 16 --ssh-key-path /root/.ssh/test-ssh-key \
+    $d/yc-nbs-ci-fio-performance-test-suite --test-suite "$test_suite" $@ --cluster $cluster --profile-name "${cluster}-tests" --zone-id eu-north1-a --instance-cores 10 --instance-ram 10 --ssh-key-path /root/.ssh/test-ssh-key \
         --no-generate-ycp-config --results-path "$results_path" --cluster-config-path $d/fio_dep/cluster-configs \
         --ycp-requests-template-path $d/fio_dep/ycp-request-templates 2>> "$results_path/stderr.txt" >> "$results_path/stdout.txt"
 }

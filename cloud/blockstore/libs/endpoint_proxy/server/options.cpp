@@ -31,6 +31,12 @@ TOptions::TOptions()
     Opts.AddLongOption("stored-endpoints-path")
         .RequiredArgument("FILE")
         .StoreResult(&StoredEndpointsPath);
+
+    Opts.AddLongOption("nbd-request-timeout")
+        .OptionalArgument("NUM")
+        .Handler1T<TString>([this] (const auto& s) {
+            NbdRequestTimeout = TDuration::Parse(s);
+        });
 }
 
 void TOptions::Parse(int argc, char** argv)

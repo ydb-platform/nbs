@@ -473,6 +473,10 @@ private:
         const TEvIndexTabletPrivate::TEvNodeCreatedInFollowerUponCreateHandle::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleNodeUnlinkedInFollower(
+        const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void SendMetricsToHive(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

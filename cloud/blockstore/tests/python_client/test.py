@@ -77,6 +77,19 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
         assert not request.DryRun
         return response
 
+    def QueryAgentsInfo(self, request, context):
+        response = protos.TQueryAgentsInfoResponse()
+        device = protos.TDeviceInfo()
+        device.DeviceName = "vol-1"
+        device.DeviceSerialNumber = "123456"
+        device.DeviceTotalSpaceInBytes = 93*1024**3
+        agent = protos.TAgentInfo()
+        agent.AgentId = "myt1-ct5-1.cloud.yandex.net"
+        agent.Devices.append(device)
+        response = protos.TQueryAgentsInfoResponse()
+        response.Agents.append(agent)
+        return response
+
 
 class NbsServer:
 
@@ -190,4 +203,23 @@ def test_resume_device():
                 "/dev/disk/by-partlabel/NVMECOMPUTE01",
                 dry_run=True)
 
+        client.close()
+
+
+def test_query_agents_info():
+    logging.basicConfig()
+
+    with NbsServer() as nbs:
+        client = CreateClient(nbs.endpoint)
+
+        response = client.query_agents_info()
+        agents = response.Agents
+        assert len(agents) == 1
+        agent = agents[0]
+        assert agent.AgentId == "myt1-ct5-1.cloud.yandex.net"
+        assert len(agent.Devices) == 1
+        device = agent.Devices[0]
+        assert device.DeviceName == "vol-1"
+        assert device.DeviceSerialNumber == "123456"
+        assert device.DeviceTotalSpaceInBytes == 93*1024**3
         client.close()

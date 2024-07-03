@@ -94,7 +94,7 @@ constexpr TDuration Seconds(int s)
     xxx(NbdDevicePrefix,             TString,               "/dev/nbd"        )\
     xxx(SocketAccessMode,            ui32,                  MODE0660          )\
     xxx(NbdNetlink,                  bool,                  false             )\
-    xxx(NbdRequestTimeout,           TDuration,             Seconds(60)       )\
+    xxx(NbdRequestTimeout,           TDuration,             Seconds(600)      )\
     xxx(NbdConnectionTimeout,        TDuration,             Seconds(86400)    )\
     xxx(EndpointProxySocketPath,     TString,               ""                )\
     xxx(AllowAllRequestsViaUDS,      bool,                  false             )\
