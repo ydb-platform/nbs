@@ -52,7 +52,6 @@ public:
     bool ReadLastDiskStateSeqNo(ui64& lastSeqNo);
     void WriteLastDiskStateSeqNo(ui64 lastSeqNo);
 
-    bool ReadOldAgents(TVector<NProto::TAgentConfig>& agents);
     bool ReadAgents(TVector<NProto::TAgentConfig>& agents);
     bool ReadDisks(TVector<NProto::TDiskConfig>& disks);
     bool ReadPlacementGroups(TVector<NProto::TPlacementGroupConfig>& groups);
@@ -60,10 +59,7 @@ public:
     void UpdateDisk(const NProto::TDiskConfig& config);
     void DeleteDisk(const TString& diskId);
 
-    void UpdateOldAgent(const NProto::TAgentConfig& config);
     void UpdateAgent(const NProto::TAgentConfig& config);
-
-    void DeleteOldAgent(ui32 nodeId);
     void DeleteAgent(const TString& id);
 
     void UpdateDirtyDevice(const TString& uuid, const TString& diskId);

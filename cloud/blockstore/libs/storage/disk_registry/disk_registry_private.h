@@ -131,7 +131,6 @@ struct TDiskRegistryStateSnapshot
 {
     NProto::TDiskRegistryConfig Config;
     TVector<TDirtyDevice> DirtyDevices;
-    TVector<NProto::TAgentConfig> OldAgents;
     TVector<NProto::TAgentConfig> Agents;
     TVector<NProto::TDiskConfig> Disks;
     TVector<NProto::TPlacementGroupConfig> PlacementGroups;
@@ -152,7 +151,6 @@ struct TDiskRegistryStateSnapshot
     {
         Config.Clear();
         DirtyDevices.clear();
-        OldAgents.clear();
         Agents.clear();
         Disks.clear();
         PlacementGroups.clear();
