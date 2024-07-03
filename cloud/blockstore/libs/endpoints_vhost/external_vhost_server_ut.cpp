@@ -394,6 +394,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             /*
                 --serial local0                     2
+                --disk-id vol0                      2
                 --socket-path /tmp/socket.vhost     2
                 -q 2                                2
                 --device ...                        2
@@ -402,8 +403,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                                                    11
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(11, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(13, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "/tmp/socket.vhost",

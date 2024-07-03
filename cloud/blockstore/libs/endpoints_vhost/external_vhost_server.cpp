@@ -133,7 +133,6 @@ TString ParseDiskIdFormCmdLine(const TString& cmdLine)
 struct TChild
 {
     pid_t Pid = 0;
-    TFileHandle StdIn;
     TFileHandle StdOut;
     TFileHandle StdErr;
 
@@ -142,9 +141,8 @@ public:
         : Pid{pid}
     {}
 
-    TChild(pid_t pid, TFileHandle stdIn, TFileHandle stdOut, TFileHandle stdErr)
+    TChild(pid_t pid, TFileHandle stdOut, TFileHandle stdErr)
         : Pid{pid}
-        , StdIn{std::move(stdIn)}
         , StdOut{std::move(stdOut)}
         , StdErr{std::move(stdErr)}
     {}
@@ -167,7 +165,6 @@ public:
     void Swap(TChild& rhs) noexcept
     {
         std::swap(Pid, rhs.Pid);
-        StdIn.Swap(rhs.StdIn);
         StdOut.Swap(rhs.StdOut);
         StdErr.Swap(rhs.StdErr);
     }
@@ -226,28 +223,12 @@ struct TPipe
         w.Swap(W);
     }
 
-    void LinkToReadEnd(int fd)
-    {
-        W.Close();
-
-        TFileHandle h{fd};
-        Y_SCOPE_EXIT(&h)
-        {
-            h.Release();
-        };
-
-        h.LinkTo(R);
-    }
-
-    void LinkToWriteEnd(int fd)
+    void LinkTo(int fd)
     {
         R.Close();
 
-        TFileHandle h{fd};
-        Y_SCOPE_EXIT(&h)
-        {
-            h.Release();
-        };
+        TFileHandle h {fd};
+        Y_SCOPE_EXIT(&h) { h.Release(); };
 
         h.LinkTo(W);
     }
@@ -274,11 +255,7 @@ TChild SpawnChild(
 
     if (childPid) {
         // Parent process.
-        return TChild{
-            childPid,
-            std::move(stdOut.W),
-            std::move(stdOut.R),
-            std::move(stdErr.R)};
+        return TChild {childPid, std::move(stdOut.R), std::move(stdErr.R)};
     }
 
     // Child process.
