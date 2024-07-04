@@ -1,12 +1,12 @@
 import os
 import signal
-import requests
 
 from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
@@ -137,9 +137,8 @@ def test_node_type():
 
     wait_for_nbs_server(nbs.nbs_port)
 
-    html = requests.get('http://localhost:%d/blockstore/service' % nbs.mon_port).text
-
+    client = NbsClient(nbs.nbs_port)
     # DisableLocalService = 0 for nbs_control
-    assert html.find('<td>DisableLocalService</td><td>0</td>') != -1
+    assert client.get_storage_service_config().get("DisableLocalService", 0) == 0
 
     os.kill(nbs.pid, signal.SIGTERM)
