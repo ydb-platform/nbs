@@ -3501,6 +3501,108 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createHandleResponseEvent->GetError().GetCode(),
             createHandleResponseEvent->GetErrorReason());
     }
+
+    Y_UNIT_TEST(ShouldValidateFollowerConfiguration)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+        const auto shard3Id = fsId + "-f3";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+        service.CreateFileStore(shard3Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        // ShardNo change not allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(2);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasfollower", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower deletion not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower reordering not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower addition IS allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard3Id);
+            request.SetShardNo(3);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard3Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
+            NProtoPrivate::TConfigureFollowersResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        // TODO(#1350): leader should check that followers' ShardNos correspond
+        // to the follower order in leader's config
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
