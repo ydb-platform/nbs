@@ -138,6 +138,22 @@ TString FindDiskIdForRunningProcess(int pid)
     return ParseDiskIdFormCmdLine(processCmd);
 }
 
+bool PrefetchBinaryToCache(const TString& binaryPath)
+{
+    try {
+        TFile binary(
+            binaryPath,
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
+                EOpenModeFlag::Seq);
+
+        binary.PrefetchCache(0, 0, true);
+        return true;
+    } catch (const TFileError& e) {
+        // Just ignore
+        return false;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TChild
@@ -545,6 +561,18 @@ public:
     ~TEndpoint() override
     {
         Y_DEBUG_ABORT_UNLESS(ShouldStop);
+    }
+
+    void PrepareToStart() override
+    {
+        const auto startAt = TInstant::Now();
+        const bool succ = PrefetchBinaryToCache(BinaryPath);
+        const auto logPriority = succ ? TLOG_INFO : TLOG_ERR;
+
+        STORAGE_LOG(
+            logPriority,
+            "Prefetch binary " << (succ ? "success" : "failed") << ". It took "
+                               << (TInstant::Now() - startAt).ToString());
     }
 
     void Start() override
@@ -1004,6 +1032,7 @@ private:
             std::move(cgroups)
         );
 
+        ep->PrepareToStart();
         ShutdownOldEndpoint(request.GetDiskId());
         ep->Start();
 
