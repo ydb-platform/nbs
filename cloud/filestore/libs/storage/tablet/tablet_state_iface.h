@@ -6,9 +6,9 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * @brief This interface contains a subset of the methods that can be performed over
- * the localDB tables. Those are all the operations, that are performed with
- * the following tables (a.k.a inode index):
+ * @brief This interface contains a subset of the methods that can be performed
+ * over the localDB tables. Those are all the operations, that are performed
+ * with the following tables (a.k.a inode index):
  *  - Nodes
  *  - Nodes_Ver
  *  - NodeAttrs
@@ -141,7 +141,7 @@ public:
     virtual bool ReadCheckpointNodes(
         ui64 checkpointId,
         TVector<ui64>& nodes,
-        size_t maxCount = 100) = 0;
+        size_t maxCount) = 0;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

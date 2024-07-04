@@ -4,7 +4,7 @@
 
 #include "tablet_schema.h"
 #include "tablet_state.h"
-#include "tablet_state_in_memory_index_state.h"
+#include "tablet_state_cache.h"
 
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>

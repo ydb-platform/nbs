@@ -1,4 +1,4 @@
-#include "tablet_state_in_memory_index_state.h"
+#include "tablet_state_cache.h"
 
 namespace NCloud::NFileStore::NStorage {
 

@@ -1,5 +1,4 @@
 #pragma once
-#include "public.h"
 
 #include "tablet_state_iface.h"
 
@@ -20,13 +19,19 @@ public:
     // Nodes
     //
 
-    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<IIndexTabletDatabase::TNode>& node) override;
+    bool ReadNode(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // Nodes_Ver
     //
 
-    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<IIndexTabletDatabase::TNode>& node) override;
+    bool ReadNodeVer(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // NodeAttrs

@@ -73,10 +73,10 @@ SRCS(
     tablet_private.cpp
     tablet_schema.cpp
     tablet_state.cpp
+    tablet_state_cache.cpp
     tablet_state_channels.cpp
     tablet_state_checkpoints.cpp
     tablet_state_data.cpp
-    tablet_state_in_memory_index_state.cpp
     tablet_state_nodes.cpp
     tablet_state_sessions.cpp
     tablet_state_throttling.cpp
