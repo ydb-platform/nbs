@@ -151,15 +151,6 @@ void SetProcessMark(const TString& diskId)
     TThread::SetCurrentThreadName(id.c_str());
 }
 
-void SetDefaultSigmask()
-{
-    sigset_t sigset;
-    sigemptyset(&sigset);
-    sigaddset(&sigset, SIGINT);
-    sigaddset(&sigset, SIGUSR1);
-    pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,7 +169,14 @@ int main(int argc, char** argv)
     CloseAllFileHandlesExceptSTD();
     EscapeFromParentProcessGroup();
     SetProcessMark(options.DiskId);
-    SetDefaultSigmask();
+
+    // Attention! We set the SIG_BLOCK mask before creating backends so that the
+    // forked threads inherit this mask.
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, SIGINT);
+    sigaddset(&sigset, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
     auto logService = CreateLogService(options);
     auto backend = CreateBackend(options, logService);
@@ -195,13 +193,8 @@ int main(int argc, char** argv)
 
     // Tune the signal to block on waiting for "stop server", "dump", "parent
     // exit" signals.
-    sigset_t sigset;
-    sigemptyset(&sigset);
-    sigaddset(&sigset, SIGINT);
-    sigaddset(&sigset, SIGUSR1);
     sigaddset(&sigset, SIGUSR2);
     sigaddset(&sigset, SIGPIPE);
-
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
     auto delayAfterParentExit = TDuration::Seconds(options.WaitAfterParentExit);
