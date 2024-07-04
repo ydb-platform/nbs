@@ -955,4 +955,11 @@ void TIndexTabletActor::UpdateLogTag()
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NKikimr::NMetrics::TResourceMetrics* TIndexTabletActor::GetResourceMetrics()
+{
+    return Executor()->GetResourceMetrics();
+}
+
 }   // namespace NCloud::NFileStore::NStorage

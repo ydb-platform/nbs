@@ -229,7 +229,7 @@ private:
 
     ui32 BackpressureErrorCount = 0;
 
-    ui64 PastNetworkMetric = 0;
+    i64 PastNetworkMetric = 0;
 
 public:
     TIndexTabletActor(
@@ -504,6 +504,8 @@ private:
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
     void UpdateLogTag();
+
+    NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 };
 
 }   // namespace NCloud::NFileStore::NStorage
