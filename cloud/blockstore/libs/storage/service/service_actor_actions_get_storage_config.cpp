@@ -82,7 +82,7 @@ void TGetStorageConfigActor::Bootstrap(const TActorContext& ctx)
 
     auto request =
         std::make_unique<TEvVolume::TEvGetStorageConfigRequest>();
-    request->Record.SetDiskId(std::move(proto.GetDiskId()));
+    request->Record.SetDiskId(std::move(*proto.MutableDiskId()));
 
     Become(&TThis::StateWork);
 
