@@ -128,6 +128,16 @@ TString ParseDiskIdFormCmdLine(const TString& cmdLine)
     return diskId;
 }
 
+TString FindDiskIdForRunningProcess(int pid)
+{
+    TFsPath proc("/proc");
+    TString processCmd = ReadFromFile(proc / ToString(pid) / "cmdline");
+    if (!processCmd) {
+        return {};
+    }
+    return ParseDiskIdFormCmdLine(processCmd);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TChild
@@ -179,7 +189,7 @@ public:
         SendSignal(SIGTERM);
     }
 
-    [[nodiscard]] NProto::TError Wait() const
+    NProto::TError Wait() const
     {
         int status = 0;
 
@@ -1053,33 +1063,46 @@ private:
                 continue;
             }
 
-            TString processCmd = ReadFromFile(dir / "cmdline");
-            try {
-                auto diskId = ParseDiskIdFormCmdLine(processCmd);
-                ui32 pid = FromString<i32>(dir.Basename());
+            i32 pid = 0;
+            if (!TryFromString<i32>(dir.Basename(), pid)) {
+                continue;
+            }
+
+            const auto diskId = FindDiskIdForRunningProcess(pid);
+            if (diskId) {
                 OldEndpoints[diskId] = pid;
                 STORAGE_INFO(
-                        "Find running external-vhost-server PID:"
-                        << pid << " for disk-id: " << diskId.Quote());
-            } catch (...) {
-                STORAGE_ERROR(CurrentExceptionMessage());
+                    "Find running external-vhost-server PID:"
+                    << pid << " for disk-id: " << diskId.Quote());
             }
         }
     }
 
-    void ShutdownOldEndpoint(const TString& diskId) {
+    void ShutdownOldEndpoint(const TString& diskId)
+    {
         const auto* oldEndpoint = OldEndpoints.FindPtr(diskId);
         if (!oldEndpoint) {
             return;
         }
 
         const i32 pid = *oldEndpoint;
+
+        const auto oldDiskId = FindDiskIdForRunningProcess(pid);
+        if (oldDiskId != diskId) {
+            // There is a time interval between the search for old processes and
+            // their termination. We are checking here that another process has
+            // not been started under the same identifier.
+            return;
+        }
+
         TChild child(pid);
 
         STORAGE_WARN(
-            "Send SIGINT to external-vhost-server with PID:"
+            "Send TERMINATE to external-vhost-server with PID:"
             << pid << " for disk-id: " << diskId.Quote());
-        child.SendSignal(SIGINT);
+        child.Terminate();
+        child.Wait();
+
         OldEndpoints.erase(diskId);
     }
 };
