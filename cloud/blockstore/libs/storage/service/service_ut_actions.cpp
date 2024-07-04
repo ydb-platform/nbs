@@ -1652,6 +1652,56 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                         .ok());
         UNIT_ASSERT_VALUES_EQUAL(0, output.GetDependentDiskStates().size());
     }
+
+    NProto::TStorageServiceConfig ExecuteGetStorageConfig(
+        const TString& diskId,
+        TServiceClient& service)
+    {
+        NProto::TGetStorageConfigRequest request;
+        request.SetDiskId(diskId);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto jsonResponse = service.ExecuteAction("getstorageconfig", buf);
+        NProto::TStorageServiceConfig response;
+        auto status = google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(), &response);
+        UNIT_ASSERT_C(status.ok(), status.message().data());
+        return response;
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageConfigFromNodeOrVolume)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol0");
+
+        ExecuteGetStorageConfig("", service);
+        // we cannot compare returned config with test config since
+        // test env alters configuration passed
+
+        {
+            NProto::TStorageServiceConfig newConfig;
+            newConfig.SetCompactionRangeCountPerRun(1000);
+            const auto response = ExecuteChangeStorageConfig(
+                std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetCompactionRangeCountPerRun(),
+                1000);
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("vol0", service);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetCompactionRangeCountPerRun(),
+                1000);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

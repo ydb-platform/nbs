@@ -24,6 +24,7 @@ SRCS(
     service_actor_actions_get_diskregistry_tablet_info.cpp
     service_actor_actions_get_nameservice_config.cpp
     service_actor_actions_get_partition_info.cpp
+    service_actor_actions_get_storage_config.cpp
     service_actor_actions_kill_tablet.cpp
     service_actor_actions_migration_disk_registry_device.cpp
     service_actor_actions_modify_tags.cpp

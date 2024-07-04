@@ -827,6 +827,19 @@ void TVolumeActor::HandleTabletMetrics(
     }
 }
 
+void TVolumeActor::HandleGetStorageConfig(
+    const TEvVolume::TEvGetStorageConfigRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response = std::make_unique<TEvVolume::TEvGetStorageConfigResponse>();
+    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::move(response));
+}
+
 bool TVolumeActor::HandleRequests(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {

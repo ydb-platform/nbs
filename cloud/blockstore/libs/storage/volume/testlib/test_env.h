@@ -447,6 +447,8 @@ public:
     std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> CreateChangeStorageConfigRequest(
         NProto::TStorageServiceConfig patch);
 
+    std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
+
     std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
         TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
