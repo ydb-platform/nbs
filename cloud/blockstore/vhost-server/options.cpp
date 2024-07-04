@@ -124,6 +124,12 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResultDef(&RdmaClient.MaxBufferSize);
 
+    opts.AddLongOption(
+            "wait-after-parent-exit",
+            "How many seconds keep alive after the parent process is exited")
+        .RequiredArgument("INT")
+        .StoreResultDef(&WaitAfterParentExit);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {

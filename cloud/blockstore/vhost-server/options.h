@@ -37,6 +37,7 @@ struct TOptions
     TString VerboseLevel = "info";
 
     TString ClientId = "vhost-server";
+    ui32 WaitAfterParentExit = 60;
 
     struct
     {
