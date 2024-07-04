@@ -1,5 +1,5 @@
 ##teamcity[message text='|[ main     |] Run test #0 in zone1 for network-ssd-nonreplicated' status='NORMAL' ]
-##teamcity[message text='|[ main     |] Run test #0 in zone1 for network-ssd-io-m2' status='NORMAL' ]
+##teamcity[message text='|[ main     |] Run test #1 in zone1 for network-ssd-io-m2' status='NORMAL' ]
 ##teamcity[message text='|[ main     |] Waiting for 2 tests...' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] Listing all instances fake-folder' status='NORMAL' ]
 ##teamcity[message text='|[ #0/zone1 |] sent ycp request: ycp --format json --profile fake-cluster1 compute instance list --folder-id fake-folder' status='NORMAL' ]
