@@ -651,6 +651,12 @@ func (s *storageYDB) writeDataChunk(
 		return "", err
 	}
 
+	logging.Debug(
+		ctx,
+		"written chunk %v for snapshot %v",
+		chunk.ID,
+		snapshotID,
+	)
 	return chunk.ID, nil
 }
 
