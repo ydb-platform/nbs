@@ -329,7 +329,8 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    if (DestructionAllowedOnlyForDisksWithIdPrefix &&
+    if (!msg->Record.GetVolume().GetIsSystem() &&
+        DestructionAllowedOnlyForDisksWithIdPrefix &&
         !DiskId.StartsWith(DestructionAllowedOnlyForDisksWithIdPrefix))
     {
         auto e = MakeError(

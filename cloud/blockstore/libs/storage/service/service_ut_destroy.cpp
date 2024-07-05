@@ -10,6 +10,66 @@ using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(TServiceDestroyTest)
 {
+    void CreateSsdDisk(TServiceClient& service, const TString& diskId)
+    {
+        service.CreateVolume(
+            diskId,
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "", // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            NProto::TVolumePerformanceProfile(),
+            TString(),  // placementGroupId
+            0,          // placementPartitionIndex
+            0,          // partitionsCount
+            NProto::TEncryptionSpec()
+        );
+    }
+
+    void CreateSsdSystemDisk(TServiceClient& service, const TString& diskId)
+    {
+        service.CreateVolume(
+            diskId,
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            TString(),  // folderId
+            TString(),  // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            NProto::TVolumePerformanceProfile(),
+            TString(),  // placementGroupId
+            0,  // placementPartitionIndex
+            0,  // partitionsCount
+            NProto::TEncryptionSpec(),
+            true // isSystem
+        );
+    }
+
+    void CreateSsdOverlayDisk(
+        TServiceClient& service,
+        const TString& diskId,
+        const TString& baseDiskId,
+        const TString& baseDiskCheckpointId)
+    {
+        service.CreateVolume(
+            diskId,
+            2_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            TString(),  // folderId
+            TString(),  // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            NProto::TVolumePerformanceProfile(),
+            TString(),  // placementGroupId
+            0,  // placementPartitionIndex
+            0,  // partitionsCount
+            NProto::TEncryptionSpec(),
+            false,  // isSystem
+            baseDiskId,
+            baseDiskCheckpointId,
+            0  // fillGeneration
+        );
+    }
+
     Y_UNIT_TEST(ShouldBeAbleToDestroyOverlayDiskIfBaseDiskIsAlreadyDestroyed)
     {
         TTestEnv env;
@@ -20,41 +80,11 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         TServiceClient service(runtime, nodeIdx);
 
         {
-            service.CreateVolume(
-                "baseDisk",
-                2_GB / DefaultBlockSize,
-                DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
-                NCloud::NProto::STORAGE_MEDIA_SSD,
-                NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                NProto::TEncryptionSpec()
-            );
-
+            CreateSsdDisk(service, "baseDisk");
             auto response = service.DescribeVolume("baseDisk");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            service.CreateVolume(
-                "vol0",
-                2_GB / DefaultBlockSize,
-                DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
-                NCloud::NProto::STORAGE_MEDIA_SSD,
-                NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                NProto::TEncryptionSpec(),
-                true,  // isSystem
-                "baseDisk",
-                "baseDiskCheckpointId",
-                0  // fillGeneration
-            );
-
+            CreateSsdOverlayDisk(service, "vol0", "baseDisk", "baseDiskCheckpointId");
             response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
@@ -78,23 +108,6 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
-    void CreateSimpleSsdDisk(TServiceClient& service, const TString& diskId)
-    {
-        service.CreateVolume(
-            diskId,
-            2_GB / DefaultBlockSize,
-            DefaultBlockSize,
-            "",         // folderId
-            "",    // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD,
-            NProto::TVolumePerformanceProfile(),
-            TString(),  // placementGroupId
-            0,          // placementPartitionIndex
-            0,          // partitionsCount
-            NProto::TEncryptionSpec()
-        );
-    }
-
     Y_UNIT_TEST(ShouldDestroyAnyDiskByDefault)
     {
         TTestEnv env;
@@ -105,11 +118,11 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         TServiceClient service(runtime, nodeIdx);
 
         {
-            CreateSimpleSsdDisk(service, "without_prefix");
+            CreateSsdDisk(service, "without_prefix");
             auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "with_prefix");
+            CreateSsdDisk(service, "with_prefix");
             response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
@@ -120,6 +133,29 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             }
 
             service.SendDestroyVolumeRequest("with_prefix");
+            {
+                auto response = service.RecvDestroyVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+        }
+
+        {
+            // should be able to destroy system disks
+            CreateSsdSystemDisk(service, "system_without_prefix");
+            auto response = service.DescribeVolume("system_without_prefix");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            CreateSsdSystemDisk(service, "system_with_prefix");
+            response = service.DescribeVolume("system_with_prefix");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            service.SendDestroyVolumeRequest("system_without_prefix");
+            {
+                auto response = service.RecvDestroyVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+
+            service.SendDestroyVolumeRequest("system_with_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -139,11 +175,11 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         TServiceClient service(runtime, nodeIdx);
 
         {
-            CreateSimpleSsdDisk(service, "without_prefix");
+            CreateSsdDisk(service, "without_prefix");
             auto response = service.DescribeVolume("without_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            CreateSimpleSsdDisk(service, "with_prefix");
+            CreateSsdDisk(service, "with_prefix");
             response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
@@ -154,6 +190,29 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             }
 
             service.SendDestroyVolumeRequest("with_prefix");
+            {
+                auto response = service.RecvDestroyVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+        }
+
+        {
+            // should be able to destroy system disks
+            CreateSsdSystemDisk(service, "system_without_prefix");
+            auto response = service.DescribeVolume("system_without_prefix");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            CreateSsdSystemDisk(service, "system_with_prefix");
+            response = service.DescribeVolume("system_with_prefix");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            service.SendDestroyVolumeRequest("system_without_prefix");
+            {
+                auto response = service.RecvDestroyVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+
+            service.SendDestroyVolumeRequest("system_with_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
