@@ -3490,21 +3490,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             E_ARGUMENT,
             createHandleResponseEvent->GetError().GetCode(),
             createHandleResponseEvent->GetErrorReason());
-
-        // a request with FollowerId != the real FollowerId which owns the node
-        service.SendCreateHandleRequest(
-            headers,
-            fsId,
-            RootNodeId,
-            "file1",
-            TCreateHandleArgs::RDWR,
-            shard2Id);
-
-        createHandleResponseEvent = service.RecvCreateHandleResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_ARGUMENT,
-            createHandleResponseEvent->GetError().GetCode(),
-            createHandleResponseEvent->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldValidateFollowerConfiguration)

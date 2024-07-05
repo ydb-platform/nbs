@@ -361,25 +361,6 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     }
 
     if (args.TargetNodeId != InvalidNodeId) {
-        // XXX unneeded check
-        if (args.RequestFollowerId) {
-            const auto shardNo = ExtractShardNo(args.TargetNodeId);
-            const auto& followerIds =
-                GetFileSystem().GetFollowerFileSystemIds();
-            const ui32 followerCount = followerIds.size();
-            const auto& followerId = shardNo && shardNo <= followerCount
-                ? followerIds[shardNo - 1]
-                : Default<TString>();
-            if (args.RequestFollowerId != followerId) {
-                args.Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "Invalid FollowerId in request: "
-                        << args.RequestFollowerId << ", shard mismatch: "
-                        << shardNo << ", real FollowerId: " << followerId);
-                return true;
-            }
-        }
-
         if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
             return false;   // not ready
         }
