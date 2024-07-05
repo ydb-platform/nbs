@@ -695,6 +695,7 @@ struct TTxIndexTablet
         const ui64 NewParentNodeId;
         const TString NewName;
         const ui32 Flags;
+        const NProto::THeaders Headers;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -720,6 +721,7 @@ struct TTxIndexTablet
             , NewParentNodeId(request.GetNewParentId())
             , NewName(std::move(*request.MutableNewName()))
             , Flags(request.GetFlags())
+            , Headers(std::move(*request.MutableHeaders()))
         {}
 
         void Clear()

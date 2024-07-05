@@ -3623,12 +3623,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
 
         const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
 
         createNodeResponse = service.CreateNode(
             headers,
             TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
 
         const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
 
         ui64 handle1 = service.CreateHandle(
             headers,
@@ -3747,6 +3749,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             nodeId1,
             listNodesResponse.GetNodes(0).GetId());
+
+        // listing in shard2 should show nothing
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 }
 

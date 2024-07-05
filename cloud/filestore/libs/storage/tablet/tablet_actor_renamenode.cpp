@@ -381,22 +381,18 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 args.FollowerIdForUnlink.c_str(),
                 args.FollowerNameForUnlink.c_str());
 
-            // TODO
-            /*
-            auto actor = std::make_unique<TUnlinkNodeInFollowerActor>(
-                LogTag,
+            NProto::TUnlinkNodeRequest request;
+            request.MutableHeaders()->CopyFrom(args.Headers);
+
+            RegisterUnlinkNodeInFollowerActor(
+                ctx,
                 args.RequestInfo,
-                args.ChildRef->FollowerId,
-                args.ChildRef->FollowerName,
-                ctx.SelfID,
-                args.Request,
+                std::move(args.FollowerIdForUnlink),
+                std::move(args.FollowerNameForUnlink),
+                std::move(request),
                 std::move(args.Response));
 
-            auto actorId = NCloud::Register(ctx, std::move(actor));
-            WorkerActors.insert(actorId);
-
             return;
-            */
         }
 
         // TODO(#1350): support session events for external nodes
