@@ -1,9 +1,9 @@
+import datetime
 import json
 import os
 import signal
 import subprocess
 import tempfile
-from time import sleep
 import yatest.common as yatest_common
 
 
@@ -15,6 +15,7 @@ RUN_AND_DIE_BINARY_PATH = yatest_common.binary_path(
 
 def __read_json(f):
     line = f.readline().strip()
+    print(">", datetime.datetime.now(), line)
     try:
         return json.loads(line)
     except Exception:
@@ -152,20 +153,20 @@ def test_vhost_server_work_along():
 
         # get pid of vhost-server
         pid = int(out_r.readline().strip())
-        print("Vhost-server pid=", pid)
+        print("Vhost-server pid:", pid)
 
-        # work with vhost-server
+        # check that the server has lost the parent process
         __wait_message(err_r, 'Server started')
+        __wait_message(err_r, 'Parent process exit.')
 
-        # check stat request
+        # check that stat request works
         for _ in range(3):
             os.kill(pid, signal.SIGUSR1)
             s = __read_json(out_r)
             assert s['elapsed_ms'] != 0
 
         # wait vhost-server to shut down after a timeout
-        sleep(work_along_time)
-
+        __wait_message(err_r, 'Wait for timeout')
         __wait_message(err_r, 'Server has been stopped')
 
         assert not os.path.exists(socket_path)

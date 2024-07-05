@@ -12,11 +12,11 @@ if __name__ == '__main__':
 
     server = subprocess.Popen(
         json.loads(args.cmd),
-        stdin=None,
+        stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
         bufsize=0,
         universal_newlines=True)
 
-    sleep(1)
     print(server.pid)
+    sleep(1)
