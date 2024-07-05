@@ -22,6 +22,7 @@ SRCS(
     reset_session.cpp
     resize.cpp
     rm.cpp
+    set_node_attr.cpp
     start_endpoint.cpp
     stat.cpp
     stop_endpoint.cpp

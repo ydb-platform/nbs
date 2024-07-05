@@ -32,6 +32,7 @@ TCommandPtr NewExecuteActionCommand();
 TCommandPtr NewCreateSessionCommand();
 TCommandPtr NewResetSessionCommand();
 TCommandPtr NewStatCommand();
+TCommandPtr NewSetNodeAttrCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,8 +42,10 @@ using TFactoryMap = TMap<TString, TFactoryFunc>;
 static const TMap<TString, TFactoryFunc> Commands = {
     { "addclusternode", NewAddClusterNodeCommand },
     { "create", NewCreateCommand },
+    { "createsession", NewCreateSessionCommand },
     { "describe", NewDescribeCommand },
     { "destroy", NewDestroyCommand },
+    { "executeaction", NewExecuteActionCommand },
     { "kickendpoint", NewKickEndpointCommand },
     { "listclusternodes", NewListClusterNodesCommand },
     { "listendpoints", NewListEndpointsCommand },
@@ -52,16 +55,15 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "mount", NewMountCommand },
     { "read", NewReadCommand },
     { "removeclusternode", NewRemoveClusterNodeCommand },
+    { "resetsession", NewResetSessionCommand },
     { "resize", NewResizeCommand },
     { "rm", NewRmCommand },
+    { "setnodeattr", NewSetNodeAttrCommand },
     { "startendpoint", NewStartEndpointCommand },
+    { "stat", NewStatCommand },
     { "stopendpoint", NewStopEndpointCommand },
     { "touch", NewTouchCommand },
     { "write", NewWriteCommand },
-    { "executeaction", NewExecuteActionCommand },
-    { "createsession", NewCreateSessionCommand },
-    { "resetsession", NewResetSessionCommand },
-    { "stat", NewStatCommand },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
