@@ -25,14 +25,9 @@ NActorsInterconnect::TNodeLocation CreateNodeLocation(
     const NYdb::NDiscovery::TNodeLocation& source)
 {
     NActorsInterconnect::TNodeLocation location;
-    location.SetBody(source.Body.value_or(0));
-    location.SetBodyNum(source.BodyNum.value_or(0));
     location.SetDataCenter(source.DataCenter.value_or(""));
-    location.SetDataCenterNum(source.DataCenterNum.value_or(0));
     location.SetModule(source.Module.value_or(""));
     location.SetRack(source.Rack.value_or(""));
-    location.SetRackNum(source.RackNum.value_or(0));
-    location.SetRoomNum(source.RoomNum.value_or(0));
     location.SetUnit(source.Unit.value_or(""));
     return location;
 }

@@ -6,6 +6,8 @@
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
+#include <unordered_set>
+
 namespace NCloud {
 
 using namespace NStorage;
@@ -14,6 +16,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// This function can only check that primitive type fields are set.
+// "presence" does not work for repeated fields and function will fail.
+// So you have to add such fields to skipFields (to guarantee that you know what
+// you are doing) and check them outside of this function.
+
 template <typename TMessage>
 void CheckAllFieldsSet(
     const TMessage& msg,
@@ -21,12 +28,12 @@ void CheckAllFieldsSet(
 {
     for (int i = 0; i < msg.GetDescriptor()->field_count(); ++i) {
         const auto* field = msg.GetDescriptor()->field(i);
+
         if (skipFields.contains(field->name())) {
             continue;
         }
 
-        if (field->is_repeated()) {
-            // TODO: handle repeated and depricated fields
+        if (field->options().deprecated()) {
             continue;
         }
 
@@ -54,14 +61,14 @@ Y_UNIT_TEST_SUITE(TNodeRegistrationHelpersTest)
     Y_UNIT_TEST(ShouldFillNodeInfo)
     {
         NYdb::NDiscovery::TNodeInfo info;
-        auto msg =  CreateNodeInfo(info);
+        auto msg = CreateNodeInfo(info);
         CheckAllFieldsSet(msg, {});
     }
 
     Y_UNIT_TEST(ShouldFillLocationInfo)
     {
         NYdb::NDiscovery::TNodeLocation location;
-        auto msg =  CreateNodeLocation(location);
+        auto msg = CreateNodeLocation(location);
         CheckAllFieldsSet(msg, {});
     }
 
@@ -69,14 +76,14 @@ Y_UNIT_TEST_SUITE(TNodeRegistrationHelpersTest)
     {
         {
             NYdb::NDiscovery::TNodeInfo info;
-            auto msg =  CreateStaticNodeInfo(info);
-            CheckAllFieldsSet(msg, {"WalleLocation"});
+            auto msg = CreateStaticNodeInfo(info);
+            CheckAllFieldsSet(msg, {"Endpoint"});
         }
 
         {
             NKikimrNodeBroker::TNodeInfo info;
-            auto msg =  CreateStaticNodeInfo(info);
-            CheckAllFieldsSet(msg, {"WalleLocation"});
+            auto msg = CreateStaticNodeInfo(info);
+            CheckAllFieldsSet(msg, {"Endpoint"});
         }
     }
 }

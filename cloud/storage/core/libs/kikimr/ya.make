@@ -33,7 +33,6 @@ PEERDIR(
     contrib/ydb/core/tx/coordinator
     contrib/ydb/core/tx/mediator
     contrib/ydb/core/tx/schemeshard
-    contrib/ydb/library/yql/public/udf
 )
 
 END()
