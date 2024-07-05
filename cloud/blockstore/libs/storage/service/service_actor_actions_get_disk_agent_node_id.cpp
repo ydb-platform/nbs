@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -87,9 +88,15 @@ void TGetDiskAgentNodeIdActor::HandleGetAgentNodeIdResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    auto error = msg->GetError();
+    if (error.GetCode() == E_NOT_FOUND) {
+        // DR doesn't know about agents without disks. Do not trigger fatal
+        // error here.
+        SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
+    }
 
     auto response =
-        std::make_unique<TEvService::TEvExecuteActionResponse>(msg->GetError());
+        std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
     google::protobuf::util::MessageToJsonString(
         msg->Record,
         response->Record.MutableOutput());
