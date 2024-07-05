@@ -1,5 +1,4 @@
 #include "tablet_actor.h"
-#include "cloud/filestore/public/api/protos/node.pb.h"
 
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
