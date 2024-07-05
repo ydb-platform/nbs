@@ -251,6 +251,34 @@ void TIndexTabletActor::HandleConfigureFollowers(
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
 
+    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+    NProto::TError error;
+    if (msg->Record.GetFollowerFileSystemIds().size() < followerIds.size()) {
+        error = MakeError(E_ARGUMENT, TStringBuilder() << "new follower list"
+            " is smaller than prev follower list: "
+            << msg->Record.GetFollowerFileSystemIds().size() << " < "
+            << followerIds.size());
+    } else {
+        for (int i = 0; i < followerIds.size(); ++i) {
+            if (followerIds[i] != msg->Record.GetFollowerFileSystemIds(i)) {
+                error = MakeError(E_ARGUMENT, TStringBuilder() << "follower"
+                    " change not allowed, pos=" << i << ", prev="
+                    << followerIds[i] << ", new="
+                    << msg->Record.GetFollowerFileSystemIds(i));
+                break;
+            }
+        }
+    }
+
+    if (error.GetCode() != S_OK) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvConfigureFollowersResponse>();
+        *response->Record.MutableError() = std::move(error);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     ExecuteTx<TConfigureFollowers>(
         ctx,
         std::move(requestInfo),
@@ -281,7 +309,6 @@ void TIndexTabletActor::ExecuteTx_ConfigureFollowers(
     TIndexTabletDatabase db(tx.DB);
 
     auto config = GetFileSystem();
-    // TODO(#1350): properly process follower removal
     *config.MutableFollowerFileSystemIds() =
         std::move(*args.Request.MutableFollowerFileSystemIds());
 
@@ -317,6 +344,19 @@ void TIndexTabletActor::HandleConfigureAsFollower(
         // external event
         MakeIntrusive<TCallContext>(GetFileSystemId()));
 
+    const auto currentShardNo = GetFileSystem().GetShardNo();
+    if (currentShardNo && currentShardNo != msg->Record.GetShardNo()) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerResponse>();
+        *response->Record.MutableError() = MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "ShardNo change not allowed: "
+                << currentShardNo << " != " << msg->Record.GetShardNo());
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     ExecuteTx<TConfigureAsFollower>(
         ctx,
         std::move(requestInfo),
@@ -347,7 +387,6 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsFollower(
     TIndexTabletDatabase db(tx.DB);
 
     auto config = GetFileSystem();
-    // TODO(#1350): properly validate ShardNo change
     config.SetShardNo(args.Request.GetShardNo());
 
     UpdateConfig(db, config, GetThrottlingConfig());
@@ -358,9 +397,9 @@ void TIndexTabletActor::CompleteTx_ConfigureAsFollower(
     TTxIndexTablet::TConfigureAsFollower& args)
 {
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Configured followers, new follower list: %s",
+        "%s Configured as follower, ShardNo: %u",
         LogTag.c_str(),
-        JoinSeq(",", GetFileSystem().GetFollowerFileSystemIds()).c_str());
+        args.Request.GetShardNo());
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureAsFollowerResponse>();

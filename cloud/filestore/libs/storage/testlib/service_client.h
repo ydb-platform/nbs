@@ -413,6 +413,36 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvSetNodeXAttrRequest> CreateSetNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& attrName,
+        const TString& attrValue)
+    {
+        auto request = std::make_unique<TEvService::TEvSetNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(attrName);
+        request->Record.SetValue(attrValue);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvGetNodeXAttrRequest> CreateGetNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& attrName)
+    {
+        auto request = std::make_unique<TEvService::TEvGetNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(attrName);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                     \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

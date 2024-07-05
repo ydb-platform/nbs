@@ -132,7 +132,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return false;   // not ready
     }
 
-    // TODO(#1350): properly process moving into an external node
+    // TODO(#1350): properly process moving into an external node - IMPORTANT!
     if (args.NewChildRef && args.NewChildRef->FollowerId.Empty()) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_NOREPLACE)) {
             args.Error = ErrorAlreadyExists(args.NewName);
