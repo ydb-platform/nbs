@@ -9,13 +9,20 @@ namespace {
 class TDestroyCommand final
     : public TFileStoreCommand
 {
+    bool ForceDestroy = false;
 public:
+    TDestroyCommand()
+    {
+        Opts.AddLongOption("force").StoreTrue(&ForceDestroy);
+    }
+
     bool Execute() override
     {
         auto callContext = PrepareCallContext();
 
         auto request = std::make_shared<NProto::TDestroyFileStoreRequest>();
         request->SetFileSystemId(FileSystemId);
+        request->SetForceDestroy(ForceDestroy);
 
         auto response = WaitFor(
             Client->DestroyFileStore(
