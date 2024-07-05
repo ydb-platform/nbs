@@ -79,7 +79,7 @@ def test_node_type():
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    server_app_config.ServerConfig.NodeType = 'nbs_control'
+    server_app_config.ServerConfig.NodeType = 'nbs'
 
     certs_dir = yatest_common.source_path('cloud/blockstore/tests/certs')
 
@@ -128,7 +128,7 @@ def test_node_type():
 
     # global
     storage = TStorageServiceConfig()
-    storage.DisableLocalService = True
+    storage.DisableLocalService = False
     storage.SchemeShardDir = "/Root/nbs"
 
     update_cms_config(kikimr_cluster.client, 'StorageServiceConfig', storage, '')
@@ -138,7 +138,7 @@ def test_node_type():
     wait_for_nbs_server(nbs.nbs_port)
 
     client = NbsClient(nbs.nbs_port)
-    # DisableLocalService = 0 for nbs_control
-    assert client.get_storage_service_config().get("DisableLocalService", 0) == 0
+    # DisableLocalService = 1 for nbs
+    assert client.get_storage_service_config().get("DisableLocalService", 0) == 1
 
     os.kill(nbs.pid, signal.SIGTERM)

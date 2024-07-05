@@ -1,11 +1,11 @@
 #include "public.h"
+#include "node_registration_helpers.h"
 #include "node.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/base/location.h>
-#include <contrib/ydb/core/driver_lib/run/config.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/public/lib/deprecated/kicli/kicli.h>
@@ -20,6 +20,7 @@
 #include <util/network/socket.h>
 #include <util/random/shuffle.h>
 #include <util/string/join.h>
+#include <util/stream/file.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NStorage {
@@ -86,11 +87,14 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
         config.EnableSsl = true;
         auto& sslCredentials = config.SslCredentials;
         if (options.PathToGrpcCaFile) {
-            sslCredentials.pem_root_certs = ReadFile(options.PathToGrpcCaFile).c_str();
+            sslCredentials.pem_root_certs =
+                ReadFile(options.PathToGrpcCaFile);
         }
         if (options.PathToGrpcCertFile && options.PathToGrpcPrivateKeyFile) {
-            sslCredentials.pem_cert_chain = ReadFile(options.PathToGrpcCertFile);
-            sslCredentials.pem_private_key = ReadFile(options.PathToGrpcPrivateKeyFile);
+            sslCredentials.pem_cert_chain =
+                ReadFile(options.PathToGrpcCertFile);
+            sslCredentials.pem_private_key =
+                ReadFile(options.PathToGrpcPrivateKeyFile);
         }
     }
 
@@ -206,7 +210,7 @@ struct TLegacyNodeRegistrant
         , Options(options)
         , NsConfig(nsConfig)
         , DnConfig(dnConfig)
-        , Location(Options.DataCenter, {}, {}, {})
+        , Location(Options.DataCenter, {}, Options.Rack, ToString(Options.Body))
     {
     }
 
@@ -223,7 +227,7 @@ struct TLegacyNodeRegistrant
             HostAddress,
             HostName,
             Location,
-            false,
+            false, //request fixed node id
             Options.SchemeShardDir);
 
         if (!result.IsSuccess()) {
@@ -238,13 +242,7 @@ struct TLegacyNodeRegistrant
                 // update node information based on registration response
                 DnConfig.MutableNodeInfo()->CopyFrom(node);
             } else {
-                auto& info = *NsConfig.AddNode();
-                info.SetNodeId(node.GetNodeId());
-                info.SetAddress(node.GetAddress());
-                info.SetPort(node.GetPort());
-                info.SetHost(node.GetHost());
-                info.SetInterconnectHost(node.GetResolveHost());
-                info.MutableLocation()->CopyFrom(node.GetLocation());
+                *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }
         }
 
@@ -322,24 +320,9 @@ struct TDiscoveryNodeRegistrant
         for (const auto& node: result.GetNodes()) {
             if (node.NodeId == result.GetNodeId()) {
                 // update node information based on registration response
-                auto& configNode = *DnConfig.MutableNodeInfo();
-                configNode.SetNodeId(node.NodeId);
-                configNode.SetAddress(node.Address);
-                configNode.SetExpire(node.Expire);
-                configNode.SetPort(node.Port);
-                configNode.SetHost(node.Host);
-                configNode.SetResolveHost(node.ResolveHost);
+                *DnConfig.MutableNodeInfo() = CreateNodeInfo(node);
             } else {
-                auto& info = *NsConfig.AddNode();
-                info.SetNodeId(node.NodeId);
-                info.SetAddress(node.Address);
-                info.SetPort(node.Port);
-                info.SetHost(node.Host);
-                info.SetInterconnectHost(node.ResolveHost);
-                auto& location = *info.MutableLocation();
-                location.SetDataCenter(node.Location.DataCenter.value_or(""));
-                location.SetRack(node.Location.Rack.value_or(""));
-                location.SetUnit(node.Location.Unit.value_or(""));
+                *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }
         }
 

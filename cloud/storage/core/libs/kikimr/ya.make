@@ -7,6 +7,7 @@ SRCS(
     config_initializer.cpp
     events.cpp
     helpers.cpp
+    node_registration_helpers.cpp
     node.cpp
     options.cpp
     proxy.cpp
@@ -32,8 +33,9 @@ PEERDIR(
     contrib/ydb/core/tx/coordinator
     contrib/ydb/core/tx/mediator
     contrib/ydb/core/tx/schemeshard
+    contrib/ydb/library/yql/public/udf
 )
 
-YQL_LAST_ABI_VERSION()
-
 END()
+
+RECURSE_FOR_TESTS(ut)

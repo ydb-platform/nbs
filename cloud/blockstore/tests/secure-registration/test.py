@@ -1,12 +1,12 @@
 import os
 import signal
-import requests
 
 from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server
 
@@ -84,7 +84,7 @@ def test_secure_registration_and_config_loading():
     cert.CertFile = configurator.grpc_tls_cert_path
     cert.CertPrivateKeyFile = configurator.grpc_tls_key_path
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    server_app_config.ServerConfig.NodeType = 'nbs_control'
+    server_app_config.ServerConfig.NodeType = 'nbs'
 
     pm = yatest_common.network.PortManager()
 
@@ -129,7 +129,7 @@ def test_secure_registration_and_config_loading():
 
     # global
     storage = TStorageServiceConfig()
-    storage.DisableLocalService = True
+    storage.DisableLocalService = False
     storage.SchemeShardDir = "/Root/nbs"
 
     update_cms_config(kikimr_cluster.client, 'StorageServiceConfig', storage, '')
@@ -138,9 +138,8 @@ def test_secure_registration_and_config_loading():
 
     wait_for_nbs_server(nbs.nbs_port)
 
-    html = requests.get('http://localhost:%d/blockstore/service' % nbs.mon_port).text
-
-    # DisableLocalService = 0 for nbs_control
-    assert html.find('<td>DisableLocalService</td><td>0</td>') != -1
+    client = NbsClient(nbs.nbs_port)
+    # DisableLocalService = 1 for nbs
+    assert client.get_storage_service_config().get("DisableLocalService", 0) == 1
 
     os.kill(nbs.pid, signal.SIGTERM)

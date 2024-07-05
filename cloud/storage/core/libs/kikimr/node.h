@@ -4,6 +4,8 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/library/actors/core/defs.h>
 
 #include <util/generic/maybe.h>
@@ -28,6 +30,8 @@ struct TRegisterDynamicNodeOptions
     ui32 InterconnectPort = 0;
 
     TString DataCenter;
+    TString Rack = 0;
+    ui64 Body = 0;
 
     bool LoadCmsConfigs = false;
 
