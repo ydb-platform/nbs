@@ -3082,7 +3082,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
-        // TODO(#1350): test XAttr requests
+        auto setXAttrResponse = service.SetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr",
+            "some_value")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, setXAttrResponse.GetVersion());
+
+        auto getXAttrResponse = service.GetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, getXAttrResponse.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL("some_value", getXAttrResponse.GetValue());
+
+        service.SendSetNodeXAttrRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "user.some_attr",
+            "some_value");
+
+        auto setNodeXAttrResponseEvent = service.RecvSetNodeXAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            setNodeXAttrResponseEvent->GetStatus(),
+            setNodeXAttrResponseEvent->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldCreateDirectoryStructureInLeader)
@@ -3411,6 +3440,168 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             S_OK,
             destroyFileStoreResponse->GetStatus(),
             destroyFileStoreResponse->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        // a request with FollowerId and without Name
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR,
+            shard1Id);
+
+        auto createHandleResponseEvent = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            createHandleResponseEvent->GetError().GetCode(),
+            createHandleResponseEvent->GetErrorReason());
+
+        // a request with FollowerId != the real FollowerId which owns the node
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::RDWR,
+            shard2Id);
+
+        createHandleResponseEvent = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            createHandleResponseEvent->GetError().GetCode(),
+            createHandleResponseEvent->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldValidateFollowerConfiguration)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+        const auto shard3Id = fsId + "-f3";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+        service.CreateFileStore(shard3Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        // ShardNo change not allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(2);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasfollower", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower deletion not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower reordering not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower addition IS allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard3Id);
+            request.SetShardNo(3);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard3Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
+            NProtoPrivate::TConfigureFollowersResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        // TODO(#1350): leader should check that followers' ShardNos correspond
+        // to the follower order in leader's config
     }
 }
 
