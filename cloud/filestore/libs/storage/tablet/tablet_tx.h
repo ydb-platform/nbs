@@ -199,7 +199,7 @@ struct TNodeOps
         return value;
     }
 
-    static auto GetNodeId(const TIndexTabletDatabase::TNode& node)
+    static auto GetNodeId(const IIndexTabletDatabase::TNode& node)
     {
         return node.NodeId;
     }
@@ -224,7 +224,7 @@ struct TNodeOps
 };
 
 using TNodeSet = THashSet<
-    TIndexTabletDatabase::TNode,
+    IIndexTabletDatabase::TNode,
     TNodeOps::TNodeSetHash,
     TNodeOps::TNodeSetEqual>;
 
@@ -266,7 +266,7 @@ struct TTxIndexTablet
         NProto::TFileSystem FileSystem;
         NProto::TFileSystemStats FileSystemStats;
         NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
-        TMaybe<TIndexTabletDatabase::TNode> RootNode;
+        TMaybe<IIndexTabletDatabase::TNode> RootNode;
         TVector<NProto::TSession> Sessions;
         TVector<NProto::TSessionHandle> Handles;
         TVector<NProto::TSessionLock> Locks;
@@ -530,9 +530,9 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
 
         TVector<ui64> NodeIds;
-        TVector<TIndexTabletDatabase::TNode> Nodes;
+        TVector<IIndexTabletDatabase::TNode> Nodes;
         TVector<TIndexTabletDatabase::TNodeAttr> NodeAttrs;
-        TVector<TIndexTabletDatabase::TNodeRef> NodeRefs;
+        TVector<IIndexTabletDatabase::TNodeRef> NodeRefs;
 
         TVector<TIndexTabletDatabase::TCheckpointBlob> Blobs;
         TVector<TIndexTabletDatabase::TMixedBlob> MixedBlobs;
@@ -608,9 +608,9 @@ struct TTxIndexTablet
         NProto::TCreateNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         ui64 ChildNodeId = InvalidNodeId;
-        TMaybe<TIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
 
         NProto::TCreateNodeResponse Response;
 
@@ -657,9 +657,9 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<TIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<TIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
         NProto::TUnlinkNodeResponse Response;
 
@@ -697,13 +697,13 @@ struct TTxIndexTablet
         const ui32 Flags;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> ParentNode;
-        TMaybe<TIndexTabletDatabase::TNode> ChildNode;
-        TMaybe<TIndexTabletDatabase::TNodeRef> ChildRef;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
-        TMaybe<TIndexTabletDatabase::TNode> NewParentNode;
-        TMaybe<TIndexTabletDatabase::TNode> NewChildNode;
-        TMaybe<TIndexTabletDatabase::TNodeRef> NewChildRef;
+        TMaybe<IIndexTabletDatabase::TNode> NewParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> NewChildNode;
+        TMaybe<IIndexTabletDatabase::TNodeRef> NewChildRef;
 
         NProto::TRenameNodeResponse Response;
 
@@ -745,7 +745,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAccessNode(
                 TRequestInfoPtr requestInfo,
@@ -774,7 +774,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TReadLink(
                 TRequestInfoPtr requestInfo,
@@ -804,9 +804,9 @@ struct TTxIndexTablet
         const ui32 MaxBytes;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
-        TVector<TIndexTabletDatabase::TNodeRef> ChildRefs;
-        TVector<TIndexTabletDatabase::TNode> ChildNodes;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
+        TVector<IIndexTabletDatabase::TNodeRef> ChildRefs;
+        TVector<IIndexTabletDatabase::TNode> ChildNodes;
         TString Next;
 
         ui32 BytesToPrecharge = 0;
@@ -848,7 +848,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TSetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -878,9 +878,9 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
         ui64 TargetNodeId = InvalidNodeId;
-        TMaybe<TIndexTabletDatabase::TNode> TargetNode;
+        TMaybe<IIndexTabletDatabase::TNode> TargetNode;
         TString FollowerId;
         TString FollowerName;
 
@@ -919,7 +919,7 @@ struct TTxIndexTablet
 
         ui64 Version = 0;
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TSetNodeXAttr(
@@ -954,7 +954,7 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TGetNodeXAttr(
@@ -986,7 +986,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
         TVector<TIndexTabletDatabase::TNodeAttr> Attrs;
 
         TListNodeXAttr(
@@ -1018,7 +1018,7 @@ struct TTxIndexTablet
         const TString Name;
 
         ui64 CommitId = InvalidCommitId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TRemoveNodeXAttr(
@@ -1061,8 +1061,8 @@ struct TTxIndexTablet
         TString FollowerId;
         TString FollowerName;
         bool IsNewFollowerNode = false;
-        TMaybe<TIndexTabletDatabase::TNode> TargetNode;
-        TMaybe<TIndexTabletDatabase::TNode> ParentNode;
+        TMaybe<IIndexTabletDatabase::TNode> TargetNode;
+        TMaybe<IIndexTabletDatabase::TNode> ParentNode;
 
         NProto::TCreateHandleResponse Response;
 
@@ -1108,7 +1108,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProto::TDestroyHandleRequest Request;
 
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TDestroyHandle(
                 TRequestInfoPtr requestInfo,
@@ -1213,7 +1213,7 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<TByteRange> ReadAheadRange;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
         TVector<TBlockDataRef> Blocks;
         TVector<TBlockBytes> Bytes;
 
@@ -1272,7 +1272,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TWriteData(
                 TRequestInfoPtr requestInfo,
@@ -1316,7 +1316,7 @@ struct TTxIndexTablet
         ui64 CommitId;
 
         ui64 NodeId = InvalidNodeId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAddData(
                 TRequestInfoPtr requestInfo,
@@ -1386,7 +1386,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
-        TMaybe<TIndexTabletDatabase::TNode> Node;
+        TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAllocateData(
                 TRequestInfoPtr requestInfo,
