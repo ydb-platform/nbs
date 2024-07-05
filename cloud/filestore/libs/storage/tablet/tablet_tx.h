@@ -707,6 +707,9 @@ struct TTxIndexTablet
 
         NProto::TRenameNodeResponse Response;
 
+        TString FollowerIdForUnlink;
+        TString FollowerNameForUnlink;
+
         TRenameNode(
                 TRequestInfoPtr requestInfo,
                 NProto::TRenameNodeRequest& request)
@@ -731,6 +734,9 @@ struct TTxIndexTablet
             NewChildRef.Clear();
 
             Response.Clear();
+
+            FollowerIdForUnlink.clear();
+            FollowerNameForUnlink.clear();
         }
     };
 

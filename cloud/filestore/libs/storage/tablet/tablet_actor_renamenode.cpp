@@ -52,9 +52,9 @@ void TIndexTabletActor::HandleRenameNode(
     }
 
     auto* msg = ev->Get();
-    if (auto entry = session->LookupDupEntry(GetRequestId(msg->Record))) {
+    if (const auto* e = session->LookupDupEntry(GetRequestId(msg->Record))) {
         auto response = std::make_unique<TEvService::TEvRenameNodeResponse>();
-        GetDupCacheEntry(entry, response->Record);
+        GetDupCacheEntry(e, response->Record);
         return NCloud::Reply(ctx, *ev, std::move(response));
     }
 
@@ -99,7 +99,13 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     // TODO: AccessCheck
     TABLET_VERIFY(args.ParentNode);
     // validate old ref exists
-    if (!ReadNodeRef(db, args.ParentNodeId, args.CommitId, args.Name, args.ChildRef)) {
+    if (!ReadNodeRef(
+            db,
+            args.ParentNodeId,
+            args.CommitId,
+            args.Name,
+            args.ChildRef))
+    {
         return false;   // not ready
     }
 
@@ -109,14 +115,27 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return true;
     }
 
-    if (!ReadNode(db, args.ChildRef->ChildNodeId, args.CommitId, args.ChildNode)) {
-        return false;
+    if (args.ChildRef->FollowerId.Empty()) {
+        if (!ReadNode(
+                db,
+                args.ChildRef->ChildNodeId,
+                args.CommitId,
+                args.ChildNode))
+        {
+            return false;
+        }
+
+        // TODO: AccessCheck
+        TABLET_VERIFY(args.ChildNode);
     }
 
-    // TODO: AccessCheck
-    TABLET_VERIFY(args.ChildNode);
     // validate new parent node exists
-    if (!ReadNode(db, args.NewParentNodeId, args.CommitId, args.NewParentNode)) {
+    if (!ReadNode(
+            db,
+            args.NewParentNodeId,
+            args.CommitId,
+            args.NewParentNode))
+    {
         return false;   // not ready
     }
 
@@ -128,26 +147,45 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     // TODO: AccessCheck
     TABLET_VERIFY(args.NewParentNode);
     // check if new ref exists
-    if (!ReadNodeRef(db, args.NewParentNodeId, args.CommitId, args.NewName, args.NewChildRef)) {
+    if (!ReadNodeRef(
+            db,
+            args.NewParentNodeId,
+            args.CommitId,
+            args.NewName,
+            args.NewChildRef))
+    {
         return false;   // not ready
     }
 
-    // TODO(#1350): properly process moving into an external node - IMPORTANT!
-    if (args.NewChildRef && args.NewChildRef->FollowerId.Empty()) {
+    if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_NOREPLACE)) {
             args.Error = ErrorAlreadyExists(args.NewName);
             return true;
         }
 
-        // read new child node to unlink it
-        if (!ReadNode(db, args.NewChildRef->ChildNodeId, args.CommitId, args.NewChildNode)) {
-            return false;
+        if (args.NewChildRef->FollowerId.Empty()) {
+            // read new child node to unlink it
+            if (!ReadNode(
+                    db,
+                    args.NewChildRef->ChildNodeId,
+                    args.CommitId,
+                    args.NewChildNode))
+            {
+                return false;
+            }
+
+            // TODO: AccessCheck
+            TABLET_VERIFY(args.NewChildNode);
         }
 
-        // TODO: AccessCheck
-        TABLET_VERIFY(args.NewChildNode);
-        // oldpath and newpath are existing hard links to the same file, then rename() does nothing
-        if (args.ChildNode->NodeId == args.NewChildNode->NodeId) {
+        // oldpath and newpath are existing hard links to the same file, then
+        // rename() does nothing
+        const bool isSameNode = args.ChildNode && args.NewChildNode
+            && args.ChildNode->NodeId == args.NewChildNode->NodeId;
+        const bool isSameExternalNode = args.ChildRef->FollowerId
+            && args.NewChildRef->FollowerId
+            && args.ChildRef->FollowerId == args.NewChildRef->FollowerId;
+        if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
         }
@@ -157,23 +195,39 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             return true;
         }
 
-        // oldpath directory: newpath must either not exist, or it must specify an empty directory.
-        if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
-            if (args.NewChildNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+        // oldpath directory: newpath must either not exist, or it must specify
+        // an empty directory.
+        if (args.ChildNode
+                && args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE)
+        {
+            if (!args.NewChildNode || args.NewChildNode->Attrs.GetType()
+                    != NProto::E_DIRECTORY_NODE)
+            {
                 args.Error = ErrorIsNotDirectory(args.NewChildNode->NodeId);
                 return true;
             }
         }
 
-        if (args.NewChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
-            if (args.ChildNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+        if (args.NewChildNode && args.NewChildNode->Attrs.GetType()
+                == NProto::E_DIRECTORY_NODE)
+        {
+            if (!args.ChildNode || args.ChildNode->Attrs.GetType()
+                    != NProto::E_DIRECTORY_NODE)
+            {
                 args.Error = ErrorIsDirectory(args.NewChildNode->NodeId);
                 return true;
             }
 
             // 1 entry is enough to prevent rename
             TVector<IIndexTabletDatabase::TNodeRef> refs;
-            if (!ReadNodeRefs(db, args.NewChildNode->NodeId, args.CommitId, {}, refs, 1)) {
+            if (!ReadNodeRefs(
+                    db,
+                    args.NewChildNode->NodeId,
+                    args.CommitId,
+                    {},
+                    refs,
+                    1))
+            {
                 return false;
             }
 
@@ -218,7 +272,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.ChildRef->FollowerId,
         args.ChildRef->FollowerName);
 
-    if (args.NewChildNode) {
+    if (args.NewChildRef) {
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
             // remove existing target ref
             RemoveNodeRef(
@@ -241,6 +295,8 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->FollowerId,
                 args.NewChildRef->FollowerName);
         } else if (args.NewChildRef->FollowerId.Empty()) {
+            TABLET_VERIFY(args.NewChildNode);
+
             // remove target ref and unlink target node
             UnlinkNode(
                 db,
@@ -249,6 +305,19 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 *args.NewChildNode,
                 args.NewChildRef->MinCommitId,
                 args.CommitId);
+        } else {
+            // remove target ref
+            UnlinkExternalNode(
+                db,
+                args.NewParentNode->NodeId,
+                args.NewName,
+                args.NewChildRef->FollowerId,
+                args.NewChildRef->FollowerName,
+                args.NewChildRef->MinCommitId,
+                args.CommitId);
+
+            args.FollowerIdForUnlink = args.NewChildRef->FollowerId;
+            args.FollowerNameForUnlink = args.NewChildRef->FollowerName;
         }
     }
 
@@ -272,13 +341,13 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.ChildRef->FollowerId,
         args.ChildRef->FollowerName);
 
-    auto newparent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
+    auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         db,
         args.NewParentNode->NodeId,
         args.NewParentNode->MinCommitId,
         args.CommitId,
-        newparent,
+        newParent,
         args.NewParentNode->Attrs);
 
     auto* session = FindSession(args.SessionId);
@@ -303,6 +372,34 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (SUCCEEDED(args.Error.GetCode())) {
         TABLET_VERIFY(args.ChildRef);
 
+        CommitDupCacheEntry(args.SessionId, args.RequestId);
+
+        if (args.FollowerIdForUnlink) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s Unlinking node in follower upon RenameNode: %s, %s",
+                LogTag.c_str(),
+                args.FollowerIdForUnlink.c_str(),
+                args.FollowerNameForUnlink.c_str());
+
+            // TODO
+            /*
+            auto actor = std::make_unique<TUnlinkNodeInFollowerActor>(
+                LogTag,
+                args.RequestInfo,
+                args.ChildRef->FollowerId,
+                args.ChildRef->FollowerName,
+                ctx.SelfID,
+                args.Request,
+                std::move(args.Response));
+
+            auto actorId = NCloud::Register(ctx, std::move(actor));
+            WorkerActors.insert(actorId);
+
+            return;
+            */
+        }
+
+        // TODO(#1350): support session events for external nodes
         NProto::TSessionEvent sessionEvent;
         {
             auto* unlinked = sessionEvent.AddNodeUnlinked();
@@ -317,8 +414,6 @@ void TIndexTabletActor::CompleteTx_RenameNode(
             linked->SetName(args.NewName);
         }
         NotifySessionEvent(ctx, sessionEvent);
-
-        CommitDupCacheEntry(args.SessionId, args.RequestId);
     }
 
     auto response = std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);

@@ -361,6 +361,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
     }
 
     if (args.TargetNodeId != InvalidNodeId) {
+        // XXX unneeded check
         if (args.RequestFollowerId) {
             const auto shardNo = ExtractShardNo(args.TargetNodeId);
             const auto& followerIds =
