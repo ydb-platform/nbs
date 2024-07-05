@@ -183,14 +183,16 @@ private:
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     WriteRequest.GetBuffer(),
-                    TInstant::Max());
+                    TInstant::Max(),
+                    NKikimrBlobStorage::UserData);
             } else {
                 request = std::make_unique<TEvBlobStorage::TEvPut>(
                     blobId,
                     TString(
                         WriteRequest.GetBuffer().Data() + offset,
                         blobId.BlobSize()),
-                    TInstant::Max());
+                    TInstant::Max(),
+                    NKikimrBlobStorage::UserData);
             }
             NKikimr::TActorId proxy =
                 MakeBlobStorageProxyID(blob.GetBSGroupId());
