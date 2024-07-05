@@ -84,7 +84,7 @@ bool TIndexTabletActor::PrepareTx_DeleteCheckpoint(
 
             if (ready) {
                 for (ui64 nodeId: args.NodeIds) {
-                    TMaybe<TIndexTabletDatabase::TNode> node;
+                    TMaybe<IIndexTabletDatabase::TNode> node;
                     if (!db.ReadNodeVer(nodeId, args.CommitId, node)) {
                         ready = false;
                     }

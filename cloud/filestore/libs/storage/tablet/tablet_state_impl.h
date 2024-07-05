@@ -4,6 +4,7 @@
 
 #include "tablet_schema.h"
 #include "tablet_state.h"
+#include "tablet_state_cache.h"
 
 #include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
@@ -52,6 +53,7 @@ struct TIndexTabletState::TImpl
     TTruncateQueue TruncateQueue;
     TReadAheadCache ReadAheadCache;
     TNodeIndexCache NodeIndexCache;
+    TInMemoryIndexState InMemoryIndexState;
 
     TCheckpointStore Checkpoints;
     TChannels Channels;

@@ -100,7 +100,7 @@ void TIndexTabletState::UpdateNode(
 
 void TIndexTabletState::RemoveNode(
     TIndexTabletDatabase& db,
-    const TIndexTabletDatabase::TNode& node,
+    const IIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -130,7 +130,7 @@ void TIndexTabletState::UnlinkNode(
     TIndexTabletDatabase& db,
     ui64 parentNodeId,
     const TString& name,
-    const TIndexTabletDatabase::TNode& node,
+    const IIndexTabletDatabase::TNode& node,
     ui64 minCommitId,
     ui64 maxCommitId)
 {
@@ -184,10 +184,10 @@ void TIndexTabletState::UnlinkExternalNode(
 }
 
 bool TIndexTabletState::ReadNode(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
-    TMaybe<TIndexTabletDatabase::TNode>& node)
+    TMaybe<IIndexTabletDatabase::TNode>& node)
 {
     bool ready = db.ReadNode(nodeId, commitId, node);
 
@@ -311,7 +311,7 @@ void TIndexTabletState::RemoveNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttr(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -336,7 +336,7 @@ bool TIndexTabletState::ReadNodeAttr(
 }
 
 bool TIndexTabletState::ReadNodeAttrs(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     TVector<TIndexTabletDatabase::TNodeAttr>& attrs)
@@ -433,11 +433,11 @@ void TIndexTabletState::RemoveNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRef(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
-    TMaybe<TIndexTabletDatabase::TNodeRef>& ref)
+    TMaybe<IIndexTabletDatabase::TNodeRef>& ref)
 {
     bool ready = db.ReadNodeRef(nodeId, commitId, name, ref);
 
@@ -458,11 +458,11 @@ bool TIndexTabletState::ReadNodeRef(
 }
 
 bool TIndexTabletState::ReadNodeRefs(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     ui64 commitId,
     const TString& cookie,
-    TVector<TIndexTabletDatabase::TNodeRef>& refs,
+    TVector<IIndexTabletDatabase::TNodeRef>& refs,
     ui32 maxBytes,
     TString* next)
 {
@@ -480,7 +480,7 @@ bool TIndexTabletState::ReadNodeRefs(
 }
 
 bool TIndexTabletState::PrechargeNodeRefs(
-    TIndexTabletDatabase& db,
+    IIndexTabletDatabase& db,
     ui64 nodeId,
     const TString& cookie,
     ui32 bytesToPrecharge)
