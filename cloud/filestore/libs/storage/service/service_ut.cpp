@@ -3456,21 +3456,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             E_ARGUMENT,
             createHandleResponseEvent->GetError().GetCode(),
             createHandleResponseEvent->GetErrorReason());
-
-        // a request with FollowerId != the real FollowerId which owns the node
-        service.SendCreateHandleRequest(
-            headers,
-            fsId,
-            RootNodeId,
-            "file1",
-            TCreateHandleArgs::RDWR,
-            shard2Id);
-
-        createHandleResponseEvent = service.RecvCreateHandleResponse();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_ARGUMENT,
-            createHandleResponseEvent->GetError().GetCode(),
-            createHandleResponseEvent->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldValidateFollowerConfiguration)
@@ -3573,6 +3558,176 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // TODO(#1350): leader should check that followers' ShardNos correspond
         // to the follower order in leader's config
+    }
+
+    Y_UNIT_TEST(ShouldRenameExternalNodes)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        // writing some data to file1 then moving file1 to file3
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        auto renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file1",
+            RootNodeId,
+            "file3",
+            0);
+
+        // opening file3 for reading
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file3",
+            TCreateHandleArgs::RDNLY)->Record;
+
+        // checking that file3 refers to the same node as formerly file1
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        auto handle1r = createHandleResponse.GetHandle();
+
+        // checking that we can read the data that we wrote to file1
+
+        auto readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1r,
+            0,
+            data1.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
+
+        // checking that node listing shows file3 and file2
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file3", listNodesResponse.GetNames(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(1).GetId());
+
+        // checking that move into an existing file (file2) works
+
+        renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file3",
+            RootNodeId,
+            "file2",
+            0);
+
+        // checking that we can still read the same data
+
+        createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file2",
+            TCreateHandleArgs::RDNLY)->Record;
+
+        // nodeId should be kept intact
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        handle1r = createHandleResponse.GetHandle();
+
+        readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1r,
+            0,
+            data1.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
+
+        // listing should show only file2 now
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(0).GetId());
+
+        // listing in shard2 should show nothing
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 }
 

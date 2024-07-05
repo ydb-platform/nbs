@@ -363,6 +363,14 @@ private:
 
     bool CheckSessionForDestroy(const TSession* session, ui64 seqNo);
 
+    void RegisterUnlinkNodeInFollowerActor(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        TString followerId,
+        TString followerName,
+        NProto::TUnlinkNodeRequest request,
+        TUnlinkNodeInFollowerResult result);
+
 private:
     template <typename TMethod>
     TSession* AcceptRequest(
