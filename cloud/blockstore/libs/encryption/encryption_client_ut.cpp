@@ -46,9 +46,6 @@ NProto::TEncryptionDesc GetDefaultEncryption()
 struct TTestEncryptor final
     : public IEncryptor
 {
-    // This is necessary so that there is no buffer that is filled with zeros.
-    static constexpr char Mask = 0b1000101;
-
     NProto::TError Encrypt(
         TBlockDataRef srcRef,
         TBlockDataRef dstRef,
@@ -56,13 +53,12 @@ struct TTestEncryptor final
     {
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
         UNIT_ASSERT(srcRef.Data() != nullptr);
-        UNIT_ASSERT(Mask != blockIndex);
 
         const char* srcPtr = srcRef.Data();
         char* dstPtr = const_cast<char*>(dstRef.Data());
 
         for (size_t i = 0; i < srcRef.Size(); ++i) {
-            *dstPtr = (*srcPtr + static_cast<char>(blockIndex)) ^ Mask;
+            *dstPtr = (*srcPtr + static_cast<char>(blockIndex)) ^ (i % 256);
             ++srcPtr;
             ++dstPtr;
         }
@@ -78,10 +74,11 @@ struct TTestEncryptor final
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
 
         if (srcRef.Data() == nullptr) {
-            memset(
-                const_cast<char*>(dstRef.Data()),
-                Mask - static_cast<char>(blockIndex),
-                srcRef.Size());
+            char* dstPtr = const_cast<char*>(dstRef.Data());
+            for (size_t i = 0; i < srcRef.Size(); ++i) {
+                *dstPtr = static_cast<char>(blockIndex) ^ (i % 256);
+                ++dstPtr;
+            }
             return {};
         }
 
@@ -89,7 +86,7 @@ struct TTestEncryptor final
         char* dstPtr = const_cast<char*>(dstRef.Data());
 
         for (size_t i = 0; i < srcRef.Size(); ++i) {
-            *dstPtr = (*srcPtr ^ Mask) - static_cast<char>(blockIndex);
+            *dstPtr = *srcPtr ^ (i % 256) - static_cast<char>(blockIndex);
             ++srcPtr;
             ++dstPtr;
         }
