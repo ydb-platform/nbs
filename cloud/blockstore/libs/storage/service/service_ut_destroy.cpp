@@ -186,7 +186,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             service.SendDestroyVolumeRequest("without_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
-                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
             }
 
             service.SendDestroyVolumeRequest("with_prefix");

@@ -329,12 +329,12 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    if (!msg->Record.GetVolume().GetIsSystem() &&
+    if (!msg->Record.GetVolume().GetIsSystem() && // allow to destruct system disks
         DestructionAllowedOnlyForDisksWithIdPrefix &&
         !DiskId.StartsWith(DestructionAllowedOnlyForDisksWithIdPrefix))
     {
         auto e = MakeError(
-            E_REJECTED,
+            E_ARGUMENT,
             TStringBuilder() << "DiskId: " << DiskId
             << ", only disks with id prefix '" << DestructionAllowedOnlyForDisksWithIdPrefix
             << "' are allowed to be deleted");
