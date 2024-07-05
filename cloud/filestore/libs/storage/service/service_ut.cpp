@@ -2239,6 +2239,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             event->Recipient.IsService() &&
                             event->Recipient.ServiceId().StartsWith("bsproxy"))
                         {
+                            auto* msg =
+                                event->template Get<TEvBlobStorage::TEvPut>();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                NKikimrBlobStorage::UserData,
+                                msg->HandleClass);
                             ++putRequestCount;
                         }
                         break;
