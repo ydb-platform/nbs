@@ -1,6 +1,5 @@
-#include "public.h"
-#include "node_registration_helpers.h"
 #include "node.h"
+#include "node_registration_helpers.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 

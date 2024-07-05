@@ -11,8 +11,6 @@
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
-#include <utility>
-
 namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
