@@ -25,10 +25,18 @@ NActorsInterconnect::TNodeLocation CreateNodeLocation(
     const NYdb::NDiscovery::TNodeLocation& source)
 {
     NActorsInterconnect::TNodeLocation location;
-    location.SetDataCenter(source.DataCenter.value_or(""));
-    location.SetModule(source.Module.value_or(""));
-    location.SetRack(source.Rack.value_or(""));
-    location.SetUnit(source.Unit.value_or(""));
+    if (source.DataCenter) {
+        location.SetDataCenter(source.DataCenter.value());
+    }
+    if (source.Module) {
+        location.SetModule(source.Module.value());
+    }
+    if (source.Rack) {
+        location.SetRack(source.Rack.value());
+    }
+    if (source.Unit) {
+        location.SetUnit(source.Unit.value());
+    }
     return location;
 }
 
@@ -54,7 +62,7 @@ NKikimrConfig::TStaticNameserviceConfig_TNode CreateStaticNodeInfo(
     node.SetPort(info.GetPort());
     node.SetHost(info.GetHost());
     node.SetInterconnectHost(info.GetResolveHost());
-    node.MutableLocation()->CopyFrom(info.GetLocation());
+    *node.MutableLocation() = info.GetLocation();
     return node;
 }
 

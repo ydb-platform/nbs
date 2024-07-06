@@ -239,7 +239,7 @@ struct TLegacyNodeRegistrant
         for (const auto& node: result.Record().GetNodes()) {
             if (node.GetNodeId() == result.GetNodeId()) {
                 // update node information based on registration response
-                DnConfig.MutableNodeInfo()->CopyFrom(node);
+                *DnConfig.MutableNodeInfo() = node;
             } else {
                 *NsConfig.AddNode() = CreateStaticNodeInfo(node);
             }
@@ -274,6 +274,7 @@ struct TDiscoveryNodeRegistrant
     const TRegisterDynamicNodeOptions& Options;
     NKikimrConfig::TStaticNameserviceConfig& NsConfig;
     NKikimrConfig::TDynamicNodeConfig& DnConfig;
+    const TNodeLocation Location;
 
     NDiscovery::TNodeRegistrationSettings Settings;
 
@@ -291,6 +292,8 @@ struct TDiscoveryNodeRegistrant
     {
         NDiscovery::TNodeLocation location;
         location.DataCenter = Options.DataCenter;
+        location.Rack = Options.Rack;
+        location.Unit = ToString(Options.Body);
 
         Settings.Location(location);
         Settings.Address(HostAddress);

@@ -68,6 +68,10 @@ Y_UNIT_TEST_SUITE(TNodeRegistrationHelpersTest)
     Y_UNIT_TEST(ShouldFillLocationInfo)
     {
         NYdb::NDiscovery::TNodeLocation location;
+        location.DataCenter = "data center";
+        location.Module = "module";
+        location.Rack = "rack";
+        location.Unit = "unit";
         auto msg = CreateNodeLocation(location);
         CheckAllFieldsSet(msg, {});
     }
