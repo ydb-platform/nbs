@@ -156,6 +156,12 @@ struct TWriteRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TUnlinkNodeInFollowerResult = std::variant<
+    NProto::TUnlinkNodeResponse,
+    NProto::TRenameNodeResponse>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEvIndexTabletPrivate
 {
     //
@@ -538,13 +544,13 @@ struct TEvIndexTabletPrivate
     struct TNodeUnlinkedInFollower
     {
         TRequestInfoPtr RequestInfo;
-        NProto::TUnlinkNodeResponse UnlinkNodeResponse;
+        TUnlinkNodeInFollowerResult Result;
 
         TNodeUnlinkedInFollower(
                 TRequestInfoPtr requestInfo,
-                NProto::TUnlinkNodeResponse unlinkNodeResponse)
+                TUnlinkNodeInFollowerResult result)
             : RequestInfo(std::move(requestInfo))
-            , UnlinkNodeResponse(std::move(unlinkNodeResponse))
+            , Result(std::move(result))
         {
         }
     };

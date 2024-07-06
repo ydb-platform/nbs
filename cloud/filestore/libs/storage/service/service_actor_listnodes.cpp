@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
@@ -188,14 +189,26 @@ void TListNodesActor::HandleGetNodeAttrResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "Failed to GetNodeAttr from follower: %s",
-            FormatError(msg->GetError()).Quote().c_str());
+        const auto noent = MAKE_FILESTORE_ERROR(NProto::E_FS_NOENT);
+        if (msg->GetError().GetCode() == noent) {
+            ReportNodeNotFoundInFollower();
 
-        HandleError(ctx, *msg->Record.MutableError());
-        return;
+            LOG_ERROR(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Node not found in follower: %s, %s",
+                FormatError(msg->GetError()).Quote().c_str(),
+                Response.GetNames(ev->Cookie).c_str());
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "Failed to GetNodeAttr from follower: %s",
+                FormatError(msg->GetError()).Quote().c_str());
+
+            HandleError(ctx, *msg->Record.MutableError());
+            return;
+        }
     }
 
     LOG_DEBUG(

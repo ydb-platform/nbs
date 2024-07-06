@@ -2239,6 +2239,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                             event->Recipient.IsService() &&
                             event->Recipient.ServiceId().StartsWith("bsproxy"))
                         {
+                            auto* msg =
+                                event->template Get<TEvBlobStorage::TEvPut>();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                NKikimrBlobStorage::UserData,
+                                msg->HandleClass);
                             ++putRequestCount;
                         }
                         break;
@@ -2283,6 +2288,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(0, DefaultBlockSize * BlockGroupSize * 3, 3);
         // Currently the data is written from 0th to (1 + BlockGroupSize * 10) = 641th block
         // Therefore, the next write should fail
+        auto stat =
+            service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(641 * DefaultBlockSize, stat.GetSize());
 
         auto data =
             GenerateValidateData(DefaultBlockSize * 360);
@@ -2367,7 +2375,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         auto& runtime = env.GetRuntime();
 
-        auto validateWriteData = [&](ui64 offset, ui64 size)
+        auto validateWriteData =
+            [&](ui64 offset, ui64 size, ui64 expectedFilesize)
         {
             auto data = GenerateValidateData(size);
 
@@ -2382,11 +2391,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataRequest));
             // clang-format on
             runtime.ClearCounters();
+
+            auto stat =
+                service.GetNodeAttr(headers, fs, RootNodeId, "file")->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(expectedFilesize, stat.GetSize());
         };
 
-        validateWriteData(0, 4_KB);
-        validateWriteData(4_KB, 4_KB);
-        validateWriteData(1, 128_KB);
+        validateWriteData(0, 4_KB, 4_KB);
+        validateWriteData(4_KB, 4_KB, 8_KB);
+        validateWriteData(1, 128_KB, 1 + 128_KB);
     }
 
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
@@ -3075,7 +3088,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
 
-        // TODO(#1350): test XAttr requests
+        auto setXAttrResponse = service.SetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr",
+            "some_value")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, setXAttrResponse.GetVersion());
+
+        auto getXAttrResponse = service.GetNodeXAttr(
+            headers,
+            fsId,
+            nodeId2,
+            "user.some_attr")->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, getXAttrResponse.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL("some_value", getXAttrResponse.GetValue());
+
+        service.SendSetNodeXAttrRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "user.some_attr",
+            "some_value");
+
+        auto setNodeXAttrResponseEvent = service.RecvSetNodeXAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            setNodeXAttrResponseEvent->GetStatus(),
+            setNodeXAttrResponseEvent->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldCreateDirectoryStructureInLeader)
@@ -3299,6 +3341,393 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             error.GetCode(),
             response->GetError().GetCode(),
             FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldNotFailListNodesUponGetAttrENOENT)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"));
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        auto listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        const auto shard1NodeName = listNodesResponse.GetNames(0);
+
+        // "breaking" one node - deleting it directly from the shard
+        service.UnlinkNode(headers1, RootNodeId, shard1NodeName);
+
+        // ListNodes should still succeed
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file1", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+        // zero node id is expected - we failed to fetch attrs for this file
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            0,
+            listNodesResponse.GetNodes(1).GetId());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInFollower");
+        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldValidateRequestsWithFollowerId)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        // a request with FollowerId and without Name
+        service.SendCreateHandleRequest(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR,
+            shard1Id);
+
+        auto createHandleResponseEvent = service.RecvCreateHandleResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            createHandleResponseEvent->GetError().GetCode(),
+            createHandleResponseEvent->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldValidateFollowerConfiguration)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+        const auto shard3Id = fsId + "-f3";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+        service.CreateFileStore(shard3Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        // ShardNo change not allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard1Id);
+            request.SetShardNo(2);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureasfollower", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower deletion not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower reordering not allowed
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard1Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configurefollowers", buf);
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                response->GetErrorReason());
+        }
+
+        // Follower addition IS allowed
+        {
+            NProtoPrivate::TConfigureAsFollowerRequest request;
+            request.SetFileSystemId(shard3Id);
+            request.SetShardNo(3);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configureasfollower", buf);
+            NProtoPrivate::TConfigureAsFollowerResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        {
+            NProtoPrivate::TConfigureFollowersRequest request;
+            request.SetFileSystemId(fsId);
+            *request.AddFollowerFileSystemIds() = shard1Id;
+            *request.AddFollowerFileSystemIds() = shard2Id;
+            *request.AddFollowerFileSystemIds() = shard3Id;
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("configurefollowers", buf);
+            NProtoPrivate::TConfigureFollowersResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+        }
+
+        // TODO(#1350): leader should check that followers' ShardNos correspond
+        // to the follower order in leader's config
+    }
+
+    Y_UNIT_TEST(ShouldRenameExternalNodes)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        // writing some data to file1 then moving file1 to file3
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        auto renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file1",
+            RootNodeId,
+            "file3",
+            0);
+
+        // opening file3 for reading
+
+        auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file3",
+            TCreateHandleArgs::RDNLY)->Record;
+
+        // checking that file3 refers to the same node as formerly file1
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        auto handle1r = createHandleResponse.GetHandle();
+
+        // checking that we can read the data that we wrote to file1
+
+        auto readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1r,
+            0,
+            data1.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
+
+        // checking that node listing shows file3 and file2
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+        UNIT_ASSERT_VALUES_EQUAL("file3", listNodesResponse.GetNames(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            listNodesResponse.GetNodes(0).GetId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(1).GetId());
+
+        // checking that move into an existing file (file2) works
+
+        renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file3",
+            RootNodeId,
+            "file2",
+            0);
+
+        // checking that we can still read the same data
+
+        createHandleResponse = service.CreateHandle(
+            headers,
+            fsId,
+            RootNodeId,
+            "file2",
+            TCreateHandleArgs::RDNLY)->Record;
+
+        // nodeId should be kept intact
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            createHandleResponse.GetNodeAttr().GetId());
+
+        handle1r = createHandleResponse.GetHandle();
+
+        readDataResponse = service.ReadData(
+            headers,
+            fsId,
+            nodeId1,
+            handle1r,
+            0,
+            data1.Size())->Record;
+        UNIT_ASSERT_VALUES_EQUAL(data1, readDataResponse.GetBuffer());
+
+        // listing should show only file2 now
+
+        listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId1,
+            listNodesResponse.GetNodes(0).GetId());
+
+        // listing in shard2 should show nothing
+
+        auto headers2 = headers;
+        headers2.FileSystemId = shard2Id;
+
+        listNodesResponse = service.ListNodes(
+            headers2,
+            shard2Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 }
 

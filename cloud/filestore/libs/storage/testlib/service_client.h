@@ -243,6 +243,25 @@ public:
         return request;
     }
 
+    auto CreateRenameNodeRequest(
+        const THeaders& headers,
+        const ui64 parent,
+        const TString& name,
+        const ui64 newParent,
+        const TString& newName,
+        ui32 flags)
+    {
+        auto request = std::make_unique<TEvService::TEvRenameNodeRequest>();
+        request->Record.SetFileSystemId(headers.FileSystemId);
+        headers.Fill(request->Record);
+        request->Record.SetNodeId(parent);
+        request->Record.SetName(name);
+        request->Record.SetNewParentId(newParent);
+        request->Record.SetNewName(newName);
+        request->Record.SetFlags(flags);
+        return request;
+    }
+
     static auto CreateWriteDataRequest(
         const THeaders& headers,
         const TString& fileSystemId,
@@ -410,6 +429,36 @@ public:
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(len);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvSetNodeXAttrRequest> CreateSetNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& attrName,
+        const TString& attrValue)
+    {
+        auto request = std::make_unique<TEvService::TEvSetNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(attrName);
+        request->Record.SetValue(attrValue);
+        return request;
+    }
+
+    std::unique_ptr<TEvService::TEvGetNodeXAttrRequest> CreateGetNodeXAttrRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        const ui64 nodeId,
+        const TString& attrName)
+    {
+        auto request = std::make_unique<TEvService::TEvGetNodeXAttrRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetName(attrName);
         return request;
     }
 

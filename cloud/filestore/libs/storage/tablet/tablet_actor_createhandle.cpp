@@ -315,7 +315,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
 
         // check whether child node exists
-        TMaybe<TIndexTabletDatabase::TNodeRef> ref;
+        TMaybe<IIndexTabletDatabase::TNodeRef> ref;
         if (!ReadNodeRef(db, args.NodeId, args.ReadCommitId, args.Name, ref)) {
             return false;   // not ready
         }
@@ -360,14 +360,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
     }
 
-    // TODO(#1350): proper validity checks for external node requests
-    if (args.TargetNodeId != InvalidNodeId && args.FollowerId.Empty()) {
+    if (args.TargetNodeId != InvalidNodeId) {
         if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
             return false;   // not ready
         }
 
         if (!args.TargetNode) {
-            // TODO(#1350): try to extract shardNo from TargetNodeId?
             args.Error = ErrorInvalidTarget(args.TargetNodeId);
             return true;
         }
@@ -417,7 +415,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 args.WriteCommitId,
                 attrs);
 
-            args.TargetNode = TIndexTabletDatabase::TNode {
+            args.TargetNode = IIndexTabletDatabase::TNode {
                 args.TargetNodeId,
                 attrs,
                 args.WriteCommitId,
@@ -499,6 +497,16 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     TTxIndexTablet::TCreateHandle& args)
 {
     RemoveTransaction(*args.RequestInfo);
+
+    if (args.Error.GetCode() == E_ARGUMENT) {
+        // service actor sent something inappropriate, we'd better log it
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Can't create handle: %s",
+            LogTag.c_str(),
+            FormatError(args.Error).Quote().c_str());
+    }
 
     if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);

@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "tablet_state_iface.h"
+
 #include <cloud/filestore/config/storage.pb.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
@@ -58,7 +60,8 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TIndexTabletDatabase
-    : public NKikimr::NIceDb::TNiceDb
+    : public IIndexTabletDatabase
+    , public NKikimr::NIceDb::TNiceDb
 {
 public:
     TIndexTabletDatabase(NKikimr::NTable::TDatabase& database)
@@ -97,16 +100,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
     void DeleteNode(ui64 nodeId);
-
-    struct TNode
-    {
-        ui64 NodeId;
-        NProto::TNode Attrs;
-        ui64 MinCommitId;
-        ui64 MaxCommitId;
-    };
-
-    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node);
+    bool ReadNode(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // Nodes_Ver
@@ -120,7 +117,10 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void DeleteNodeVer(ui64 nodeId, ui64 commitId);
 
-    bool ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node);
+    bool ReadNodeVer(
+        ui64 nodeId,
+        ui64 commitId,
+        TMaybe<IIndexTabletDatabase::TNode>& node) override;
 
     //
     // NodeAttrs
@@ -135,23 +135,16 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void DeleteNodeAttr(ui64 nodeId, const TString& name);
 
-    struct TNodeAttr
-    {
-        ui64 NodeId;
-        TString Name;
-        TString Value;
-        ui64 MinCommitId;
-        ui64 MaxCommitId;
-        ui64 Version;
-    };
-
     bool ReadNodeAttr(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeAttr>& attr);
+        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
-    bool ReadNodeAttrs(ui64 nodeId, ui64 commitId, TVector<TNodeAttr>& attrs);
+    bool ReadNodeAttrs(
+        ui64 nodeId,
+        ui64 commitId,
+        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeAttrs_Ver
@@ -171,12 +164,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeAttr>& attr);
+        TMaybe<IIndexTabletDatabase::TNodeAttr>& attr) override;
 
     bool ReadNodeAttrVers(
         ui64 nodeId,
         ui64 commitId,
-        TVector<TNodeAttr>& attrs);
+        TVector<IIndexTabletDatabase::TNodeAttr>& attrs) override;
 
     //
     // NodeRefs
@@ -192,35 +185,24 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     void DeleteNodeRef(ui64 nodeId, const TString& name);
 
-    struct TNodeRef
-    {
-        ui64 NodeId;
-        TString Name;
-        ui64 ChildNodeId;
-        TString FollowerId;
-        TString FollowerName;
-        ui64 MinCommitId;
-        ui64 MaxCommitId;
-    };
-
     bool ReadNodeRef(
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref);
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
     bool ReadNodeRefs(
         ui64 nodeId,
         ui64 commitId,
         const TString& cookie,
-        TVector<TNodeRef>& refs,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs,
         ui32 maxBytes,
-        TString* next = nullptr);
+        TString* next = nullptr) override;
 
     bool PrechargeNodeRefs(
         ui64 nodeId,
         const TString& cookie,
-        ui32 bytesToPrecharge);
+        ui32 bytesToPrecharge) override;
 
     //
     // NodeRefs_Ver
@@ -241,9 +223,12 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TString& name,
-        TMaybe<TNodeRef>& ref);
+        TMaybe<IIndexTabletDatabase::TNodeRef>& ref) override;
 
-    bool ReadNodeRefVers(ui64 nodeId, ui64 commitId, TVector<TNodeRef>& refs);
+    bool ReadNodeRefVers(
+        ui64 nodeId,
+        ui64 commitId,
+        TVector<IIndexTabletDatabase::TNodeRef>& refs) override;
 
     //
     // TruncateQueue
@@ -448,7 +433,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     bool ReadCheckpointNodes(
         ui64 checkpointId,
         TVector<ui64>& nodes,
-        size_t maxCount = 100);
+        size_t maxCount) override;
 
     //
     // CheckpointBlobs

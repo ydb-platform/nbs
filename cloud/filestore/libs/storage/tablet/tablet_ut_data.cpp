@@ -4777,6 +4777,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto response = tablet.RecvAddDataResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
+        // AddData should correctly update file size
+        auto stat = tablet.GetNodeAttr(id2)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), stat.GetSize());
+
         // Use DescribeData to check that proper blobs were added
         auto describe = tablet.DescribeData(handle2, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(describe->Record.BlobPiecesSize(), 2);

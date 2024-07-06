@@ -120,7 +120,7 @@ void TCreateHandleActor::CreateHandleInFollower(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvCreateHandleRequest>();
     request->Record = CreateHandleRequest;
     request->Record.SetFileSystemId(
-        CreateHandleRequest.GetFollowerFileSystemId());
+        LeaderResponse.GetFollowerFileSystemId());
     request->Record.SetNodeId(RootNodeId);
     request->Record.SetName(LeaderResponse.GetFollowerNodeName());
     request->Record.ClearFollowerFileSystemId();
