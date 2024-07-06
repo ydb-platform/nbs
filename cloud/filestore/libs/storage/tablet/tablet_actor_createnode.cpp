@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -269,10 +270,10 @@ void TIndexTabletActor::HandleCreateNode(
     ExecuteTx<TCreateNode>(
         ctx,
         std::move(requestInfo),
-        msg->Record,
+        std::move(msg->Record),
         parentNodeId,
         targetNodeId,
-        attrs);
+        std::move(attrs));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -312,7 +313,6 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     // TODO: AccessCheck
-    TABLET_VERIFY(args.ParentNode);
 
     // validate target node doesn't exist
     TMaybe<IIndexTabletDatabase::TNodeRef> childRef;
@@ -326,7 +326,13 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         return true;
     }
 
-    TABLET_VERIFY(!args.ChildNode);
+    if (args.ChildNode) {
+        auto message = ReportChildNodeWithoutRef(TStringBuilder()
+            << "CreateNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
+
     if (args.TargetNodeId != InvalidNodeId) {
         // hard link: validate link target
         args.ChildNodeId = args.TargetNodeId;
@@ -353,7 +359,6 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         }
 
         // TODO: AccessCheck
-        TABLET_VERIFY(args.ChildNode);
     }
 
     return true;
@@ -367,7 +372,12 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     FILESTORE_VALIDATE_TX_ERROR(CreateNode, args);
 
     auto* session = FindSession(args.SessionId);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "CreateNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
 
     TIndexTabletDatabase db(tx.DB);
 
@@ -424,7 +434,12 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         args.FollowerName);
 
     if (args.FollowerId.Empty()) {
-        TABLET_VERIFY(args.ChildNodeId != InvalidNodeId);
+        if (args.ChildNodeId == InvalidNodeId) {
+            auto message = ReportInvalidNodeIdForLocalNode(TStringBuilder()
+                << "CreateNode: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
 
         ConvertNodeFromAttrs(
             *args.Response.MutableNode(),
@@ -445,7 +460,9 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         }
     }
 
-    // TODO(#1350): support DupCache for external nodes
+    // TODO(#1350): support DupCache for external nodes - modify DupCache entry
+    // upon CreateNode completion in follower - in the same tx that would
+    // delete the corresponding CreateNode op from the op log table
 }
 
 void TIndexTabletActor::CompleteTx_CreateNode(
@@ -487,7 +504,12 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
 
-        TABLET_VERIFY(args.ChildNode);
+        if (!args.ChildNode) {
+            auto message = ReportChildNodeIsNull(TStringBuilder()
+                << "CreateNode: " << args.Request.ShortDebugString());
+            *args.Response.MutableError() =
+                MakeError(E_INVALID_STATE, std::move(message));
+        }
         response->Record = std::move(args.Response);
 
         NProto::TSessionEvent sessionEvent;

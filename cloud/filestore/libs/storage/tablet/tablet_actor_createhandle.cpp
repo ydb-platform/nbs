@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 #include <util/generic/guid.h>
@@ -271,7 +272,7 @@ void TIndexTabletActor::HandleCreateHandle(
     ExecuteTx<TCreateHandle>(
         ctx,
         std::move(requestInfo),
-        msg->Record);
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -289,7 +290,12 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         args.ClientId,
         args.SessionId,
         args.SessionSeqNo);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "CreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
 
     args.ReadCommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.ReadCommitId == InvalidCommitId) {
@@ -377,7 +383,6 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         }
 
         // TODO: AccessCheck
-        TABLET_VERIFY(args.TargetNode);
     }
 
     return true;
@@ -391,7 +396,12 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     FILESTORE_VALIDATE_TX_ERROR(CreateHandle, args);
 
     auto* session = FindSession(args.SessionId);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "CreateHandle: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
 
     // TODO: check if session is read only
     args.WriteCommitId = GenerateCommitId();
@@ -404,8 +414,19 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
     if (args.TargetNodeId == InvalidNodeId
             && (args.FollowerId.Empty() || args.IsNewFollowerNode))
     {
-        TABLET_VERIFY(!args.TargetNode);
-        TABLET_VERIFY(args.ParentNode);
+        if (args.TargetNode) {
+            auto message = ReportTargetNodeWithoutRef(TStringBuilder()
+                << "CreateHandle: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
+
+        if (!args.ParentNode) {
+            auto message = ReportParentNodeIsNull(TStringBuilder()
+                << "CreateHandle: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
 
         if (args.FollowerId.Empty()) {
             NProto::TNode attrs =
@@ -473,7 +494,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             session->GetCheckpointId() ? args.ReadCommitId : InvalidCommitId,
             args.Flags);
 
-        TABLET_VERIFY(handle);
+        if (!handle) {
+            auto message = ReportFailedToCreateHandle(TStringBuilder()
+                << "CreateHandle: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return;
+        }
+
         args.Response.SetHandle(handle->GetHandle());
         auto* node = args.Response.MutableNodeAttr();
         ConvertNodeFromAttrs(*node, args.TargetNodeId, args.TargetNode->Attrs);
@@ -526,7 +553,7 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
             args.FollowerName,
             ctx.SelfID,
             CreateRegularAttrs(args.Mode, args.Uid, args.Gid),
-            std::move(args.Headers),
+            std::move(*args.Request.MutableHeaders()),
             std::move(args.Response));
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
