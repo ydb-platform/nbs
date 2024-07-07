@@ -132,9 +132,9 @@ void TOptions::Parse(int argc, char** argv)
             [this](const auto& timeout)
             { WaitAfterParentExit = TDuration::Seconds(timeout); });
 
-    opts.AddLongOption("rdma-zero-copy", "enable rdma zero copy")
+    opts.AddLongOption("rdma-aligned-data", "enable rdma aligned data")
         .NoArgument()
-        .SetFlag(&RdmaClient.ZeroCopy);
+        .SetFlag(&RdmaClient.AlignedData);
 
     TOptsParseResultException res(&opts, argc, argv);
 

@@ -85,12 +85,12 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
-            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
+            isAlignedDataEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -192,7 +192,7 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
         auto guard = Request->Sglist.Acquire();
         Y_ENSURE(guard);
@@ -202,7 +202,7 @@ public:
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            isZeroCopyEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
+            isAlignedDataEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
             Proto,
             TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
     }
@@ -280,9 +280,9 @@ public:
         return Response.GetFuture();
     }
 
-    size_t PrepareRequest(TStringBuf buffer, bool isZeroCopyEnabled)
+    size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
-        Y_UNUSED(isZeroCopyEnabled);
+        Y_UNUSED(isAlignedDataEnabled);
 
         return Serializer->Serialize(
             buffer,
@@ -329,7 +329,7 @@ private:
 
     ITaskQueuePtr TaskQueue;
     NRdma::IClientEndpointPtr Endpoint;
-    bool IsZeroCopyEnabled = false;
+    bool IsAlignedDataEnabled = false;
 public:
     static std::shared_ptr<TRdmaStorage> Create(
         TString uuid,
@@ -383,10 +383,10 @@ public:
     void ReportIOError() override
     {}
 
-    void Init(NRdma::IClientEndpointPtr endpoint, bool isZeroCopyEnabled)
+    void Init(NRdma::IClientEndpointPtr endpoint, bool isAlignedDataEnabled)
     {
         Endpoint = std::move(endpoint);
-        IsZeroCopyEnabled = isZeroCopyEnabled;
+        IsAlignedDataEnabled = isAlignedDataEnabled;
     }
 
 private:
@@ -430,7 +430,7 @@ private:
             return MakeFuture<typename T::TResponse>(TErrorResponse(err));
         }
 
-        handler->PrepareRequest(req->RequestBuffer, IsZeroCopyEnabled);
+        handler->PrepareRequest(req->RequestBuffer, IsAlignedDataEnabled);
         auto response = handler->GetResponse();
         req->Context = std::move(handler);
         Endpoint->SendRequest(std::move(req), std::move(callContext));
@@ -554,7 +554,7 @@ public:
 
                     auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
                         .Subscribe([=] (const auto& future) {
-                            storage->Init(future.GetValue(), Client->IsZeroCopyEnabled());
+                            storage->Init(future.GetValue(), Client->IsAlignedDataEnabled());
                         });
 
                     endpoints.emplace_back(std::move(endpoint));

@@ -256,10 +256,10 @@ struct TFixture
     THistory History;
 
     IEndpointListenerPtr Listener =
-        CreateEndpointListener(false);   // no zero copy
+        CreateEndpointListener(false);   // no rdma aligned data
 
 public:
-    IEndpointListenerPtr CreateEndpointListener(bool isZeroCopyEnabled)
+    IEndpointListenerPtr CreateEndpointListener(bool isAlignedDataEnabled)
     {
         return CreateExternalVhostEndpointListener(
             Logging,
@@ -268,7 +268,7 @@ public:
             LocalAgentId,
             S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
             TDuration::Seconds(30),
-            isZeroCopyEnabled,
+            isAlignedDataEnabled,
             CreateFallbackListener(),
             CreateExternalEndpointFactory());
     }
@@ -581,12 +581,13 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         }
 
         {
-            auto zeroCopyListener = CreateEndpointListener(true);
+            auto alignedDataListener = CreateEndpointListener(true);
 
             auto request = CreateDefaultStartEndpointRequest();
 
-            auto error = zeroCopyListener->StartEndpoint(request, FastPathVolume, Session)
-                .GetValueSync();
+            auto error = alignedDataListener
+                             ->StartEndpoint(request, FastPathVolume, Session)
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(3, History.size());
@@ -595,8 +596,8 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
 
             UNIT_ASSERT_C(
-                HasArg(create->CmdArgs, "--rdma-zero-copy"),
-                "missing --rdma-zero-copy arg");
+                HasArg(create->CmdArgs, "--rdma-aligned-data"),
+                "missing --rdma-aligned-data arg");
 
             History.clear();
         }

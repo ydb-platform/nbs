@@ -46,7 +46,7 @@ struct TRdmaClientTest: NRdma::IClient
         Y_UNUSED(out);
     }
 
-    bool IsZeroCopyEnabled() const override
+    bool IsAlignedDataEnabled() const override
     {
         return false;
     }

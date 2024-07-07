@@ -423,7 +423,7 @@ void TBootstrapBase::Init()
                     : FQDNHostName(),
                 Configs->ServerConfig->GetSocketAccessMode(),
                 Configs->ServerConfig->GetVhostServerTimeoutAfterParentExit(),
-                RdmaClient && RdmaClient->IsZeroCopyEnabled(),
+                RdmaClient && RdmaClient->IsAlignedDataEnabled(),
                 std::move(vhostEndpointListener));
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");

@@ -1583,7 +1583,7 @@ public:
         TString host,
         ui32 port) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
-    bool IsZeroCopyEnabled() const override;
+    bool IsAlignedDataEnabled() const override;
 
 private:
     // called from external thread
@@ -2070,9 +2070,9 @@ void TClient::DumpHtml(IOutputStream& out) const
     }
 }
 
-bool TClient::IsZeroCopyEnabled() const
+bool TClient::IsAlignedDataEnabled() const
 {
-    return Config->ZeroCopyEnabled;
+    return Config->AlignedDataEnabled;
 }
 
 }   // namespace

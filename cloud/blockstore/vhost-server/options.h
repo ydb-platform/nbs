@@ -44,7 +44,7 @@ struct TOptions
     {
         ui32 QueueSize = 256;
         ui32 MaxBufferSize = 4_MB + 4_KB;
-        bool ZeroCopy = false;
+        bool AlignedData = false;
     } RdmaClient;
 
     void Parse(int argc, char** argv);

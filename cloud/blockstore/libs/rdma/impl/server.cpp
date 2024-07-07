@@ -1444,7 +1444,7 @@ public:
         ui32 port,
         IServerHandlerPtr handler) override;
     void DumpHtml(IOutputStream& out) const override;
-    bool IsZeroCopyEnabled() const override;
+    bool IsAlignedDataEnabled() const override;
 
 private:
     // called from external thread
@@ -1678,9 +1678,9 @@ void TServer::DumpHtml(IOutputStream& out) const
     }
 }
 
-bool TServer::IsZeroCopyEnabled() const
+bool TServer::IsAlignedDataEnabled() const
 {
-    return Config->ZeroCopyEnabled;
+    return Config->AlignedDataEnabled;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

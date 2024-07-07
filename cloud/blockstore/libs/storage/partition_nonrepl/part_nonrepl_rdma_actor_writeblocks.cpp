@@ -285,7 +285,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsZeroCopyEnabled()
+            RdmaClient->IsAlignedDataEnabled()
                 ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
                 : 0,
             deviceRequest,
@@ -430,7 +430,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsZeroCopyEnabled()
+            RdmaClient->IsAlignedDataEnabled()
                 ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
                 : 0,
             deviceRequest,

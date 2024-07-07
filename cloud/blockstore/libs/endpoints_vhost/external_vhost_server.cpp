@@ -699,7 +699,7 @@ private:
     const TExecutorPtr Executor;
     const TString LocalAgentId;
     const ui32 SocketAccessMode;
-    const bool IsZeroCopyEnabled;
+    const bool IsAlignedDataEnabled;
     const IEndpointListenerPtr FallbackListener;
     const TExternalEndpointFactory EndpointFactory;
     const TDuration VhostServerTimeoutAfterParentExit;
@@ -717,7 +717,7 @@ public:
             TString localAgentId,
             ui32 socketAccessMode,
             TDuration vhostServerTimeoutAfterParentExit,
-            bool isZeroCopyEnabled,
+            bool isAlignedDataEnabled,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
@@ -725,7 +725,7 @@ public:
         , Executor {std::move(executor)}
         , LocalAgentId {std::move(localAgentId)}
         , SocketAccessMode {socketAccessMode}
-        , IsZeroCopyEnabled(isZeroCopyEnabled)
+        , IsAlignedDataEnabled(isAlignedDataEnabled)
         , FallbackListener {std::move(fallbackListener)}
         , EndpointFactory {std::move(endpointFactory)}
         , VhostServerTimeoutAfterParentExit{vhostServerTimeoutAfterParentExit}
@@ -1015,8 +1015,8 @@ private:
             args.emplace_back("--block-size");
             args.emplace_back(ToString(volume.GetBlockSize()));
 
-            if (IsZeroCopyEnabled) {
-                args.emplace_back("--rdma-zero-copy");
+            if (IsAlignedDataEnabled) {
+                args.emplace_back("--rdma-aligned-data");
             }
         }
 
@@ -1168,7 +1168,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString localAgentId,
     ui32 socketAccessMode,
     TDuration vhostServerTimeoutAfterParentExit,
-    bool isZeroCopyEnabled,
+    bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
     auto defaultFactory = [=] (
@@ -1199,7 +1199,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(localAgentId),
         socketAccessMode,
         vhostServerTimeoutAfterParentExit,
-        isZeroCopyEnabled,
+        isAlignedDataEnabled,
         std::move(fallbackListener),
         std::move(defaultFactory));
 }
@@ -1211,7 +1211,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString localAgentId,
     ui32 socketAccessMode,
     TDuration vhostServerTimeoutAfterParentExit,
-    bool isZeroCopyEnabled,
+    bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
@@ -1222,7 +1222,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(localAgentId),
         socketAccessMode,
         vhostServerTimeoutAfterParentExit,
-        isZeroCopyEnabled,
+        isAlignedDataEnabled,
         std::move(fallbackListener),
         std::move(factory));
 }

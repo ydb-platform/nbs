@@ -29,7 +29,7 @@ struct TClientConfig
     TDuration MaxResponseDelay = TDuration::Seconds(60);
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
-    bool ZeroCopyEnabled = false;
+    bool AlignedDataEnabled = false;
 
     TClientConfig() = default;
 
@@ -115,7 +115,7 @@ struct IClient
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 
-    virtual bool IsZeroCopyEnabled() const = 0;
+    virtual bool IsAlignedDataEnabled() const = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

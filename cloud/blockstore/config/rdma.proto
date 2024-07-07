@@ -26,7 +26,7 @@ message TRdmaServer
     uint32 MaxInflightBytes = 7;           // per client
     uint64 AdaptiveWaitSleepDelay = 8;     // in microseconds
     uint64 AdaptiveWaitSleepDuration = 9;  // in microseconds
-    bool ZeroCopyEnabled = 10;
+    bool AlignedDataEnabled = 10;
 }
 
 message TRdmaClient
@@ -37,7 +37,7 @@ message TRdmaClient
     EWaitMode WaitMode = 4;
     uint64 AdaptiveWaitSleepDelay = 5;     // in microseconds
     uint64 AdaptiveWaitSleepDuration = 6;  // in microseconds
-    bool ZeroCopyEnabled = 7;
+    bool AlignedDataEnabled = 7;
 }
 
 message TRdmaTarget
