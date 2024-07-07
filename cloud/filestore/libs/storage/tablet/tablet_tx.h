@@ -616,22 +616,20 @@ struct TTxIndexTablet
 
         TCreateNode(
                 TRequestInfoPtr requestInfo,
-                const NProto::TCreateNodeRequest request,
+                NProto::TCreateNodeRequest request,
                 ui64 parentNodeId,
                 ui64 targetNodeId,
-                const NProto::TNode& attrs)
+                NProto::TNode attrs)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
-            , Attrs(attrs)
+            , Attrs(std::move(attrs))
             , FollowerId(request.GetFollowerFileSystemId())
             , FollowerName(CreateGuidAsString())
+            , Request(std::move(request))
         {
-            if (FollowerId) {
-                Request = request;
-            }
         }
 
         void Clear()
@@ -1061,7 +1059,7 @@ struct TTxIndexTablet
         const ui32 Uid;
         const ui32 Gid;
         const TString RequestFollowerId;
-        NProto::THeaders Headers;
+        NProto::TCreateHandleRequest Request;
 
         ui64 ReadCommitId = InvalidCommitId;
         ui64 WriteCommitId = InvalidCommitId;
@@ -1076,7 +1074,7 @@ struct TTxIndexTablet
 
         TCreateHandle(
                 TRequestInfoPtr requestInfo,
-                const NProto::TCreateHandleRequest& request)
+                NProto::TCreateHandleRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
@@ -1086,10 +1084,8 @@ struct TTxIndexTablet
             , Uid(request.GetUid())
             , Gid(request.GetGid())
             , RequestFollowerId(request.GetFollowerFileSystemId())
+            , Request(std::move(request))
         {
-            if (RequestFollowerId) {
-                Headers = request.GetHeaders();
-            }
         }
 
         void Clear()

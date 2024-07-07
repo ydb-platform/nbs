@@ -22,6 +22,13 @@ namespace NCloud::NFileStore{
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \
     xxx(CancelRoutineIsNotSet)                                                 \
+    xxx(ChildNodeWithoutRef)                                                   \
+    xxx(SessionNotFoundInTx)                                                   \
+    xxx(InvalidNodeIdForLocalNode)                                             \
+    xxx(ChildNodeIsNull)                                                       \
+    xxx(TargetNodeWithoutRef)                                                  \
+    xxx(ParentNodeIsNull)                                                      \
+    xxx(FailedToCreateHandle)                                                  \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////
