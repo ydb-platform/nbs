@@ -4,12 +4,14 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <ydb/core/protos/config.pb.h>
+#include <ydb/core/protos/node_broker.pb.h>
+#include <ydb/library/actors/core/defs.h>
+
 #include <library/cpp/actors/core/defs.h>
 
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
-
-#include <utility>
 
 namespace NCloud::NStorage {
 
@@ -23,6 +25,7 @@ struct TRegisterDynamicNodeOptions
 
     TString NodeBrokerAddress;
     ui32 NodeBrokerPort = 0;
+    bool UseNodeBrokerSsl = false;
 
     ui32 InterconnectPort = 0;
 
@@ -35,6 +38,12 @@ struct TRegisterDynamicNodeOptions
     int MaxAttempts = 0;
     TDuration ErrorTimeout;
     TDuration RegistrationTimeout;
+
+    TString PathToGrpcCaFile;
+    TString PathToGrpcCertFile;
+    TString PathToGrpcPrivateKeyFile;
+
+    TString NodeRegistrationToken;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
