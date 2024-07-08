@@ -14,9 +14,13 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-bool HasExceptionOrError(const TFuture<T>& future)
+EErrorKind GetResponseErrorKind(const TFuture<T>& future)
 {
-    return future.HasException() || HasError(future.GetValue().GetError());
+    if (future.HasException()) {
+        return EErrorKind::ErrorFatal;
+    }
+
+    return GetErrorKind(future.GetValue().GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,11 +57,11 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnZeroComplete(Now() - started, requestBytes);
+            if (HandleIoError(GetResponseErrorKind(future))) {
+                return;
             }
+
+            stats->OnZeroComplete(Now() - started, requestBytes);
         });
     }
 
@@ -76,11 +80,11 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnReadComplete(Now() - started, requestBytes);
+            if (HandleIoError(GetResponseErrorKind(future))) {
+                return;
             }
+
+            stats->OnReadComplete(Now() - started, requestBytes);
         });
     }
 
@@ -99,11 +103,11 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnWriteComplete(Now() - started, requestBytes);
+            if (HandleIoError(GetResponseErrorKind(future))) {
+                return;
             }
+
+            stats->OnWriteComplete(Now() - started, requestBytes);
         });
     }
 
@@ -134,6 +138,18 @@ struct TStorageWithIoStats final
     void ReportIOError() override
     {
         Stats->OnError();
+    }
+
+    bool HandleIoError(EErrorKind errorKind)
+    {
+        if (errorKind != EErrorKind::Success) {
+            if (errorKind != EErrorKind::ErrorRetriable) {
+                Stats->OnError();
+            }
+            return true;
+        }
+
+        return false;
     }
 };
 
