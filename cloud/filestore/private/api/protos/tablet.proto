@@ -525,3 +525,25 @@ message TConfigureAsFollowerResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// GetStorageConfig request/response.
+
+message TGetStorageConfigRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // Label of filesystem to query its storage config. Or empty to
+    // query server storage config.
+    string FileSystemId = 2;
+}
+
+message TGetStorageConfigResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Result Storage config.
+    NProto.TStorageConfig StorageConfig = 2;
+}

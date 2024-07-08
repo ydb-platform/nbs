@@ -10,6 +10,58 @@ namespace NCloud::NFileStore::NStorage {
 using namespace NKikimr;
 using namespace std::string_literals;
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TStorageConfig ExecuteGetStorageConfig(
+    const TString& fsId,
+    TServiceClient& service)
+{
+    NProtoPrivate::TGetStorageConfigRequest request;
+    request.SetFileSystemId(fsId);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("getstorageconfig", buf);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
+
+    NProto::TStorageConfig response;
+    auto status = google::protobuf::util::JsonStringToMessage(
+        jsonResponse->Record.GetOutput(),
+        &response);
+    UNIT_ASSERT_C(status.ok(), status.message().data());
+    return response;
+}
+
+NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
+    const TString& fsId,
+    NProto::TStorageConfig config,
+    TServiceClient& service,
+    bool mergeWithConfig = false)
+{
+    NProtoPrivate::TChangeStorageConfigRequest request;
+    request.SetFileSystemId(fsId);
+
+    *request.MutableStorageConfig() = std::move(config);
+    request.SetMergeWithStorageConfigFromTabletDB(mergeWithConfig);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("changestorageconfig", buf);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
+
+    NProtoPrivate::TChangeStorageConfigResponse response;
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+        jsonResponse->Record.GetOutput(),
+        &response).ok());
+    return response;
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
@@ -73,6 +125,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(service.GetSender().NodeId(), observedNodeId);
             UNIT_ASSERT(observedKeepDown);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageConfigFromNodeOrFs)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateFileStore("fs0", 1'000);
+
+        ExecuteGetStorageConfig("", service);
+        // we cannot compare returned config with test config since
+        // test env alters configuration passed
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetMultiTabletForwardingEnabled(true);
+            const auto response = ExecuteChangeStorageConfig(
+                "fs0",
+                std::move(newConfig),
+                service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetMultiTabletForwardingEnabled(),
+                true);
+        }
+
+        {
+            auto response = ExecuteGetStorageConfig("fs0", service);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetMultiTabletForwardingEnabled(),
+                true);
         }
     }
 }

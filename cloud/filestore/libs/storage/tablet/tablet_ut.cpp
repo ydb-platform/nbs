@@ -206,6 +206,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
                 stats.GetConfigChannelCount());
         }
     }
+
+    Y_UNIT_TEST(ShouldGetStorageConfig)
+    {
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {});
+
+        NProto::TStorageConfig patch;
+        patch.SetMultiTabletForwardingEnabled(true);
+        tablet.ChangeStorageConfig(std::move(patch));
+
+        auto response = tablet.GetStorageConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            response->Record.GetStorageConfig().GetMultiTabletForwardingEnabled());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

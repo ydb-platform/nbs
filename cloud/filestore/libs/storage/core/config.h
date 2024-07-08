@@ -213,6 +213,8 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
     void DumpOverridesHtml(IOutputStream& out) const;
+
+    const NProto::TStorageConfig& GetStorageConfigProto() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
