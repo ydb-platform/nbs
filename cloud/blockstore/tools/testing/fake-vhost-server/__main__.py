@@ -23,6 +23,11 @@ def _prepare_logging(verbose):
         format="[%(levelname)s] [%(asctime)s] %(message)s")
 
 
+def __set_comm(proc_name):
+    with open(f'/proc/self/comm', 'w') as f:
+        f.write(proc_name)
+
+
 class _DeviceChunk:
 
     def __init__(self, s: str):
@@ -94,6 +99,8 @@ def _create_handler(args, app: _App):
 
 
 def _run_server(args):
+    __set_comm("vhost-" + args.disk_id)
+
     app = _App()
 
     server = HTTPServer(('localhost', args.port), _create_handler(args, app))

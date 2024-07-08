@@ -1,4 +1,5 @@
 import os
+import subprocess
 import pytest
 import requests
 import stat
@@ -30,6 +31,9 @@ KNOWN_DEVICE_POOLS = {
     "KnownDevicePools": [
         {"Name": "1Mb", "Kind": "DEVICE_POOL_KIND_LOCAL", "AllocationUnit": DEVICE_SIZE},
     ]}
+
+FAKE_VHOST_SERVER = yatest_common.binary_path(
+    "cloud/blockstore/tools/testing/fake-vhost-server/fake-vhost-server")
 
 
 @pytest.fixture(name='data_path')
@@ -99,13 +103,11 @@ def setup_fake_vhost_server_script():
             self.path = path
 
     port = PortManager().get_port()
-    binary_path = yatest_common.binary_path(
-        "cloud/blockstore/tools/testing/fake-vhost-server/fake-vhost-server")
 
     with tempfile.NamedTemporaryFile(mode='w') as script:
         script.write("\n".join([
             "#!/bin/bash",
-            f"exec {binary_path} --port {port} $@"
+            f"exec {FAKE_VHOST_SERVER} --port {port} $@"
         ]))
 
         os.chmod(script.name, os.stat(script.name).st_mode | stat.S_IXUSR)
@@ -117,6 +119,25 @@ def setup_fake_vhost_server_script():
 
 @pytest.fixture(name='nbs')
 def start_nbs_daemon(ydb, fake_vhost_server):
+    # run "old" external vhost-servers that serve the disks "vol0" and "vol1"
+    old_vhost_server_vol0 = subprocess.Popen(
+        [
+            FAKE_VHOST_SERVER,
+            "--disk-id", "vol0",
+            "--port", "1024",
+            "-s", "/tmp/dummy",
+            "-i", "dummy",
+            "--device", "/dev/vda:1000000:0"
+        ])
+    old_vhost_server_vol1 = subprocess.Popen(
+        [
+            FAKE_VHOST_SERVER,
+            "--disk-id", "vol1",
+            "--port", "1025",
+            "-s", "/tmp/dummy",
+            "-i", "dummy",
+            "--device", "/dev/vda:1000000:0"
+        ])
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
@@ -128,6 +149,8 @@ def start_nbs_daemon(ydb, fake_vhost_server):
     cfg.files["storage"].NonReplicatedDontSuspendDevices = True
 
     daemon = start_nbs(cfg)
+    daemon.old_vhost_server_vol0 = old_vhost_server_vol0
+    daemon.old_vhost_server_vol1 = old_vhost_server_vol1
 
     yield daemon
 
@@ -210,6 +233,17 @@ def test_external_endpoint(nbs, fake_vhost_server):
         assert r["Volume"].DiskId == "vol0"
 
         wait_for_vhost_server()
+
+        # expect the old server servicing the "vol0" will terminate when the new one starts.
+        nbs.old_vhost_server_vol0.communicate()
+        assert nbs.old_vhost_server_vol0.returncode == 0
+
+        # expect old vhost-server for "vol1" still running.
+        try:
+            nbs.old_vhost_server_vol1.communicate(timeout=1)
+            assert False
+        except subprocess.TimeoutExpired:
+            nbs.old_vhost_server_vol1.kill()
 
         r = requests.get(f"{vhost_server_url}/describe").json()
         devices = r["devices"]

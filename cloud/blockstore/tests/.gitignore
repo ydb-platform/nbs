@@ -1,5 +1,6 @@
 client/cloud-blockstore-tests-client
 cms/cloud-blockstore-tests-cms
+external_endpoint/cloud-blockstore-tests-external_endpoint
 fio/qemu-vhost-kikimr-test/cloud-blockstore-tests-fio-qemu-vhost-kikimr-test
 fio/qemu-vhost-local-test/cloud-blockstore-tests-fio-qemu-vhost-local-test
 fio/qemu-vhost-null-test/cloud-blockstore-tests-fio-qemu-vhost-null-test

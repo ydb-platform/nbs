@@ -18,6 +18,7 @@ namespace NCloud::NBlockStore::NServer {
 struct IExternalEndpoint
 {
     virtual ~IExternalEndpoint() = default;
+    virtual void PrepareToStart() = 0;
     virtual void Start() = 0;
     virtual NThreading::TFuture<NProto::TError> Stop() = 0;
 };

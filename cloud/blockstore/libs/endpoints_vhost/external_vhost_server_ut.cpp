@@ -50,6 +50,9 @@ struct TCreateExternalEndpoint
     TVector<TString> Cgroups;
 };
 
+struct TPrepareStartExternalEndpoint
+{};
+
 struct TStartExternalEndpoint
 {};
 
@@ -62,6 +65,7 @@ using TEntry = std::variant<
     TStopEndpoint,
     TRefreshEndpoint,
     TCreateExternalEndpoint,
+    TPrepareStartExternalEndpoint,
     TStartExternalEndpoint,
     TStopExternalEndpoint>;
 
@@ -142,14 +146,19 @@ struct TTestExternalEndpoint
         : History {history}
     {}
 
+    void PrepareToStart() override
+    {
+        History.push_back(TPrepareStartExternalEndpoint{});
+    }
+
     void Start() override
     {
-        History.push_back(TStartExternalEndpoint {});
+        History.push_back(TStartExternalEndpoint{});
     }
 
     TFuture<NProto::TError> Stop() override
     {
-        History.push_back(TStopExternalEndpoint {});
+        History.push_back(TStopExternalEndpoint{});
 
         return MakeFuture<NProto::TError>();
     }
@@ -385,7 +394,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
-            UNIT_ASSERT_VALUES_EQUAL(2, History.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
 
             auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
             UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
@@ -394,6 +403,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             /*
                 --serial local0                     2
+                --disk-id vol0                      2
                 --socket-path /tmp/socket.vhost     2
                 -q 2                                2
                 --device ...                        2
@@ -402,8 +412,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                                                    11
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(11, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(13, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "/tmp/socket.vhost",
@@ -433,8 +444,12 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL("cg-1", create->Cgroups[0]);
             UNIT_ASSERT_VALUES_EQUAL("cg-2", create->Cgroups[1]);
 
-            auto* start = std::get_if<TStartExternalEndpoint>(&History[1]);
-            UNIT_ASSERT_C(start, "actual entry: " << History[1].index());
+            auto* prepareStart =
+                std::get_if<TPrepareStartExternalEndpoint>(&History[1]);
+            UNIT_ASSERT_C(prepareStart, "actual entry: " << History[1].index());
+
+            auto* start = std::get_if<TStartExternalEndpoint>(&History[2]);
+            UNIT_ASSERT_C(start, "actual entry: " << History[2].index());
 
             History.clear();
         }
@@ -460,7 +475,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
-            UNIT_ASSERT_VALUES_EQUAL(2, History.size());
+            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
 
             auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
             UNIT_ASSERT_C(create, "actual entry: " << History[0].index());
@@ -521,8 +536,12 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL("cg-1", create->Cgroups[0]);
             UNIT_ASSERT_VALUES_EQUAL("cg-2", create->Cgroups[1]);
 
-            auto* start = std::get_if<TStartExternalEndpoint>(&History[1]);
-            UNIT_ASSERT_C(start, "actual entry: " << History[1].index());
+            auto* prepareStart =
+                std::get_if<TPrepareStartExternalEndpoint>(&History[1]);
+            UNIT_ASSERT_C(prepareStart, "actual entry: " << History[1].index());
+
+            auto* start = std::get_if<TStartExternalEndpoint>(&History[2]);
+            UNIT_ASSERT_C(start, "actual entry: " << History[2].index());
 
             History.clear();
         }
@@ -598,7 +617,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
-            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, History.size());
 
             auto* stop = std::get_if<TStopEndpoint>(&History[0]);
             UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
@@ -606,8 +625,12 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             auto* create = std::get_if<TCreateExternalEndpoint>(&History[1]);
             UNIT_ASSERT_C(create, "actual entry: " << History[1].index());
 
-            auto* start = std::get_if<TStartExternalEndpoint>(&History[2]);
-            UNIT_ASSERT_C(start, "actual entry: " << History[2].index());
+            auto* prepareStart =
+                std::get_if<TPrepareStartExternalEndpoint>(&History[2]);
+            UNIT_ASSERT_C(prepareStart, "actual entry: " << History[2].index());
+
+            auto* start = std::get_if<TStartExternalEndpoint>(&History[3]);
+            UNIT_ASSERT_C(start, "actual entry: " << History[3].index());
 
             History.clear();
         }
@@ -621,7 +644,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
-            UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+            UNIT_ASSERT_VALUES_EQUAL(4, History.size());
 
             auto* stop = std::get_if<TStopExternalEndpoint>(&History[0]);
             UNIT_ASSERT_C(stop, "actual entry: " << History[0].index());
@@ -629,8 +652,12 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             auto* create = std::get_if<TCreateExternalEndpoint>(&History[1]);
             UNIT_ASSERT_C(create, "actual entry: " << History[1].index());
 
-            auto* start = std::get_if<TStartExternalEndpoint>(&History[2]);
-            UNIT_ASSERT_C(start, "actual entry: " << History[2].index());
+            auto* prepareStart =
+                std::get_if<TPrepareStartExternalEndpoint>(&History[2]);
+            UNIT_ASSERT_C(prepareStart, "actual entry: " << History[2].index());
+
+            auto* start = std::get_if<TStartExternalEndpoint>(&History[3]);
+            UNIT_ASSERT_C(start, "actual entry: " << History[3].index());
 
             History.clear();
         }
