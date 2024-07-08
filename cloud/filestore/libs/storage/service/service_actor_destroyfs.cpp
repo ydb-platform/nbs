@@ -24,7 +24,7 @@ class TDestroyFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
-    const bool ForceDestroy = false;
+    const bool ForceDestroy;
 
 public:
     TDestroyFileStoreActor(
@@ -71,8 +71,7 @@ void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
     if (ForceDestroy) {
         DestroyFileStore(ctx);
-    }
-    else {
+    } else {
         DescribeSessions(ctx);
     }
     Become(&TThis::StateWork);
@@ -186,7 +185,7 @@ void TStorageServiceActor::HandleDestroyFileStore(
         cookie,
         msg->CallContext);
 
-    auto forceDestroy = msg->Record.GetForceDestroy() &&
+    bool forceDestroy = msg->Record.GetForceDestroy() &&
                         StorageConfig->GetAllowFileStoreForceDestroy();
     auto actor = std::make_unique<TDestroyFileStoreActor>(
         std::move(requestInfo),
