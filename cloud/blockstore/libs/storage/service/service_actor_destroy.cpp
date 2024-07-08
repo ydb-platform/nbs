@@ -36,6 +36,7 @@ private:
     const ui64 FillGeneration;
 
     bool IsDiskRegistryBased = false;
+    bool VolumeNotFoundInSS = false;
 
 public:
     TDestroyVolumeActor(
@@ -302,7 +303,9 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
             DiskId.Quote().c_str());
     }
 
-    ReplyAndDie(ctx, error);
+    ReplyAndDie(ctx, VolumeNotFoundInSS && error.GetCode() == S_ALREADY
+        ? MakeError(S_ALREADY, "volume not found")
+        : error);
 }
 
 void TDestroyVolumeActor::HandleStatVolumeResponse(
@@ -316,7 +319,12 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
-        ReplyAndDie(ctx, MakeError(S_ALREADY, "volume not found"));
+        if (Sync) {
+            VolumeNotFoundInSS = true;
+            DeallocateDisk(ctx);
+        } else {
+            ReplyAndDie(ctx, MakeError(S_ALREADY, "volume not found"));
+        }
         return;
     }
 

@@ -1,10 +1,16 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/storage/api/disk_registry.h>
+
+#include <chrono>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
 using namespace NKikimr;
+
+using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -170,6 +176,110 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDestroyVolumeWithSync)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            1_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "", // folderId
+            "", // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+        );
+
+        TVector<NProto::TDeallocateDiskRequest> requests;
+
+        bool syncDealloc = false;
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistry::EvDeallocateDiskRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+                    if (msg->Record.GetDiskId() == DefaultDiskId) {
+                        syncDealloc = msg->Record.GetSync();
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto response = service.DestroyVolume(
+                DefaultDiskId,
+                false,   // destroyIfBroken
+                true     // sync
+            );
+            UNIT_ASSERT(syncDealloc);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetError());
+        }
+
+        // Destroy a non-existent disk
+
+        syncDealloc = false;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeResponse: {
+                        auto* msg =
+                            event->Get<TEvService::TEvStatVolumeResponse>();
+                        *msg->Record.MutableError() =
+                            MakeError(MAKE_SCHEMESHARD_ERROR(
+                                NKikimrScheme::StatusPathDoesNotExist));
+                        break;
+                    }
+
+                    case TEvDiskRegistry::EvDeallocateDiskRequest: {
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::TEvDeallocateDiskRequest>();
+                        if (msg->Record.GetDiskId() == DefaultDiskId) {
+                            syncDealloc = msg->Record.GetSync();
+                        }
+                        break;
+                    }
+
+                    case TEvDiskRegistry::EvDeallocateDiskResponse: {
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::TEvDeallocateDiskResponse>();
+                        *msg->Record.MutableError() = MakeError(S_ALREADY);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        {
+            auto response = service.DestroyVolume(
+                DefaultDiskId,
+                false,   // destroyIfBroken
+                true     // sync
+            );
+            UNIT_ASSERT(syncDealloc);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                response->GetStatus(),
+                response->GetError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "volume not found",
+                response->GetErrorReason());
         }
     }
 }
