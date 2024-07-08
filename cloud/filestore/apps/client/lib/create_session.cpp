@@ -8,7 +8,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void Print(const NProto::TCreateSessionResponse& response, bool jsonOutput) {
+void Print(const NProto::TCreateSessionResponse& response, bool jsonOutput)
+{
     if (jsonOutput) {
         Cout << response.AsJSON() << Endl;
     } else {
