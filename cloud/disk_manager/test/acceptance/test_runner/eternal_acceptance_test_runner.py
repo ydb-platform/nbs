@@ -32,10 +32,10 @@ class EternalTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(EternalTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
+        # TODO:_ ok
         disk_name_pattern = re.compile(
             fr'^acceptance-test-{test_type}-'
-            fr'{self._disk_size}-'
-            fr'{self._disk_blocksize}-[0-9]+$',
+            fr'{self.disk_parameters_string()}-[0-9]+$',
         )
         self._entity_ttls = self._entity_ttls | {
             'disk': timedelta(days=5),
@@ -55,11 +55,12 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
     def _remote_cmp_path(self) -> str:
         return '/usr/bin/acceptance-cmp'
 
+    # TODO:_ is it ok to change name of test suite?
+    # TODO:_ ok
     def _get_test_suite(self):
         return (
             f'{self._args.zone_id}_eternal_'
-            f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-            f'{size_prettifier(self._args.disk_blocksize)}'.lower()
+            f'{self.disk_parameters_string(delim="_")}'.lower()
         )
 
     def _report_compute_failure(self, error):
@@ -107,10 +108,11 @@ class EternalAcceptanceTestRunner(BaseAcceptanceTestRunner):
                            self._remote_cmp_path,
                            instance.ip)
 
+            # TODO:_ ok
             disk_name_prefix = (
                 f'acceptance-test-{self._args.test_type}-'
-                f'{size_prettifier(self._args.disk_size * (1024 ** 3))}'
-                f'-{size_prettifier(self._args.disk_blocksize)}').lower()
+                f'{self.disk_parameters_string()}'.lower()
+            )
             disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
             _logger.info(

@@ -401,21 +401,22 @@ def test_cleanup():
     gib = 1024 ** 3
     inner_test_cleanup_fixture = [
         (
-            ('acceptance', 4 * gib, 4096, timedelta(days=1)),
+            ('acceptance', 'network-ssd', 4 * gib, 4096, timedelta(days=1)),
             should_delete_inner_test_acceptance_4gib_4kib,
         ),
         (
-            ('acceptance', 8 * 1024 * gib, 2048, timedelta(days=1)),
+            ('acceptance', 'network-ssd', 8 * 1024 * gib, 2048, timedelta(days=1)),
             should_delete_inner_test_acceptance_8tib_2kib,
         ),
         (
-            ('eternal', 8 * 1024 * gib, 16 * 1024 ** 3, timedelta(days=5)),
+            ('eternal', 'network-ssd', 8 * 1024 * gib, 16 * 1024 ** 3, timedelta(days=5)),
             should_delete_inner_test_eternal_8tib_16gib,
         ),
         (
-            ('eternal', 256 * gib, 2 * 1024 ** 2, timedelta(days=5)),
+            ('eternal', 'network-ssd', 256 * gib, 2 * 1024 ** 2, timedelta(days=5)),
             should_delete_inner_test_eternal_256gib_2mib,
         ),
+        # TODO:_ test case for another disk type !!!
     ]
     for [
         cleanup_args,
@@ -431,6 +432,7 @@ def test_cleanup():
             ) == set(
                 expected_should_delete_data,
             ), f"Failed cleanup for args {cleanup_args}"
+    # TODO:_ test case for another disk type !!!
     test_cleanup_fixture = [
         (
             AcceptanceTestCleaner,
@@ -481,6 +483,7 @@ def test_cleanup():
             EternalTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='eternal',
+                disk_type='network-ssd',
                 disk_size=1024,
                 disk_blocksize=4096,
             ),
@@ -491,6 +494,7 @@ def test_cleanup():
             EternalTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='eternal',
+                disk_type='network-ssd',
                 disk_size=8,
                 disk_blocksize=8 * 1024,
             ),
@@ -501,6 +505,7 @@ def test_cleanup():
             SyncTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='sync',
+                disk_type='network-ssd',
                 disk_size=8,
                 disk_blocksize=4 * 1024 ** 2,
             ),

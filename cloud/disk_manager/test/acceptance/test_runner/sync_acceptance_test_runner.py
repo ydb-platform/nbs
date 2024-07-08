@@ -7,7 +7,7 @@ from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
-    size_prettifier,
+    make_disk_parameters_string,
     Error,
 )
 
@@ -25,10 +25,10 @@ class SyncTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(SyncTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
+        # TODO:_ ok
         disk_name_string = (
             fr'^acceptance-test-{test_type}-'
-            fr'{self._disk_size}-'
-            fr'{self._disk_blocksize}-[0-9]+'
+            fr'{self.disk_parameters_string()}-[0-9]+',
         )
         disk_name_pattern = re.compile(fr'{disk_name_string}$')
         secondary_disk_name_pattern = re.compile(
@@ -50,11 +50,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
     _cleaner_type = SyncTestCleaner
     _single_disk_test_ttl = datetime.timedelta(days=5)
 
+    # TODO:_ ok
     def _get_test_suite(self):
         return (
             f'{self._args.zone_id}_sync_'
-            f'{size_prettifier(self._args.disk_size * (1024 ** 3))}_'
-            f'{size_prettifier(self._args.disk_blocksize)}'.lower()
+            f'{self.disk_parameters_string(delim="_")}'.lower()
         )
 
     def _report_compute_failure(self, error):
@@ -86,10 +86,11 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 {},
                 self._get_test_suite(),
             ):
+                # TODO:_ ok
                 disk_name_prefix = (
                     f'acceptance-test-{self._args.test_type}-'
-                    f'{size_prettifier(self._args.disk_size * (1024 ** 3))}'
-                    f'-{size_prettifier(self._args.disk_blocksize)}').lower()
+                    f'{self.disk_parameters_string()}'.lower()
+                )
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
                 _logger.info(

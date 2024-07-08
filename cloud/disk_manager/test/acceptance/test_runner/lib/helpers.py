@@ -202,3 +202,7 @@ def size_prettifier(size_bytes: int) -> str:
         return '%sKiB' % (size_bytes // 1024)
     else:
         return '%sB' % size_bytes
+
+
+def make_disk_parameters_string(type_id: str, size: int, block_size: int, delim = "-") -> str:
+    return f'{type_id}{delim}{size_prettifier(size)}{delim}{size_prettifier(block_size)}'.lower()

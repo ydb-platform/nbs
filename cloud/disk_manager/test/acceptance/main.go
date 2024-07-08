@@ -399,6 +399,7 @@ func mainTest(
 	suffix string,
 	outputDiskIDs string,
 	outputSnapshotIDs string,
+	skipImages bool,
 ) error {
 
 	var snapshotIDs []string
@@ -435,17 +436,20 @@ func mainTest(
 	snapshotIDs = append(snapshotIDs, snapshotID2)
 
 	// Create pooled image from snapshot
-	imageID1, err := createImageFromSnapshot(
-		ctx,
-		ycp,
-		snapshotID,
-		true,
-		suffix,
-	)
-	if err != nil {
-		return err
+	imageID1 := ""
+	if !skipImages {
+		imageID1, err = createImageFromSnapshot(
+			ctx,
+			ycp,
+			snapshotID,
+			true,
+			suffix,
+		)
+		if err != nil {
+			return err
+		}
+		imageIDs = append(imageIDs, imageID1)
 	}
-	imageIDs = append(imageIDs, imageID1)
 
 	// Create disk from snapshot
 	diskID1, err := createDiskFromSnapshot(
@@ -461,33 +465,35 @@ func mainTest(
 	}
 	diskIDs = append(diskIDs, diskID1)
 
-	// Create disk from image
-	diskID2, err := createDiskFromImage(
-		ctx,
-		ycp,
-		imageID1,
-		zoneID,
-		snapshotInfo.diskSize,
-		suffix,
-	)
-	if err != nil {
-		return err
-	}
-	diskIDs = append(diskIDs, diskID2)
+	if !skipImages {
+		// Create disk from image
+		diskID2, err := createDiskFromImage(
+			ctx,
+			ycp,
+			imageID1,
+			zoneID,
+			snapshotInfo.diskSize,
+			suffix,
+		)
+		if err != nil {
+			return err
+		}
+		diskIDs = append(diskIDs, diskID2)
 
-	// Create image from disk
-	imageID2, err := createImageFromDisk(ctx, ycp, diskID2, suffix)
-	if err != nil {
-		return err
-	}
-	imageIDs = append(imageIDs, imageID2)
+		// Create image from disk
+		imageID2, err := createImageFromDisk(ctx, ycp, diskID2, suffix)
+		if err != nil {
+			return err
+		}
+		imageIDs = append(imageIDs, imageID2)
 
-	// Create image from image
-	imageID3, err := createImageFromImage(ctx, ycp, imageID2, suffix)
-	if err != nil {
-		return err
+		// Create image from image
+		imageID3, err := createImageFromImage(ctx, ycp, imageID2, suffix)
+		if err != nil {
+			return err
+		}
+		imageIDs = append(imageIDs, imageID3)
 	}
-	imageIDs = append(imageIDs, imageID3)
 
 	// Delete all resources
 	ctx, cancel := context.WithCancel(ctx)
@@ -678,6 +684,7 @@ func run(
 	urlForCreateImageFromURLTest string,
 	ycpConfigPath string,
 	verbose bool,
+	skipImages bool,
 ) error {
 
 	ctx := newContext(verbose)
@@ -704,6 +711,7 @@ func run(
 				suffix,
 				outputDiskIDs,
 				outputSnapshotIDs,
+				skipImages,
 			)
 		},
 	)
@@ -745,9 +753,10 @@ func main() {
 	var suffix string
 	var outputDiskIDs string
 	var outputSnapshotIDs string
-	var urlForCreateImageForURLTest string
+	var urlForCreateImageFromURLTest string
 	var ycpConfigPath string
 	var verbose bool
+	var skipImages bool
 
 	rootCmd := &cobra.Command{
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -759,9 +768,10 @@ func main() {
 				suffix,
 				outputDiskIDs,
 				outputSnapshotIDs,
-				urlForCreateImageForURLTest,
+				urlForCreateImageFromURLTest,
 				ycpConfigPath,
 				verbose,
+				skipImages,
 			)
 		},
 	}
@@ -805,7 +815,7 @@ func main() {
 		"path to file where all created snapshot ids would be stored (this parameter turns off ycp snapshot collecting, so you MUST manually delete all of them after test)",
 	)
 	rootCmd.Flags().StringVar(
-		&urlForCreateImageForURLTest,
+		&urlForCreateImageFromURLTest,
 		"url-for-create-image-from-url-test",
 		"",
 		"url from which test image will be created",
@@ -817,6 +827,16 @@ func main() {
 		"path to ycp config",
 	)
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
+	rootCmd.Flags().BoolVar(
+		&skipImages,
+		"skip-images",
+		false,
+		"do not skip creation of images and creation of disks from images",
+	)
+
+	if skipImages && len(urlForCreateImageFromURLTest) != 0 {
+		log.Fatalf("skip images option is used, but image url present: %v", urlForCreateImageFromURLTest)
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Failed to execute: %v", err)

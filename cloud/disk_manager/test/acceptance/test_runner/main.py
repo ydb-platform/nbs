@@ -104,7 +104,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help='path to cmp-util binary')
+    eternal_test_type_parser.add_argument(
+        '--skip-images',
+        action='store_true',
+        help='will skip creation of images and creation of disks from images')
 
+    # sync test type stuff
     sync_test_type_parser = subparsers.add_parser(
         'sync',
         help='will create an instance, network-ssd disk with ext4'
@@ -132,6 +137,11 @@ def parse_args() -> argparse.Namespace:
         default=_DEFAULT_WRITE_SIZE_PERCENTAGE,
         help=f'verification write size percentage (default is'
              f' {_DEFAULT_WRITE_SIZE_PERCENTAGE}')
+    # TODO:_ do we need it for sync?
+    sync_test_type_parser.add_argument(
+        '--skip-images',
+        action='store_true',
+        help='will skip creation of images and creation of disks from images')
 
     # common stuff
     test_arguments_group = parser.add_argument_group('common arguments')
