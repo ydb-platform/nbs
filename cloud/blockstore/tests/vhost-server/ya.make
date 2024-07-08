@@ -6,6 +6,7 @@ TEST_SRCS(test.py)
 
 DEPENDS(
     cloud/blockstore/vhost-server
+    cloud/blockstore/tests/vhost-server/run_and_die
 )
 
 DATA(
