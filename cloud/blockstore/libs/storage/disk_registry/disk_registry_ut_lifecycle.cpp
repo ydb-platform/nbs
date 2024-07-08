@@ -2219,6 +2219,92 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_EQUAL(E_NOT_FOUND, response->Record.GetError().GetCode());
         }
     }
+
+    Y_UNIT_TEST(ShouldSecureEraseDevicesFromDifferentPools)
+    {
+        auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB) |
+                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_GLOBAL),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB) |
+                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_GLOBAL),
+            Device("dev-3", "uuid-3", "rack-1", 10_GB) |
+                 WithPool("pool-1", NProto::DEVICE_POOL_KIND_GLOBAL)});
+
+        auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {Device("dev-4", "uuid-4", "rack-1", 10_GB) |
+                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL),
+             Device("dev-5", "uuid-5", "rack-1", 10_GB) |
+                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL),
+            Device("dev-6", "uuid-6", "rack-1", 10_GB) |
+                 WithPool("pool-2", NProto::DEVICE_POOL_KIND_LOCAL)});
+
+        auto runtime = TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, {agent1, agent2});
+
+                auto* pool1 = config.AddDevicePoolConfigs();
+                pool1->SetName("pool-1");
+                pool1->SetKind(NProto::DEVICE_POOL_KIND_GLOBAL);
+                pool1->SetAllocationUnit(10_GB);
+
+                auto* pool2 = config.AddDevicePoolConfigs();
+                pool2->SetName("pool-2");
+                pool2->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                pool2->SetAllocationUnit(10_GB);
+
+                return config;
+            }());
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+
+        THashMap<TString, NProto::EDevicePoolKind> deviceUuidToPoolKind =
+        {
+          {"uuid-1", NProto::DEVICE_POOL_KIND_GLOBAL},
+          {"uuid-2", NProto::DEVICE_POOL_KIND_GLOBAL},
+          {"uuid-3", NProto::DEVICE_POOL_KIND_GLOBAL},
+          {"uuid-4", NProto::DEVICE_POOL_KIND_LOCAL},
+          {"uuid-5", NProto::DEVICE_POOL_KIND_LOCAL},
+          {"uuid-6", NProto::DEVICE_POOL_KIND_LOCAL},
+        };
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvCleanupDevicesRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>();
+                        TSet<NProto::EDevicePoolKind> poolKindSet;
+                        for (auto& device: msg.Devices) {
+                            poolKindSet.insert(deviceUuidToPoolKind[device]);
+                        }
+                        // each SecureErase actor handles devices only from one
+                        // pool
+                        UNIT_ASSERT_EQUAL(1, poolKindSet.size());
+                        break;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        diskRegistry.ResumeDevice("agent-1", "dev-1", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-4", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-1", "dev-2", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-5", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-1", "dev-3", /*dryRun=*/false);
+        diskRegistry.ResumeDevice("agent-2", "dev-6", /*dryRun=*/false);
+        WaitForSecureErase(*runtime, 6);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -42,6 +42,7 @@ TDiskRegistryActor::TDiskRegistryActor(
     , TTabletBase(owner, std::move(storage))
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , SecureEraseInProgressPerPool(NProto::EDevicePoolKind_ARRAYSIZE, false)
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))

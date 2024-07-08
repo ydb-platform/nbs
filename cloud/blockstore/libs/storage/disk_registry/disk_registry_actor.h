@@ -90,7 +90,7 @@ private:
     bool UsersNotificationInProgress = false;
     bool DiskStatesPublicationInProgress = false;
     bool AutomaticallyReplacedDevicesDeletionInProgress = false;
-    bool SecureEraseInProgress = false;
+    TVector<bool> SecureEraseInProgressPerPool;
     bool StartMigrationInProgress = false;
 
     TVector<TString> DisksBeingDestroyed;

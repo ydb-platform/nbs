@@ -24,6 +24,7 @@ private:
     const TRequestInfoPtr Request;
     const TDuration RequestTimeout;
 
+    NProto::EDevicePoolKind PoolKind;
     TVector<NProto::TDeviceConfig> Devices;
     TVector<TString> CleanDevices;
 
@@ -34,6 +35,7 @@ public:
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
+        NProto::EDevicePoolKind poolKind,
         TVector<NProto::TDeviceConfig> devicesToClean);
 
     void Bootstrap(const TActorContext& ctx);
@@ -73,10 +75,12 @@ TSecureEraseActor::TSecureEraseActor(
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
+        NProto::EDevicePoolKind poolKind,
         TVector<NProto::TDeviceConfig> devicesToClean)
     : Owner(owner)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
+    , PoolKind(poolKind)
     , Devices(std::move(devicesToClean))
 {}
 
@@ -113,6 +117,7 @@ void TSecureEraseActor::ReplyAndDie(const TActorContext& ctx, NProto::TError err
 {
     auto response = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
         std::move(error),
+        PoolKind,
         CleanDevices.size());
     NCloud::Reply(ctx, *Request, std::move(response));
 
@@ -294,7 +299,11 @@ void TDiskRegistryActor::CompleteCleanupDevices(
 
 void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 {
-    if (SecureEraseInProgress) {
+    if (std::all_of(
+            SecureEraseInProgressPerPool.begin(),
+            SecureEraseInProgressPerPool.end(),
+            [](auto secureEraseInProgress) { return secureEraseInProgress; }))
+    {
         return;
     }
 
@@ -367,30 +376,42 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         countBeforeFiltration,
         dirtyDevices.size());
 
-    SecureEraseInProgress = true;
+    TMap<NProto::EDevicePoolKind, TVector<NProto::TDeviceConfig>> poolMap;
+    for(auto& device : dirtyDevices) {
+        poolMap[device.GetPoolKind()].push_back(std::move(device));
+    }
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
-        std::move(dirtyDevices),
-        Config->GetNonReplicatedSecureEraseTimeout());
+    for (auto& [poolKind, devices]: poolMap) {
+        if (SecureEraseInProgressPerPool[poolKind]) {
+            continue;
+        }
+        SecureEraseInProgressPerPool[poolKind] = true;
+        auto request = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseRequest>(
+         poolKind,
+         std::move(devices),
+         Config->GetNonReplicatedSecureEraseTimeout());
 
-    auto deadline = Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
-    if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled secure erase, now: %lu, deadline: %lu",
-            TabletID(),
-            ctx.Now().MicroSeconds(),
-            deadline.MicroSeconds());
+        auto deadline = Min(SecureEraseStartTs, ctx.Now()) + TDuration::Seconds(5);
+        if (deadline > ctx.Now()) {
+            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                "[%lu] Scheduled secure erase for pool kind: %d, now: %lu, "
+                "deadline: %lu",
+                TabletID(),
+                poolKind,
+                ctx.Now().MicroSeconds(),
+                deadline.MicroSeconds());
 
-        ctx.ExecutorThread.Schedule(
-            deadline,
-            new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
-        request.release();
-    } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Sending secure erase request",
-            TabletID());
+            ctx.ExecutorThread.Schedule(
+                deadline,
+                new IEventHandle(ctx.SelfID, ctx.SelfID, request.get()));
+            request.release();
+        } else {
+            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                "[%lu] Sending secure erase request",
+                TabletID());
 
-        NCloud::Send(ctx, ctx.SelfID, std::move(request));
+            NCloud::Send(ctx, ctx.SelfID, std::move(request));
+        }
     }
 }
 
@@ -400,9 +421,8 @@ void TDiskRegistryActor::HandleSecureErase(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(SecureErase);
 
-    SecureEraseStartTs = ctx.Now();
-
     auto* msg = ev->Get();
+    SecureEraseStartTs = ctx.Now();
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
         "[%lu] Received SecureErase request: DirtyDevices=%lu",
@@ -418,6 +438,7 @@ void TDiskRegistryActor::HandleSecureErase(
             msg->CallContext
         ),
         msg->RequestTimeout,
+        msg->PoolKind,
         std::move(msg->DirtyDevices));
     Actors.insert(actor);
 }
@@ -433,7 +454,7 @@ void TDiskRegistryActor::HandleSecureEraseResponse(
         TabletID(),
         msg->CleanDevices);
 
-    SecureEraseInProgress = false;
+    SecureEraseInProgressPerPool[msg->PoolKind] = false;
     SecureErase(ctx);
 }
 
