@@ -127,8 +127,10 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption(
             "wait-after-parent-exit",
             "How many seconds keep alive after the parent process is exited")
-        .RequiredArgument("INT")
-        .StoreResultDef(&WaitAfterParentExit);
+        .OptionalArgument("NUM")
+        .Handler1T<ui32>(
+            [this](const auto& timeout)
+            { WaitAfterParentExit = TDuration::Seconds(timeout); });
 
     TOptsParseResultException res(&opts, argc, argv);
 

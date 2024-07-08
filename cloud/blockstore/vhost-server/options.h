@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/affinity.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -37,7 +38,7 @@ struct TOptions
     TString VerboseLevel = "info";
 
     TString ClientId = "vhost-server";
-    ui32 WaitAfterParentExit = 60;
+    TDuration WaitAfterParentExit = TDuration::Seconds(60);
 
     struct
     {

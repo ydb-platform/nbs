@@ -197,7 +197,7 @@ int main(int argc, char** argv)
     sigaddset(&sigset, SIGPIPE);
     pthread_sigmask(SIG_BLOCK, &sigset, nullptr);
 
-    auto delayAfterParentExit = TDuration::Seconds(options.WaitAfterParentExit);
+    auto delayAfterParentExit = options.WaitAfterParentExit;
     // wait for signal to stop the server (Ctrl+C) or dump statistics.
     for (bool running = true, parentExit = false; running;) {
         int sig = 0;
@@ -214,8 +214,7 @@ int main(int argc, char** argv)
             sig = ::sigtimedwait(&sigset, &info, &timeout);
 
             // Reduce the remaining time.
-            delayAfterParentExit -=
-                Min(delayAfterParentExit, TInstant::Now() - startAt);
+            delayAfterParentExit -= TInstant::Now() - startAt;
         } else {
             // Wait for signal without timeout.
             sigwait(&sigset, &sig);
