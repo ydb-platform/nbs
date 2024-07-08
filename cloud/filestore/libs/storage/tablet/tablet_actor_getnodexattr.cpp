@@ -42,6 +42,12 @@ void TIndexTabletActor::HandleGetNodeXAttr(
         ev->Cookie,
         msg->CallContext);
 
+    TTxIndexTablet::TGetNodeXAttr tx(requestInfo, msg->Record);
+
+    if (TryExecuteTx_GetNodeXAttr(ctx, GetInMemoryIndexState(), tx)) {
+        return;
+    }
+
     AddTransaction<TEvService::TGetNodeXAttrMethod>(*requestInfo);
 
     ExecuteTx<TGetNodeXAttr>(
@@ -52,9 +58,8 @@ void TIndexTabletActor::HandleGetNodeXAttr(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_GetNodeXAttr(
+bool TIndexTabletActor::ValidateTx_GetNodeXAttr(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TGetNodeXAttr& args)
 {
     Y_UNUSED(ctx);
@@ -68,16 +73,24 @@ bool TIndexTabletActor::PrepareTx_GetNodeXAttr(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return true;
+        return false;
     }
 
     args.CommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.CommitId == InvalidCommitId) {
         args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
-        return true;
+        return false;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
+
+bool TIndexTabletActor::ExecuteTx_GetNodeXAttr(
+    const TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TGetNodeXAttr& args)
+{
+    Y_UNUSED(ctx);
 
     // validate target node exists
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
@@ -102,16 +115,6 @@ bool TIndexTabletActor::PrepareTx_GetNodeXAttr(
     }
 
     return true;
-}
-
-void TIndexTabletActor::ExecuteTx_GetNodeXAttr(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TGetNodeXAttr& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_GetNodeXAttr(

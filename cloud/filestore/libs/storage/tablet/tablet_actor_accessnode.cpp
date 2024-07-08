@@ -38,6 +38,12 @@ void TIndexTabletActor::HandleAccessNode(
         ev->Cookie,
         msg->CallContext);
 
+    TTxIndexTablet::TAccessNode tx(requestInfo, msg->Record);
+
+    if (TryExecuteTx_AccessNode(ctx, GetInMemoryIndexState(), tx)) {
+        return;
+    }
+
     AddTransaction<TEvService::TAccessNodeMethod>(*requestInfo);
 
     ExecuteTx<TAccessNode>(
@@ -48,9 +54,8 @@ void TIndexTabletActor::HandleAccessNode(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_AccessNode(
+bool TIndexTabletActor::ValidateTx_AccessNode(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TAccessNode& args)
 {
     Y_UNUSED(ctx);
@@ -65,16 +70,24 @@ bool TIndexTabletActor::PrepareTx_AccessNode(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return true;
+        return false;
     }
 
     args.CommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.CommitId == InvalidCommitId) {
         args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
-        return true;
+        return false;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
+
+bool TIndexTabletActor::ExecuteTx_AccessNode(
+    const NActors::TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TAccessNode& args)
+{
+    Y_UNUSED(ctx);
 
     // validate target node exists
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
@@ -90,16 +103,6 @@ bool TIndexTabletActor::PrepareTx_AccessNode(
     TABLET_VERIFY(args.Node);
 
     return true;
-}
-
-void TIndexTabletActor::ExecuteTx_AccessNode(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TAccessNode& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_AccessNode(

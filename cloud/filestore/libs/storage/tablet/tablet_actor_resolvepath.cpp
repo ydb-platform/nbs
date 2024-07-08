@@ -43,6 +43,12 @@ void TIndexTabletActor::HandleResolvePath(
         ev->Cookie,
         msg->CallContext);
 
+    TTxIndexTablet::TResolvePath tx(requestInfo, msg->Record);
+
+    if (TryExecuteTx_ResolvePath(ctx, GetInMemoryIndexState(), tx)) {
+        return;
+    }
+
     AddTransaction<TEvService::TResolvePathMethod>(*requestInfo);
 
     ExecuteTx<TResolvePath>(
@@ -53,27 +59,26 @@ void TIndexTabletActor::HandleResolvePath(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_ResolvePath(
+bool TIndexTabletActor::ValidateTx_ResolvePath(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TResolvePath& args)
 {
     // TODO
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
     Y_UNUSED(args);
 
     return true;
 }
 
-void TIndexTabletActor::ExecuteTx_ResolvePath(
+bool TIndexTabletActor::ExecuteTx_ResolvePath(
     const TActorContext& ctx,
-    TTransactionContext& tx,
+    IIndexTabletDatabase& db,
     TTxIndexTablet::TResolvePath& args)
 {
     Y_UNUSED(ctx);
-    Y_UNUSED(tx);
+    Y_UNUSED(db);
     Y_UNUSED(args);
+    return true;
 }
 
 void TIndexTabletActor::CompleteTx_ResolvePath(

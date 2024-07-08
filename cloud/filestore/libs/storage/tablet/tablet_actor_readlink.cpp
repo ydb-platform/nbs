@@ -38,6 +38,12 @@ void TIndexTabletActor::HandleReadLink(
         ev->Cookie,
         msg->CallContext);
 
+    TTxIndexTablet::TReadLink tx(requestInfo, msg->Record);
+
+    if (TryExecuteTx_ReadLink(ctx, GetInMemoryIndexState(), tx)) {
+        return;
+    }
+
     AddTransaction<TEvService::TReadLinkMethod>(*requestInfo);
 
     ExecuteTx<TReadLink>(
@@ -48,17 +54,33 @@ void TIndexTabletActor::HandleReadLink(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_ReadLink(
+bool TIndexTabletActor::ValidateTx_ReadLink(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TReadLink& args)
 {
     Y_UNUSED(ctx);
 
-    FILESTORE_VALIDATE_TX_SESSION(ReadLink, args);
+    auto* session = FindSession(
+        args.ClientId,
+        args.SessionId,
+        args.SessionSeqNo);
+    if (!session) {
+        args.Error = ErrorInvalidSession(
+            args.ClientId,
+            args.SessionId,
+            args.SessionSeqNo);
+        return false;
+    }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
 
+bool TIndexTabletActor::ExecuteTx_ReadLink(
+    const NActors::TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TReadLink& args)
+{
+    Y_UNUSED(ctx);
     args.CommitId = GetCurrentCommitId();
 
     // validate parent node exists
@@ -75,16 +97,6 @@ bool TIndexTabletActor::PrepareTx_ReadLink(
     TABLET_VERIFY(args.Node);
 
     return true;
-}
-
-void TIndexTabletActor::ExecuteTx_ReadLink(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TReadLink& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_ReadLink(

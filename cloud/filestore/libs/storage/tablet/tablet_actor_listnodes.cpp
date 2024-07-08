@@ -62,12 +62,18 @@ void TIndexTabletActor::HandleListNodes(
         ev->Cookie,
         msg->CallContext);
 
-    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
-
     auto maxBytes = Config->GetMaxResponseEntries() * MaxName;
     if (auto bytes = msg->Record.GetMaxBytes()) {
         maxBytes = Min(bytes, maxBytes);
     }
+
+    TTxIndexTablet::TListNodes tx(requestInfo, msg->Record, maxBytes);
+
+    if (TryExecuteTx_ListNodes(ctx, GetInMemoryIndexState(), tx)) {
+        return;
+    }
+
+    AddTransaction<TEvService::TListNodesMethod>(*requestInfo);
 
     ExecuteTx<TListNodes>(
         ctx,
@@ -78,9 +84,8 @@ void TIndexTabletActor::HandleListNodes(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::PrepareTx_ListNodes(
+bool TIndexTabletActor::ValidateTx_ListNodes(
     const TActorContext& ctx,
-    TTransactionContext& tx,
     TTxIndexTablet::TListNodes& args)
 {
     Y_UNUSED(ctx);
@@ -94,16 +99,24 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
             args.ClientId,
             args.SessionId,
             args.SessionSeqNo);
-        return true;
+        return false;
     }
 
     args.CommitId = GetReadCommitId(session->GetCheckpointId());
     if (args.CommitId == InvalidCommitId) {
         args.Error = ErrorInvalidCheckpoint(session->GetCheckpointId());
-        return true;
+        return false;
     }
 
-    TIndexTabletDatabase db(tx.DB);
+    return true;
+}
+
+bool TIndexTabletActor::ExecuteTx_ListNodes(
+    const NActors::TActorContext& ctx,
+    IIndexTabletDatabase& db,
+    TTxIndexTablet::TListNodes& args)
+{
+    Y_UNUSED(ctx);
 
     // validate target node exists
     if (!ReadNode(db, args.NodeId, args.CommitId, args.Node)) {
@@ -164,16 +177,6 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
     }
 
     return ready;
-}
-
-void TIndexTabletActor::ExecuteTx_ListNodes(
-    const TActorContext& ctx,
-    TTransactionContext& tx,
-    TTxIndexTablet::TListNodes& args)
-{
-    Y_UNUSED(ctx);
-    Y_UNUSED(tx);
-    Y_UNUSED(args);
 }
 
 void TIndexTabletActor::CompleteTx_ListNodes(
