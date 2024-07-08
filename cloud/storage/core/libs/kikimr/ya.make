@@ -7,6 +7,7 @@ SRCS(
     config_initializer.cpp
     events.cpp
     helpers.cpp
+    node_registration_helpers.cpp
     node.cpp
     options.cpp
     proxy.cpp
@@ -35,3 +36,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)
