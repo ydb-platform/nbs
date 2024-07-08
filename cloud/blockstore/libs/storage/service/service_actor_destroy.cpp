@@ -29,7 +29,7 @@ private:
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
-    const TString DestructionAllowedOnlyForDisksWithIdPrefix;
+    const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefix;
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
@@ -42,7 +42,7 @@ public:
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TString destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefix,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -91,7 +91,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TString destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefix,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -329,20 +329,28 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    if (DestructionAllowedOnlyForDisksWithIdPrefix &&
-        !DiskId.StartsWith(DestructionAllowedOnlyForDisksWithIdPrefix))
-    {
-        auto e = MakeError(
-            E_REJECTED,
-            TStringBuilder() << "DiskId: " << DiskId
-            << ", only disks with id prefix '" << DestructionAllowedOnlyForDisksWithIdPrefix
-            << "' are allowed to be deleted");
+    const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefix;
+    if (prefixes) {
+        const auto prefixIt = FindIf(
+            prefixes.begin(),
+            prefixes.end(),
+            [&] (const auto& prefix) {
+                return DiskId.StartsWith(prefix);
+            }
+        );
+        if (prefixIt == prefixes.end()) {
+            auto e = MakeError(
+                E_REJECTED,
+                TStringBuilder() << "DiskId: " << DiskId
+                << ", only disks with specific id prefixes are allowed to be"
+                << " deleted");
 
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                std::move(e)));
-        return;
+            ReplyAndDie(
+                ctx,
+                std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+                    std::move(e)));
+            return;
+        }
     }
 
     for (const auto& client: msg->Record.GetClients()) {

@@ -131,7 +131,8 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        config.SetDestructionAllowedOnlyForDisksWithIdPrefix("with_prefix");
+        auto* prefixes = config.MutableDestructionAllowedOnlyForDisksWithIdPrefix();
+        prefixes->Add("with_prefix");
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         auto& runtime = env.GetRuntime();

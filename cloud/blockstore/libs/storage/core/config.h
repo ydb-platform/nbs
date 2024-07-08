@@ -583,7 +583,7 @@ public:
     bool GetOptimizeVoidBuffersTransferForReadsEnabled() const;
 
     ui32 GetVolumeHistoryCleanupItemCount() const;
-    TString GetDestructionAllowedOnlyForDisksWithIdPrefix() const;
+    TVector<TString> GetDestructionAllowedOnlyForDisksWithIdPrefix() const;
 };
 
 ui64 GetAllocationUnit(
