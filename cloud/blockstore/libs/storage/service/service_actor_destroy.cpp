@@ -78,9 +78,7 @@ private:
         const TEvDiskRegistry::TEvDeallocateDiskResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvDestroyVolumeResponse> response);
+    void ReplyAndDie(const TActorContext& ctx, NProto::TError error);
 
 private:
     STFUNC(StateWork);
@@ -100,7 +98,8 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
-    , DestructionAllowedOnlyForDisksWithIdPrefixes(std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
+    , DestructionAllowedOnlyForDisksWithIdPrefixes(
+          std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -138,8 +137,8 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
         std::make_unique<TEvSSProxy::TEvModifyVolumeRequest>(
             TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy,
             DiskId,
-            "",
-            0,
+            "", // newMountToken
+            0,  // tokenVersion
             FillGeneration));
 }
 
@@ -215,9 +214,7 @@ void TDestroyVolumeActor::HandleModifyResponse(
             DiskId.Quote().data(),
             FormatError(error).data());
 
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
+        ReplyAndDie(ctx, error);
         return;
     }
 
@@ -231,9 +228,7 @@ void TDestroyVolumeActor::HandleModifyResponse(
         return;
     }
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
+    ReplyAndDie(ctx, error);
 }
 
 void TDestroyVolumeActor::HandleWaitReadyResponse(
@@ -257,12 +252,9 @@ void TDestroyVolumeActor::HandleWaitReadyResponse(
 
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                MakeError(
-                    E_INVALID_STATE,
-                    "this volume is online, it can't be destroyed")
-            )
-        );
+            MakeError(
+                E_INVALID_STATE,
+                "this volume is online, it can't be destroyed"));
     }
 }
 
@@ -285,9 +277,7 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
             DiskId.Quote().data(),
             FormatError(error).data());
 
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
+        ReplyAndDie(ctx, error);
         return;
     }
 
@@ -298,15 +288,10 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
     const TEvDiskRegistry::TEvDeallocateDiskResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(
-        ctx,
-        TBlockStoreComponents::SERVICE,
-        "handle response from disk registry");
-
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: unable to deallocate disk: %s",
             DiskId.Quote().data(),
@@ -317,7 +302,7 @@ void TDestroyVolumeActor::HandleDeallocateDiskResponse(
             DiskId.Quote().c_str());
     }
 
-    ReplyAndDie(ctx, std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
+    ReplyAndDie(ctx, error);
 }
 
 void TDestroyVolumeActor::HandleStatVolumeResponse(
@@ -331,10 +316,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     if (msg->GetStatus() ==
         MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
     {
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                MakeError(S_ALREADY, "volume not found")));
+        ReplyAndDie(ctx, MakeError(S_ALREADY, "volume not found"));
         return;
     }
 
@@ -346,17 +328,13 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
             DiskId.Quote().data(),
             FormatError(error).data());
 
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(error));
+        ReplyAndDie(ctx, error);
         return;
     }
 
-    if (auto error = CheckIfDestructionIsAllowed(); FAILED(error.GetCode())) {
-        ReplyAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                std::move(error)));
+    if (auto error = CheckIfDestructionIsAllowed(); HasError(error)) {
+        ReplyAndDie(ctx, std::move(error));
+
         return;
     }
 
@@ -379,15 +357,12 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
                     DiskId.Quote().c_str(),
                     client.GetInstanceId().Quote().c_str());
 
-                auto e = MakeError(
-                    E_REJECTED,
-                    TStringBuilder() << "attached to an active instance: "
-                        << client.GetInstanceId());
-
                 ReplyAndDie(
                     ctx,
-                    std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                        std::move(e)));
+                    MakeError(
+                        E_REJECTED,
+                        TStringBuilder() << "attached to an active instance: "
+                                         << client.GetInstanceId()));
                 return;
             }
         }
@@ -405,8 +380,11 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
 void TDestroyVolumeActor::ReplyAndDie(
     const TActorContext& ctx,
-    std::unique_ptr<TEvService::TEvDestroyVolumeResponse> response)
+    NProto::TError error)
 {
+    auto response = std::make_unique<TEvService::TEvDestroyVolumeResponse>(
+        std::move(error));
+
     NCloud::Send(ctx, Sender, std::move(response), Cookie);
     Die(ctx);
 }
