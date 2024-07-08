@@ -35,6 +35,7 @@ protected:
     void StartComponents() override;
     void Drain() override;
     void StopComponents() override;
+    NServer::TServerConfigPtr GetServerConfig() override;
 
 private:
     void InitConfigs();

@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
@@ -88,6 +89,26 @@ NCloud::NStorage::ICgroupStatsFetcherPtr BuildCgroupStatsFetcher(
         statsFile,
         std::move(cgroupStatsFetcherMonitoringSettings));
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetCertFileFromConfig(const TServerConfigPtr& serverConfig)
+{
+    const auto& certs = serverConfig->GetCerts();
+    if (certs.empty()) {
+        return {};
+    }
+    return certs.front().CertFile;
+}
+
+TString GetCertPrivateKeyFileFromConfig(const TServerConfigPtr& serverConfig)
+{
+    const auto& certs = serverConfig->GetCerts();
+    if (certs.empty()) {
+        return {};
+    }
+    return certs.front().CertPrivateKeyFile;
+}
 
 } // namespace
 
@@ -280,10 +301,8 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerAddress = Configs->Options->NodeBrokerAddress;
     registerOpts.NodeBrokerPort = Configs->Options->NodeBrokerPort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
-    registerOpts.MaxAttempts = Configs->Options->NodeRegistrationMaxAttempts;
-    registerOpts.RegistrationTimeout = Configs->Options->NodeRegistrationTimeout;
-    registerOpts.ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
+    registerOpts.Settings = GetNodeRegistrationParams(GetServerConfig());
 
     auto [nodeId, scopeId, cmsConfig] = RegisterDynamicNode(
         Configs->KikimrConfig,
@@ -407,6 +426,20 @@ void TBootstrapCommon::InitLWTrace(
     }
 
     STORAGE_INFO("LWTrace initialized");
+}
+
+TNodeRegistrationSettings
+    TBootstrapCommon::GetNodeRegistrationParams(TServerConfigPtr config)
+{
+    TNodeRegistrationSettings settings;
+    settings.MaxAttempts = Configs->Options->NodeRegistrationMaxAttempts;
+    settings.RegistrationTimeout = Configs->Options->NodeRegistrationTimeout;
+    settings.ErrorTimeout = Configs->Options->NodeRegistrationErrorTimeout;
+    settings.PathToGrpcCaFile = config->GetRootCertsFile();
+    settings.PathToGrpcCertFile = GetCertFileFromConfig(config);
+    settings.PathToGrpcPrivateKeyFile = GetCertPrivateKeyFileFromConfig(config);
+    settings.NodeRegistrationToken = config->GetNodeRegistrationToken();
+    return settings;
 }
 
 } // namespace NCloud::NFileStore::NDaemon

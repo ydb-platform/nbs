@@ -55,6 +55,8 @@ public:
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
 
+    TString GetNodeRegistrationToken() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

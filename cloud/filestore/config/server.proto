@@ -52,6 +52,9 @@ message TServerConfig
     // Unix-socket details.
     optional string UnixSocketPath = 17;
     optional uint32 UnixSocketBacklog = 18;
+
+    // auth token for node registration via ydb discovery api.
+    optional string NodeRegistrationToken = 19;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

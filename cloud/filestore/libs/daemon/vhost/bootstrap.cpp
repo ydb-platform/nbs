@@ -64,7 +64,6 @@ using namespace NCloud::NStorage;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
 class TFileStoreEndpoints final
     : public IFileStoreEndpoints
 {
@@ -336,6 +335,11 @@ void TBootstrapVhost::Drain()
     if (EndpointManager) {
         EndpointManager->Drain();
     }
+}
+
+NServer::TServerConfigPtr TBootstrapVhost::GetServerConfig()
+{
+    return Configs->ServerConfig;
 }
 
 void TBootstrapVhost::RestoreKeyringEndpoints()

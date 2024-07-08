@@ -56,6 +56,7 @@ private:
     void StartComponents() override;
     void StopComponents() override;
     void Drain() override;
+    NServer::TServerConfigPtr GetServerConfig() override;
 
 private:
     void InitLWTrace();

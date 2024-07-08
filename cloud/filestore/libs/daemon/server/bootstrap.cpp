@@ -107,6 +107,11 @@ void TBootstrapServer::InitComponents()
     InitLWTrace();
 }
 
+NServer::TServerConfigPtr TBootstrapServer::GetServerConfig()
+{
+    return Configs->ServerConfig;
+}
+
 void TBootstrapServer::InitConfigs()
 {
     Configs->InitAppConfig();

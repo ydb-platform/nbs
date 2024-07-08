@@ -13,6 +13,7 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/kikimr/node_registration_settings.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
@@ -95,6 +96,7 @@ protected:
     virtual void StartComponents() = 0;
     virtual void Drain() = 0;
     virtual void StopComponents() = 0;
+    virtual NServer::TServerConfigPtr GetServerConfig() = 0;
 
     void RegisterServer(NServer::IServerPtr server);
 
@@ -106,6 +108,8 @@ private:
     void InitCommonConfigs();
     void InitActorSystem();
     void InitDiagnostics();
+    NCloud::NStorage::TNodeRegistrationSettings
+        GetNodeRegistrationParams(NServer::TServerConfigPtr config);
 };
 
 } // namespace NCloud::NFileStore::NDaemon
