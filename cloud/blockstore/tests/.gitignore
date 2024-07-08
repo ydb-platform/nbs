@@ -49,3 +49,4 @@ spare_node/cloud-blockstore-tests-spare_node
 stats_aggregator_perf/stats_aggregator_perf
 storage_discovery/cloud-blockstore-tests-storage_discovery
 vhost-server/cloud-blockstore-tests-vhost-server
+vhost-server/run_and_die/run-and-die
