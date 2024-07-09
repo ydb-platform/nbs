@@ -104,10 +104,6 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help='path to cmp-util binary')
-    eternal_test_type_parser.add_argument(
-        '--skip-images',
-        action='store_true',
-        help='will skip creation of images and creation of disks from images')
 
     # sync test type stuff
     sync_test_type_parser = subparsers.add_parser(
@@ -137,11 +133,6 @@ def parse_args() -> argparse.Namespace:
         default=_DEFAULT_WRITE_SIZE_PERCENTAGE,
         help=f'verification write size percentage (default is'
              f' {_DEFAULT_WRITE_SIZE_PERCENTAGE}')
-    # TODO:_ do we need it for sync?
-    sync_test_type_parser.add_argument(
-        '--skip-images',
-        action='store_true',
-        help='will skip creation of images and creation of disks from images')
 
     # common stuff
     test_arguments_group = parser.add_argument_group('common arguments')
@@ -153,8 +144,7 @@ def parse_args() -> argparse.Namespace:
     test_arguments_group.add_argument(
         '--results-path',
         type=str,
-        help='specify path to test results',
-    )
+        help='specify path to test results')
     test_arguments_group.add_argument(
         '--conserve-snapshots',
         action='store_true',
@@ -209,8 +199,11 @@ def parse_args() -> argparse.Namespace:
         dest='cleanup_before_tests',
         action='store_true',
         default=False,
-        help='Clean up outdated resources in place'
-    )
+        help='Clean up outdated resources in place')
+    test_arguments_group.add_argument(
+        '--skip-images',
+        action='store_true',
+        help='will skip creation of images and creation of disks from images')
     args = parser.parse_args()
 
     if args.profile_name is None:
