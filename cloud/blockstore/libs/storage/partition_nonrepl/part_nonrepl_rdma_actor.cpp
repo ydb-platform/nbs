@@ -466,6 +466,13 @@ void TNonreplicatedPartitionRdmaActor::HandleWakeup(
 
 void TNonreplicatedPartitionRdmaActor::ReplyAndDie(const NActors::TActorContext& ctx)
 {
+    for (auto& it: AgentId2EndpointFuture) {
+        it.second.Subscribe([](auto& future) {
+            if (future.HasValue()) {
+                future.GetValue()->Stop();
+            }
+        });
+    }
     NCloud::Reply(ctx, *Poisoner, std::make_unique<TEvents::TEvPoisonTaken>());
     Die(ctx);
 }

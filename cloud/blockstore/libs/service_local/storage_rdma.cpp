@@ -351,6 +351,13 @@ public:
             new TRdmaStorage(std::move(uuid), blockSize, std::move(taskQueue))};
     }
 
+    ~TRdmaStorage()
+    {
+        if (Endpoint) {
+            Endpoint->Stop();
+        }
+    }
+
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
