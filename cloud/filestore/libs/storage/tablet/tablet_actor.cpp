@@ -563,7 +563,6 @@ void TIndexTabletActor::HandleGetStorageConfigFields(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-
 void TIndexTabletActor::HandleGetStorageConfig(
     const TEvIndexTablet::TEvGetStorageConfigRequest::TPtr& ev,
     const TActorContext& ctx)

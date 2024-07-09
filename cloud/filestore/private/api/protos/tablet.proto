@@ -534,7 +534,7 @@ message TGetStorageConfigRequest
     // Optional request headers.
     NProto.THeaders Headers = 1;
 
-    // Label of filesystem to query its storage config. Or empty to
+    // FileSystem identifier to query its storage config. Or empty to
     // query server storage config.
     string FileSystemId = 2;
 }

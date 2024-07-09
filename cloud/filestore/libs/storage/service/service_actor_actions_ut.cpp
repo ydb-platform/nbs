@@ -31,7 +31,7 @@ NProto::TStorageConfig ExecuteGetStorageConfig(
     auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
         &response);
-    UNIT_ASSERT_C(status.ok(), status.message().data());
+    UNIT_ASSERT_C(status.ok(), status.message().ToString());
     return response;
 }
 
@@ -54,9 +54,11 @@ NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
     UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
 
     NProtoPrivate::TChangeStorageConfigResponse response;
-    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+    auto status = google::protobuf::util::JsonStringToMessage(
         jsonResponse->Record.GetOutput(),
-        &response).ok());
+        &response);
+    UNIT_ASSERT_C(status.ok(), status.message().ToString());
+
     return response;
 }
 
