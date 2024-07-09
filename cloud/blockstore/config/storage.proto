@@ -998,6 +998,6 @@ message TStorageServiceConfig
     // Min scrubbing bandwidth in MiB/s.
     optional uint64 MinScrubbingBandwidth = 373;
 
-    // Allow destruction only for those disks whose ids match a specific prefix.
-    optional string DestructionAllowedOnlyForDisksWithIdPrefix = 374;
+    // Allow destruction only for those disks whose id matches one of the given prefixes.
+    repeated string DestructionAllowedOnlyForDisksWithIdPrefixes = 374;
 }

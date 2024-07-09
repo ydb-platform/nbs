@@ -112,7 +112,8 @@ TDuration MSeconds(ui32 value)
     xxx(CachedDiskAgentConfigPath,                  TString,    ""            )\
     xxx(CachedDiskAgentSessionsPath,                TString,    ""            )\
     xxx(ServiceSelfPingInterval,                    TDuration,  MSeconds(10)  )\
-    xxx(DestructionAllowedOnlyForDisksWithIdPrefix, TString,    ""            )\
+                                                                               \
+    xxx(DestructionAllowedOnlyForDisksWithIdPrefixes, TVector<TString>, {}    )\
 // BLOCKSTORE_STORAGE_CONFIG_RO
 
 #define BLOCKSTORE_STORAGE_CONFIG_RW(xxx)                                      \
