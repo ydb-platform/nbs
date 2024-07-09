@@ -57,7 +57,7 @@ private:
     void NotifyDiskRegistry(const TActorContext& ctx);
     void StatVolume(const TActorContext& ctx);
     void DeallocateDisk(const TActorContext& ctx);
-    NProto::TError CheckIfDestructionIsAllowed();
+    NProto::TError CheckIfDestructionIsAllowed() const;
 
     void HandleModifyResponse(
         const TEvSSProxy::TEvModifyVolumeResponse::TPtr& ev,
@@ -180,7 +180,7 @@ void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed()
+NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed() const
 {
     const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefixes;
     if (prefixes) {
@@ -209,7 +209,7 @@ void TDestroyVolumeActor::HandleModifyResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (FAILED(error.GetCode())) {
+    if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: drop failed, error %s",
             DiskId.Quote().data(),
@@ -272,7 +272,7 @@ void TDestroyVolumeActor::HandleMarkDiskForCleanupResponse(
     if (error.GetCode() == E_NOT_FOUND) {
         LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
             "volume %s not found in registry", DiskId.Quote().data());
-    } else if (FAILED(error.GetCode())) {
+    } else if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: unable to notify DR about disk destruction: %s",
             DiskId.Quote().data(),
@@ -328,9 +328,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    const auto& error = msg->GetError();
-
-    if (FAILED(error.GetCode())) {
+    if (auto error = msg->GetError(); HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
             "Volume %s: unable to stat volume: %s",
             DiskId.Quote().data(),
@@ -342,7 +340,6 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
     if (auto error = CheckIfDestructionIsAllowed(); HasError(error)) {
         ReplyAndDie(ctx, std::move(error));
-
         return;
     }
 
