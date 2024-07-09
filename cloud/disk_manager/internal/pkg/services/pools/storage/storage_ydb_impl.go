@@ -2090,7 +2090,7 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	var newBaseDisks []baseDisk
 	for i := uint64(0); i < willCreate; i++ {
 		// All base disks should have the same params.
-		baseDiskTemplate.id = generateDiskID()
+		baseDiskTemplate.id = generateBaseDiskID(s.baseDiskIDPrefix)
 		newBaseDisks = append(newBaseDisks, baseDiskTemplate)
 
 		logging.Info(

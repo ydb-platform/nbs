@@ -280,10 +280,7 @@ func (t *createSnapshotFromDiskTask) createProxyOverlayDiskIfNeeded(
 	}
 
 	diskID := t.request.SrcDisk.DiskId
-	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
-		diskID,
-		t.request.DstSnapshotId,
-	)
+	proxyOverlayDiskID := t.getProxyOverlayDiskID()
 
 	if t.state.ProxyOverlayDiskCreated != nil {
 		if *t.state.ProxyOverlayDiskCreated {
@@ -330,9 +327,13 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 		return err
 	}
 
-	proxyOverlayDiskID := common.GetProxyOverlayDiskID(
+	return client.Delete(ctx, t.getProxyOverlayDiskID())
+}
+
+func (t *createSnapshotFromDiskTask) getProxyOverlayDiskID() string {
+	return common.GetProxyOverlayDiskID(
+		t.config.GetProxyOverlayDiskIdPrefix(),
 		t.request.SrcDisk.DiskId,
 		t.request.DstSnapshotId,
 	)
-	return client.Delete(ctx, proxyOverlayDiskID)
 }

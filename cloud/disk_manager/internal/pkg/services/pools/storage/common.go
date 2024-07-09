@@ -42,8 +42,8 @@ func divideWithRoundingUp(x uint64, divisor uint64) uint64 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func generateDiskID() string {
-	return uuid.Must(uuid.NewV4()).String()
+func generateBaseDiskID(prefix string) string {
+	return prefix + uuid.Must(uuid.NewV4()).String()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -717,7 +717,7 @@ func (s *storageYDB) generateBaseDisk(
 	}
 
 	return baseDisk{
-		id:                  generateDiskID(),
+		id:                  generateBaseDiskID(s.baseDiskIDPrefix),
 		imageID:             imageID,
 		zoneID:              zoneID,
 		checkpointID:        imageID, // Note: we use image id as checkpoint id.
