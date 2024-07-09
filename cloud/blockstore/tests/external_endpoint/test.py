@@ -124,7 +124,7 @@ def start_nbs_daemon(ydb, fake_vhost_server):
         [
             FAKE_VHOST_SERVER,
             "--disk-id", "vol0",
-            "--port", "1024",
+            "--port", str(PortManager().get_port()),
             "-s", "/tmp/dummy",
             "-i", "dummy",
             "--device", "/dev/vda:1000000:0"
@@ -133,7 +133,7 @@ def start_nbs_daemon(ydb, fake_vhost_server):
         [
             FAKE_VHOST_SERVER,
             "--disk-id", "vol1",
-            "--port", "1025",
+            "--port", str(PortManager().get_port()),
             "-s", "/tmp/dummy",
             "-i", "dummy",
             "--device", "/dev/vda:1000000:0"
@@ -235,7 +235,7 @@ def test_external_endpoint(nbs, fake_vhost_server):
         wait_for_vhost_server()
 
         # expect the old server servicing the "vol0" will terminate when the new one starts.
-        nbs.old_vhost_server_vol0.communicate()
+        nbs.old_vhost_server_vol0.communicate(timeout=1)
         assert nbs.old_vhost_server_vol0.returncode == 0
 
         # expect old vhost-server for "vol1" still running.
