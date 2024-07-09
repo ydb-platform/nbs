@@ -1,5 +1,6 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -232,7 +233,7 @@ void TIndexTabletActor::HandleUnlinkNode(
     ExecuteTx<TUnlinkNode>(
         ctx,
         std::move(requestInfo),
-        msg->Record);
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,7 +262,7 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     // TODO: AccessCheck
-    TABLET_VERIFY(args.ParentNode);
+
     // validate target node exists
     if (!ReadNodeRef(db, args.ParentNodeId, args.CommitId, args.Name, args.ChildRef)) {
         return false;   // not ready
@@ -281,7 +282,14 @@ bool TIndexTabletActor::PrepareTx_UnlinkNode(
     }
 
     // TODO: AccessCheck
-    TABLET_VERIFY(args.ChildNode);
+
+    if (!args.ChildNode) {
+        auto message = ReportChildNodeIsNull(TStringBuilder()
+            << "UnlinkNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return true;
+    }
+
     if (args.ChildNode->Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
         TVector<IIndexTabletDatabase::TNodeRef> refs;
         // 1 entry is enough to prevent deletion
@@ -342,7 +350,12 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     }
 
     auto* session = FindSession(args.SessionId);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "UnlinkNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
 
     AddDupCacheEntry(
         db,
@@ -366,9 +379,13 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         args.SessionId.c_str(),
         FormatError(args.Error).c_str());
 
-    if (!HasError(args.Error)) {
-        TABLET_VERIFY(args.ChildRef);
+    if (!HasError(args.Error) && !args.ChildRef) {
+        auto message = ReportChildRefIsNull(TStringBuilder()
+            << "UnlinkNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
 
+    if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         if (args.ChildRef->FollowerId) {
