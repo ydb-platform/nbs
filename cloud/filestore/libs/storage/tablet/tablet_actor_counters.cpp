@@ -369,6 +369,8 @@ void TIndexTabletActor::HandleGetStorageStats(
     const TEvIndexTablet::TEvGetStorageStatsRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    // TODO: collect data from followers
+
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>();
 

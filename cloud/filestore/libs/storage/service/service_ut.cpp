@@ -3882,6 +3882,78 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             createSessionResponse->GetErrorReason());
         service.AssertDestroyFileStoreFailed(fsId, true);
     }
+
+    Y_UNIT_TEST(ShouldAggregateFileSystemMetrics)
+    {
+
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // creating 2 files
+
+        auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file2"))->Record;
+
+        const auto nodeId2 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        ui64 handle1 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId1,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data1 = GenerateValidateData(256_KB);
+        service.WriteData(headers, fsId, nodeId1, handle1, 0, data1);
+
+        ui64 handle2 = service.CreateHandle(
+            headers,
+            fsId,
+            nodeId2,
+            "",
+            TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+        auto data2 = GenerateValidateData(512_KB);
+        service.WriteData(headers, fsId, nodeId2, handle2, 0, data2);
+
+        const auto fsStat = service.StatFileStore(headers, fsId)->Record;
+        const auto& fileStore = fsStat.GetFileStore();
+        UNIT_ASSERT_VALUES_EQUAL(fsId, fileStore.GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(1'000, fileStore.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, fileStore.GetBlockSize());
+
+        const auto& fileStoreStats = fsStat.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, fileStoreStats.GetUsedNodesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            768_KB / 4_KB,
+            fileStoreStats.GetUsedBlocksCount());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
