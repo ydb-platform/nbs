@@ -13,10 +13,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename T>
-bool HasExceptionOrError(const TFuture<T>& future)
+enum class ResponseCode
 {
-    return future.HasException() || HasError(future.GetValue().GetError());
+    Success,
+    Retry,
+    Error,
+};
+
+template <typename T>
+ResponseCode GetResponseCode(const TFuture<T>& future)
+{
+    if (future.HasException()) {
+        return ResponseCode::Error;
+    }
+
+    auto& error = future.GetValue().GetError();
+    if (HasError(error)) {
+        return error.GetCode() == E_REJECTED ? ResponseCode::Retry
+                                             : ResponseCode::Error;
+    }
+
+    return ResponseCode::Success;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,11 +70,13 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnZeroComplete(Now() - started, requestBytes);
+            auto rc = GetResponseCode(future);
+            if (rc != ResponseCode::Success) {
+                HandleIoError(rc);
+                return;
             }
+
+            stats->OnZeroComplete(Now() - started, requestBytes);
         });
     }
 
@@ -76,11 +95,13 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnReadComplete(Now() - started, requestBytes);
+            auto rc = GetResponseCode(future);
+            if (rc != ResponseCode::Success) {
+                HandleIoError(rc);
+                return;
             }
+
+            stats->OnReadComplete(Now() - started, requestBytes);
         });
     }
 
@@ -99,11 +120,13 @@ struct TStorageWithIoStats final
             std::move(request));
 
         return result.Subscribe([=] (const auto& future) {
-            if (HasExceptionOrError(future)) {
-                stats->OnError();
-            } else {
-                stats->OnWriteComplete(Now() - started, requestBytes);
+            auto rc = GetResponseCode(future);
+            if (rc != ResponseCode::Success) {
+                HandleIoError(rc);
+                return;
             }
+
+            stats->OnWriteComplete(Now() - started, requestBytes);
         });
     }
 
@@ -134,6 +157,12 @@ struct TStorageWithIoStats final
     void ReportIOError() override
     {
         Stats->OnError();
+    }
+
+    void HandleIoError(ResponseCode rc) {
+        if (rc != ResponseCode::Retry) {
+            Stats->OnError();
+        }
     }
 };
 
