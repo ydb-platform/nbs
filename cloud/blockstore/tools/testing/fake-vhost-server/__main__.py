@@ -24,7 +24,7 @@ def _prepare_logging(verbose):
 
 
 def __set_comm(proc_name):
-    with open(f'/proc/self/comm', 'w') as f:
+    with open('/proc/self/comm', 'w') as f:
         f.write(proc_name)
 
 

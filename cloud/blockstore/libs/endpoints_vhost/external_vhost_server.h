@@ -40,6 +40,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString binaryPath,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
@@ -48,6 +49,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory);
 

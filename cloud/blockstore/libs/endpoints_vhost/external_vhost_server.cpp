@@ -704,6 +704,7 @@ private:
     const ui32 SocketAccessMode;
     const IEndpointListenerPtr FallbackListener;
     const TExternalEndpointFactory EndpointFactory;
+    const TDuration VhostServerTimeoutAfterParentExit;
 
     TLog Log;
 
@@ -717,6 +718,7 @@ public:
             TExecutorPtr executor,
             TString localAgentId,
             ui32 socketAccessMode,
+            TDuration vhostServerTimeoutAfterParentExit,
             IEndpointListenerPtr fallbackListener,
             TExternalEndpointFactory endpointFactory)
         : Logging {std::move(logging)}
@@ -726,6 +728,7 @@ public:
         , SocketAccessMode {socketAccessMode}
         , FallbackListener {std::move(fallbackListener)}
         , EndpointFactory {std::move(endpointFactory)}
+        , VhostServerTimeoutAfterParentExit{vhostServerTimeoutAfterParentExit}
         , Log {Logging->CreateLog("BLOCKSTORE_SERVER")}
     {
         FindRunningEndpoints();
@@ -991,7 +994,9 @@ private:
             "--disk-id", request.GetDiskId(),
             "--serial", deviceName,
             "--socket-path", socketPath,
-            "-q", ToString(request.GetVhostQueuesCount())
+            "-q", ToString(request.GetVhostQueuesCount()),
+            "--wait-after-parent-exit",
+            ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
         };
 
         // TODO: get rid of "if" (was needed for backward compatibility)
@@ -1159,6 +1164,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TString binaryPath,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener)
 {
     auto defaultFactory = [=] (
@@ -1188,6 +1194,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(executor),
         std::move(localAgentId),
         socketAccessMode,
+        vhostServerTimeoutAfterParentExit,
         std::move(fallbackListener),
         std::move(defaultFactory));
 }
@@ -1198,6 +1205,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TExecutorPtr executor,
     TString localAgentId,
     ui32 socketAccessMode,
+    TDuration vhostServerTimeoutAfterParentExit,
     IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
@@ -1207,6 +1215,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(executor),
         std::move(localAgentId),
         socketAccessMode,
+        vhostServerTimeoutAfterParentExit,
         std::move(fallbackListener),
         std::move(factory));
 }

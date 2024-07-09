@@ -261,6 +261,7 @@ struct TFixture
         Executor,
         LocalAgentId,
         S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR,
+        TDuration::Seconds(30),
         CreateFallbackListener(),
         CreateExternalEndpointFactory());
 
@@ -409,12 +410,18 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
-                                                   11
+                --wait-after-parent-exit ...        2
+                                                   15
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(13, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(15, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
-            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "vol0",
+                GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "30",
+                GetArg(create->CmdArgs, "--wait-after-parent-exit"));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "/tmp/socket.vhost",
@@ -493,10 +500,11 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 --device ...                        2
                 --device ...                        2
                 --read-only                         1
-                                                   19
+                --wait-after-parent-exit ...        2
+                                                   21
             */
 
-            UNIT_ASSERT_VALUES_EQUAL(19, create->CmdArgs.size());
+            UNIT_ASSERT_VALUES_EQUAL(21, create->CmdArgs.size());
             UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -508,6 +516,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
 
             UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "30",
+                GetArg(create->CmdArgs, "--wait-after-parent-exit"));
 
             UNIT_ASSERT_VALUES_EQUAL("rdma", GetArg(create->CmdArgs, "--device-backend"));
 
