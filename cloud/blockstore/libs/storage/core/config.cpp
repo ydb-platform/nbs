@@ -26,6 +26,10 @@ constexpr auto PreemptedVolumesFile =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TConfigItem = NKikimrConsole::TConfigItem::EKind;
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDuration Days(ui32 value)
 {
     return TDuration::Days(value);
@@ -566,6 +570,23 @@ template <typename TTarget, typename TSource>
 TTarget ConvertValue(const TSource& value)
 {
     return static_cast<TTarget>(value);
+}
+
+template <>
+TVector<TConfigItem> ConvertValue<TVector<TConfigItem>>(
+    const google::protobuf::RepeatedPtrField<TString>& value)
+{
+    TVector<TConfigItem> result(Reserve(value.size()));
+    std::transform(
+        value.begin(),
+        value.end(),
+        std::back_inserter(result),
+        [] (const TString& value) {
+            TConfigItem val;
+            NKikimrConsole::TConfigItem::EKind_Parse(value, &val);
+            return val;
+        });
+    return result;
 }
 
 template <>

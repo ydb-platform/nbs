@@ -504,6 +504,10 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.RdmaClient,
             sArgs.EndpointEventHandler,
             sArgs.IsDiskRegistrySpareNode));
+
+        if (sArgs.StorageConfig->GetConfigDispatcherTrackedConfigs()) {
+            runConfig.Config
+        }
     };
 
     auto storageConfig = sArgs.StorageConfig;
