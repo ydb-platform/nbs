@@ -59,9 +59,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyFileStoreActor::TDestroyFileStoreActor(
-    TRequestInfoPtr requestInfo,
-    TString fileSystemId,
-    bool forceDestroy)
+        TRequestInfoPtr requestInfo,
+        TString fileSystemId,
+        bool forceDestroy)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
     , ForceDestroy(forceDestroy)
