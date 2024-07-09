@@ -29,7 +29,7 @@ private:
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
-    const TString DestructionAllowedOnlyForDisksWithIdPrefix;
+    const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
@@ -42,7 +42,7 @@ public:
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TString destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -56,6 +56,7 @@ private:
     void NotifyDiskRegistry(const TActorContext& ctx);
     void StatVolume(const TActorContext& ctx);
     void DeallocateDisk(const TActorContext& ctx);
+    NProto::TError CheckIfDestructionIsAllowed();
 
     void HandleModifyResponse(
         const TEvSSProxy::TEvModifyVolumeResponse::TPtr& ev,
@@ -91,7 +92,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TString destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -99,7 +100,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
-    , DestructionAllowedOnlyForDisksWithIdPrefix(destructionAllowedOnlyForDisksWithIdPrefix)
+    , DestructionAllowedOnlyForDisksWithIdPrefixes(std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -152,18 +153,6 @@ void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
     NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
-void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
-{
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "deallocate disk (Sync=%d)", Sync);
-
-    auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
-    request->Record.SetDiskId(DiskId);
-    request->Record.SetSync(Sync);
-
-    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
-}
-
 void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 {
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE, "stat volume");
@@ -177,6 +166,40 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
         ctx,
         MakeVolumeProxyServiceId(),
         std::move(request));
+}
+
+void TDestroyVolumeActor::DeallocateDisk(const TActorContext& ctx)
+{
+    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+        "deallocate disk (Sync=%d)", Sync);
+
+    auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
+    request->Record.SetDiskId(DiskId);
+    request->Record.SetSync(Sync);
+
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
+}
+
+NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed()
+{
+    const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefixes;
+    if (prefixes) {
+        const bool allowed = AnyOf(
+            prefixes,
+            [&] (const auto& prefix) {
+                return DiskId.StartsWith(prefix);
+            }
+        );
+        if (!allowed) {
+            return MakeError(
+                E_REJECTED,
+                TStringBuilder() << "DiskId: " << DiskId
+                << ", only disks with specific id prefixes are allowed to be"
+                << " deleted");
+        }
+    }
+
+    return MakeError(S_OK);
 }
 
 void TDestroyVolumeActor::HandleModifyResponse(
@@ -329,19 +352,11 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    if (DestructionAllowedOnlyForDisksWithIdPrefix &&
-        !DiskId.StartsWith(DestructionAllowedOnlyForDisksWithIdPrefix))
-    {
-        auto e = MakeError(
-            E_REJECTED,
-            TStringBuilder() << "DiskId: " << DiskId
-            << ", only disks with id prefix '" << DestructionAllowedOnlyForDisksWithIdPrefix
-            << "' are allowed to be deleted");
-
+    if (auto error = CheckIfDestructionIsAllowed(); FAILED(error.GetCode())) {
         ReplyAndDie(
             ctx,
             std::make_unique<TEvService::TEvDestroyVolumeResponse>(
-                std::move(e)));
+                std::move(error)));
         return;
     }
 
@@ -447,7 +462,7 @@ void TServiceActor::HandleDestroyVolume(
         ev->Sender,
         ev->Cookie,
         Config->GetAttachedDiskDestructionTimeout(),
-        Config->GetDestructionAllowedOnlyForDisksWithIdPrefix(),
+        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
         diskId,
         destroyIfBroken,
         sync,

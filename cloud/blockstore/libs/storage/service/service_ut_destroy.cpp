@@ -127,11 +127,13 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldOnlyDestroyDisksWithSpecificDiskIdPrefix)
+    Y_UNIT_TEST(ShouldOnlyDestroyDisksWithSpecificDiskIdPrefixes)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        config.SetDestructionAllowedOnlyForDisksWithIdPrefix("with_prefix");
+        auto* prefixes = config.MutableDestructionAllowedOnlyForDisksWithIdPrefixes();
+        prefixes->Add("with_prefix");
+        prefixes->Add("with_another_prefix");
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         auto& runtime = env.GetRuntime();
@@ -147,6 +149,10 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             response = service.DescribeVolume("with_prefix");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
+            CreateSimpleSsdDisk(service, "with_another_prefix");
+            response = service.DescribeVolume("with_another_prefix");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
             service.SendDestroyVolumeRequest("without_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
@@ -154,6 +160,12 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             }
 
             service.SendDestroyVolumeRequest("with_prefix");
+            {
+                auto response = service.RecvDestroyVolumeResponse();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            }
+
+            service.SendDestroyVolumeRequest("with_another_prefix");
             {
                 auto response = service.RecvDestroyVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
