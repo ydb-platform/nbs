@@ -72,7 +72,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
         TReplicaTable t(&deviceList);
         t.AddReplica("disk-1", {"d1-1", "d1-2", "d1-3", "d1-4"});
         t.AddReplica("disk-1", {"d2-1", "d2-2", "d2-3", "d2-4"});
@@ -157,7 +157,7 @@ Y_UNIT_TEST_SUITE(TReplicaTableTest)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
 
-        TDeviceList deviceList({}, {});
+        TDeviceList deviceList;
         TReplicaTable t(&deviceList);
         t.AddReplica("disk-1", {"d1-1-1", "d1-1-2", "d1-1-3", "d1-1-4"});
         t.AddReplica("disk-1", {"d1-2-1", "d1-2-2", "d1-2-3", "d1-2-4"});

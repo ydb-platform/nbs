@@ -250,6 +250,31 @@ void SetDeviceErrorState(
     device.SetStateMessage(std::move(message));
 }
 
+auto CollectDirtyDeviceUUIDs(const TVector<TDirtyDevice>& dirtyDevices)
+{
+    TVector<TString> uuids;
+    uuids.reserve(dirtyDevices.size());
+
+    for (const auto& [uuid, diskId]: dirtyDevices) {
+        uuids.push_back(uuid);
+    }
+
+    return uuids;
+}
+
+auto CollectAllocatedDevices(const TVector<NProto::TDiskConfig>& disks)
+{
+    TVector<std::pair<TString, TString>> r;
+
+    for (const auto& disk: disks) {
+        for (const auto& uuid: disk.GetDeviceUUIDs()) {
+            r.emplace_back(uuid, disk.GetDiskId());
+        }
+    }
+
+    return r;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -323,15 +348,10 @@ TDiskRegistryState::TDiskRegistryState(
         StorageConfig->GetNonReplicatedAgentDisconnectRecoveryInterval(),
         StorageConfig->GetSerialNumberValidationEnabled(),
     }, counters, std::move(agents), std::move(diskRegistryAgentListParams), Log)
-    , DeviceList([&] {
-        TVector<TDeviceId> uuids;
-        uuids.reserve(dirtyDevices.size());
-        for (auto& [uuid, diskId]: dirtyDevices) {
-            uuids.push_back(uuid);
-        }
-
-        return uuids;
-    }(), std::move(suspendedDevices))
+    , DeviceList(
+        CollectDirtyDeviceUUIDs(dirtyDevices),
+        std::move(suspendedDevices),
+        CollectAllocatedDevices(disks))
     , BrokenDisks(std::move(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
@@ -469,7 +489,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
             disk.DeviceReplacementIds.push_back(id);
         }
 
-        for (auto& m: config.GetMigrations()) {
+        for (const auto& m: config.GetMigrations()) {
             const auto* device = DeviceList.FindDevice(m.GetSourceDeviceId());
             TString poolName;
             if (device) {
@@ -512,7 +532,7 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
                     : diskId);
             }
 
-            for (auto& m: config.GetFinishedMigrations()) {
+            for (const auto& m: config.GetFinishedMigrations()) {
                 const auto& uuid = m.GetDeviceId();
 
                 DeviceList.MarkDeviceAllocated(diskId, uuid);

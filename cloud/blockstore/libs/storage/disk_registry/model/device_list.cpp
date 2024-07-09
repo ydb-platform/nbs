@@ -83,8 +83,12 @@ auto FindDeviceRange(
 
 TDeviceList::TDeviceList(
         TVector<TDeviceId> dirtyDevices,
-        TVector<NProto::TSuspendedDevice> suspendedDevices)
-    : DirtyDevices(
+        TVector<NProto::TSuspendedDevice> suspendedDevices,
+        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices)
+    : AllocatedDevices(
+        std::make_move_iterator(allocatedDevices.begin()),
+        std::make_move_iterator(allocatedDevices.end()))
+    , DirtyDevices(
         std::make_move_iterator(dirtyDevices.begin()),
         std::make_move_iterator(dirtyDevices.end()))
 {
