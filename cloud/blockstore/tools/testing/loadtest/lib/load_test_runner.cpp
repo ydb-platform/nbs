@@ -14,8 +14,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/keyring/endpoints.h>
-#include <cloud/storage/core/libs/keyring/endpoints_test.h>
+#include <cloud/storage/core/libs/endpoints/iface/endpoints.h>
+#include <cloud/storage/core/libs/endpoints/fs/fs_endpoints.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -103,7 +103,7 @@ TLoadTestRunner::TLoadTestRunner(
 {
     const auto& endpointStorageDir = ClientFactory.GetEndpointStorageDir();
     if (endpointStorageDir) {
-        EndpointStorage = CreateFileMutableEndpointStorage(endpointStorageDir);
+        EndpointStorage = CreateFileEndpointStorage(endpointStorageDir);
     }
 }
 
@@ -258,8 +258,8 @@ void TLoadTestRunner::SetupTest(
             << ", endpointsDir: " << ClientFactory.GetEndpointStorageDir());
 
         if (EndpointStorage) {
-            auto error = EndpointStorage->Init();
-            Y_ABORT_UNLESS(!HasError(error));
+            EndpointsDir = std::make_unique<TTempDir>(
+                ClientFactory.GetEndpointStorageDir());
 
             auto strOrError = SerializeEndpoint(*request);
             Y_ABORT_UNLESS(!HasError(strOrError));
@@ -538,6 +538,7 @@ void TLoadTestRunner::TeardownTest(
         if (EndpointStorage) {
             auto error = EndpointStorage->RemoveEndpoint(EndpointSocketPath);
             Y_ABORT_UNLESS(!HasError(error));
+            EndpointsDir.reset();
         }
 
         WaitForCompletion(

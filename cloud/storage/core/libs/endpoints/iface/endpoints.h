@@ -29,15 +29,6 @@ struct IEndpointStorage
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IEndpointStoragePtr CreateKeyringEndpointStorage(
-    TString rootKeyringDesc,
-    TString endpointsKeyringDesc,
-    bool notImplementedErrorIsFatal);
-
-IEndpointStoragePtr CreateFileEndpointStorage(TString dirPath);
-
-////////////////////////////////////////////////////////////////////////////////
-
 template <typename TRequest>
 std::shared_ptr<TRequest> DeserializeEndpoint(const TString& data)
 {

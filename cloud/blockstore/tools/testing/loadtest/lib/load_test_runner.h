@@ -10,7 +10,7 @@
 
 #include <cloud/blockstore/tools/testing/loadtest/protos/loadtest.pb.h>
 
-#include <cloud/storage/core/libs/keyring/public.h>
+#include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 #include <library/cpp/logger/log.h>
 
@@ -34,7 +34,8 @@ private:
     IVolumeStatsPtr VolumeStats;
     IClientFactory& ClientFactory;
     TTestContext& TestContext;
-    IMutableEndpointStoragePtr EndpointStorage;
+    IEndpointStoragePtr EndpointStorage;
+    std::unique_ptr<TTempDir> EndpointsDir;
 
     TString EndpointSocketPath;
 

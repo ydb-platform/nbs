@@ -1,4 +1,6 @@
-#include "endpoints_test.h"
+#include "keyring_endpoints_test.h"
+
+#include "keyring.h"
 
 #include <library/cpp/string_utils/base64/base64.h>
 
@@ -32,7 +34,7 @@ public:
         , SubKeyringDesc(std::move(endpointsKeyringDesc))
     {}
 
-    ~TKeyringMutableEndpointStorage()
+    ~TKeyringMutableEndpointStorage() override
     {
         Remove();
     }
@@ -192,54 +194,6 @@ NProto::TError TKeyringMutableEndpointStorage::RemoveEndpoint(
     return {};
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TFileMutableEndpointStorage final
-    : public IMutableEndpointStorage
-{
-private:
-    const TFsPath DirPath;
-
-public:
-    TFileMutableEndpointStorage(TString dirPath)
-        : DirPath(std::move(dirPath))
-    {}
-
-    NProto::TError Init() override
-    {
-        DirPath.MkDir();
-
-        if (!DirPath.IsDirectory()) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to create directory " << DirPath.GetPath());
-        }
-
-        return {};
-    }
-
-    NProto::TError Remove() override
-    {
-        DirPath.ForceDelete();
-        return {};
-    }
-
-    TResultOrError<TString> AddEndpoint(
-        const TString& key,
-        const TString& data) override
-    {
-        auto filepath = DirPath.Child(Base64EncodeUrl(key));
-        TFile file(filepath, EOpenModeFlag::CreateAlways);
-        TFileOutput(file).Write(data);
-        return key;
-    }
-
-    NProto::TError RemoveEndpoint(const TString& key) override
-    {
-        DirPath.Child(Base64EncodeUrl(key)).DeleteIfExists();
-        return {};
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,12 +205,6 @@ IMutableEndpointStoragePtr CreateKeyringMutableEndpointStorage(
     return std::make_shared<TKeyringMutableEndpointStorage>(
         std::move(rootKeyringDesc),
         std::move(endpointsKeyringDesc));
-}
-
-IMutableEndpointStoragePtr CreateFileMutableEndpointStorage(TString dirPath)
-{
-    return std::make_shared<TFileMutableEndpointStorage>(
-        std::move(dirPath));
 }
 
 }   // namespace NCloud

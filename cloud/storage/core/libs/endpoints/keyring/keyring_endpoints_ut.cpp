@@ -1,6 +1,6 @@
-#include "endpoints.h"
+#include "keyring_endpoints.h"
 
-#include "endpoints_test.h"
+#include "keyring_endpoints_test.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -58,24 +58,11 @@ TStorages InitKeyringStorages()
     return {endpointStorage, mutableEndpointStorage};
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-TStorages InitFileStorages()
-{
-    const TString dirPath = "./" + CreateGuidAsString();
-
-    auto endpointStorage = CreateFileEndpointStorage(dirPath);
-
-    auto mutableEndpointStorage = CreateFileMutableEndpointStorage(dirPath);
-
-    return {endpointStorage, mutableEndpointStorage};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TEndpointsTest)
+Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
 {
     void ShouldGetStoredEndpoints(const TStorages& storages)
     {
@@ -130,11 +117,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         ShouldGetStoredEndpoints(InitKeyringStorages());
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointsFromFiles)
-    {
-        ShouldGetStoredEndpoints(InitFileStorages());
-    }
-
     void ShouldGetStoredEndpointById(const TStorages& storages)
     {
         auto endpointStorage = storages.EndpointStorage;
@@ -175,11 +157,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
         ShouldGetStoredEndpointById(InitKeyringStorages());
     }
 
-    Y_UNIT_TEST(ShouldGetStoredEndpointByIdFromFiles)
-    {
-        ShouldGetStoredEndpointById(InitFileStorages());
-    }
-
     void ShouldNotGetStoredEndpointByWrongId(const TStorages& storages)
     {
         auto endpointStorage = storages.EndpointStorage;
@@ -217,11 +194,6 @@ Y_UNIT_TEST_SUITE(TEndpointsTest)
     Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromKeyring)
     {
         ShouldNotGetStoredEndpointByWrongId(InitKeyringStorages());
-    }
-
-    Y_UNIT_TEST(ShouldNotGetStoredEndpointByWrongIdFromFiles)
-    {
-        ShouldNotGetStoredEndpointByWrongId(InitFileStorages());
     }
 }
 

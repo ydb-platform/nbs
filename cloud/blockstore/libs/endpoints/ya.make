@@ -19,7 +19,8 @@ PEERDIR(
     cloud/blockstore/libs/service
     cloud/blockstore/libs/validation
     cloud/storage/core/libs/coroutine
-    cloud/storage/core/libs/keyring
+    cloud/storage/core/libs/endpoints/fs
+    cloud/storage/core/libs/endpoints/keyring
 )
 
 END()

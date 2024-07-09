@@ -27,8 +27,9 @@ target_link_libraries(testing-loadtest-lib PUBLIC
   blockstore-libs-validation
   private-api-protos
   testing-loadtest-protos
+  core-libs-endpoints-fs
+  core-libs-endpoints-iface
   core-libs-grpc
-  core-libs-keyring
   core-libs-version
   library-cpp-aio
   cpp-containers-concurrent_hash

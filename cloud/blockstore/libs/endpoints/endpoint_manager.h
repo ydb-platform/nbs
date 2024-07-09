@@ -12,7 +12,7 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
-#include <cloud/storage/core/libs/keyring/public.h>
+#include <cloud/storage/core/libs/endpoints/iface/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
