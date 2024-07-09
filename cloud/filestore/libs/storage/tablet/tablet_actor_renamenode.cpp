@@ -1,5 +1,7 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -68,7 +70,7 @@ void TIndexTabletActor::HandleRenameNode(
     ExecuteTx<TRenameNode>(
         ctx,
         std::move(requestInfo),
-        msg->Record);
+        std::move(msg->Record));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +99,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     }
 
     // TODO: AccessCheck
-    TABLET_VERIFY(args.ParentNode);
+
     // validate old ref exists
     if (!ReadNodeRef(
             db,
@@ -126,7 +128,13 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         }
 
         // TODO: AccessCheck
-        TABLET_VERIFY(args.ChildNode);
+
+        if (!args.ChildNode) {
+            auto message = ReportChildNodeIsNull(TStringBuilder()
+                << "RenameNode: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+            return true;
+        }
     }
 
     // validate new parent node exists
@@ -145,7 +153,7 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     }
 
     // TODO: AccessCheck
-    TABLET_VERIFY(args.NewParentNode);
+
     // check if new ref exists
     if (!ReadNodeRef(
             db,
@@ -175,7 +183,13 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             }
 
             // TODO: AccessCheck
-            TABLET_VERIFY(args.NewChildNode);
+
+            if (!args.NewChildNode) {
+                auto message = ReportNewChildNodeIsNull(TStringBuilder()
+                    << "RenameNode: " << args.Request.ShortDebugString());
+                args.Error = MakeError(E_INVALID_STATE, std::move(message));
+                return true;
+            }
         }
 
         // oldpath and newpath are existing hard links to the same file, then
@@ -295,7 +309,12 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
                 args.NewChildRef->FollowerId,
                 args.NewChildRef->FollowerName);
         } else if (args.NewChildRef->FollowerId.Empty()) {
-            TABLET_VERIFY(args.NewChildNode);
+            if (!args.NewChildNode) {
+                auto message = ReportNewChildNodeIsNull(TStringBuilder()
+                    << "RenameNode: " << args.Request.ShortDebugString());
+                args.Error = MakeError(E_INVALID_STATE, std::move(message));
+                return;
+            }
 
             // remove target ref and unlink target node
             UnlinkNode(
@@ -351,7 +370,12 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.NewParentNode->Attrs);
 
     auto* session = FindSession(args.SessionId);
-    TABLET_VERIFY(session);
+    if (!session) {
+        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            << "RenameNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        return;
+    }
 
     AddDupCacheEntry(
         db,
@@ -369,9 +393,13 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    if (SUCCEEDED(args.Error.GetCode())) {
-        TABLET_VERIFY(args.ChildRef);
+    if (!HasError(args.Error) && !args.ChildRef) {
+        auto message = ReportChildRefIsNull(TStringBuilder()
+            << "RenameNode: " << args.Request.ShortDebugString());
+        args.Error = MakeError(E_INVALID_STATE, std::move(message));
+    }
 
+    if (!HasError(args.Error)) {
         CommitDupCacheEntry(args.SessionId, args.RequestId);
 
         if (args.FollowerIdForUnlink) {
@@ -382,7 +410,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 args.FollowerNameForUnlink.c_str());
 
             NProto::TUnlinkNodeRequest request;
-            request.MutableHeaders()->CopyFrom(args.Headers);
+            request.MutableHeaders()->CopyFrom(args.Request.GetHeaders());
 
             RegisterUnlinkNodeInFollowerActor(
                 ctx,

@@ -29,6 +29,8 @@ namespace NCloud::NFileStore{
     xxx(TargetNodeWithoutRef)                                                  \
     xxx(ParentNodeIsNull)                                                      \
     xxx(FailedToCreateHandle)                                                  \
+    xxx(ChildRefIsNull)                                                        \
+    xxx(NewChildNodeIsNull)                                                    \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

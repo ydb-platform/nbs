@@ -663,12 +663,12 @@ struct TTxIndexTablet
 
         TUnlinkNode(
                 TRequestInfoPtr requestInfo,
-                const NProto::TUnlinkNodeRequest& request)
+                NProto::TUnlinkNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
-            , Request(request)
-            , ParentNodeId(request.GetNodeId())
-            , Name(request.GetName())
+            , Request(std::move(request))
+            , ParentNodeId(Request.GetNodeId())
+            , Name(Request.GetName())
         {}
 
         void Clear()
@@ -693,7 +693,7 @@ struct TTxIndexTablet
         const ui64 NewParentNodeId;
         const TString NewName;
         const ui32 Flags;
-        const NProto::THeaders Headers;
+        const NProto::TRenameNodeRequest Request;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
@@ -711,7 +711,7 @@ struct TTxIndexTablet
 
         TRenameNode(
                 TRequestInfoPtr requestInfo,
-                NProto::TRenameNodeRequest& request)
+                NProto::TRenameNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
@@ -719,7 +719,7 @@ struct TTxIndexTablet
             , NewParentNodeId(request.GetNewParentId())
             , NewName(std::move(*request.MutableNewName()))
             , Flags(request.GetFlags())
-            , Headers(std::move(*request.MutableHeaders()))
+            , Request(std::move(request))
         {}
 
         void Clear()
