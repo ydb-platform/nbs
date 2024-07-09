@@ -99,7 +99,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
-    , DestructionAllowedOnlyForDisksWithIdPrefixes(destructionAllowedOnlyForDisksWithIdPrefixes)
+    , DestructionAllowedOnlyForDisksWithIdPrefixes(std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -331,14 +331,13 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
 
     const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefixes;
     if (prefixes) {
-        const auto prefixIt = FindIf(
-            prefixes.begin(),
-            prefixes.end(),
+        const bool allowed = AnyOf(
+            prefixes,
             [&] (const auto& prefix) {
                 return DiskId.StartsWith(prefix);
             }
         );
-        if (prefixIt == prefixes.end()) {
+        if (!allowed) {
             auto e = MakeError(
                 E_REJECTED,
                 TStringBuilder() << "DiskId: " << DiskId
