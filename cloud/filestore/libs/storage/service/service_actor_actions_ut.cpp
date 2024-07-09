@@ -130,7 +130,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
     Y_UNIT_TEST(ShouldGetStorageConfigFromNodeOrFs)
     {
-        TTestEnv env;
+        NProto::TStorageConfig config;
+        config.SetReadAheadCacheMaxNodes(42);
+
+        TTestEnv env{{}, config};
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
@@ -139,9 +142,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         service.CreateFileStore("fs0", 1'000);
 
-        ExecuteGetStorageConfig("", service);
-        // we cannot compare returned config with test config since
-        // test env alters configuration passed
+        auto response = ExecuteGetStorageConfig("", service);
+        UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(
+            response, env.GetStorageConfig()->GetStorageConfigProto()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            response.GetReadAheadCacheMaxNodes());
 
         {
             NProto::TStorageConfig newConfig;

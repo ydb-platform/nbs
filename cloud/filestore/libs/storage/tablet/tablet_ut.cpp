@@ -221,6 +221,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest)
         patch.SetMultiTabletForwardingEnabled(true);
         tablet.ChangeStorageConfig(std::move(patch));
 
+        tablet.RebootTablet();
+
         auto response = tablet.GetStorageConfig();
         UNIT_ASSERT_VALUES_EQUAL(
             true,
