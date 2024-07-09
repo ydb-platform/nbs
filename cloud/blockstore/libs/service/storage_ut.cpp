@@ -84,15 +84,15 @@ Y_UNIT_TEST_SUITE(TStorageTest)
         TString data;
         TStringBuf dataBuffer;
 
-        if (!useDataBuffer) {
+        if (useDataBuffer) {
+            data = TString(1_MB, 'X');
+            dataBuffer = TStringBuf(data);
+        } else {
             auto& iov = *request->MutableBlocks();
             auto& buffers = *iov.MutableBuffers();
             auto& buffer = *buffers.Add();
             buffer.ReserveAndResize(1_MB);
             memset(const_cast<char*>(buffer.data()), 'X', buffer.size());
-        } else {
-            data = TString(1_MB, 'X');
-            dataBuffer = TStringBuf(data);
         }
 
         auto future = adapter->WriteBlocks(

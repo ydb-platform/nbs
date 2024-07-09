@@ -280,12 +280,15 @@ NProto::TError TNonreplicatedPartitionRdmaActor::SendReadRequests(
             return err;
         }
 
+        ui32 flags = 0;
+        if (RdmaClient->IsAlignedDataEnabled()) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
-            RdmaClient->IsAlignedDataEnabled()
-                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
-                : 0,
+            flags,
             deviceRequest,
             TContIOVector(nullptr, 0));
 

@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 
@@ -87,10 +88,15 @@ public:
 
     size_t PrepareRequest(TStringBuf buffer, bool isAlignedDataEnabled)
     {
+        ui32 flags = 0;
+        if (isAlignedDataEnabled) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::ReadDeviceBlocksRequest,
-            isAlignedDataEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
+            flags,
             Proto,
             TContIOVector(nullptr, 0));
     }
@@ -199,10 +205,15 @@ public:
 
         const auto& sglist = guard.Get();
 
+        ui32 flags = 0;
+        if (isAlignedDataEnabled) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         return Serializer->Serialize(
             buffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            isAlignedDataEnabled ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END : 0,
+            flags,
             Proto,
             TContIOVector((IOutputStream::TPart*)sglist.data(), sglist.size()));
     }

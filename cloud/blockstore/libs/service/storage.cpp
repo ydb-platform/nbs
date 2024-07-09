@@ -288,7 +288,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     TSgList sgList;
     TStorageBuffer buffer;
 
-    if (dataBuffer.size()) {
+    if (dataBuffer) {
         sgList = {{dataBuffer.data(), dataBuffer.size()}};
     } else {
         // We are trying to allocate memory for request using Storage. If the memory
@@ -308,7 +308,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     }
 
     if (Normalize) {
-        if (dataBuffer.size() || buffer || requestBlockSize != StorageBlockSize) {
+        if (dataBuffer || buffer || requestBlockSize != StorageBlockSize) {
             // not normalized yet
             auto sgListOrError =
                 SgListNormalize(std::move(sgList), StorageBlockSize);
@@ -377,7 +377,7 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
                     Y_ABORT_UNLESS(bytesCopied == bytesCount);
                 }
             } else {
-                if (!dataBuffer.size() &&
+                if (dataBuffer.empty() &&
                     optimizeNetworkTransfer ==
                         NProto::EOptimizeNetworkTransfer::SKIP_VOID_BLOCKS)
                 {
@@ -405,7 +405,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     VerifyBlockSize(requestBlockSize);
 
     ui32 bytesCount = 0;
-    if (dataBuffer.size()) {
+    if (dataBuffer) {
         bytesCount = VerifyRequestSize(dataBuffer.size());
     } else {
         bytesCount = VerifyRequestSize(request->GetBlocks());
@@ -428,7 +428,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
     TStorageBuffer buffer;
     TSgList sgList;
 
-    if (dataBuffer.size()) {
+    if (dataBuffer) {
         sgList = TSgList{{dataBuffer.data(), dataBuffer.size()}};
     } else {
         sgList = GetSgList(*request);

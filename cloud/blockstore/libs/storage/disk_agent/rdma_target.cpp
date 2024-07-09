@@ -252,7 +252,8 @@ private:
         const auto& request = resultOrError.GetResult();
 
         const bool isZeroCopyDataSupported =
-            request.Flags & NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END;
+            HasProtoFlag(request.Flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+
         if (isZeroCopyDataSupported && !AlignedDataEnabled) {
             return MakeError(
                 E_NOT_IMPLEMENTED,
@@ -600,11 +601,14 @@ private:
         }
 
         size_t bytes;
+        ui32 flags = 0;
+
         if (requestDetails.DataBuffer.size()) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
             NRdma::TProtoMessageSerializer::Serialize(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END,
+                flags,
                 proto,
                 requestDetails.DataBuffer.size());
             bytes = requestDetails.Out.size();
@@ -619,7 +623,7 @@ private:
             bytes = NRdma::TProtoMessageSerializer::Serialize(
                 requestDetails.Out,
                 TBlockStoreProtocol::ReadDeviceBlocksResponse,
-                0, // flags
+                flags,
                 proto,
                 TContIOVector(parts.data(), parts.size()));
         }

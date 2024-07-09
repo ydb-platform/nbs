@@ -6,6 +6,8 @@
 
 #include <cloud/blockstore/public/api/protos/io.pb.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <util/generic/singleton.h>
 
 namespace NCloud::NBlockStore::NRdma {
@@ -60,8 +62,13 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
             msgByteSize + 1024,
             msgByteSize + 4096};
 
-        for (auto bufferSize : testedBufferSizes) {
-            for (auto flags : testedFlags) {
+        for (auto bufferSize: testedBufferSizes) {
+            for (auto flag: testedFlags) {
+                ui32 flags = 0;
+                if (flag) {
+                    SetProtoFlag(flags, flag);
+                }
+
                 auto buffer = TString::Uninitialized(bufferSize);
 
                 size_t serializedBytes = serializer->Serialize(
@@ -71,21 +78,21 @@ Y_UNIT_TEST_SUITE(TProtoMessageSerializerTest)
                     proto,
                     TContIOVector(&part, 1));
 
-                if (flags & RDMA_PROTO_FLAG_DATA_AT_THE_END) {
-                    UNIT_ASSERT_EQUAL(serializedBytes, bufferSize);
+                if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+                    UNIT_ASSERT_VALUES_EQUAL(bufferSize, serializedBytes);
                 } else {
-                    UNIT_ASSERT_EQUAL(serializedBytes, msgByteSize);
+                    UNIT_ASSERT_VALUES_EQUAL(msgByteSize, serializedBytes);
                 }
 
                 auto resultOrError = serializer->Parse(buffer);
                 UNIT_ASSERT(!HasError(resultOrError));
 
                 const auto& result = resultOrError.GetResult();
-                UNIT_ASSERT_EQUAL(result.MsgId, TBlockStoreProtocol::ReadBlocksRequest);
-                UNIT_ASSERT_EQUAL(result.Data, data);
+                UNIT_ASSERT_EQUAL(TBlockStoreProtocol::ReadBlocksRequest, result.MsgId);
+                UNIT_ASSERT_EQUAL(data, result.Data);
 
                 const auto& proto2 = static_cast<const NProto::TReadBlocksRequest&>(*result.Proto);
-                UNIT_ASSERT_EQUAL(proto2.GetDiskId(), "test");
+                UNIT_ASSERT_EQUAL("test", proto2.GetDiskId());
             }
         }
     }

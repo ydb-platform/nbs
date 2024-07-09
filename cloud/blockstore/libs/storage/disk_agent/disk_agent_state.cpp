@@ -613,7 +613,8 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::Write(
         MakeIntrusive<TCallContext>(),
         std::move(writeRequest),
         request.GetBlockSize(),
-        {});
+        {} // no data buffer
+    );
 
     return result.Apply(
         [] (const auto& future) {

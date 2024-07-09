@@ -282,12 +282,15 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
         TVector<IOutputStream::TPart> parts;
         builder.BuildNextRequest(&parts);
 
+        ui32 flags = 0;
+        if (RdmaClient->IsAlignedDataEnabled()) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsAlignedDataEnabled()
-                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
-                : 0,
+            flags,
             deviceRequest,
             TContIOVector(parts.data(), parts.size()));
 
@@ -427,12 +430,15 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             return;
         }
 
+        ui32 flags = 0;
+        if (RdmaClient->IsAlignedDataEnabled()) {
+            SetProtoFlag(flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
+        }
+
         NRdma::TProtoMessageSerializer::Serialize(
             req->RequestBuffer,
             TBlockStoreProtocol::WriteDeviceBlocksRequest,
-            RdmaClient->IsAlignedDataEnabled()
-                ? NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END
-                : 0,
+            flags,
             deviceRequest,
             // XXX (cast)
             TContIOVector(

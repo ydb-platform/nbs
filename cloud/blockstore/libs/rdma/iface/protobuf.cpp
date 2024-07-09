@@ -3,6 +3,7 @@
 #include "protocol.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <google/protobuf/message.h>
 
@@ -64,7 +65,7 @@ size_t TProtoMessageSerializer::Serialize(
     char* ptr = const_cast<char*>(buffer.data());
     ptr += Serialize(buffer, msgId, flags, proto, dataLen);
 
-    if (flags & RDMA_PROTO_FLAG_DATA_AT_THE_END) {
+    if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
         ptr = const_cast<char*>(buffer.data()) + buffer.length() - dataLen;
     }
 
@@ -140,7 +141,7 @@ TProtoMessageSerializer::Parse(TStringBuf buffer) const
     Y_ENSURE_RETURN(succeeded, "could not parse protobuf message");
     ptr += header.ProtoLen;
 
-    if (header.Flags & RDMA_PROTO_FLAG_DATA_AT_THE_END) {
+    if (HasProtoFlag(header.Flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
         ptr =
             const_cast<char*>(buffer.data()) + buffer.length() - header.DataLen;
     }
