@@ -244,6 +244,12 @@ def main():
         metavar="INT",
         default=4*1024**2 + 4096)
 
+    parser.add_argument(
+        "--wait-after-parent-exit",
+        help="How many seconds keep alive after the parent process is exited",
+        type=int,
+        metavar="INT")
+
     args = parser.parse_args()
 
     _prepare_logging(args.verbose)
