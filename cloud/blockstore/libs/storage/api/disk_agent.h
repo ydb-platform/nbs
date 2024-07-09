@@ -28,6 +28,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DisableConcreteAgent,     __VA_ARGS__)                                 \
     xxx(EnableAgentDevice,        __VA_ARGS__)                                 \
     xxx(PartiallySuspendAgent,    __VA_ARGS__)                                \
+    xxx(DeleteDevices,            __VA_ARGS__)                                \
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
 #define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)                               \
@@ -91,6 +92,9 @@ struct TEvDiskAgent
 
         EvPartiallySuspendAgentRequest = EvBegin + 21,
         EvPartiallySuspendAgentResponse = EvBegin + 22,
+
+        EvDeleteDevicesRequest = EvBegin + 23,
+        EvDeleteDevicesResponse = EvBegin + 24,
 
         EvEnd
     };

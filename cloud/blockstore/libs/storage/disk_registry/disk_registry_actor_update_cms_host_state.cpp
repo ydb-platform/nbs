@@ -70,6 +70,12 @@ void TDiskRegistryActor::ExecuteUpdateCmsHostState(
         args.DryRun,
         args.AffectedDisks,
         args.Timeout);
+
+    // if (!args.DryRun && args.State == NProto::AGENT_STATE_WARNING && !HasError(args.Error)) {
+    //     args.Error = State->UnregisterAgent(db, args.NodeId);
+    // }
+
+
 }
 
 void TDiskRegistryActor::CompleteUpdateCmsHostState(
@@ -91,6 +97,7 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
             out << "]";
             return out.Str();
         }().c_str());
+
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);

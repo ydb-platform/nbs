@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
     compare_configs.cpp
+    config_cache_utils.cpp
     config.cpp
     device_client.cpp
     device_generator.cpp

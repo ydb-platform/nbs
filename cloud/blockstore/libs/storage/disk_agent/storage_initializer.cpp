@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/compare_configs.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/config_cache_utils.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/public/api/protos/mount.pb.h>
@@ -351,10 +352,7 @@ void TInitializer::ScanFileDevices()
 
 TVector<NProto::TFileDeviceArgs> TInitializer::LoadCachedConfig() const
 {
-    const TString storagePath = StorageConfig->GetCachedDiskAgentConfigPath();
-    const TString diskAgentPath = AgentConfig->GetCachedConfigPath();
-    const TString& path = diskAgentPath.empty() ? storagePath : diskAgentPath;
-
+    TString path = GetDiskAgentCachedConfigPath(AgentConfig, StorageConfig);
     if (path.empty()) {
         return {};
     }
@@ -376,8 +374,7 @@ TVector<NProto::TFileDeviceArgs> TInitializer::LoadCachedConfig() const
 
 void TInitializer::SaveCurrentConfig()
 {
-    const auto path = AgentConfig->GetCachedConfigPath();
-
+    TString path = GetDiskAgentCachedConfigPath(AgentConfig, StorageConfig);
     if (path.empty()) {
         return;
     }

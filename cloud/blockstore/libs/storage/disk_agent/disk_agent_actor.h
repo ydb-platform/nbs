@@ -27,6 +27,7 @@
 
 #include <util/generic/deque.h>
 #include <util/generic/hash.h>
+#include <util/generic/queue.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -76,6 +77,13 @@ private:
     TList<TPostponedRequest> PostponedRequests;
 
     NActors::TActorId SessionCacheActor;
+    NActors::TActorId ConfigCacheActor;
+
+    ui64 DeleteDevicesRequestCookie = 0;
+    THashMap<ui64, TRequestInfoPtr> DeleteDevicesRequestInfos;
+
+    TRequestInfoPtr DeleteDevicesRequestInfo;
+    TQueue<TPendingRequest> DeleteDevicesRequestQueue;
 
     TRequestInfoPtr PartiallySuspendAgentRequestInfo;
 
@@ -139,10 +147,15 @@ private:
 
     TRecentBlocksTracker& GetRecentBlocksTracker(const TString& deviceUUID);
 
-    TString GetCachedSessionsPath() const;
-
     void UpdateSessionCache(const NActors::TActorContext& ctx);
     void RunSessionCacheActor(const NActors::TActorContext& ctx);
+
+    void UpdateConfigCache(
+        const NActors::TActorContext& ctx,
+        NProto::TDiskAgentConfig config);
+    void RunConfigCacheActor(const NActors::TActorContext& ctx);
+
+    void SendDeleteDevicesFromQueue(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateInit);
@@ -200,6 +213,10 @@ private:
 
     void HandleCancelSuspension(
         const TEvDiskAgentPrivate::TEvCancelSuspensionRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleUpdateConfigCacheResponse(
+        const TEvDiskAgentPrivate::TEvUpdateConfigCacheResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

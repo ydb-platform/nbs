@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -152,6 +154,24 @@ void TDiskAgentConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef BLOCKSTORE_CONFIG_DUMP
+}
+
+TString GetDiskAgentCachedConfigPath(
+    const TDiskAgentConfigPtr& agentConfig,
+    const TStorageConfigPtr& storageConfig)
+{
+    const TString storagePath = storageConfig->GetCachedDiskAgentConfigPath();
+    const TString diskAgentPath = agentConfig->GetCachedConfigPath();
+    return diskAgentPath.empty() ? storagePath : diskAgentPath;
+}
+
+TString GetDiskAgentCachedSessionsPath(
+    const TDiskAgentConfigPtr& agentConfig,
+    const TStorageConfigPtr& storageConfig)
+{
+    const TString storagePath = storageConfig->GetCachedDiskAgentSessionsPath();
+    const TString agentPath = agentConfig->GetCachedSessionsPath();
+    return agentPath.empty() ? storagePath : agentPath;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

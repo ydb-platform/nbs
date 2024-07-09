@@ -864,10 +864,7 @@ bool TDiskAgentState::GetPartiallySuspended() const
 
 void TDiskAgentState::RestoreSessions(TDeviceClient& client) const
 {
-    const TString storagePath = StorageConfig->GetCachedDiskAgentSessionsPath();
-    const TString agentPath = AgentConfig->GetCachedSessionsPath();
-    const TString& path = agentPath.empty() ? storagePath : agentPath;
-
+    TString path = GetDiskAgentCachedSessionsPath(AgentConfig, StorageConfig);
     if (path.empty()) {
         STORAGE_INFO("Session cache is not configured.");
         return;

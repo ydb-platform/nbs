@@ -5023,6 +5023,77 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
+
+        // if (affectedDisks.empty()) {
+        //     result = UnregisterAgent(db, agent->GetNodeId());
+        //     return result;
+        // }
+
+        // TVector<TString> freeDevices;
+        // freeDevices.reserve(agent->GetDevices().size());
+        // for (const auto& device : agent->GetDevices()) {
+        //     auto diskId = DeviceList.FindDiskId(device.GetDeviceUUID());
+        //     if (diskId.empty()) {
+        //         freeDevices.push_back(device.GetDeviceUUID());
+        //     }
+        // }
+        // ForgetDevices(db, freeDevices);
+
+
+
+        auto newConfig = GetConfig();
+        auto* agents = newConfig.MutableKnownAgents();
+        const auto agentIt = FindIf(
+            *agents,
+            [&](const auto& x)
+            { return x.GetAgentId() == agent->GetAgentId(); });
+        if (agentIt != agents->end()) {
+            agents->erase(agentIt);
+
+            TVector<TString> affectedDisks;
+            auto error = UpdateConfig(
+                db,
+                std::move(newConfig),
+                false,   // ignoreVersion
+                affectedDisks);
+
+            STORAGE_WARN("UpdateConfig result = %s", FormatError(error).c_str());
+            if (HasError(error)) {
+                return result;
+            }
+
+        }
+
+        bool success = RemoveAgent(db, agent->GetNodeId());
+        if (!success) {
+            return MakeError(E_FAIL, "jopa");
+        }
+
+
+        // if (freeDevices.ysize() == agent->GetDevices().size()) {
+        //     agents->erase(agentIt);
+        // } else {
+        //     for (auto deviceIt = agentIt->MutableDevices()->begin();
+        //          deviceIt != agentIt->MutableDevices()->end();)
+        //     {
+        //         auto count = Count(freeDevices, deviceIt->GetDeviceUUID());
+        //         if (count > 0) {
+        //             deviceIt = agentIt->MutableDevices()->erase(deviceIt);
+        //         } else {
+        //             ++deviceIt;
+        //         }
+        //     }
+        // }
+
+        return result;
+
+        // if (HasError(error)) {
+        //     return error;
+        // }
+
+        // if (!affectedDisks.empty()) {
+        //     return MakeError(E_INVALID_STATE, "!affectedDisks.empty()");
+        // }
     }
 
     if (newState == NProto::AGENT_STATE_ONLINE && !HasError(result)) {

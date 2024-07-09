@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -111,5 +112,13 @@ public:
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };
+
+TString GetDiskAgentCachedConfigPath(
+    const TDiskAgentConfigPtr& agentConfig,
+    const TStorageConfigPtr& storageConfig);
+
+TString GetDiskAgentCachedSessionsPath(
+    const TDiskAgentConfigPtr& agentConfig,
+    const TStorageConfigPtr& storageConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage

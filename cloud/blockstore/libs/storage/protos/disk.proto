@@ -1671,3 +1671,34 @@ message TPartiallySuspendAgentResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TDeleteDevicesRequest
+{
+    // Target agent.
+    string AgentId = 1;
+
+    // message TByDevicePath
+    // {
+    //     repeated string DevicePath = 1;
+    // };
+
+    // message TAll
+    // {
+    // };
+
+    // Device path.
+    repeated string DevicePath = 2;
+
+    // oneof RemoveFilter {
+    //     TAll All = 2;
+    //     TByDevicePath ByPath = 3;
+    // };
+}
+
+message TDeleteDevicesResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

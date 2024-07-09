@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
+#include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <util/generic/string.h>
@@ -152,6 +153,53 @@ struct TEvDiskAgentPrivate
     struct TCancelSuspensionRequest
     {};
 
+    struct TUpdateConfigCacheRequest
+    {
+        NProto::TDiskAgentConfig Config;
+        TRequestInfoPtr RequestInfo;
+
+        TUpdateConfigCacheRequest() = default;
+        TUpdateConfigCacheRequest(
+                NProto::TDiskAgentConfig config,
+                TRequestInfoPtr requestInfo)
+            : Config(std::move(config))
+            , RequestInfo(std::move(requestInfo))
+        {}
+    };
+
+    struct TUpdateConfigCacheResponse
+    {};
+
+    struct TDeleteDevicesFromCacheRequest
+    {
+        TVector<TString> Paths;
+
+        TDeleteDevicesFromCacheRequest() = default;
+        explicit TDeleteDevicesFromCacheRequest(TVector<TString> paths)
+            : Paths(std::move(paths))
+        {}
+    };
+
+    struct TDeleteDevicesFromCacheResponse
+    {};
+
+    // ADD DEVICE HERE
+    // struct TDeleteDevicesFromCacheRequest
+    // {
+    //     TVector<TString> Paths;
+
+    //     TDeleteDevicesFromCacheRequest() = default;
+    //     explicit TDeleteDevicesFromCacheRequest(TVector<TString> paths)
+    //         : Paths(std::move(paths))
+    //     {}
+    // };
+
+    // struct TDeleteDevicesFromCacheResponse
+    // {};
+
+    struct TConfigCacheDeletionResult
+    {};
+
     //
     // Events declaration
     //
@@ -167,8 +215,10 @@ struct TEvDiskAgentPrivate
         EvWriteOrZeroCompleted,
         EvReportDelayedDiskAgentConfigMismatch,
         EvCancelSuspensionRequest,
+        EvConfigCacheDeletionResult,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
+        BLOCKSTORE_DECLARE_EVENT_IDS(UpdateConfigCache)
 
         EvEnd
     };
@@ -198,7 +248,12 @@ struct TEvDiskAgentPrivate
         TCancelSuspensionRequest,
         EvCancelSuspensionRequest>;
 
+    using TEvConfigCacheDeletionResult = TResponseEvent<
+        TConfigCacheDeletionResult,
+        EvConfigCacheDeletionResult>;
+
     BLOCKSTORE_DECLARE_EVENTS(UpdateSessionCache)
+    BLOCKSTORE_DECLARE_EVENTS(UpdateConfigCache)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

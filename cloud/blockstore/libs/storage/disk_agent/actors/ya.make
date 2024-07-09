@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    config_cache_actor.cpp
     session_cache_actor.cpp
 )
 
