@@ -89,6 +89,7 @@ class _Resource(NamedTuple):
 class _ArgumentNamespaceMock(NamedTuple):
     test_type: str
     test_suite: str = "not-specified"
+    disk_type: str = ""
     disk_size: int = 0
     disk_blocksize: int = 0
 
@@ -115,17 +116,17 @@ def test_cleanup():
     should_delete_inner_test_acceptance_4gib_4kib = [
         *should_delete_inner_test_acceptance_common,
         _Resource(
-            name='acceptance-test-disk-acceptance-4gib-4kib-123124134',
+            name='acceptance-test-disk-acceptance-network-ssd-4gib-4kib-123124134',
             resource_type='disk',
             created_at=_now - timedelta(hours=28)
         ),
         _Resource(
-            name='acceptance-test-image-acceptance-4gib-4kib-120849534',
+            name='acceptance-test-image-acceptance-network-ssd-4gib-4kib-120849534',
             resource_type='image',
             created_at=_now - timedelta(hours=36),
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-4gib-4kib-12931283',
+            name='acceptance-test-snapshot-acceptance-network-ssd-4gib-4kib-12931283',
             resource_type='snapshot',
             created_at=_now - timedelta(hours=39),
         ),
@@ -133,22 +134,45 @@ def test_cleanup():
     should_delete_inner_test_acceptance_8tib_2kib = [
         *should_delete_inner_test_acceptance_common,
         _Resource(
-            name='acceptance-test-disk-acceptance-8tib-2kib-1823123123',
+            name='acceptance-test-disk-acceptance-network-ssd-8tib-2kib-1823123123',
             resource_type='disk',
             created_at=_now - timedelta(hours=34)
         ),
         _Resource(
-            name='acceptance-test-image-acceptance-8tib-2kib-10',
+            name='acceptance-test-image-acceptance-network-ssd-8tib-2kib-10',
             resource_type='image',
             created_at=_now - timedelta(days=367),
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-8tib-2kib-19199199',
+            name='acceptance-test-snapshot-acceptance-network-ssd-8tib-2kib-19199199',
             resource_type='snapshot',
             created_at=_now - timedelta(days=3),
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-8tib-2kib-19',
+            name='acceptance-test-snapshot-acceptance-network-ssd-8tib-2kib-19',
+            resource_type='snapshot',
+            created_at=_now - timedelta(days=2),
+        ),
+    ]
+    should_delete_inner_test_acceptance_nonrepl_93gib_8kib = [
+        *should_delete_inner_test_acceptance_common,
+        _Resource(
+            name='acceptance-test-disk-acceptance-network-ssd-nonreplicated-93gib-8kib-1823123123',
+            resource_type='disk',
+            created_at=_now - timedelta(hours=34)
+        ),
+        _Resource(
+            name='acceptance-test-image-acceptance-network-ssd-nonreplicated-93gib-8kib-10',
+            resource_type='image',
+            created_at=_now - timedelta(days=367),
+        ),
+        _Resource(
+            name='acceptance-test-snapshot-acceptance-network-ssd-nonreplicated-93gib-8kib-19199199',
+            resource_type='snapshot',
+            created_at=_now - timedelta(days=3),
+        ),
+        _Resource(
+            name='acceptance-test-snapshot-acceptance-network-ssd-nonreplicated-93gib-8kib-19',
             resource_type='snapshot',
             created_at=_now - timedelta(days=2),
         ),
@@ -178,17 +202,17 @@ def test_cleanup():
     should_delete_inner_test_eternal_8tib_16gib = [
         *should_delete_inner_test_eternal_common,
         _Resource(
-            name='acceptance-test-disk-eternal-8tib-16gib-12391293',
+            name='acceptance-test-disk-eternal-network-ssd-8tib-16gib-12391293',
             resource_type='disk',
             created_at=_now - timedelta(days=10),
         ),
         _Resource(
-            name='acceptance-test-snapshot-eternal-8tib-16gib-1707897850',
+            name='acceptance-test-snapshot-eternal-network-ssd-8tib-16gib-1707897850',
             resource_type='snapshot',
             created_at=_now - timedelta(days=22),
         ),
         _Resource(
-            name='acceptance-test-image-eternal-8tib-16gib-123123213',
+            name='acceptance-test-image-eternal-network-ssd-8tib-16gib-123123213',
             resource_type='image',
             created_at=_now - timedelta(days=12),
         ),
@@ -196,17 +220,35 @@ def test_cleanup():
     should_delete_inner_test_eternal_256gib_2mib = [
         *should_delete_inner_test_eternal_common,
         _Resource(
-            name='acceptance-test-disk-eternal-256gib-2mib-12391293',
+            name='acceptance-test-disk-eternal-network-ssd-256gib-2mib-12391293',
             resource_type='disk',
             created_at=_now - timedelta(days=19),
         ),
         _Resource(
-            name='acceptance-test-snapshot-eternal-256gib-2mib-1707897850',
+            name='acceptance-test-snapshot-eternal-network-ssd-256gib-2mib-1707897850',
             resource_type='snapshot',
             created_at=_now - timedelta(days=14),
         ),
         _Resource(
-            name='acceptance-test-image-eternal-256gib-2mib-123123213',
+            name='acceptance-test-image-eternal-network-ssd-256gib-2mib-123123213',
+            resource_type='image',
+            created_at=_now - timedelta(days=15),
+        ),
+    ]
+    should_delete_inner_test_eternal_nonrepl_372gib_8kib = [
+        *should_delete_inner_test_eternal_common,
+        _Resource(
+            name='acceptance-test-disk-eternal-network-ssd-nonreplicated-372gib-8kib-12391293',
+            resource_type='disk',
+            created_at=_now - timedelta(days=19),
+        ),
+        _Resource(
+            name='acceptance-test-snapshot-eternal-network-ssd-nonreplicated-372gib-8kib-1707897850',
+            resource_type='snapshot',
+            created_at=_now - timedelta(days=14),
+        ),
+        _Resource(
+            name='acceptance-test-image-eternal-network-ssd-nonreplicated-372gib-8kib-123123213',
             resource_type='image',
             created_at=_now - timedelta(days=15),
         ),
@@ -259,6 +301,13 @@ def test_cleanup():
             created_at=_now - timedelta(days=9),
         ),
     ]
+    should_delete_test_acceptance_dr_based = [
+        _Resource(
+            name='acceptance-test-acceptance-dr_based-2412341243',
+            resource_type='disk',
+            created_at=_now - timedelta(days=9),
+        ),
+    ]
     should_delete_test_acceptance_default = [
         _Resource(
             name='acceptance-test-acceptance-default-2412341243',
@@ -275,7 +324,7 @@ def test_cleanup():
     ]
     should_delete_test_eternal_1tib_4kib = [
         _Resource(
-            name='acceptance-test-eternal-1tib-4kib-1703757663',
+            name='acceptance-test-eternal-network-ssd-1tib-4kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
@@ -283,7 +332,15 @@ def test_cleanup():
     ]
     should_delete_test_eternal_8gib_8kib = [
         _Resource(
-            name='acceptance-test-eternal-8gib-8kib-1703757663',
+            name='acceptance-test-eternal-network-ssd-8gib-8kib-1703757663',
+            resource_type='disk',
+            created_at=_now - timedelta(days=104),
+        ),
+        *should_delete_inner_test_eternal_common,
+    ]
+    should_delete_test_eternal_nonrepl_93gib_4kib = [
+        _Resource(
+            name='acceptance-test-eternal-network-ssd-nonreplicated-93gib-4kib-1703757663',
             resource_type='disk',
             created_at=_now - timedelta(days=104),
         ),
@@ -296,12 +353,12 @@ def test_cleanup():
             created_at=_now - timedelta(hours=35),
         ),
         _Resource(
-            name='acceptance-test-sync-8gib-4mib-1703764831',
+            name='acceptance-test-sync-network-ssd-8gib-4mib-1703764831',
             resource_type='disk',
             created_at=_now - timedelta(days=7),
         ),
         _Resource(
-            name='acceptance-test-sync-8gib-4mib-1706616105-from-snapshot',
+            name='acceptance-test-sync-network-ssd-8gib-4mib-1706616105-from-snapshot',
             resource_type='disk',
             created_at=_now - timedelta(days=8),
         ),
@@ -328,37 +385,37 @@ def test_cleanup():
             created_at=_now,
         ),
         _Resource(
-            name='acceptance-test-disk-acceptance-8tib-2kib-1823123123',
+            name='acceptance-test-disk-acceptance-network-ssd-8tib-2kib-1823123123',
             resource_type='disk',
             created_at=_now,
         ),
         _Resource(
-            name='acceptance-test-image-acceptance-8tib-2kib-10',
+            name='acceptance-test-image-acceptance-network-ssd-8tib-2kib-10',
             resource_type='image',
             created_at=_now,
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-8tib-2kib-19199199',
+            name='acceptance-test-snapshot-acceptance-network-ssd-8tib-2kib-19199199',
             resource_type='snapshot',
             created_at=_now,
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-8tib-2kib-19',
+            name='acceptance-test-snapshot-acceptance-network-ssd-8tib-2kib-19',
             resource_type='snapshot',
             created_at=_now,
         ),
         _Resource(
-            name='acceptance-test-disk-acceptance-8tib-8tib-123124134',
+            name='acceptance-test-disk-acceptance-network-ssd-8tib-8tib-123124134',
             resource_type='disk',
             created_at=_now - timedelta(hours=28)
         ),
         _Resource(
-            name='acceptance-test-image-acceptance-8tib-8tib-120849534',
+            name='acceptance-test-image-acceptance-network-ssd-8tib-8tib-120849534',
             resource_type='image',
             created_at=_now - timedelta(hours=36),
         ),
         _Resource(
-            name='acceptance-test-snapshot-acceptance-8tib-8tib-12931283',
+            name='acceptance-test-snapshot-acceptance-network-ssd-8tib-8tib-12931283',
             resource_type='snapshot',
             created_at=_now - timedelta(hours=1),
         ),
@@ -377,21 +434,30 @@ def test_cleanup():
             resource_type='disk',
             created_at=_now - timedelta(hours=2),
         ),
+        _Resource(
+            name='acceptance-test-eternal-network-ssd-93gib-4kib-1703757663',
+            resource_type='disk',
+            created_at=_now - timedelta(days=104),
+        ),
     ]
     ycp_mock = _YcpMock(
         [
             *{
                 *should_delete_inner_test_acceptance_4gib_4kib,
                 *should_delete_inner_test_acceptance_8tib_2kib,
+                *should_delete_inner_test_acceptance_nonrepl_93gib_8kib,
                 *should_delete_inner_test_eternal_8tib_16gib,
                 *should_delete_inner_test_eternal_256gib_2mib,
+                *should_delete_inner_test_eternal_nonrepl_372gib_8kib,
                 *should_delete_test_acceptance_small,
                 *should_delete_test_acceptance_medium,
                 *should_delete_test_acceptance_big,
                 *should_delete_test_acceptance_enormous,
+                *should_delete_test_acceptance_dr_based,
                 *should_delete_test_acceptance_default,
                 *should_delete_test_eternal_1tib_4kib,
                 *should_delete_test_eternal_8gib_8kib,
+                *should_delete_test_eternal_nonrepl_93gib_4kib,
                 *should_delete_test_sync_8gib_4mib,
                 *should_not_delete,
             }
@@ -409,6 +475,10 @@ def test_cleanup():
             should_delete_inner_test_acceptance_8tib_2kib,
         ),
         (
+            ('acceptance', 'network-ssd-nonreplicated', 93 * gib, 8192, timedelta(days=1)),
+            should_delete_inner_test_acceptance_nonrepl_93gib_8kib,
+        ),
+        (
             ('eternal', 'network-ssd', 8 * 1024 * gib, 16 * 1024 ** 3, timedelta(days=5)),
             should_delete_inner_test_eternal_8tib_16gib,
         ),
@@ -416,7 +486,10 @@ def test_cleanup():
             ('eternal', 'network-ssd', 256 * gib, 2 * 1024 ** 2, timedelta(days=5)),
             should_delete_inner_test_eternal_256gib_2mib,
         ),
-        # TODO:_ test case for another disk type !!!
+        (
+            ('eternal', 'network-ssd-nonreplicated', 372 * gib, 8192, timedelta(days=5)),
+            should_delete_inner_test_eternal_nonrepl_372gib_8kib,
+        ),
     ]
     for [
         cleanup_args,
@@ -474,6 +547,15 @@ def test_cleanup():
             AcceptanceTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='acceptance',
+                test_suite='dr_based',
+            ),
+            should_delete_test_acceptance_dr_based,
+
+        ),
+        (
+            AcceptanceTestCleaner,
+            _ArgumentNamespaceMock(
+                test_type='acceptance',
                 test_suite='default',
             ),
             should_delete_test_acceptance_default,
@@ -499,6 +581,17 @@ def test_cleanup():
                 disk_blocksize=8 * 1024,
             ),
             should_delete_test_eternal_8gib_8kib,
+
+        ),
+        (
+            EternalTestCleaner,
+            _ArgumentNamespaceMock(
+                test_type='eternal',
+                disk_type='network-ssd-nonreplicated',
+                disk_size=93,
+                disk_blocksize=4 * 1024,
+            ),
+            should_delete_test_eternal_nonrepl_93gib_4kib,
 
         ),
         (

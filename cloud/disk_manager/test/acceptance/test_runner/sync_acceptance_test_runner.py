@@ -7,7 +7,6 @@ from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
 from .lib import (
-    make_disk_parameters_string,
     Error,
 )
 
@@ -28,8 +27,9 @@ class SyncTestCleaner(BaseResourceCleaner):
         # TODO:_ ok
         disk_name_string = (
             fr'^acceptance-test-{test_type}-'
-            fr'{self.disk_parameters_string()}-[0-9]+',
+            fr'{self.disk_parameters_string()}-[0-9]+'
         )
+        print(f'SyncTestCleaner: disk_name_string: {disk_name_string}')
         disk_name_pattern = re.compile(fr'{disk_name_string}$')
         secondary_disk_name_pattern = re.compile(
             fr'{disk_name_string}-from-snapshot$',

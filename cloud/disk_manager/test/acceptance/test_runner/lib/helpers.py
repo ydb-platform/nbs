@@ -7,7 +7,7 @@ import shlex
 import socket
 import time
 
-from typing import Callable, Protocol
+from typing import Callable, Protocol, Union
 
 from .errors import Error
 
@@ -204,5 +204,14 @@ def size_prettifier(size_bytes: int) -> str:
         return '%sB' % size_bytes
 
 
-def make_disk_parameters_string(type_id: str, size: int, block_size: int, delim = "-") -> str:
-    return f'{type_id}{delim}{size_prettifier(size)}{delim}{size_prettifier(block_size)}'.lower()
+# Example of type string: network-ssd-1tib-4kib
+def make_disk_parameters_string(
+        disk_type: str,
+        size: Union[int, str],
+        block_size: Union[int, str],
+        delim = "-") -> str:  # TODO:_ do we really need '_' delim?
+    if isinstance(size, int):
+        size = size_prettifier(size)
+    if isinstance(block_size, int):
+        block_size = size_prettifier(block_size)
+    return f'{disk_type}{delim}{size}{delim}{block_size}'.lower()

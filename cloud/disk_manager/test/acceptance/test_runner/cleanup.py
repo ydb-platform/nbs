@@ -40,7 +40,9 @@ def _cleanup_stale_entities(
             if entity.created_at > should_be_older_than:
                 continue
             for pattern in regexps.get(entity_type, []):
+                print(pattern, entity)
                 if re.match(pattern, entity.name):
+                    print('matched')
                     _logger.info(
                         "Deleting %s with name %s",
                         entity_type, entity.name)
@@ -54,6 +56,7 @@ def _cleanup_stale_entities(
                             exc_info=e,
                         )
                     break
+                print('not matched')
 
 
 def cleanup_previous_acceptance_tests_results(
@@ -104,7 +107,7 @@ class BaseResourceCleaner:
         self._disk_size = None
         self._disk_blocksize = None
         if hasattr(args, 'disk_type'):
-            self._disk_type = size_prettifier(args.disk_type).lower()
+            self._disk_type = args.disk_type.lower()
         if hasattr(args, 'disk_size'):
             self._disk_size = size_prettifier(
                 args.disk_size * (1024 ** 3)).lower()
