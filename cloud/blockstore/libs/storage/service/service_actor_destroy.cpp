@@ -29,7 +29,7 @@ private:
     const ui64 Cookie;
 
     const TDuration AttachedDiskDestructionTimeout;
-    const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefix;
+    const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     const TString DiskId;
     const bool DestroyIfBroken;
     const bool Sync;
@@ -42,7 +42,7 @@ public:
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -91,7 +91,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         const TActorId& sender,
         ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
-        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefix,
+        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId,
         bool destroyIfBroken,
         bool sync,
@@ -99,7 +99,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
-    , DestructionAllowedOnlyForDisksWithIdPrefix(destructionAllowedOnlyForDisksWithIdPrefix)
+    , DestructionAllowedOnlyForDisksWithIdPrefixes(destructionAllowedOnlyForDisksWithIdPrefixes)
     , DiskId(std::move(diskId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
@@ -329,7 +329,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
-    const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefix;
+    const auto& prefixes = DestructionAllowedOnlyForDisksWithIdPrefixes;
     if (prefixes) {
         const auto prefixIt = FindIf(
             prefixes.begin(),
@@ -455,7 +455,7 @@ void TServiceActor::HandleDestroyVolume(
         ev->Sender,
         ev->Cookie,
         Config->GetAttachedDiskDestructionTimeout(),
-        Config->GetDestructionAllowedOnlyForDisksWithIdPrefix(),
+        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
         diskId,
         destroyIfBroken,
         sync,
