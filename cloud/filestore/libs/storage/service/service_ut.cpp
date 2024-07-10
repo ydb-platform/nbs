@@ -3762,6 +3762,81 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        // now try to move to another subdirectory
+
+        auto subdirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "subdir"))
+                ->Record.GetNode()
+                .GetId();
+
+        renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file2",
+            subdirId,
+            "file2",
+            0);
+
+        // listing should show only subdir with file2 in it
+
+        listNodesResponse =service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("subdir", listNodesResponse.GetNames(0));
+
+        listNodesResponse = service.ListNodes(headers, fsId, subdirId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(1, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL("file2", listNodesResponse.GetNames(0));
+
+        // create 2 files in the same shard
+
+        ui64 nodeId4 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file4"))
+                ->Record.GetNode()
+                .GetId();
+
+        // round robin is used for 2 clusters, so we just skip one shard by
+        // creating a file in it
+        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file5"));
+
+        ui64 nodeId6 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file6"))
+                ->Record.GetNode()
+                .GetId();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            ExtractShardNo(nodeId4),
+            ExtractShardNo(nodeId6));
+
+        // now move to the same shard
+
+        renameNodeResponse = service.RenameNode(
+            headers,
+            RootNodeId,
+            "file4",
+            RootNodeId,
+            "file6",
+            0);
+
+        // file4 should not be present in the listing
+
+        service.SendGetNodeAttrRequest(headers, fsId, RootNodeId, "file4");
+
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT(getNodeAttrResponse);
+        UNIT_ASSERT_C(
+            FAILED(getNodeAttrResponse->GetStatus()),
+            getNodeAttrResponse->GetErrorReason().c_str());
     }
 }
 
