@@ -36,6 +36,34 @@ FAKE_VHOST_SERVER = yatest_common.binary_path(
     "cloud/blockstore/tools/testing/fake-vhost-server/fake-vhost-server")
 
 
+def run_ownerless_vhost_server(disk_id):
+    out_r_fd, out_w_fd = os.pipe()
+
+    with os.fdopen(out_r_fd, 'r') as out_r, \
+            os.fdopen(out_w_fd, 'w') as out_w:
+        proc = subprocess.Popen(
+            [
+                FAKE_VHOST_SERVER,
+                "--disk-id", disk_id,
+                "--port", str(PortManager().get_port()),
+                "-s", "/tmp/dummy",
+                "-i", "dummy",
+                "--device", "/dev/vda:1000000:0"
+            ],
+            stdout=out_w,
+            stderr=out_w,
+            bufsize=0,
+            universal_newlines=True)
+
+        # wait for server start
+        while True:
+            line = out_r.readline().strip()
+            if line.find("start...") != -1:
+                break
+
+    return proc
+
+
 @pytest.fixture(name='data_path')
 def create_data_path():
 
@@ -120,24 +148,8 @@ def setup_fake_vhost_server_script():
 @pytest.fixture(name='nbs')
 def start_nbs_daemon(ydb, fake_vhost_server):
     # run "old" external vhost-servers that serve the disks "vol0" and "vol1"
-    old_vhost_server_vol0 = subprocess.Popen(
-        [
-            FAKE_VHOST_SERVER,
-            "--disk-id", "vol0",
-            "--port", str(PortManager().get_port()),
-            "-s", "/tmp/dummy",
-            "-i", "dummy",
-            "--device", "/dev/vda:1000000:0"
-        ])
-    old_vhost_server_vol1 = subprocess.Popen(
-        [
-            FAKE_VHOST_SERVER,
-            "--disk-id", "vol1",
-            "--port", str(PortManager().get_port()),
-            "-s", "/tmp/dummy",
-            "-i", "dummy",
-            "--device", "/dev/vda:1000000:0"
-        ])
+    old_vhost_server_vol0 = run_ownerless_vhost_server("vol0")
+    old_vhost_server_vol1 = run_ownerless_vhost_server("vol1")
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()

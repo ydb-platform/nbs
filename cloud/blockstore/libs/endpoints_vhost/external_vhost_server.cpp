@@ -716,7 +716,7 @@ private:
     TLog Log;
 
     THashMap<TString, IExternalEndpointPtr> Endpoints;
-    THashMap<TString, i32> OldEndpoints;
+    TMap<i32, TString> OldEndpoints;
 
 public:
     TExternalVhostEndpointListener(
@@ -1123,7 +1123,7 @@ private:
 
             const auto diskId = FindDiskIdForRunningProcess(pid);
             if (diskId) {
-                OldEndpoints[diskId] = pid;
+                OldEndpoints[pid] = diskId;
                 STORAGE_INFO(
                     "Find running external-vhost-server PID:"
                     << pid << " for disk-id: " << diskId.Quote());
@@ -1133,30 +1133,29 @@ private:
 
     void ShutdownOldEndpoint(const TString& diskId)
     {
-        const auto* oldEndpoint = OldEndpoints.FindPtr(diskId);
-        if (!oldEndpoint) {
-            return;
+        for (auto it = OldEndpoints.begin(); it != OldEndpoints.end();) {
+            i32 pid = it->first;
+            const auto& oldDiskId = it->second;
+
+            if (oldDiskId != diskId) {
+                ++it;
+                continue;
+            }
+
+            // There is a time interval between the search for old processes
+            // and their termination. We are checking here that another
+            // process has not been started under the same pid.
+            if (oldDiskId == FindDiskIdForRunningProcess(pid)) {
+                TChild child(pid);
+
+                STORAGE_WARN(
+                    "Send TERMINATE to external-vhost-server with PID:"
+                    << pid << " for disk-id: " << diskId.Quote());
+                child.Kill();
+                child.Wait();
+            }
+            it = OldEndpoints.erase(it);
         }
-
-        const i32 pid = *oldEndpoint;
-
-        const auto oldDiskId = FindDiskIdForRunningProcess(pid);
-        if (oldDiskId != diskId) {
-            // There is a time interval between the search for old processes and
-            // their termination. We are checking here that another process has
-            // not been started under the same pid.
-            return;
-        }
-
-        TChild child(pid);
-
-        STORAGE_WARN(
-            "Send TERMINATE to external-vhost-server with PID:"
-            << pid << " for disk-id: " << diskId.Quote());
-        child.Kill();
-        child.Wait();
-
-        OldEndpoints.erase(diskId);
     }
 };
 
