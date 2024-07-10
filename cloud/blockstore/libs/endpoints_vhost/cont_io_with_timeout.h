@@ -7,6 +7,10 @@
 
 namespace NCloud::NBlockStore::NServer {
 
+///////////////////////////////////////////////////////////////////////////////
+
+// Similar to TContIO, but DoWrite() and DoRead() operations are executed with a
+// timeout.
 class TContIOWithTimeout
     : public IInputStream
     , public IOutputStream

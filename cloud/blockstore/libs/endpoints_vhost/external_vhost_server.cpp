@@ -79,11 +79,7 @@ const char* GetEndpointTypeName(EEndpointType state)
 
 TString ReadFromFile(const TString& fileName)
 {
-    TFsPath path(fileName);
     try {
-        if (!path.Exists()) {
-            return {};
-        }
         return TFileInput(fileName).ReadAll();
     } catch (...) {
         return {};
@@ -159,7 +155,7 @@ bool PrefetchBinaryToCache(const TString& binaryPath)
 
         binary.PrefetchCache(0, 0, true);
         return true;
-    } catch (const TFileError& e) {
+    } catch (...) {
         // Just ignore
         return false;
     }
@@ -393,30 +389,8 @@ private:
                 ReadStatsImpl(io);
                 firstRead = false;
             } catch (...) {
-                if (ShouldStop) {
-                    STORAGE_INFO(
-                        "[" << ClientId << "] Read stats error: "
-                            << CurrentExceptionMessage());
-                    break;
-                }
-
-                if (firstRead) {
-                    if (i < ReadFirstStatRetryCount) {
-                        STORAGE_WARN(
-                            "[" << ClientId << "] Retying read first stat #"
-                                << i + 1
-                                << ". Error: " << CurrentExceptionMessage());
-                    } else {
-                        STORAGE_ERROR(
-                            "[" << ClientId
-                                << "] Stop retying read first stat. Error: "
-                                << CurrentExceptionMessage());
-                        break;
-                    }
-                } else {
-                    STORAGE_ERROR(
-                        "[" << ClientId << "] Stop read stat. On #" << i
-                            << ". Error: " << CurrentExceptionMessage());
+                const bool shouldContinue = HandleReadStatsError(firstRead, i);
+                if (!shouldContinue) {
                     break;
                 }
             }
@@ -426,6 +400,34 @@ private:
                 c->SleepT(StatReadDuration - elapsedTime);
             }
         }
+    }
+
+    bool HandleReadStatsError(bool firstRead, ui64 i)
+    {
+        if (ShouldStop) {
+            STORAGE_INFO(
+                "[" << ClientId
+                    << "] Read stats error: " << CurrentExceptionMessage());
+            return false;
+        }
+
+        if (firstRead) {
+            if (i < ReadFirstStatRetryCount) {
+                STORAGE_WARN(
+                    "[" << ClientId << "] Retrying read first stat #" << i + 1
+                        << ". Error: " << CurrentExceptionMessage());
+                return true;
+            }
+            STORAGE_ERROR(
+                "[" << ClientId << "] Stop retrying read first stat. Error: "
+                    << CurrentExceptionMessage());
+            return false;
+        }
+
+        STORAGE_ERROR(
+            "[" << ClientId << "] Stop read stat. On #" << i
+                << ". Error: " << CurrentExceptionMessage());
+        return false;
     }
 
     void ReadStatsImpl(TContIOWithTimeout& io)
