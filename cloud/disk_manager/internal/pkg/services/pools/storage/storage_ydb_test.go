@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -2487,4 +2488,27 @@ func TestStorageYDBDeletePoolWhenRetiringIsInFlight(t *testing.T) {
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)
+}
+
+func TestStorageYDBBaseDisksShouldHavePrefix(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	prefix := "prefix"
+	config := &pools_config.PoolsConfig{
+		BaseDiskIdPrefix: &prefix,
+	}
+	storage := newStorageWithConfig(t, ctx, db, config)
+
+	err = storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+	require.True(t, strings.HasPrefix(baseDisks[0].ID, prefix))
 }

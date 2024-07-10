@@ -4,6 +4,6 @@ import "fmt"
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func GetProxyOverlayDiskID(diskID string, ID string) string {
-	return fmt.Sprintf("proxy_%v_%v", diskID, ID)
+func GetProxyOverlayDiskID(prefix, diskID, snapshotID string) string {
+	return fmt.Sprintf("%v%v_%v", prefix, diskID, snapshotID)
 }
