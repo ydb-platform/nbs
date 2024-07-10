@@ -24,11 +24,13 @@ class TDestroyFileStoreActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
+    const bool ForceDestroy;
 
 public:
     TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
-        TString fileSystemId);
+        TString fileSystemId,
+        bool forceDestroy);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -58,14 +60,20 @@ private:
 
 TDestroyFileStoreActor::TDestroyFileStoreActor(
         TRequestInfoPtr requestInfo,
-        TString fileSystemId)
+        TString fileSystemId,
+        bool forceDestroy)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
+    , ForceDestroy(forceDestroy)
 {}
 
 void TDestroyFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    DescribeSessions(ctx);
+    if (ForceDestroy) {
+        DestroyFileStore(ctx);
+    } else {
+        DescribeSessions(ctx);
+    }
     Become(&TThis::StateWork);
 }
 
@@ -177,9 +185,12 @@ void TStorageServiceActor::HandleDestroyFileStore(
         cookie,
         msg->CallContext);
 
+    bool forceDestroy = msg->Record.GetForceDestroy() &&
+                        StorageConfig->GetAllowFileStoreForceDestroy();
     auto actor = std::make_unique<TDestroyFileStoreActor>(
         std::move(requestInfo),
-        msg->Record.GetFileSystemId());
+        msg->Record.GetFileSystemId(),
+        forceDestroy);
 
     NCloud::Register(ctx, std::move(actor));
 }
