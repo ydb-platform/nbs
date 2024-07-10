@@ -276,7 +276,7 @@ struct TDiskRegistryStateBuilder
 
     TDiskRegistryStateBuilder& WithDisks(TVector<NProto::TDiskConfig> disks);
 
-    TDiskRegistryStateBuilder& WithDirtyDevices(TVector<TString> dirtyDevices);
+    TDiskRegistryStateBuilder& WithDirtyDevices(TVector<TDirtyDevice> dirtyDevices);
 
     TDiskRegistryStateBuilder& WithSuspendedDevices(
         TVector<TString> suspendedDevices);

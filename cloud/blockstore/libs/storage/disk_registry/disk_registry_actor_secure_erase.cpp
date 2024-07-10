@@ -273,16 +273,9 @@ void TDiskRegistryActor::ExecuteCleanupDevices(
     TTransactionContext& tx,
     TTxDiskRegistry::TCleanupDevices& args)
 {
-    Y_UNUSED(ctx);
-
     TDiskRegistryDatabase db(tx.DB);
-
-    for (const auto& uuid: args.Devices) {
-        auto diskId = State->MarkDeviceAsClean(ctx.Now(), db, uuid);
-        if (diskId) {
-            args.SyncDeallocatedDisks.push_back(std::move(diskId));
-        }
-    }
+    args.SyncDeallocatedDisks =
+        State->MarkDevicesAsClean(ctx.Now(), db, args.Devices);
 }
 
 void TDiskRegistryActor::CompleteCleanupDevices(
