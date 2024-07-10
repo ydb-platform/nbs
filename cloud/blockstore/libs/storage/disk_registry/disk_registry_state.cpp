@@ -3631,8 +3631,6 @@ TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
     TDiskRegistryDatabase& db,
     const TVector<TDeviceId>& uuids)
 {
-    Y_UNUSED(now);
-
     TVector<TDeviceId> ret;
     ret.reserve(uuids.size());
 
@@ -3644,7 +3642,7 @@ TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
         }
         ret.push_back(uuid);
         agentsMap.emplace(agent->agentid());
-        AdjustDeviceIfNeeded(*device, Now());
+        AdjustDeviceIfNeeded(*device, now);
     }
 
     for (const auto& agentId: agentsMap) {
