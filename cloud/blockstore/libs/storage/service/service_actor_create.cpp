@@ -21,11 +21,79 @@
 
 #include <library/cpp/string_utils/base64/base64.h>
 
+#include <contrib/ydb/core/base/appdata.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TCreateEncryptionKeyActor final
+    : public TActorBootstrapped<TCreateEncryptionKeyActor>
+{
+private:
+    const TActorId Owner;
+
+public:
+    explicit TCreateEncryptionKeyActor(const TActorId& owner);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error,
+        TString key);
+
+private:
+    STFUNC(StateWork);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCreateEncryptionKeyActor::TCreateEncryptionKeyActor(const TActorId& owner)
+    : Owner{owner}
+{}
+
+void TCreateEncryptionKeyActor::Bootstrap(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
+
+    try {
+        TString key;
+        key.resize(32);
+        EntropyPool().Read(key.Detach(), key.size());
+
+        ReplyAndDie(ctx, {}, Base64Encode(key));
+    } catch(...) {
+        ReplyAndDie(ctx, MakeError(E_FAIL, CurrentExceptionMessage()), {});
+    }
+}
+
+void TCreateEncryptionKeyActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error,
+    TString key)
+{
+    NCloud::Send(
+        ctx,
+        Owner,
+        std::make_unique<TEvServicePrivate::TEvCreateEncryptionKeyResponse>(
+            error,
+            std::move(key)));
+}
+
+STFUNC(TCreateEncryptionKeyActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        default:
+            HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);
+            break;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,6 +122,9 @@ private:
 
     void DescribeBaseVolume(const TActorContext& ctx);
     void CreateVolume(const TActorContext& ctx);
+    void CreateVolumeImpl(
+        const TActorContext& ctx,
+        std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc);
 
     void HandleDescribeVolumeResponse(
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
@@ -67,11 +138,15 @@ private:
         const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleCreateEncryptionKeyResponse(
+        const TEvServicePrivate::TEvCreateEncryptionKeyResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void ReplyAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvCreateVolumeResponse> response);
 
-    bool ShouldCreateEncryptedVolume() const;
+    bool ShouldCreateVolumeWithDefaultEncryption() const;
 
 private:
     STFUNC(StateWork);
@@ -128,7 +203,7 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
     }
 }
 
-bool TCreateVolumeActor::ShouldCreateEncryptedVolume() const
+bool TCreateVolumeActor::ShouldCreateVolumeWithDefaultEncryption() const
 {
     return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
         GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL &&    // XXX
@@ -142,6 +217,64 @@ bool TCreateVolumeActor::ShouldCreateEncryptedVolume() const
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
+{
+    if (ShouldCreateVolumeWithDefaultEncryption()) {
+        // TODO(): use EncryptionKeyProvider::CreateKey(...)
+        auto actor = std::make_unique<TCreateEncryptionKeyActor>(ctx.SelfID);
+
+        ctx.Register(
+            actor.release(),
+            TMailboxType::HTSwap,
+            NKikimr::AppData()->IOPoolId);
+
+        return;
+    }
+
+    std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc;
+
+    const auto& encryptionSpec = Request.GetEncryptionSpec();
+    if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
+        auto& desc = encryptionDesc.emplace();
+        desc.SetMode(encryptionSpec.GetMode());
+        desc.SetKeyHash(encryptionSpec.GetKeyHash());
+    }
+
+    CreateVolumeImpl(ctx, std::move(encryptionDesc));
+}
+
+void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
+    const TEvServicePrivate::TEvCreateEncryptionKeyResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& msg = ev->Get();
+    const auto& error = msg->GetError();
+
+    std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc;
+
+    if (HasError(error)) {
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Failed to generate encryption key: "
+                << FormatError(error) << ". Create an unencrypted volume.");
+    } else {
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Create volume " << Request.GetDiskId().Quote()
+                             << " with default AES XTS encryption");
+
+        auto& desc = encryptionDesc.emplace();
+        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
+        desc.SetKeyHash(msg->EncryptionKey);
+    }
+
+    CreateVolumeImpl(ctx, std::move(encryptionDesc));
+}
+
+void TCreateVolumeActor::CreateVolumeImpl(
+    const TActorContext& ctx,
+    std::optional<NKikimrBlockStore::TEncryptionDesc> encryptionDesc)
 {
     NKikimrBlockStore::TVolumeConfig config;
 
@@ -233,30 +366,8 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     }
     config.MutableAgentIds()->CopyFrom(Request.GetAgentIds());
 
-    const auto& encryptionSpec = Request.GetEncryptionSpec();
-    if (encryptionSpec.GetMode() != NProto::NO_ENCRYPTION) {
-        auto& desc = *config.MutableEncryptionDesc();
-        desc.SetMode(encryptionSpec.GetMode());
-        desc.SetKeyHash(encryptionSpec.GetKeyHash());
-    }
-
-    if (ShouldCreateEncryptedVolume()) {
-        LOG_INFO_S(
-            ctx,
-            TBlockStoreComponents::SERVICE,
-            "Create volume " << Request.GetDiskId().Quote()
-                             << " with default AES XTS encryption");
-
-        auto& desc = *config.MutableEncryptionDesc();
-        desc.SetMode(NProto::ENCRYPTION_DEFAULT_AES_XTS_INSECURE);
-
-        // XXX: use EncryptionKeyProvider?
-        TString key;
-        key.resize(32);
-        // XXX: generate key in background thread
-        EntropyPool().Read(key.Detach(), key.size());
-
-        desc.SetKeyHash(Base64Encode(key));
+    if (encryptionDesc) {
+        *config.MutableEncryptionDesc() = std::move(*encryptionDesc);
     }
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
@@ -381,6 +492,10 @@ STFUNC(TCreateVolumeActor::StateWork)
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
+
+        HFunc(
+            TEvServicePrivate::TEvCreateEncryptionKeyResponse,
+            HandleCreateEncryptionKeyResponse);
 
         default:
             HandleUnexpectedEvent(ev, TBlockStoreComponents::SERVICE);

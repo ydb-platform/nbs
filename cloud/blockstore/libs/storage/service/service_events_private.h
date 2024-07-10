@@ -236,6 +236,15 @@ struct TEvServicePrivate
     };
 
     //
+    // Create encryption key
+    //
+
+    struct TCreateEncryptionKeyResponse
+    {
+        TString EncryptionKey;
+    };
+
+    //
     // UpdateManuallyPreemptedVolume notification
     //
 
@@ -298,6 +307,7 @@ struct TEvServicePrivate
         EvUpdateManuallyPreemptedVolume,
         EvSyncManuallyPreemptedVolumesComplete,
         EvSelfPing,
+        EvCreateEncryptionKeyResponse,
 
         EvEnd
     };
@@ -387,6 +397,11 @@ struct TEvServicePrivate
     >;
 
     using TEvSelfPing = TRequestEvent<TSelfPing, EvSelfPing>;
+
+    using TEvCreateEncryptionKeyResponse = TResponseEvent<
+        TCreateEncryptionKeyResponse,
+        EvCreateEncryptionKeyResponse
+    >;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
