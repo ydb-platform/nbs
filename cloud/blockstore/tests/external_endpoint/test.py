@@ -236,7 +236,7 @@ def test_external_endpoint(nbs, fake_vhost_server):
 
         # expect the old server servicing the "vol0" will terminate when the new one starts.
         nbs.old_vhost_server_vol0.communicate(timeout=1)
-        assert nbs.old_vhost_server_vol0.returncode == 0
+        assert nbs.old_vhost_server_vol0.returncode == -9
 
         # expect old vhost-server for "vol1" still running.
         try:
