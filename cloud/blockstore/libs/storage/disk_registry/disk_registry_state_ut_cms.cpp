@@ -288,7 +288,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
             db.InitSchema();
         });
 
-        const auto lostAgentConfig = AgentConfig(1, "agent-1", {});
+        const auto lostAgentConfig = AgentConfig(
+            1,
+            "agent-1",
+            {
+                // Add one broken device to avoid automatic removal of the agent
+                // from the DR.
+                Device(
+                    "NVMENBS01",
+                    "uuid-2.1",
+                    "rack-2",
+                    DefaultBlockSize,
+                    DefaultDeviceSize,
+                    {},
+                    NProto::DEVICE_STATE_ERROR),
+            });
 
         const auto agentConfig = AgentConfig(1, "agent-2", {
             Device("NVMENBS01", "uuid-1.1", "rack-1"),

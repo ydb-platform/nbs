@@ -4670,6 +4670,15 @@ NProto::TError TDiskRegistryState::UpdateAgentState(
         return error;
     }
 
+    if (agent->GetDevices().empty()) {
+        bool success = RemoveAgent(db, agent->GetNodeId());
+        if (!success) {
+            return MakeError(E_FAIL, "jopa");
+        }
+
+        return {};
+    }
+
     const auto cmsTs = TInstant::MicroSeconds(agent->GetCmsTs());
     const auto oldState = agent->GetState();
     const auto cmsDeadline = cmsTs + GetInfraTimeout(*StorageConfig, oldState);
@@ -5024,23 +5033,6 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
     if (newState != NProto::AGENT_STATE_ONLINE && !HasError(result)) {
         SuspendLocalDevices(db, *agent);
 
-        // if (affectedDisks.empty()) {
-        //     result = UnregisterAgent(db, agent->GetNodeId());
-        //     return result;
-        // }
-
-        // TVector<TString> freeDevices;
-        // freeDevices.reserve(agent->GetDevices().size());
-        // for (const auto& device : agent->GetDevices()) {
-        //     auto diskId = DeviceList.FindDiskId(device.GetDeviceUUID());
-        //     if (diskId.empty()) {
-        //         freeDevices.push_back(device.GetDeviceUUID());
-        //     }
-        // }
-        // ForgetDevices(db, freeDevices);
-
-
-
         auto newConfig = GetConfig();
         auto* agents = newConfig.MutableKnownAgents();
         const auto agentIt = FindIf(
@@ -5064,10 +5056,10 @@ NProto::TError TDiskRegistryState::UpdateCmsHostState(
 
         }
 
-        bool success = RemoveAgent(db, agent->GetNodeId());
-        if (!success) {
-            return MakeError(E_FAIL, "jopa");
-        }
+        // bool success = RemoveAgent(db, agent->GetNodeId());
+        // if (!success) {
+        //     return MakeError(E_FAIL, "jopa");
+        // }
 
 
         // if (freeDevices.ysize() == agent->GetDevices().size()) {

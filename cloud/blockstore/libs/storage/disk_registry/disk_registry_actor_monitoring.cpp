@@ -517,7 +517,14 @@ void TDiskRegistryActor::RenderAgentHtmlInfo(
             out << "Rack: " << rack;
         }
 
-        DIV() { out << "State: "; DumpAgentState(out, agent->GetState()); }
+        DIV() {
+            out << "State: ";
+
+            auto it = AgentRegInfo.find(agent->GetAgentId());
+            const bool connected =
+                it != AgentRegInfo.end() && it->second.Connected;
+            DumpAgentState(out, agent->GetState(), connected);
+        }
         DIV() {
             out << "State Timestamp: "
                 << TInstant::MicroSeconds(agent->GetStateTs());
@@ -695,7 +702,11 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                             != NProto::AGENT_STATE_ONLINE)
                     {
                         out << " ";
-                        DumpAgentState(out, agent->GetState());
+
+                        auto it = AgentRegInfo.find(agent->GetAgentId());
+                        const bool connected =
+                            it != AgentRegInfo.end() && it->second.Connected;
+                        DumpAgentState(out, agent->GetState(), connected);
                     }
                 } else {
                     out << device.GetNodeId();
@@ -1793,22 +1804,10 @@ void TDiskRegistryActor::RenderAgentList(
                             out << config.GetSeqNumber();
                         }
                         TABLED() {
-                            DumpAgentState(out, config.GetState());
-
                             auto it = AgentRegInfo.find(config.GetAgentId());
-
                             const bool connected = it != AgentRegInfo.end()
                                 && it->second.Connected;
-
-                            if (config.GetState()
-                                    != NProto::AGENT_STATE_UNAVAILABLE)
-                            {
-                                if (!connected) {
-                                    out << " <font color=gray>disconnected</font>";
-                                }
-                            } else if (connected) {
-                                out << " <font color=gray>connected</font>";
-                            }
+                            DumpAgentState(out, config.GetState(), connected);
                         }
                         TABLED() {
                             out << (config.GetDedicatedDiskAgent()

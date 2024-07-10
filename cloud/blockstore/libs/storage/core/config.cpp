@@ -341,8 +341,8 @@ TDuration MSeconds(ui32 value)
     xxx(NonReplicatedDiskSwitchToReadOnlyTimeout,   TDuration,  Hours(1)      )\
     xxx(AgentRequestTimeout,                        TDuration,  Seconds(1)    )\
                                                                                \
-    xxx(NonReplicatedAgentMinTimeout,                  TDuration,  Seconds(30))\
-    xxx(NonReplicatedAgentMaxTimeout,                  TDuration,  Minutes(5) )\
+    xxx(NonReplicatedAgentMinTimeout,                  TDuration,  Seconds(10))\
+    xxx(NonReplicatedAgentMaxTimeout,                  TDuration,  Seconds(15) )\
     xxx(NonReplicatedAgentDisconnectRecoveryInterval,  TDuration,  Minutes(1) )\
     xxx(NonReplicatedAgentTimeoutGrowthFactor,         double,     2          )\
                                                                                \
