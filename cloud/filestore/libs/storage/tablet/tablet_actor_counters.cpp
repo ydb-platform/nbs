@@ -1,5 +1,4 @@
 #include "tablet_actor.h"
-#include "cloud/filestore/private/api/protos/tablet.pb.h"
 
 #include <cloud/filestore/libs/diagnostics/metrics/label.h>
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
