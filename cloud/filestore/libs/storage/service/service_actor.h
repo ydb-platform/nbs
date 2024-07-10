@@ -156,6 +156,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateGetStorageConfigActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateChangeStorageConfigActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

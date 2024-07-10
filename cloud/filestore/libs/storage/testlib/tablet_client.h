@@ -265,6 +265,19 @@ public:
         return request;
     }
 
+    auto CreateGetStorageConfigRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvGetStorageConfigRequest>();
+    }
+
+    auto CreateChangeStorageConfigRequest(NProto::TStorageConfig patch)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvChangeStorageConfigRequest>();
+        *request->Record.MutableStorageConfig() = std::move(patch);
+        return request;
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();

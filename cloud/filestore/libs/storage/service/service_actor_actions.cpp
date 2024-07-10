@@ -64,6 +64,10 @@ void TStorageServiceActor::HandleExecuteAction(
             "configureasfollower",
             &TStorageServiceActor::CreateConfigureAsFollowerActionActor
         },
+        {
+            "getstorageconfig",
+            &TStorageServiceActor::CreateGetStorageConfigActionActor
+        },
     };
 
     auto it = actions.find(action);

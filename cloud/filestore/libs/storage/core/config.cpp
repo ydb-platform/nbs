@@ -320,4 +320,9 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     return TValueByName(value);
 }
 
+const NProto::TStorageConfig& TStorageConfig::GetStorageConfigProto() const
+{
+    return ProtoConfig;
+}
+
 }   // namespace NCloud::NFileStore::NStorage

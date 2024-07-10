@@ -563,6 +563,19 @@ void TIndexTabletActor::HandleGetStorageConfigFields(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
+void TIndexTabletActor::HandleGetStorageConfig(
+    const TEvIndexTablet::TEvGetStorageConfigRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto response = std::make_unique<TEvIndexTablet::TEvGetStorageConfigResponse>();
+    *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
+
+    NCloud::Reply(
+        ctx,
+        *ev,
+        std::move(response));
+}
+
 void TIndexTabletActor::HandleDescribeSessions(
     const TEvIndexTablet::TEvDescribeSessionsRequest::TPtr& ev,
     const TActorContext& ctx)
