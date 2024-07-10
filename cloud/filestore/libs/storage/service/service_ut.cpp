@@ -3885,7 +3885,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(ShouldAggregateFileSystemMetrics)
     {
-
         NProto::TStorageConfig config;
         config.SetMultiTabletForwardingEnabled(true);
         TTestEnv env({}, config);
