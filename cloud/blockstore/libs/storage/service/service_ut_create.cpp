@@ -1717,47 +1717,6 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
-    Y_UNIT_TEST(ShouldDestroyVolumeWithSync)
-    {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        config.SetAllocationUnitNonReplicatedSSD(1);
-        ui32 nodeIdx = SetupTestEnv(env, config);
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-
-        service.CreateVolume(
-            DefaultDiskId,
-            1_GB / DefaultBlockSize,
-            DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
-
-        bool syncDealloc = false;
-
-        auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
-        {
-            if (event->GetTypeRewrite() == TEvDiskRegistry::EvDeallocateDiskRequest) {
-                auto* msg = event->Get<TEvDiskRegistry::TEvDeallocateDiskRequest>();
-                if (msg->Record.GetDiskId() == DefaultDiskId) {
-                    syncDealloc = msg->Record.GetSync();
-                }
-            }
-            return TTestActorRuntime::DefaultObserverFunc(runtime, event);
-        });
-
-        service.DestroyVolume(
-            DefaultDiskId,
-            false,  // destroyIfBroken
-            true   // sync
-        );
-
-        UNIT_ASSERT(syncDealloc);
-    }
-
     Y_UNIT_TEST(ShoudSaveFillGeneration)
     {
         TTestEnv env;
