@@ -163,6 +163,7 @@ namespace {
         TDuration::Seconds(10)                                                )\
     xxx(PreferredBlockSizeMultiplier,                   ui32,      1          )\
     xxx(MultiTabletForwardingEnabled,                   bool,      false      )\
+    xxx(AllowFileStoreForceDestroy,                     bool,      false      )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_DECLARE_CONFIG(name, type, value)                            \
