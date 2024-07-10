@@ -28,7 +28,6 @@ struct TServerConfig
     ui64 MaxInflightBytes = Max<ui64>();
     TDuration AdaptiveWaitSleepDelay = TDuration::MilliSeconds(10);
     TDuration AdaptiveWaitSleepDuration = TDuration::MicroSeconds(100);
-    bool AlignedDataEnabled = false;
 
     TServerConfig() = default;
 
@@ -73,8 +72,6 @@ struct IServer
         IServerHandlerPtr handler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
-
-    virtual bool IsAlignedDataEnabled() const = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NRdma

@@ -145,21 +145,18 @@ private:
         TBlockStoreProtocol::Serializer();
 
     const bool RejectLateRequestsAtDiskAgentEnabled;
-    const bool AlignedDataEnabled;
 
 public:
     TRequestHandler(
             THashMap<TString, TStorageAdapterPtr> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
-            TRdmaTargetConfig rdmaTargetConfig,
-            bool alignedDataEnabled)
+            TRdmaTargetConfig rdmaTargetConfig)
         : Devices(MakeDevices(std::move(devices), rdmaTargetConfig))
         , TaskQueue(std::move(taskQueue))
         , DeviceClient(std::move(deviceClient))
         , RejectLateRequestsAtDiskAgentEnabled(
               rdmaTargetConfig.RejectLateRequestsAtDiskAgentEnabled)
-        , AlignedDataEnabled(alignedDataEnabled)
     {}
 
     void Init(NRdma::IServerEndpointPtr endpoint, TLog log)
@@ -253,12 +250,6 @@ private:
 
         const bool isZeroCopyDataSupported =
             HasProtoFlag(request.Flags, NRdma::RDMA_PROTO_FLAG_DATA_AT_THE_END);
-
-        if (isZeroCopyDataSupported && !AlignedDataEnabled) {
-            return MakeError(
-                E_NOT_IMPLEMENTED,
-                "Zero copy is disabled on disk agent");
-        }
 
         switch (request.MsgId) {
             case TBlockStoreProtocol::ReadDeviceBlocksRequest:
@@ -1000,8 +991,7 @@ public:
             std::move(devices),
             std::move(taskQueue),
             std::move(deviceClient),
-            std::move(rdmaTargetConfig),
-            Server->IsAlignedDataEnabled());
+            std::move(rdmaTargetConfig));
     }
 
     void Start() override

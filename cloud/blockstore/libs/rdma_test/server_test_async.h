@@ -35,11 +35,6 @@ public:
         Y_UNUSED(out);
     }
 
-    bool IsAlignedDataEnabled() const override
-    {
-        return false;
-    }
-
     NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> Run(
         TString host,
         ui32 port,
