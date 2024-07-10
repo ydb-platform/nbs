@@ -9,7 +9,9 @@ namespace {
 class TDestroyCommand final
     : public TFileStoreCommand
 {
+private:
     bool ForceDestroy = false;
+
 public:
     TDestroyCommand()
     {
