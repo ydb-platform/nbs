@@ -67,7 +67,7 @@ def generate_test_cases(test_suite: str, cluster_name: str) -> List[TestCase]:
         'medium': _generate_test_cases_for_medium_test_suite,
         'big': _generate_test_cases_for_big_test_suite,
         'enormous': _generate_test_cases_for_enormous_test_suite,
-        'dr_based': _generate_test_cases_for_dr_based_test_suite,
+        'disk_registry_based': _generate_test_cases_for_disk_registry_based_test_suite,
     }
     try:
         func = test_suite_to_func[test_suite]
@@ -176,10 +176,10 @@ def _generate_test_cases_for_enormous_test_suite(
     ]
 
 
-def _generate_test_cases_for_dr_based_test_suite(  # TODO:_ check it!
+def _generate_test_cases_for_disk_registry_based_test_suite(
         cluster_name: str) -> List[TestCase]:
     return [
-        TestCase('dr_based',
+        TestCase('disk_registry_based',
                  disk_type,
                  disk_size,
                  disk_blocksize,
@@ -190,7 +190,7 @@ def _generate_test_cases_for_dr_based_test_suite(  # TODO:_ check it!
             ['network-ssd-nonreplicated', 'network-ssd-io-m3'],
             [372],  # GB
             [4 * 1024],  # bytes
-            [4],
+            [8],
             [4 * 1024 * 1024]  # bytes
         )
     ]

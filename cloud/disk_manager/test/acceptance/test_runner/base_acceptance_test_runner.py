@@ -26,7 +26,6 @@ from .cleanup import (
 from .lib import (
     check_ssh_connection,
     create_ycp,
-    size_prettifier,
     make_disk_parameters_string,
     Error,
     YcpNewInstancePolicy,
@@ -75,8 +74,6 @@ class BaseTestBinaryExecutor:
         self._s3_host = getattr(args, 's3_host', None)
 
     def run(self, disk_type: str, disk_id: str, disk_size: str, disk_blocksize: str) -> None:
-        # TODO:_ check how cleanup will work
-        # TODO:_ ok
         self._acceptance_test_cmd.extend(
             [
                 '--suffix',
@@ -369,7 +366,7 @@ class BaseAcceptanceTestRunner(ABC):
                     error=error,
                 )
 
-    def disk_parameters_string(self, delim = "-"):
+    def _make_disk_parameters_string(self, delim: str = "-"):
         return make_disk_parameters_string(
             self._args.disk_type,
             self._args.disk_size * (1024 ** 3),

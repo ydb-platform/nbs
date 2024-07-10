@@ -301,9 +301,9 @@ def test_cleanup():
             created_at=_now - timedelta(days=9),
         ),
     ]
-    should_delete_test_acceptance_dr_based = [
+    should_delete_test_acceptance_disk_registry_based = [
         _Resource(
-            name='acceptance-test-acceptance-dr_based-2412341243',
+            name='acceptance-test-acceptance-disk_registry_based-2412341243',
             resource_type='disk',
             created_at=_now - timedelta(days=9),
         ),
@@ -453,7 +453,7 @@ def test_cleanup():
                 *should_delete_test_acceptance_medium,
                 *should_delete_test_acceptance_big,
                 *should_delete_test_acceptance_enormous,
-                *should_delete_test_acceptance_dr_based,
+                *should_delete_test_acceptance_disk_registry_based,
                 *should_delete_test_acceptance_default,
                 *should_delete_test_eternal_1tib_4kib,
                 *should_delete_test_eternal_8gib_8kib,
@@ -505,7 +505,6 @@ def test_cleanup():
             ) == set(
                 expected_should_delete_data,
             ), f"Failed cleanup for args {cleanup_args}"
-    # TODO:_ test case for another disk type !!!
     test_cleanup_fixture = [
         (
             AcceptanceTestCleaner,
@@ -547,9 +546,9 @@ def test_cleanup():
             AcceptanceTestCleaner,
             _ArgumentNamespaceMock(
                 test_type='acceptance',
-                test_suite='dr_based',
+                test_suite='disk_registry_based',
             ),
-            should_delete_test_acceptance_dr_based,
+            should_delete_test_acceptance_disk_registry_based,
 
         ),
         (

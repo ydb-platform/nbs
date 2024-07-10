@@ -5,7 +5,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Any
 
 from cloud.blockstore.pylibs.ycp import YcpWrapper
-from cloud.disk_manager.test.acceptance.test_runner.lib import size_prettifier, make_disk_parameters_string
+from cloud.disk_manager.test.acceptance.test_runner.lib import (
+    size_prettifier,
+    make_disk_parameters_string,
+)
 
 _logger = logging.getLogger(__file__)
 
@@ -40,9 +43,7 @@ def _cleanup_stale_entities(
             if entity.created_at > should_be_older_than:
                 continue
             for pattern in regexps.get(entity_type, []):
-                print(pattern, entity)
                 if re.match(pattern, entity.name):
-                    print('matched')
                     _logger.info(
                         "Deleting %s with name %s",
                         entity_type, entity.name)
@@ -56,7 +57,6 @@ def _cleanup_stale_entities(
                             exc_info=e,
                         )
                     break
-                print('not matched')
 
 
 def cleanup_previous_acceptance_tests_results(
@@ -68,7 +68,6 @@ def cleanup_previous_acceptance_tests_results(
         entity_ttl: timedelta = timedelta(days=1),
 ):
     entity_accessors = _get_entity_accessors(ycp)
-    disk_parameters_string = make_disk_parameters_string(disk_type, disk_size, disk_blocksize)
     disk_size = size_prettifier(disk_size).lower()
     disk_blocksize = size_prettifier(disk_blocksize).lower()
     _logger.info(
@@ -80,10 +79,10 @@ def cleanup_previous_acceptance_tests_results(
     )
     regexps = {
         entity_type: [
-            # TODO:_ ok
             re.compile(
                 fr'^acceptance-test-{entity_type}-'
-                fr'{test_type}-{disk_parameters_string}-[0-9]+$',
+                fr'{test_type}-'
+                fr'{make_disk_parameters_string(disk_type, disk_size, disk_blocksize)}-[0-9]+$',
             ),
             re.compile(fr'^acceptance-test-{entity_type}-{test_type}-[0-9]+$')
         ] for entity_type in entity_accessors
@@ -107,7 +106,7 @@ class BaseResourceCleaner:
         self._disk_size = None
         self._disk_blocksize = None
         if hasattr(args, 'disk_type'):
-            self._disk_type = args.disk_type.lower()
+            self._disk_type = args.disk_type
         if hasattr(args, 'disk_size'):
             self._disk_size = size_prettifier(
                 args.disk_size * (1024 ** 3)).lower()
@@ -141,5 +140,6 @@ class BaseResourceCleaner:
             self._patterns,
         )
 
-    def disk_parameters_string(self):
+    @property
+    def _disk_parameters_string(self):
         return make_disk_parameters_string(self._disk_type, self._disk_size, self._disk_blocksize)

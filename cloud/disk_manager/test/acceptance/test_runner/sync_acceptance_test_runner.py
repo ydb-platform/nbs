@@ -6,9 +6,7 @@ import re
 from cloud.blockstore.pylibs.ycp import YcpWrapper
 from .base_acceptance_test_runner import BaseAcceptanceTestRunner, \
     BaseTestBinaryExecutor, BaseResourceCleaner
-from .lib import (
-    Error,
-)
+from .lib import Error
 
 from cloud.blockstore.pylibs import common
 
@@ -24,12 +22,10 @@ class SyncTestCleaner(BaseResourceCleaner):
     def __init__(self, ycp: YcpWrapper, args: argparse.Namespace):
         super(SyncTestCleaner, self).__init__(ycp, args)
         test_type = args.test_type
-        # TODO:_ ok
         disk_name_string = (
             fr'^acceptance-test-{test_type}-'
-            fr'{self.disk_parameters_string()}-[0-9]+'
+            fr'{self._disk_parameters_string}-[0-9]+'
         )
-        print(f'SyncTestCleaner: disk_name_string: {disk_name_string}')
         disk_name_pattern = re.compile(fr'{disk_name_string}$')
         secondary_disk_name_pattern = re.compile(
             fr'{disk_name_string}-from-snapshot$',
@@ -50,12 +46,10 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
     _cleaner_type = SyncTestCleaner
     _single_disk_test_ttl = datetime.timedelta(days=5)
 
-    # TODO:_ ok
     def _get_test_suite(self):
         return (
             f'{self._args.zone_id}_sync_'
-            f'{self.disk_parameters_string(delim="_")}'.lower()
-        )
+            f'{self._make_disk_parameters_string(delim="_")}').lower()
 
     def _report_compute_failure(self, error):
         if self._results_processor is not None:
@@ -86,11 +80,9 @@ class SyncAcceptanceTestRunner(BaseAcceptanceTestRunner):
                 {},
                 self._get_test_suite(),
             ):
-                # TODO:_ ok
                 disk_name_prefix = (
                     f'acceptance-test-{self._args.test_type}-'
-                    f'{self.disk_parameters_string()}'.lower()
-                )
+                    f'{self._make_disk_parameters_string()}').lower()
                 disk = self._find_or_create_eternal_disk(disk_name_prefix)
 
                 _logger.info(

@@ -831,11 +831,11 @@ func main() {
 		&skipImages,
 		"skip-images",
 		false,
-		"do not skip creation of images and creation of disks from images",
+		"skip creation of images and creation of disks from images",
 	)
 
 	if skipImages && len(urlForCreateImageFromURLTest) != 0 {
-		log.Fatalf("skip images option is used, but image url present: %v", urlForCreateImageFromURLTest)
+		log.Fatalf("skip images option is set, but image url is present: %v", urlForCreateImageFromURLTest)
 	}
 
 	if err := rootCmd.Execute(); err != nil {
