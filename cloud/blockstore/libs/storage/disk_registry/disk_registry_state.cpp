@@ -3601,21 +3601,37 @@ bool TDiskRegistryState::MarkDeviceAsDirty(
     return true;
 }
 
-TString TDiskRegistryState::MarkDeviceAsClean(
+TDiskRegistryState::TDiskId TDiskRegistryState::MarkDeviceAsClean(
     TInstant now,
     TDiskRegistryDatabase& db,
     const TDeviceId& uuid)
 {
-    DeviceList.MarkDeviceAsClean(uuid);
-    db.DeleteDirtyDevice(uuid);
+    auto ret = MarkDevicesAsClean(now, db, TVector<TDeviceId>{uuid});
+    return ret.empty() ? "" : ret[0];
+}
 
-    if (!DeviceList.IsSuspendedDevice(uuid)) {
-        db.DeleteSuspendedDevice(uuid);
+TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDevicesAsClean(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TVector<TDeviceId>& uuids)
+{
+    for (const auto& uuid: uuids) {
+        DeviceList.MarkDeviceAsClean(uuid);
+        db.DeleteDirtyDevice(uuid);
+
+        if (!DeviceList.IsSuspendedDevice(uuid)) {
+            db.DeleteSuspendedDevice(uuid);
+        }
     }
 
-    TryUpdateDevice(now, db, uuid);
+    TVector<TDiskId> ret;
+    for (const auto& uuid: TryUpdateDevices(now, db, uuids)) {
+        if (auto diskId = PendingCleanup.EraseDevice(uuid); !diskId.empty()) {
+            ret.push_back(std::move(diskId));
+        }
+    }
 
-    return PendingCleanup.EraseDevice(uuid);
+    return ret;
 }
 
 bool TDiskRegistryState::TryUpdateDevice(
@@ -3623,19 +3639,38 @@ bool TDiskRegistryState::TryUpdateDevice(
     TDiskRegistryDatabase& db,
     const TDeviceId& uuid)
 {
-    Y_UNUSED(now);
+    return !TryUpdateDevices(now, db, {uuid}).empty();
+}
 
-    auto [agent, device] = FindDeviceLocation(uuid);
-    if (!agent || !device) {
-        return false;
+TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TVector<TDeviceId>& uuids)
+{
+    TVector<TDeviceId> ret;
+    ret.reserve(uuids.size());
+
+    TSet<TAgentId> agentsMap;
+    for (const auto& uuid: uuids) {
+        auto [agent, device] = FindDeviceLocation(uuid);
+        if (!agent || !device) {
+            continue;
+        }
+        ret.push_back(uuid);
+        agentsMap.emplace(agent->agentid());
+        AdjustDeviceIfNeeded(*device, now);
     }
 
-    AdjustDeviceIfNeeded(*device, {});
+    for (const auto& agentId: agentsMap) {
+        auto* agent = AgentList.FindAgent(agentId);
+        if (!agent) {
+            continue;
+        }
+        UpdateAgent(db, *agent);
+        DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
+    }
 
-    UpdateAgent(db, *agent);
-    DeviceList.UpdateDevices(*agent, DevicePoolConfigs);
-
-    return true;
+    return ret;
 }
 
 TVector<TString> TDiskRegistryState::CollectBrokenDevices(
