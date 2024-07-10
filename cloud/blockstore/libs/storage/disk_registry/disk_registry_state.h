@@ -1133,6 +1133,7 @@ private:
 
     /// Try to update configuration of selected device and its agent
     /// in the disk registry database
+    /// @return true if the device updates successfully; otherwise, return false
     bool TryUpdateDevice(
         TInstant now,
         TDiskRegistryDatabase& db,
