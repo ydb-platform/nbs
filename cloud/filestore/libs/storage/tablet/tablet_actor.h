@@ -166,6 +166,17 @@ private:
         TRequestMetrics TrimBytes;
         TRequestMetrics CollectGarbage;
 
+        i64 GetAllRequestMetricsSum(){
+            i64 sum = ReadBlob.RequestBytes + DescribeData.RequestBytes +
+                      PatchBlob.RequestBytes + ReadData.RequestBytes +
+                      DescribeData.RequestBytes + WriteData.RequestBytes +
+                      AddData.RequestBytes + GenerateBlobIds.RequestBytes +
+                      Cleanup.RequestBytes + Flush.RequestBytes +
+                      FlushBytes.RequestBytes + TrimBytes.RequestBytes +
+                      CollectGarbage.RequestBytes + Compaction.RequestBytes;
+            return sum;
+        };
+
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};
