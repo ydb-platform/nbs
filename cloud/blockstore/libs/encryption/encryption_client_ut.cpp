@@ -72,21 +72,13 @@ struct TTestEncryptor final
         ui64 blockIndex) override
     {
         UNIT_ASSERT(srcRef.Size() == dstRef.Size());
-
-        if (srcRef.Data() == nullptr) {
-            char* dstPtr = const_cast<char*>(dstRef.Data());
-            for (size_t i = 0; i < srcRef.Size(); ++i) {
-                *dstPtr = static_cast<char>(blockIndex) ^ (i % 256);
-                ++dstPtr;
-            }
-            return {};
-        }
+        UNIT_ASSERT(srcRef.Data() != nullptr);
 
         const char* srcPtr = srcRef.Data();
         char* dstPtr = const_cast<char*>(dstRef.Data());
 
         for (size_t i = 0; i < srcRef.Size(); ++i) {
-            *dstPtr = *srcPtr ^ (i % 256) - static_cast<char>(blockIndex);
+            *dstPtr = (*srcPtr ^ (i % 256)) - static_cast<char>(blockIndex);
             ++srcPtr;
             ++dstPtr;
         }
