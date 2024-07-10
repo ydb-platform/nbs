@@ -198,7 +198,8 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             && args.ChildNode->NodeId == args.NewChildNode->NodeId;
         const bool isSameExternalNode = args.ChildRef->FollowerId
             && args.NewChildRef->FollowerId
-            && args.ChildRef->FollowerId == args.NewChildRef->FollowerId;
+            && args.ChildRef->FollowerId == args.NewChildRef->FollowerId
+            && args.ChildRef->FollowerName == args.NewChildRef->FollowerName;
         if (isSameNode || isSameExternalNode) {
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
