@@ -212,6 +212,11 @@ public:
         SendSignal(SIGTERM);
     }
 
+    void Kill() const noexcept
+    {
+        SendSignal(SIGKILL);
+    }
+
     NProto::TError Wait() const
     {
         int status = 0;
@@ -1148,7 +1153,7 @@ private:
         STORAGE_WARN(
             "Send TERMINATE to external-vhost-server with PID:"
             << pid << " for disk-id: " << diskId.Quote());
-        child.Terminate();
+        child.Kill();
         child.Wait();
 
         OldEndpoints.erase(diskId);
