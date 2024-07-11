@@ -933,6 +933,10 @@ private:
         TDiskState& disk,
         TInstant timestamp);
 
+    NProto::TError TryToRemoveAgentDevices(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId);
+
     NProto::TPlacementGroupConfig::TDiskInfo* CollectRacks(
         const TString& diskId,
         ui32 placementPartitionIndex,
