@@ -135,7 +135,7 @@ private:
         struct TRequestMetrics
         {
             explicit TRequestMetrics(
-                std::vector<TRequestMetrics*>& allRequestMetrics)
+                TVector<TRequestMetrics*>& allRequestMetrics)
             {
                 allRequestMetrics.push_back(this);
             }
@@ -155,14 +155,14 @@ private:
         struct TCompactionMetrics: TRequestMetrics
         {
             explicit TCompactionMetrics(
-                std::vector<TRequestMetrics*>& allRequestMetrics)
+                TVector<TRequestMetrics*>& allRequestMetrics)
                 : TRequestMetrics(allRequestMetrics)
             {}
 
             std::atomic<i64> DudCount{0};
         };
-
-        TVector<TRequestMetrics*> AllRequestMetrics;
+        static constexpr const ui32 RequestMetricsCount = 14;
+        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(RequestMetricsCount)};
 
         TRequestMetrics ReadBlob{AllRequestMetrics};
         TRequestMetrics WriteBlob{AllRequestMetrics};
@@ -178,6 +178,19 @@ private:
         TRequestMetrics FlushBytes{AllRequestMetrics};
         TRequestMetrics TrimBytes{AllRequestMetrics};
         TRequestMetrics CollectGarbage{AllRequestMetrics};
+
+        i64 PastNetworkMetric = 0;
+
+        i64 TakeSumRequestBytes()
+        {
+            i64 sumRequestBytes = 0;
+            for (auto* metric: AllRequestMetrics) {
+                sumRequestBytes += metric->RequestBytes;
+            }
+            auto delta = PastNetworkMetric - sumRequestBytes;
+            PastNetworkMetric = sumRequestBytes;
+            return delta;
+        }
 
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
@@ -241,8 +254,6 @@ private:
     NProto::TStorageConfig StorageConfigOverride;
 
     ui32 BackpressureErrorCount = 0;
-
-    i64 PastNetworkMetric = 0;
 
 public:
     TIndexTabletActor(
@@ -517,8 +528,6 @@ private:
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
     void UpdateLogTag();
-
-    NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -329,16 +329,9 @@ void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
 
 void TIndexTabletActor::SendMetricsToHive(const TActorContext& ctx)
 {
-    i64 sumRequestBytes = 0;
-    for (auto& metric: Metrics.AllRequestMetrics) {
-        sumRequestBytes += metric->RequestBytes;
-    }
-    auto tmpBytes = sumRequestBytes - PastNetworkMetric;
-
-    GetResourceMetrics()->Network.Increment(tmpBytes, ctx.Now());
-    PastNetworkMetric = sumRequestBytes;
-
-    GetResourceMetrics()->TryUpdate(ctx);
+    auto *resourceMetrics = Executor()->GetResourceMetrics();
+    resourceMetrics->Network.Increment(Metrics.TakeSumRequestBytes(), ctx.Now());
+    resourceMetrics->TryUpdate(ctx);
 }
 
 void TIndexTabletActor::HandleUpdateCounters(
