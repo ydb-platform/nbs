@@ -96,9 +96,7 @@ void TDiskRegistryActor::CompleteWritableState(
     DisksNotificationInProgress = false;
     UsersNotificationInProgress = false;
     DiskStatesPublicationInProgress = false;
-    SecureEraseInProgressPerPool.assign(
-        NProto::EDevicePoolKind_ARRAYSIZE,
-        false);
+    SecureEraseInProgressPerPool.clear();
     StartMigrationInProgress = false;
 }
 

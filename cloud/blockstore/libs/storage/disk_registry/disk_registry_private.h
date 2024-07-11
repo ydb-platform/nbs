@@ -267,15 +267,15 @@ struct TEvDiskRegistryPrivate
 
     struct TSecureEraseRequest
     {
-        NProto::EDevicePoolKind PoolKind;
+        TString PoolName;
         TVector<NProto::TDeviceConfig> DirtyDevices;
         TDuration RequestTimeout;
 
         explicit TSecureEraseRequest(
-            NProto::EDevicePoolKind poolKind,
+            TString poolName,
             TVector<NProto::TDeviceConfig> dirtyDevices,
             TDuration requestTimeout)
-            : PoolKind(poolKind)
+            : PoolName(std::move(poolName))
             , DirtyDevices(std::move(dirtyDevices))
             , RequestTimeout(requestTimeout)
         {}
@@ -283,15 +283,15 @@ struct TEvDiskRegistryPrivate
 
     struct TSecureEraseResponse
     {
-        NProto::EDevicePoolKind PoolKind;
+        TString PoolName;
         size_t CleanDevices = 0;
 
         TSecureEraseResponse() = default;
 
         explicit TSecureEraseResponse(
-            NProto::EDevicePoolKind poolKind,
+            TString poolName,
             size_t cleanDevices)
-            : PoolKind(poolKind)
+            : PoolName(std::move(poolName))
             , CleanDevices(cleanDevices)
         {}
     };
