@@ -84,16 +84,19 @@ public:
         }
     };
 
+    TDeviceList() = default;
+
     explicit TDeviceList(
         TVector<TDeviceId> dirtyDevices,
-        TVector<NProto::TSuspendedDevice> suspendedDevices);
+        TVector<NProto::TSuspendedDevice> suspendedDevices,
+        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices);
 
-    size_t Size() const
+    [[nodiscard]] size_t Size() const
     {
         return AllDevices.size();
     }
 
-    const auto& GetPoolName2DeviceCount() const
+    [[nodiscard]] const auto& GetPoolName2DeviceCount() const
     {
         return PoolName2DeviceCount;
     }
@@ -109,15 +112,15 @@ public:
 
     void RemoveDevices(const NProto::TAgentConfig& agent);
 
-    TNodeId FindNodeId(const TDeviceId& id) const;
-    TString FindAgentId(const TDeviceId& id) const;
+    [[nodiscard]] TNodeId FindNodeId(const TDeviceId& id) const;
+    [[nodiscard]] TString FindAgentId(const TDeviceId& id) const;
 
-    TString FindRack(const TDeviceId& id) const;
-    TDiskId FindDiskId(const TDeviceId& id) const;
-    const NProto::TDeviceConfig* FindDevice(const TDeviceId& id) const;
+    [[nodiscard]] TString FindRack(const TDeviceId& id) const;
+    [[nodiscard]] TDiskId FindDiskId(const TDeviceId& id) const;
+    [[nodiscard]] const NProto::TDeviceConfig* FindDevice(const TDeviceId& id) const;
 
-    TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
-    TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
+    [[nodiscard]] TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
+    [[nodiscard]] TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
 
     NProto::TDeviceConfig AllocateDevice(
         const TDiskId& diskId,
@@ -126,7 +129,7 @@ public:
         const TDiskId& diskId,
         const TDeviceId& deviceId,
         const TAllocationQuery& query);
-    bool IsAllocatedDevice(const TDeviceId& id) const;
+    [[nodiscard]] bool IsAllocatedDevice(const TDeviceId& id) const;
     bool ValidateAllocationQuery(
         const TAllocationQuery& query,
         const TDeviceId& targetDeviceId);
@@ -143,16 +146,16 @@ public:
     bool MarkDeviceAsClean(const TDeviceId& uuid);
     void MarkDeviceAsDirty(const TDeviceId& uuid);
 
-    bool IsDirtyDevice(const TDeviceId& uuid) const;
-    NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
+    [[nodiscard]] bool IsDirtyDevice(const TDeviceId& uuid) const;
+    [[nodiscard]] NProto::EDeviceState GetDeviceState(const TDeviceId& uuid) const;
 
     void SuspendDevice(const TDeviceId& ids);
     void ResumeDevice(const TDeviceId& id);
     void ResumeAfterErase(const TDeviceId& id);
-    bool IsSuspendedDevice(const TDeviceId& id) const;
-    TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
+    [[nodiscard]] bool IsSuspendedDevice(const TDeviceId& id) const;
+    [[nodiscard]] TVector<NProto::TSuspendedDevice> GetSuspendedDevices() const;
 
-    ui64 GetDeviceByteCount(const TDeviceId& id) const;
+    [[nodiscard]] ui64 GetDeviceByteCount(const TDeviceId& id) const;
 
     void ForgetDevice(const TString& id);
 
@@ -161,7 +164,7 @@ private:
         const TAllocationQuery& query,
         const TString& poolName);
     TVector<TDeviceRange> CollectDevices(const TAllocationQuery& query);
-    TVector<TRack> SelectRacks(
+    [[nodiscard]] TVector<TRack> SelectRacks(
         const TAllocationQuery& query,
         const TString& poolName) const;
     void RemoveDeviceFromFreeList(const TDeviceId& id);

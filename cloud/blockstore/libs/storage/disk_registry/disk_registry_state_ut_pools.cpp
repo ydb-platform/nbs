@@ -862,6 +862,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
             AgentConfig(3, {
                 device("uuid-3.1", allocationUnitSize, "rack-3"),
                 device("uuid-3.2", allocationUnitSize, "rack-3"),
+            }),
+            AgentConfig(4, {
+                // uuid-4.1 has a non-standard size
+                device("uuid-4.1", 2 * allocationUnitSize, "rack-4"),
             })
         };
 
@@ -873,6 +877,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePoolsTest)
                 return config;
             }())
             .WithKnownAgents(agents)
+            .WithDisks({[] {
+                NProto::TDiskConfig disk;
+                disk.SetDiskId("vol0");
+                disk.AddDeviceUUIDs("uuid-4.1");
+                disk.SetBlockSize(4_KB);
+                disk.SetStorageMediaKind(
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+                return disk;
+            }()})
             .Build();
 
         // uuid-2.1 was detected as a non-standart size device.
