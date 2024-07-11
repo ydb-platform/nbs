@@ -633,7 +633,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         ui64 reportCount = 0;
 
-
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
             {
