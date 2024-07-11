@@ -3650,18 +3650,18 @@ TVector<TDiskRegistryState::TDeviceId> TDiskRegistryState::TryUpdateDevices(
     TVector<TDeviceId> ret;
     ret.reserve(uuids.size());
 
-    TSet<TAgentId> agentsMap;
+    TSet<TAgentId> agentsSet;
     for (const auto& uuid: uuids) {
         auto [agent, device] = FindDeviceLocation(uuid);
         if (!agent || !device) {
             continue;
         }
         ret.push_back(uuid);
-        agentsMap.emplace(agent->agentid());
+        agentsSet.emplace(agent->GetAgentId());
         AdjustDeviceIfNeeded(*device, now);
     }
 
-    for (const auto& agentId: agentsMap) {
+    for (const auto& agentId: agentsSet) {
         auto* agent = AgentList.FindAgent(agentId);
         if (!agent) {
             continue;
