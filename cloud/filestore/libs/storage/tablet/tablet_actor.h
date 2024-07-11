@@ -178,8 +178,9 @@ private:
         TRequestMetrics TrimBytes{AllRequestMetrics};
         TRequestMetrics CollectGarbage{AllRequestMetrics};
 
-        i64 GetTotalRequestBytes();
+        i64 LastNetworkMetric = 0;
 
+        i64 TakeTotalRequestBytes();
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
         std::atomic<i64> MaxDeletionsInRange{0};

@@ -632,6 +632,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         const auto sz = DefaultBlockSize * blockCount;
 
         ui64 reportCount = 0;
+        ui64 network = 0;
 
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
@@ -640,22 +641,30 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 switch (event->GetTypeRewrite()) {
                     case NKikimr::TEvLocal::EvTabletMetrics: {
                         ++reportCount;
+
+                        const auto* msg = event->template Get<
+                            NKikimr::TEvLocal::TEvTabletMetrics>();
+                        NKikimrTabletBase::TMetrics metrics = msg->ResourceValues;
+                        network += metrics.GetNetwork();
                     }
                 }
-
                 return false;
             });
 
-        tablet.WriteData(handle, 0, sz, 'a');
 
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(20));
+        for (int i = 0; i < 16; ++i)
         {
-            NActors::TDispatchOptions options;
-            options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
-            env.GetRuntime().DispatchEvents(options);
+            tablet.WriteData(handle, 0, sz, 'a');
+            env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(1));
+            {
+                NActors::TDispatchOptions options;
+                options.FinalEvents.emplace_back(NKikimr::TEvLocal::EvTabletMetrics);
+                env.GetRuntime().DispatchEvents(options);
+            }
         }
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, reportCount);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, network);
     }
 }
 
