@@ -86,13 +86,22 @@ TString ReadFromFile(const TString& fileName)
     }
 }
 
-TString ParseDiskIdFormCmdLine(const TString& cmdLine)
+TString ParseDiskIdFromCmdLine(const TString& cmdLine)
 {
     // Prepare argv from string with zero-separated params.
+    // Flags AllowUnknownCharOptions_ and AllowUnknownCharOptions_ force parser
+    // to ignore all of the following parameters if it encounters an unknown
+    // parameter. Therefore, we discard all the parameters that are in front of
+    // the --disk-id.
     std::vector<const char*> argv;
+    bool diskIdSeen = false;
     for (size_t i = 0; i < cmdLine.size(); ++i) {
+        if (TStringBuf{&cmdLine[i]} == "--disk-id") {
+            diskIdSeen = true;
+        }
         const bool prevCharIsZero = i == 0 || (cmdLine[i - 1] == 0);
-        if (cmdLine[i] != 0 && prevCharIsZero) {
+        const bool shouldTakeParam = (i == 0) || diskIdSeen;
+        if (cmdLine[i] != 0 && prevCharIsZero && shouldTakeParam) {
             argv.push_back(&cmdLine[i]);
         }
     }
@@ -105,25 +114,7 @@ TString ParseDiskIdFormCmdLine(const TString& cmdLine)
     TString diskId;
     NLastGetopt::TOpts opts;
     opts.AddLongOption("disk-id").StoreResult(&diskId);
-    opts.AddLongOption('i', "serial");
-    opts.AddLongOption('s', "socket-path");
-    opts.AddLongOption("device");
-    opts.AddLongOption("client-id");
-    opts.AddLongOption("device-backend");
-    opts.AddLongOption("block-size");
-    opts.AddLongOption('r', "read-only");
-    opts.AddLongOption('B', "batch-size");
-    opts.AddLongOption('q', "queue-count");
-    opts.AddLongOption('a', "socket-access-mode");
-    opts.AddLongOption('v', "verbose");
-    opts.AddLongOption("log-type");
-    opts.AddLongOption("rdma-queue-size");
-    opts.AddLongOption("rdma-max-buffer-size");
-    opts.AddLongOption("wait-after-parent-exit");
 
-    // Attention! The parser ignores all of the following parameters if it
-    // encounters an unknown parameter. Therefore, you should keep the list of
-    // parameters up-to-date.
     opts.AllowUnknownCharOptions_ = true;
     opts.AllowUnknownLongOptions_ = true;
 
@@ -139,7 +130,7 @@ TString FindDiskIdForRunningProcess(int pid)
         return {};
     }
     try {
-        return ParseDiskIdFormCmdLine(processCmd);
+        return ParseDiskIdFromCmdLine(processCmd);
     } catch (...) {
         return {};
     }

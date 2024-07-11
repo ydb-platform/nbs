@@ -132,12 +132,6 @@ void TOptions::Parse(int argc, char** argv)
             [this](const auto& timeout)
             { WaitAfterParentExit = TDuration::Seconds(timeout); });
 
-    Y_DEBUG_ABORT_UNLESS(
-        opts.GetOpts().size() == 20,
-        "Keep the list of parameters synchronized with the "
-        "ParseDiskIdFormCmdLine() from "
-        "cloud/blockstore/libs/endpoints_vhost/external_vhost_server.cpp ");
-
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {
