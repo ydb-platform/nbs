@@ -137,7 +137,6 @@ private:
             explicit TRequestMetrics(
                 std::vector<TRequestMetrics*>& allRequestMetrics)
             {
-                allRequestMetrics.reserve(20);
                 allRequestMetrics.push_back(this);
             }
             
@@ -163,7 +162,7 @@ private:
             std::atomic<i64> DudCount{0};
         };
 
-        std::vector<TRequestMetrics*> AllRequestMetrics;
+        TVector<TRequestMetrics*> AllRequestMetrics;
 
         TRequestMetrics ReadBlob{AllRequestMetrics};
         TRequestMetrics WriteBlob{AllRequestMetrics};
