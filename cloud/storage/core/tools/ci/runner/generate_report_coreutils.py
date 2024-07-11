@@ -4,14 +4,14 @@ import xml.etree.ElementTree as ET
 import sys
 
 
-def transform_xml(results_filename, suite_name, suite_date, muted):
+def transform_xml(results_filename, suite_name, suite_date, test_name, muted):
     root = ET.fromstring(open(results_filename, "r").read())
 
     suite_attributes = {
         'name': f'{suite_name}/{suite_date}',
         'type': suite_name,
         'date': suite_date,
-        'link': f'/ci/results/coreutils/{suite_name}/{suite_date}/junit_report.xml',
+        'link': f'/ci/results/{test_name}/{suite_name}/{suite_date}/junit_report.xml',
     }
     suite_element = ET.Element('suite', attrib=suite_attributes)
 
@@ -48,7 +48,8 @@ if __name__ == "__main__":
     suite_date = sys.argv[3]
 
     index_file = sys.argv[4]
+    test_name = sys.argv[5]
 
-    new_xml = transform_xml(original_xml, suite_name, suite_date, sys.argv[5:])
+    new_xml = transform_xml(original_xml, suite_name, suite_date, test_name, sys.argv[6:])
 
     append_to_report(index_file, new_xml)

@@ -204,6 +204,13 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="coreutils-multishard" mode="detailed">
+    <xsl:call-template name="detailed">
+        <xsl:with-param name="suite-kind">coreutils-multishard</xsl:with-param>
+        <xsl:with-param name="show-all-testsuites" select="false()" />
+    </xsl:call-template>
+</xsl:template>
+
 <xsl:template match="degradation_tests" mode="detailed">
     <xsl:call-template name="detailed">
         <xsl:with-param name="suite-kind">degradation_tests</xsl:with-param>
@@ -266,6 +273,12 @@
     </xsl:call-template>
 </xsl:template>
 
+<xsl:template match="coreutils-multishard" mode="brief">
+    <xsl:call-template name="brief">
+        <xsl:with-param name="suite-kind">coreutils-multishard</xsl:with-param>
+    </xsl:call-template>
+</xsl:template>
+
 <xsl:template match="degradation_tests" mode="brief">
     <xsl:call-template name="brief">
         <xsl:with-param name="suite-kind">degradation_tests</xsl:with-param>
@@ -303,7 +316,7 @@
                              alt="Nightly build">
                         </img>
                     </a>
-                </p>
+	        </p>
                 <p>
                     <a href="https://github.com/ydb-platform/nbs/actions/workflows/nightly-asan.yaml">
                         <img src="https://github.com/ydb-platform/nbs/actions/workflows/nightly-asan.yaml/badge.svg?branch=main"
@@ -334,6 +347,7 @@
                     <xsl:apply-templates select="nfs_corruption" mode="brief"/>
                     <xsl:apply-templates select="xfs" mode="brief"/>
                     <xsl:apply-templates select="coreutils" mode="brief"/>
+                    <xsl:apply-templates select="coreutils-multishard" mode="brief"/>
                 </div>
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>
@@ -365,6 +379,7 @@
                     <xsl:apply-templates select="nfs_corruption" mode="detailed"/>
                     <xsl:apply-templates select="xfs" mode="detailed"/>
                     <xsl:apply-templates select="coreutils" mode="detailed"/>
+                    <xsl:apply-templates select="coreutils-multishard" mode="detailed"/>
                 </div>
                 <div style="border: 1px solid black; margin-bottom: 20px; padding: 10px">
                     <h3>DM</h3>

@@ -108,7 +108,7 @@ def generate_nbs_section(index, results_xml_path):
 
 
 def generate_nfs_section(index, results_xml_path):
-    for tests_type in ["nfs_fio", "nfs_corruption", "xfs", "coreutils"]:
+    for tests_type in ["nfs_fio", "nfs_corruption", "xfs", "coreutils", "coreutils-multishard"]:
         generate_generic_tests_section(index, tests_type, results_xml_path)
 
 

@@ -57,6 +57,12 @@ def _parse_args():
         '--debug',
         action='store_true',
         help='dont delete instance if test fail')
+    test_arguments_group.add_argument(
+        '--reuse-fs-id',
+        type=str,
+        required=False,
+        default=None,
+        help='An existing FS id to reuse. If not set, a new one is created')
     common.add_common_parser_arguments(test_arguments_group)
 
     return parser
