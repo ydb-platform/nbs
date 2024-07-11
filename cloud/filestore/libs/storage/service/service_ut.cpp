@@ -3783,7 +3783,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         // listing should show only subdir with file2 in it
 
-        listNodesResponse =service.ListNodes(
+        listNodesResponse = service.ListNodes(
             headers,
             fsId,
             RootNodeId)->Record;
@@ -3952,6 +3952,100 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             768_KB / 4_KB,
             fileStoreStats.GetUsedBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldRetryUnlinkingInFollower)
+    {
+        NProto::TStorageConfig config;
+        config.SetMultiTabletForwardingEnabled(true);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        const TString fsId = "test";
+        const auto shard1Id = fsId + "-f1";
+        const auto shard2Id = fsId + "-f2";
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 1'000);
+        service.CreateFileStore(shard1Id, 1'000);
+        service.CreateFileStore(shard2Id, 1'000);
+
+        ConfigureFollowers(service, fsId, shard1Id, shard2Id);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+
+        const auto nodeId1 = createNodeResponse.GetNode().GetId();
+        UNIT_ASSERT_VALUES_EQUAL((1LU << 56U) + 2, nodeId1);
+
+        TAutoPtr<IEventHandle> followerUnlinkResponse;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvUnlinkNodeRequest>();
+                    if (intercept
+                            && msg->Record.GetFileSystemId() == shard1Id)
+                    {
+                        auto response = std::make_unique<
+                            TEvService::TEvUnlinkNodeResponse>(
+                            MakeError(E_REJECTED, "error"));
+
+                        followerUnlinkResponse = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0, // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+
+        ui32 iterations = 0;
+        while (!followerUnlinkResponse && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+
+        UNIT_ASSERT(followerUnlinkResponse);
+        intercept = false;
+        env.GetRuntime().Send(followerUnlinkResponse.Release());
+
+        auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            unlinkResponse->GetError().GetCode(),
+            unlinkResponse->GetError().GetMessage());
+
+        auto listNodesResponse = service.ListNodes(
+            headers,
+            fsId,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = shard1Id;
+
+        listNodesResponse = service.ListNodes(
+            headers1,
+            shard1Id,
+            RootNodeId)->Record;
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NamesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 }
 
