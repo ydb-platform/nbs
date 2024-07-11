@@ -957,15 +957,13 @@ void TIndexTabletActor::UpdateLogTag()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-i64 TIndexTabletActor::TMetrics::TakeTotalRequestBytes()
+i64 TIndexTabletActor::TMetrics::GetTotalRequestBytes()
 {
     i64 sumRequestBytes = 0;
     for (auto* metric: AllRequestMetrics) {
         sumRequestBytes += metric->RequestBytes;
     }
-    auto delta = LastNetworkMetric - sumRequestBytes;
-    LastNetworkMetric = sumRequestBytes;
-    return delta;
+    return sumRequestBytes;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

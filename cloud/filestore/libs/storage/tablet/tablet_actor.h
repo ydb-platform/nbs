@@ -155,14 +155,13 @@ private:
         struct TCompactionMetrics: TRequestMetrics
         {
             explicit TCompactionMetrics(
-                TVector<TRequestMetrics*>& allRequestMetrics)
+                    TVector<TRequestMetrics*>& allRequestMetrics)
                 : TRequestMetrics(allRequestMetrics)
             {}
 
             std::atomic<i64> DudCount{0};
         };
-        static constexpr const ui32 RequestMetricsCount = 14;
-        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(RequestMetricsCount)};
+        TVector<TRequestMetrics*> AllRequestMetrics{Reserve(14)};
 
         TRequestMetrics ReadBlob{AllRequestMetrics};
         TRequestMetrics WriteBlob{AllRequestMetrics};
@@ -179,9 +178,7 @@ private:
         TRequestMetrics TrimBytes{AllRequestMetrics};
         TRequestMetrics CollectGarbage{AllRequestMetrics};
 
-        i64 LastNetworkMetric = 0;
-
-        i64 TakeTotalRequestBytes();
+        i64 GetTotalRequestBytes();
 
         // Compaction/cleanup stats
         std::atomic<i64> MaxBlobsInRange{0};
@@ -492,7 +489,7 @@ private:
         const TEvIndexTabletPrivate::TEvNodeUnlinkedInFollower::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void SendMetricsToHive(const NActors::TActorContext& ctx);
+    void SendMetricsToExecutor(const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
     bool RejectRequests(STFUNC_SIG);

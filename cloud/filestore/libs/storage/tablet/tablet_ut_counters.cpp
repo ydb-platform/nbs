@@ -631,7 +631,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         const int blockCount = 1024;
         const auto sz = DefaultBlockSize * blockCount;
 
-        ui64 reportsCount = 0;
+        ui64 reportCount = 0;
+
 
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
@@ -639,7 +640,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
                     case NKikimr::TEvLocal::EvTabletMetrics: {
-                        ++reportsCount;
+                        ++reportCount;
                     }
                 }
 
@@ -655,7 +656,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             env.GetRuntime().DispatchEvents(options);
         }
 
-        UNIT_ASSERT_VALUES_UNEQUAL(0, reportsCount);
+        UNIT_ASSERT_VALUES_UNEQUAL(0, reportCount);
     }
 }
 
