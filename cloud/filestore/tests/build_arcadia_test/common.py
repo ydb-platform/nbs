@@ -200,9 +200,12 @@ def create_fs(
             logger.info(f'Error: {e}')
             raise ResourceExhaustedError('Cannot create file system')
 
+
 def find_fs(
     ycp: YcpWrapper,
-    fs_id: str) -> Ycp.Filesystem:
+    fs_id: str,
+    logger
+) -> Ycp.Filesystem:
     try:
         fss = ycp.list_filesystems()
         for fs in fss:

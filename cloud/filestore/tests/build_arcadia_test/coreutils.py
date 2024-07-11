@@ -12,7 +12,7 @@ from cloud.filestore.tests.build_arcadia_test.common import (
 
 _COREUTILS_SCRIPT_NAME = 'coreutils.sh'
 _COREUTILS_SCRIPT_PATH = f'/{MOUNT_PATH}/{_COREUTILS_SCRIPT_NAME}'
-_COREUTILS_OUTPUT_VM_PATH = f'~/coreutils_log.txt'
+_COREUTILS_OUTPUT_VM_PATH = '~/coreutils_log.txt'
 _COREUTILS_OUTPUT_LOCAL_PATH = 'coreutils_log.txt'
 _COREUTILS_JUNIT_OUTPUT_LOCAL_PATH = 'junit_report.xml'
 
@@ -208,7 +208,7 @@ def execute_coreutils_test(ycp, parser, instance, args, logger, module_factories
                 ycp, parser, instance, fs, args, logger, module_factories
             )
     else:
-        fs = find_fs(ycp, args.reuse_fs_id)
+        fs = find_fs(ycp, args.reuse_fs_id, logger)
         _execute_coreutils_test(
             ycp, parser, instance, fs, args, logger, module_factories
         )
@@ -216,8 +216,7 @@ def execute_coreutils_test(ycp, parser, instance, args, logger, module_factories
 
 def _execute_coreutils_test(ycp, parser, instance, fs, args, logger, module_factories):
     with ycp.attach_fs(instance, fs, DEVICE_NAME):
-        mount_fs(instance.ip, args.dry_run, logger,
-                    module_factories, ssh_key_path=args.ssh_key_path)
+        mount_fs(instance.ip, args.dry_run, logger, module_factories, ssh_key_path=args.ssh_key_path)
         run_coreutils_test(
             ycp,
             instance.ip,
