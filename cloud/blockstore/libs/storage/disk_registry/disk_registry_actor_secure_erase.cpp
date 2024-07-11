@@ -24,7 +24,7 @@ private:
     const TRequestInfoPtr Request;
     const TDuration RequestTimeout;
 
-    TString PoolName;
+    const TString PoolName;
     TVector<NProto::TDeviceConfig> Devices;
     TVector<TString> CleanDevices;
 
@@ -369,7 +369,7 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         dirtyDevices.size());
 
     TMap<TString, TVector<NProto::TDeviceConfig>> poolMap;
-    for(auto& device : dirtyDevices) {
+    for (auto& device: dirtyDevices) {
         poolMap[device.GetPoolName()].push_back(std::move(device));
     }
 
