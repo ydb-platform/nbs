@@ -199,3 +199,18 @@ def create_fs(
         else:
             logger.info(f'Error: {e}')
             raise ResourceExhaustedError('Cannot create file system')
+
+
+def find_fs(
+    ycp: YcpWrapper,
+    fs_id: str,
+    logger
+) -> Ycp.Filesystem:
+    try:
+        fss = ycp.list_filesystems()
+        for fs in fss:
+            if fs.id == fs_id:
+                return fs
+    except Exception as e:
+        logger.info(f'Error occurs while finding fs ({fs_id}) {e}')
+        raise Error('Cannot find fs')
