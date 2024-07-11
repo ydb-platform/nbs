@@ -462,6 +462,16 @@ public:
         return request;
     }
 
+    std::unique_ptr<TEvService::TEvStatFileStoreRequest> CreateStatFileStoreRequest(
+        const THeaders& headers,
+        const TString& fileSystemId)
+    {
+        auto request = std::make_unique<TEvService::TEvStatFileStoreRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        return request;
+    }
+
 #define FILESTORE_DECLARE_METHOD(name, ns)                                     \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

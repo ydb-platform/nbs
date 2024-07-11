@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/operations.h>
 #include <cloud/filestore/libs/diagnostics/metrics/registry.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -12,6 +13,170 @@ using namespace NKikimr;
 using namespace NMetrics;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TGetFollowerStatsActor final
+    : public TActorBootstrapped<TGetFollowerStatsActor>
+{
+private:
+    const TString LogTag;
+    const TRequestInfoPtr RequestInfo;
+    const NProtoPrivate::TGetStorageStatsRequest Request;
+    const google::protobuf::RepeatedPtrField<TString> FollowerIds;
+    std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
+    int Responses = 0;
+
+public:
+    TGetFollowerStatsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TGetStorageStatsRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response);
+
+    void Bootstrap(const TActorContext& ctx);
+
+private:
+    STFUNC(StateWork);
+
+    void SendRequests(const TActorContext& ctx);
+
+    void HandleGetStorageStatsResponse(
+        const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx);
+
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TGetFollowerStatsActor::TGetFollowerStatsActor(
+        TString logTag,
+        TRequestInfoPtr requestInfo,
+        NProtoPrivate::TGetStorageStatsRequest request,
+        google::protobuf::RepeatedPtrField<TString> followerIds,
+        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
+    : LogTag(std::move(logTag))
+    , RequestInfo(std::move(requestInfo))
+    , Request(std::move(request))
+    , FollowerIds(std::move(followerIds))
+    , Response(std::move(response))
+{}
+
+void TGetFollowerStatsActor::Bootstrap(const TActorContext& ctx)
+{
+    SendRequests(ctx);
+    Become(&TThis::StateWork);
+}
+
+void TGetFollowerStatsActor::SendRequests(const TActorContext& ctx)
+{
+    ui32 cookie = 0;
+    for (const auto& followerId: FollowerIds) {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+        request->Record = Request;
+        request->Record.SetFileSystemId(followerId);
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Sending GetStorageStatsRequest to follower %s",
+            LogTag.c_str(),
+            followerId.c_str());
+
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            {}, // flags
+            cookie++);
+    }
+}
+
+void TGetFollowerStatsActor::HandleGetStorageStatsResponse(
+    const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Follower storage stats retrieval failed for %s with error %s",
+            LogTag.c_str(),
+            FollowerIds[ev->Cookie].c_str(),
+            FormatError(msg->GetError()).Quote().c_str());
+
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    const auto& src = msg->Record.GetStats();
+    auto& dst = *Response->Record.MutableStats();
+
+#define FILESTORE_TABLET_MERGE_COUNTER(name, ...)                              \
+    dst.Set##name(dst.Get##name() + src.Get##name());                          \
+// FILESTORE_TABLET_MERGE_COUNTER
+
+    FILESTORE_TABLET_STATS(FILESTORE_TABLET_MERGE_COUNTER)
+
+#undef FILESTORE_TABLET_MERGE_COUNTER
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
+        "%s Got storage stats for follower %s",
+        LogTag.c_str(),
+        FollowerIds[ev->Cookie].c_str());
+
+    if (++Responses == FollowerIds.size()) {
+        ReplyAndDie(ctx, {});
+    }
+}
+
+void TGetFollowerStatsActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
+void TGetFollowerStatsActor::ReplyAndDie(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    if (HasError(error)) {
+        Response =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsResponse>(error);
+    }
+    NCloud::Reply(ctx, *RequestInfo, std::move(Response));
+
+    Die(ctx);
+}
+
+STFUNC(TGetFollowerStatsActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvIndexTablet::TEvGetStorageStatsResponse,
+            HandleGetStorageStatsResponse);
+
+        default:
+            HandleUnexpectedEvent(ev, TFileStoreComponents::TABLET_WORKER);
+            break;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -397,7 +562,7 @@ void TIndexTabletActor::HandleGetStorageStats(
     stats->SetUsedCompactionRanges(cmStats.UsedRangesCount);
     stats->SetAllocatedCompactionRanges(cmStats.AllocatedRangesCount);
 
-    const auto& req = ev->Get()->Record;
+    auto& req = ev->Get()->Record;
 
     if (req.GetCompactionRangeCountByCompactionScore()) {
         const auto topRanges = GetTopRangesByCompactionScore(
@@ -427,7 +592,29 @@ void TIndexTabletActor::HandleGetStorageStats(
     stats->SetCollectGarbageState(static_cast<ui32>(
         CollectGarbageState.GetOperationState()));
 
-    NCloud::Reply(ctx, *ev, std::move(response));
+    const auto& followerIds = GetFileSystem().GetFollowerFileSystemIds();
+
+    if (followerIds.empty()) {
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        ev->Get()->CallContext);
+
+    auto actor = std::make_unique<TGetFollowerStatsActor>(
+        LogTag,
+        std::move(requestInfo),
+        std::move(req),
+        followerIds,
+        std::move(response));
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+
+    Y_UNUSED(actorId);
+    // TODO(#1350): register actorId in WorkerActors, erase upon completion
 }
 
 }   // namespace NCloud::NFileStore::NStorage
