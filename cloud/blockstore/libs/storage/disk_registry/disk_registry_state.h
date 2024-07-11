@@ -585,8 +585,8 @@ public:
     NProto::TError UpdateAgentState(
         TDiskRegistryDatabase& db,
         const TString& agentId,
-        NProto::EAgentState state,
-        TInstant now,
+        NProto::EAgentState newState,
+        TInstant timestamp,
         TString reason,
         TVector<TDiskId>& affectedDisks);
 
@@ -932,6 +932,10 @@ private:
         const TString& diskId,
         TDiskState& disk,
         TInstant timestamp);
+
+    NProto::TError TryToRemoveAgentDevices(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId);
 
     NProto::TPlacementGroupConfig::TDiskInfo* CollectRacks(
         const TString& diskId,
