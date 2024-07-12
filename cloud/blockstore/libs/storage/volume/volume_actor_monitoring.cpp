@@ -1163,10 +1163,10 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                     TABLED() {
                         DIV()
                         {
-                            out << NProto::EEncryptionMode_Name(
-                                (NProto::EEncryptionMode)volumeConfig
-                                    .GetEncryptionDesc()
-                                    .GetMode());
+                            auto encryptionMode =
+                                static_cast<NProto::EEncryptionMode>(
+                                    volumeConfig.GetEncryptionDesc().GetMode());
+                            out << NProto::EEncryptionMode_Name(encryptionMode);
                         }
                         DIV()
                         {
